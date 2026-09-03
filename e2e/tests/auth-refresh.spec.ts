@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { expect, Page, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
 /**
  * AUTH-2 E2E: real browser, full stack (nginx -> frontend -> backend ->
@@ -141,81 +141,12 @@ function revokeRefreshTokens(userId: string): void {
   });
 }
 
-/**
- * Coalesces concurrent `POST /auth/refresh` requests into a single real
- * network call, relaying the identical response to every caller.
- *
- * Why this exists (a real finding, not test padding): this app runs under
- * `React.StrictMode` (`frontend/src/main.tsx`) on the Vite dev server that
- * `docker compose --profile dev` serves — the profile this whole E2E env
- * (and this repo's documented "how to run the stack") uses. StrictMode
- * intentionally double-invokes effects in development, so `AuthContext`'s
- * boot-time-refresh `useEffect` (`frontend/src/auth/AuthContext.tsx`) fires
- * TWO real `POST /auth/refresh` calls on every mount/reload, each carrying
- * the SAME still-valid refresh_token cookie. Confirmed directly against
- * this env's backend access log: a plain `page.reload()` produced both a
- * 200 and a 401 for `/auth/refresh` in the same reload. Per ADR-0013,
- * refresh tokens are single-use (rotate-on-use) — that pair of concurrent
- * calls race like the ADR's own documented "genuine multi-tab race"
- * trade-off, except manufactured here *within a single tab* by StrictMode's
- * dev-only double effect invocation, not a real second browser tab. Because
- * only ONE of React's two effect instances actually keeps its `setState`
- * calls (the other's closure is marked cancelled essentially immediately),
- * whichever HTTP call is discarded by React can still be the one that won
- * the server-side rotation race — observed empirically: 3 solo reruns of
- * the reload-persistence test with no mitigation produced 1 pass / 2
- * failures (session spuriously "lost" on reload) purely from this race, not
- * from any actual defect in the reload/refresh contract itself.
- *
- * `AuthContext`'s boot refresh calls the raw `refresh()` (`lib/api/auth.ts`)
- * directly rather than `apiFetch`'s own deduped `requestRefresh()` helper
- * (`lib/api/client.ts`), so nothing in the app itself collapses these two
- * calls — this is a real, reproducible dev-profile gap worth a follow-up
- * (see this test's final report), but Task 5 is E2E-test-only: no
- * frontend/backend source changes are in scope here. This helper reproduces,
- * at the network layer, exactly what a deduped boot-refresh call would do
- * (one real request, one shared result) so the E2E test measures the
- * intended single-reload session-restore contract deterministically,
- * without masking or fabricating the underlying HTTP exchange.
- */
-async function installRefreshRequestCoalescing(page: Page): Promise<void> {
-  let pending: Promise<{ status: number; headers: Record<string, string>; body: Buffer }> | null = null;
-
-  await page.route("**/api/v1/auth/refresh", async (route) => {
-    if (route.request().method() !== "POST") {
-      await route.continue();
-      return;
-    }
-    if (!pending) {
-      pending = route
-        .fetch()
-        .then(async (response) => ({
-          status: response.status(),
-          headers: response.headers(),
-          body: await response.body(),
-        }))
-        .finally(() => {
-          // Release the lock on the next tick so a later, genuinely
-          // sequential refresh call (e.g. a subsequent, separate reload)
-          // still triggers its own fresh request rather than being
-          // permanently coalesced with a stale one.
-          setTimeout(() => {
-            pending = null;
-          }, 0);
-        });
-    }
-    const result = await pending;
-    await route.fulfill({ status: result.status, headers: result.headers, body: result.body });
-  });
-}
-
 test.describe("AUTH-2 session persistence", () => {
   test("session survives a page reload (AC1: refresh token restores session across a browser restart)", async ({
     page,
   }) => {
     const user = seedUser();
     try {
-      await installRefreshRequestCoalescing(page);
       await page.goto("/login");
       await page.getByLabel(/email/i).fill(user.email);
       await page.getByLabel(/password/i).fill(user.password);
@@ -246,12 +177,6 @@ test.describe("AUTH-2 session persistence", () => {
   test("revoked refresh token is rejected and the user ends up back at /login (AC2)", async ({ page }) => {
     const user = seedUser();
     try {
-      // Coalescing here too, for consistency/safety (see the reload test's
-      // installRefreshRequestCoalescing docstring) — harmless either way
-      // since this test's post-revocation refresh attempts fail regardless
-      // of the StrictMode double-invoke race (both racing calls 401 once
-      // the token is revoked; there is no "winner" to lose).
-      await installRefreshRequestCoalescing(page);
       await page.goto("/login");
       await page.getByLabel(/email/i).fill(user.email);
       await page.getByLabel(/password/i).fill(user.password);
