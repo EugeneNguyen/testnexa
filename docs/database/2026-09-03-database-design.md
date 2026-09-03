@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-03
 **Owner:** xuanbinh91@gmail.com (CTO)
-**Sources:** [07 ERD](../product-discovery/07-erd-draft.md), [Scaffold design spec](../superpowers/specs/2026-09-03-project-scaffold-design.md), [ADR-0005](../adr/0005-traceability-link-dedicated-join-tables.md), [ADR-0006](../adr/0006-test-condition-optional.md), [ADR-0007](../adr/0007-real-multi-tenancy.md), [ADR-0008](../adr/0008-uuid-primary-keys.md)
+**Sources:** [07 ERD](../product-discovery/07-erd-draft.md), [Scaffold design spec](../superpowers/specs/2026-09-03-project-scaffold-design.md), [ADR-0005](../adr/0005-traceability-link-dedicated-join-tables.md), [ADR-0006](../adr/0006-test-condition-optional.md), [ADR-0007](../adr/0007-real-multi-tenancy.md), [ADR-0008](../adr/0008-uuid-primary-keys.md), [ADR-0011](../adr/0011-login-rate-limiting.md)
 
 This document is the implementation-level schema, refined from the [07 ERD](../product-discovery/07-erd-draft.md) draft per the ADRs above. No code — this is the reference for the Alembic migration that will be written when implementation is authorized.
 
@@ -14,9 +14,10 @@ This document is the implementation-level schema, refined from the [07 ERD](../p
 
 - **28 → 31**: `TraceabilityLink` (1 entity in 07) is replaced by 4 dedicated tables (`RequirementTestCaseLink`, `RequirementTestConditionLink`, `TestConditionTestCaseLink`, `TestCaseDefectLink`) per ADR-0005.
 - **+1**: `RefreshToken` — an implementation necessity for revocable sessions (AUTH-2), not in 07's original entity list.
+- **+1**: `LoginAttempt` — an implementation necessity for login rate limiting ([ADR-0011](../adr/0011-login-rate-limiting.md)), not in 07's original entity list.
 - **+3 pure junction tables**: `TestSuiteTestCase`, `TestPlanTestSuite`, `TestCaseTestDesignTechnique` — many-to-many joins 07 drew as diagram relationships (`}o--o{`) without naming a table. These carry no attributes beyond the two FK columns.
 
-**Total physical tables: 35.**
+**Total physical tables: 36.**
 
 ## 2. Schema-wide conventions
 
@@ -75,6 +76,18 @@ Unique: `(org_id, user_id)`.
 | revoked_at | timestamptz | nullable |
 | revoked_reason | varchar | nullable (e.g. `logout`, `admin_force_logout`) |
 | created_at, updated_at | timestamptz | not null |
+
+**LoginAttempt** *(not in 07 — added per [ADR-0011](../adr/0011-login-rate-limiting.md), login rate limiting)*
+| Column | Type | Constraints |
+|---|---|---|
+| id | uuid | PK |
+| email | varchar | not null, indexed — stored lowercased, matches the login lookup key even when the email doesn't resolve to a `User` |
+| client_ip | varchar | not null, indexed |
+| succeeded | boolean | not null |
+| attempted_at | timestamptz | not null, default now() |
+| created_at | timestamptz | not null |
+
+Composite index: `(email, client_ip, attempted_at)` — the throttle query is "count `succeeded = false` rows for this `(email, client_ip)` within the last 15 minutes." Rows are append-only (no update/delete API), consistent with `TestLog`'s immutability pattern; a scheduled cleanup of rows older than the throttle window is an operational concern, not a schema one.
 
 ### 3.3 `rbac.py` — Role, Permission, RolePermission, RoleAssignment
 
@@ -153,6 +166,8 @@ Unique: `(actor_id, org_id, project_id, role_id)`.
 | created_at, updated_at | timestamptz | not null |
 
 > `Actor` is never queried alone in practice — the backend uses one shared "resolve actor to `User` or `AIAgent`" helper everywhere a `created_by`/`executed_by`/`reported_by` field is serialized, per [ADR-0002](../adr/0002-backend-framework-orm-migrations.md)'s consequence note.
+
+> **Known drift (flagged, not fixed by this pass):** `app/models/actor.py` implements `User`/`AIAgent` as standard SQLAlchemy joined-table inheritance — `actor_id` is *both* the primary key and the FK to `actor.id`, there is no separate `id` column on `user`/`ai_agent`. This document's tables above (and every FK listed elsewhere in this document as `FK → user.id`, e.g. `OrgMembership.user_id`, `AuthIdentity.user_id`, `RefreshToken.user_id`, `Approval.approved_by_user_id`, `AIAgent.acting_on_behalf_of_user_id`) predates that implementation choice and still shows the literal association-table shape (`id` + separate `actor_id`). In the real schema, read every `FK → user.id` in this document as `FK → user.actor_id`. Reconciling this document's column listings to match is out of scope for the AUTH-1 documentation pass — tracked here so it isn't lost, not silently left inconsistent.
 
 ### 3.5 `project.py` — Project, Release
 
@@ -440,3 +455,4 @@ Storage backend (local filesystem vs. S3-compatible) is an application-config co
 | Integer/unspecified PK style | UUIDv7 everywhere | ADR-0008 |
 | No `AIAgent` credential fields | `key_hash`/`key_prefix`/`issued_at`/`revoked_at` added | AUTH-4 |
 | `}o--o{` many-to-many drawn without table names | `TestSuiteTestCase`, `TestPlanTestSuite`, `TestCaseTestDesignTechnique` named explicitly | Implementation necessity |
+| No `LoginAttempt` table | Added | ADR-0011 (login rate limiting) |

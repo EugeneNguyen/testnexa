@@ -4,13 +4,13 @@
 **Date:** 2026-09-03
 **Owner:** xuanbinh91@gmail.com (CTO)
 **Format:** IEEE 829 Test Plan sections, applied to testing the scaffold itself — the tool tests its own build using the same document shape it's designed to produce for its users.
-**Sources:** [Requirements Document](../requirements/2026-09-03-project-scaffold-requirements.md), [Scaffold design spec](../superpowers/specs/2026-09-03-project-scaffold-design.md), [Test Design](../test-design/2026-09-03-test-design.md), [Test Cases](../test-cases/2026-09-03-test-cases.md)
+**Sources:** [Requirements Document](../requirements/2026-09-03-project-scaffold-requirements.md), [Scaffold design spec](../superpowers/specs/2026-09-03-project-scaffold-design.md), [Test Design](../test-design/2026-09-03-test-design.md), [Test Cases](../test-cases/2026-09-03-test-cases.md), [AUTH-1 scope plan](../superpowers/plans/2026-09-03-auth-1-local-password-login-plan.md)
 
 ---
 
 ## 1. Introduction
 
-This plan governs testing of the project scaffold: a full-stack ISTQB/IEEE829-aligned test management tool (backend API, frontend SPA, MCP server, Docker infra) implementing 35 physical tables across 28 business entities, JWT auth for human and AI-agent actors, and multi-tenant RBAC. Purpose: verify every FR/NFR in the Requirements Document before any release is considered scaffold-complete.
+This plan governs testing of the project scaffold: a full-stack ISTQB/IEEE829-aligned test management tool (backend API, frontend SPA, MCP server, Docker infra) implementing 36 physical tables across 28 business entities, JWT auth for human and AI-agent actors, multi-tenant RBAC, and login rate limiting. Purpose: verify every FR/NFR in the Requirements Document before any release is considered scaffold-complete.
 
 ## 2. Test items
 
@@ -44,6 +44,7 @@ Test-design techniques applied per feature area are detailed in the [Test Design
 - A route/feature **passes** when every acceptance criterion in its source user story (`docs/user-stories/`) has a corresponding green test at the appropriate layer (unit and/or integration and/or E2E per §5).
 - A route/feature **fails** if any acceptance criterion lacks coverage, or any covered criterion's test is red.
 - NFR-1 (tenant isolation) and NFR-9 (RBAC matrix) are release-blocking: no scaffold build is considered complete with a known cross-tenant leak or an unverified permission-denial path.
+- NFR-11 (login rate limiting) is release-blocking for AUTH-1: `POST /auth/login` must not ship without the 429 throttle verified at the HTTP layer, not just unit-tested in isolation.
 
 ## 7. Suspension criteria and resumption requirements
 
@@ -95,6 +96,7 @@ Testing is not a separate phase — per the WBS, each backend/frontend deliverab
 | RBAC allow/deny matrix under-tested (5 roles × ~40 permission codes is a large surface) | Generate the matrix mechanically from the seeded `Permission` catalog rather than hand-listing cases, per Test Design §7.3 |
 | E2E suite flakiness against a full docker-compose stack | Keep E2E scope to the two named flows (§9.4); push broader coverage to integration tests, which run faster and more deterministically against `postgres-test` directly |
 | Multi-tenancy (unvalidated per ADR-0007) adds test surface with unclear ROI if the feature itself gets cut post-scaffold | Isolation tests (NFR-1) are cheap relative to the cost of a real leak — keep them regardless of multi-tenancy's eventual product fate |
+| Login throttle test is timing-sensitive (15-minute window) and could be flaky/slow if tested literally | Test the throttle's counting/threshold logic against an injectable clock or a short-window test config, not a real 15-minute wall-clock wait |
 
 ## 15. Approvals
 

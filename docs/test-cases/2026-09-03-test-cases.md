@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-03
 **Owner:** xuanbinh91@gmail.com (CTO)
-**Sources:** [Test Design](../test-design/2026-09-03-test-design.md), [Master Test Plan](../test-plan/2026-09-03-master-test-plan.md), [docs/user-stories/*](../user-stories/)
+**Sources:** [Test Design](../test-design/2026-09-03-test-design.md), [Master Test Plan](../test-plan/2026-09-03-master-test-plan.md), [docs/user-stories/*](../user-stories/), [AUTH-1 scope plan](../superpowers/plans/2026-09-03-auth-1-local-password-login-plan.md)
 
 Concrete test cases derived from each user story's acceptance criteria. IDs group by feature area; **Story** column links back to the source acceptance criterion. Priority: **P1** = release-blocking, **P2** = should-have, **P3** = exploratory/structural-only (per FR priority in the Requirements Document).
 
@@ -24,6 +24,11 @@ Concrete test cases derived from each user story's acceptance criteria. IDs grou
 | TC-AUTH-010 | AIAgent bearer auth attributes actor correctly | AIAgent with issued API key | MCP call using the key creates a TestCase | `created_by_actor_id` resolves to the AIAgent, not any User | P2 | AUTH-4 |
 | TC-AUTH-011 | AIAgent blocked from Approval-permission route | AIAgent authenticated | Call `/test-plans/{id}/approve` | 403, regardless of role bundle | P1 | AUTH-4 / RBAC-5 |
 | TC-AUTH-012 | org_admin issues/revokes AIAgent credential | org_admin authenticated | POST create agent, then POST revoke | Key shown once at creation; after revoke, further calls with that key 401 | P2 | AUTH-4 |
+| TC-AUTH-013 | Login rejected, zero org memberships | User exists, no OrgMembership rows at all | POST `/auth/login` with correct credentials | 403 `no_active_organization`; no token issued | P1 | AUTH-1 |
+| TC-AUTH-014 | Login rejected, only suspended/invited memberships | User has 1 `suspended` + 1 `invited` OrgMembership, none `active` | POST `/auth/login` with correct credentials | 403 `no_active_organization` | P1 | AUTH-1 |
+| TC-AUTH-015 | Suspended/invited memberships excluded from org list | User has 1 `active` + 1 `suspended` OrgMembership | Login | `org_context: "auto"`; `orgs` contains only the active org, suspended org absent | P1 | AUTH-1 |
+| TC-AUTH-016 | Login throttled after 5 failed attempts | 5 prior failed logins for same `(client_ip, email)` within 15 min | 6th login attempt for that pair | 429 `rate_limited`, regardless of whether attempt 6's credentials are correct | P1 | AUTH-1 / NFR-11 |
+| TC-AUTH-017 | Successful login resets throttle counter | 3 failed attempts, then 1 successful login, same pair | 5 further failed attempts after the success | 429 triggers only after 5 new post-reset failures, not immediately on the next one | P2 | AUTH-1 / NFR-11 |
 
 ## RBAC & Multi-Tenancy
 
@@ -147,7 +152,7 @@ Concrete test cases derived from each user story's acceptance criteria. IDs grou
 
 | Feature area | Test case count | P1 count |
 |---|---|---|
-| Auth | 12 | 8 |
+| Auth | 17 | 12 |
 | RBAC & Multi-Tenancy | 15 | 11 |
 | Project & Release | 5 | 3 |
 | Requirement & Test Case Authoring | 9 | 7 |
@@ -157,6 +162,6 @@ Concrete test cases derived from each user story's acceptance criteria. IDs grou
 | Taxonomy & Generic Admin CRUD | 5 | 2 |
 | Traceability Matrix | 5 | 4 |
 | AI Agent / MCP | 7 | 0 |
-| **Total** | **83** | **50** |
+| **Total** | **88** | **54** |
 
 MCP's P3-only weighting matches its exploratory, no-validated-WTP status per the personas doc — structural coverage exists, but nothing here blocks a release.

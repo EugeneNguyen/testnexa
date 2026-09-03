@@ -12,8 +12,8 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 
 | # | Deliverable | Depends on | Size | Maps to |
 |---|---|---|---|---|
-| 1.1 | DB models — all 28 entities across 11 cluster modules (`tenancy`, `auth`, `rbac`, `actor`, `project`, `assets`, `planning`, `execution`, `trace`, `taxonomy`, `governance`) | — | L | [Database Document](../database/2026-09-03-database-design.md) |
-| 1.2 | Alembic initial migration (all 28 tables + 4 join tables, UUIDv7 PKs) | 1.1 | M | ADR-0008 |
+| 1.1 | DB models — all 28 business entities (36 physical tables incl. `RefreshToken`/`LoginAttempt` and junction tables — see Database Document §1) across 11 cluster modules (`tenancy`, `auth`, `rbac`, `actor`, `project`, `assets`, `planning`, `execution`, `trace`, `taxonomy`, `governance`) | — | L | [Database Document](../database/2026-09-03-database-design.md) |
+| 1.2 | Alembic initial migration (all 36 physical tables, UUIDv7 PKs) | 1.1 | M | ADR-0008 |
 | 1.3 | Alembic seed migration (5 system roles, permission bundles, taxonomy lookups) | 1.2 | M | FR-RBAC-4, FR-ADMIN-1 |
 | 1.4 | Core infra: DB session management, settings/config, Actor-resolution helper | 1.1 | S | ADR-0002 |
 
@@ -22,12 +22,13 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 | # | Deliverable | Depends on | Size | Maps to |
 |---|---|---|---|---|
 | 2.1 | `security.py` — JWT issue/verify, argon2 password hashing | 1.4 | S | FR-AUTH-1 |
-| 2.2 | Local login/refresh/logout routes, DB-backed revocable refresh token | 2.1, 1.2 | M | FR-AUTH-1..3 |
+| 2.2 | Local login/refresh/logout routes, DB-backed revocable refresh token, org auto-select/picker/403-zero-org resolution | 2.1, 1.2 | M | FR-AUTH-1..3 |
 | 2.3 | AIAgent API-key issuance/revocation (admin-facing) + bearer auth | 2.1 | M | FR-AUTH-4 |
 | 2.4 | `rbac.py` — `require_permission(code)` dependency, permission-code registry generated from model registry | 1.3 | M | FR-RBAC-3, NFR-10 |
 | 2.5 | Org/OrgMembership routes — create org (first-user bootstrap), invite/suspend/reactivate members | 2.4 | M | FR-RBAC-1, FR-RBAC-2 |
 | 2.6 | RoleAssignment routes — org-wide/project-scoped grants | 2.4 | S | FR-RBAC-3 |
 | 2.7 | Human-only Approval defense-in-depth check | 2.4 | S | FR-RBAC-5 |
+| 2.8 | Login throttle: `LoginAttempt` table + per-(IP, email) failed-attempt counter, 429 above threshold | 2.2 | S | NFR-11, [ADR-0011](../adr/0011-login-rate-limiting.md) |
 
 ## 3. Generic CRUD API
 
@@ -96,7 +97,7 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 | # | Deliverable | Depends on | Size | Maps to |
 |---|---|---|---|---|
 | 10.1 | Backend unit tests (isolated model/service logic) | per-task | ongoing | [Test Plan](../test-plan/2026-09-03-master-test-plan.md) |
-| 10.2 | Backend integration tests — RBAC allow/deny matrix at HTTP layer, real Postgres | 9.3, all §2–5 | L | NFR-9, [Test Design](../test-design/2026-09-03-test-design.md) |
+| 10.2 | Backend integration tests — RBAC allow/deny matrix at HTTP layer, real Postgres; includes login throttle (429) and zero-active-org (403) cases | 9.3, all §2–5 | L | NFR-9, NFR-11, [Test Design](../test-design/2026-09-03-test-design.md) |
 | 10.3 | Frontend unit tests (Vitest + RTL) — generic CRUD components + bespoke screens | per-task | ongoing | [Test Plan](../test-plan/2026-09-03-master-test-plan.md) |
 | 10.4 | E2E tests (Playwright) — login→requirement→test case→execution; RBAC-denial flow | 9.1, all §6–8 | L | [Test Case doc](../test-cases/2026-09-03-test-cases.md) |
 

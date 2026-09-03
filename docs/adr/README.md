@@ -14,6 +14,7 @@ Index of ADRs for the Project Scaffold. Format: [MADR](https://adr.github.io/mad
 | [0008](0008-uuid-primary-keys.md) | All primary keys are UUIDs, no auto-increment | Accepted |
 | [0009](0009-frontend-stack.md) | Frontend stack: Vite + React Router + TanStack Query + RHF + Zod + Tailwind | Accepted |
 | [0010](0010-single-port-docker-compose-topology.md) | Single-port Docker Compose topology, dev+prod profiles | Accepted |
+| [0011](0011-login-rate-limiting.md) | Login rate limiting: DB-backed per-(IP, email) throttle, no Redis | Accepted |
 
 **Deciders on all ADRs below:** xuanbinh91@gmail.com (CTO), unless noted otherwise.
 **Date:** 2026-09-03

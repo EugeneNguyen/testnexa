@@ -18,7 +18,7 @@ REST over HTTPS, JSON bodies, base path `/api/v1`. FastAPI auto-generates the Op
   ```
   {"code": "string", "message": "human-readable string", "field_errors": {"field_name": ["msg"]} | null}
   ```
-- **Status codes:** `401` = unauthenticated (missing/expired/invalid token); `403` = authenticated but permission-denied; `404` = not found **or** cross-tenant (NFR-1 — never distinguishes the two); `422` = validation error (`field_errors` populated).
+- **Status codes:** `401` = unauthenticated (missing/expired/invalid token, or bad login credentials); `403` = authenticated-or-would-be-authenticated but permission-denied or blocked for a non-credentials reason (includes `POST /auth/login` with valid credentials but zero active org memberships — see §2); `404` = not found **or** cross-tenant (NFR-1 — never distinguishes the two); `422` = validation error (`field_errors` populated); `429` = rate-limited (currently only `POST /auth/login`'s throttle, ADR-0011/NFR-11).
 - **Permission codes:** `<resource>.<action>`. Resource = snake_case entity name. Default actions `create/read/update/delete` for writable entities; `read`-only for `TestLog` and the 4 traceability link tables (system-appended, no direct write API). Special verbs beyond CRUD: `test_plan.approve`, `requirement.export_rtm`. The full code list is generated mechanically from the model registry at startup (one Alembic-seeded `Permission` row per `resource.action` pair) — not hand-maintained.
 
 ## 2. Auth routes (bespoke)
@@ -34,7 +34,14 @@ REST over HTTPS, JSON bodies, base path `/api/v1`. FastAPI auto-generates the Op
 
 `POST /auth/login` request: `{email, password}`. Response: `{access_token, org_context: "auto" | "picker", orgs: [...] }` per AUTH-1's single-org-vs-multi-org branch; refresh token is set as an httpOnly cookie, never in the JSON body.
 
-## 3. Generic CRUD routes (router factory, applied to ~24 of 35 tables)
+`org_context`/`orgs` are resolved from `OrgMembership` rows with `status = active` only — `suspended` and `invited` memberships never count toward org selection (RBAC-2: a suspended member has no working API access regardless of role, and an invited-not-yet-accepted member has none yet either). Resolution:
+- 1 active membership → `org_context: "auto"`, `orgs` has that one entry.
+- 2+ active memberships → `org_context: "picker"`, `orgs` lists all of them.
+- 0 active memberships → login rejected outright, `403 no_active_organization`, no token issued (credentials were valid — this is not a 401; see §7).
+
+`POST /auth/login` is also subject to the login throttle: `429 rate_limited` after 5 failed attempts for the same `(client_ip, email)` pair within 15 minutes (see [ADR-0011](../adr/0011-login-rate-limiting.md), NFR-11). A successful login clears that pair's counter. `LoginAttempt` (the table backing this) has no API route at all, generic or bespoke — it's write-only internal bookkeeping from the login route itself, never read via the API.
+
+## 3. Generic CRUD routes (router factory, applied to ~24 of 36 tables)
 
 One factory, parametrized per entity+schema, producing 5 routes. Example shown for `requirement`; the same shape applies to every entity listed in the [Database Document](../database/2026-09-03-database-design.md) except the bespoke ones in §4 and the read-only ones in §5.
 
@@ -101,6 +108,21 @@ Every MCP-originated write records `created_by_actor_id`/`executed_by_actor_id` 
 **403, AIAgent attempting Approval:**
 ```
 {"code": "actor_forbidden", "message": "This action is restricted to human users.", "field_errors": null}
+```
+
+**403, login with valid credentials but no active org membership:**
+```
+{"code": "no_active_organization", "message": "Your account has no active organization membership. Contact your administrator.", "field_errors": null}
+```
+
+**401, invalid login credentials (identical body whether the email exists or not — no enumeration leak):**
+```
+{"code": "invalid_credentials", "message": "Invalid email or password.", "field_errors": null}
+```
+
+**429, login throttled:**
+```
+{"code": "rate_limited", "message": "Too many login attempts. Try again later.", "field_errors": null}
 ```
 
 **404, cross-tenant Requirement fetch (never reveals existence):**
