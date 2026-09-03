@@ -14,7 +14,7 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 |---|---|---|---|---|
 | 1.1 | DB models — all 28 business entities (36 physical tables incl. `RefreshToken`/`LoginAttempt` and junction tables — see Database Document §1) across 11 cluster modules (`tenancy`, `auth`, `rbac`, `actor`, `project`, `assets`, `planning`, `execution`, `trace`, `taxonomy`, `governance`) | — | L | [Database Document](../database/2026-09-03-database-design.md) |
 | 1.2 | Alembic initial migration (all 36 physical tables, UUIDv7 PKs) | 1.1 | M | ADR-0008 |
-| 1.3 | Alembic seed migration (5 system roles, permission bundles, taxonomy lookups) | 1.2 | M | FR-RBAC-4, FR-ADMIN-1 |
+| 1.3 | Alembic seed migration — partial unique index on `role.name WHERE org_id IS NULL`; ~100-row `Permission` catalog (29 resources); 5 system `Role` rows + bundles (`org_admin` = full catalog); existence-checked inserts for idempotent re-run; taxonomy lookups | 1.2 | M | FR-RBAC-4, NFR-15, FR-ADMIN-1, [RBAC-4 plan](../superpowers/plans/2026-09-03-rbac-4-seeded-system-roles-plan.md) |
 | 1.4 | Core infra: DB session management, settings/config, Actor-resolution helper | 1.1 | S | ADR-0002 |
 
 ## 2. Auth & RBAC

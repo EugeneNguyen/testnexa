@@ -6,7 +6,7 @@ Source: Database Document §3.3. See ADR-0004 for the permission-check design.
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, ForeignKey, String, UniqueConstraint, Uuid
+from sqlalchemy import Boolean, ForeignKey, Index, String, UniqueConstraint, Uuid, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, created_at_column, generate_uuid7, updated_at_column
@@ -14,6 +14,20 @@ from app.db.base import Base, created_at_column, generate_uuid7, updated_at_colu
 
 class Role(Base):
     __tablename__ = "role"
+    __table_args__ = (
+        # Partial unique index, not a composite UniqueConstraint(org_id, name):
+        # Postgres treats NULL <> NULL, so a plain UNIQUE(org_id, name) would
+        # NOT stop two (NULL, 'org_admin') rows from coexisting. This index
+        # only applies WHERE org_id IS NULL, i.e. it uniquely names the 5
+        # built-in system-role templates (RBAC-4) while leaving per-org
+        # custom roles (org_id IS NOT NULL) completely unrestricted by it.
+        Index(
+            "uq_role_name_system_role",
+            "name",
+            unique=True,
+            postgresql_where=text("org_id IS NULL"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=generate_uuid7)
     # nullable: null = built-in system-role template, not scoped to any org.

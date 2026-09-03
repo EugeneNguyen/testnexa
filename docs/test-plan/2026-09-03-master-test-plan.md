@@ -94,11 +94,12 @@ Testing is not a separate phase — per the WBS, each backend/frontend deliverab
 
 | Risk | Contingency |
 |---|---|
-| RBAC allow/deny matrix under-tested (5 roles × ~40 permission codes is a large surface) | Generate the matrix mechanically from the seeded `Permission` catalog rather than hand-listing cases, per Test Design §7.3 |
+| RBAC allow/deny matrix under-tested (5 roles × ~100 seeded permission codes is a large surface — `org_admin` alone is every code) | Generate the matrix mechanically from the seeded `Permission` catalog rather than hand-listing cases, per Test Design §3; skip generating `org_admin` denial cases (it has no denied codes by design) and assert its bundle count equals the full catalog count instead |
 | E2E suite flakiness against a full docker-compose stack | Keep E2E scope to the two named flows (§9.4); push broader coverage to integration tests, which run faster and more deterministically against `postgres-test` directly |
 | Multi-tenancy (unvalidated per ADR-0007) adds test surface with unclear ROI if the feature itself gets cut post-scaffold | Isolation tests (NFR-1) are cheap relative to the cost of a real leak — keep them regardless of multi-tenancy's eventual product fate |
 | Login throttle test is timing-sensitive (15-minute window) and could be flaky/slow if tested literally | Test the throttle's counting/threshold logic against an injectable clock or a short-window test config, not a real 15-minute wall-clock wait |
 | Refresh-token rotation's multi-tab race (two tabs refreshing near-simultaneously, [ADR-0013](../adr/0013-refresh-token-rotation-policy.md)) is a known, accepted gap, not a bug to chase in the test suite | Test single-tab rotation/revocation behavior deterministically (TC-AUTH-006/007/008); do not attempt to assert away the multi-tab race in automated tests — it's a documented trade-off, not a regression target |
+| RBAC-4 seed migration re-run (redeploy, CI re-apply) silently duplicates system roles/permissions | Assert idempotency directly (TC-RBAC-016): apply the migration twice against the same DB, row counts for `role`/`permission`/`role_permission` are identical after both runs |
 
 ## 15. Approvals
 

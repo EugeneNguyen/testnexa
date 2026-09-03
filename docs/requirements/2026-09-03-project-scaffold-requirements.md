@@ -115,6 +115,8 @@ Each FR ID maps 1:1 to the acceptance criteria already ratified in `docs/user-st
 | NFR-11 | `POST /auth/login` enforces a basic brute-force throttle: 5 failed attempts per (IP, email) pair per 15-minute window → 429, before any full lockout/notification policy exists. Throttle state does not require Redis (ADR-0003's existing no-Redis stance). | AUTH-1 scope decision 2026-09-03, [ADR-0011](../adr/0011-login-rate-limiting.md) |
 | NFR-12 | Refresh tokens are single-use (rotated on every `POST /auth/refresh` call); a rotated-out, revoked, or expired token is rejected with 401, no new token issued. A rotated token's `expires_at` is inherited from the token it replaces (not reset), capping total session lifetime at `JWT_REFRESH_TTL_DAYS` from the original login regardless of renewal frequency. | AUTH-2 scope decision 2026-09-03, [ADR-0013](../adr/0013-refresh-token-rotation-policy.md) |
 | NFR-13 | `POST /auth/refresh` re-validates the caller still has ≥1 active `OrgMembership`, same check as login; a member suspended mid-session loses the ability to silently renew their session at the next refresh, not just at next full login. | AUTH-2 scope decision 2026-09-03, [ADR-0013](../adr/0013-refresh-token-rotation-policy.md) |
+| NFR-14 | `POST /auth/logout` is idempotent — a missing, foreign (belonging to a different user), or already-revoked/rotated-out refresh cookie returns the same `204` as a successful revoke, never an error — and revokes only the current session's token (`revoked_reason="logout"`), never every session for the user. `GET /auth/me`'s access-token TTL is not shortened by logout; the client clears its access token unconditionally on logout regardless of whether the server call succeeds. | AUTH-3 scope decision 2026-09-03, [ADR-0014](../adr/0014-logout-session-revocation-policy.md) |
+| NFR-15 | The RBAC-4 system-role seed migration is idempotent — re-running it inserts no duplicate `Role`/`Permission`/`RolePermission` rows, enforced by a partial unique index on `role.name WHERE org_id IS NULL` plus existence-checked inserts. | RBAC-4 scope decision 2026-09-03, [ADR-0004](../adr/0004-rbac-design.md) |
 
 ## 4. Traceability — requirements to architecture decisions
 
@@ -125,6 +127,7 @@ Each FR ID maps 1:1 to the acceptance criteria already ratified in `docs/user-st
 | FR-TRACE-* | [ADR-0005](../adr/0005-traceability-link-dedicated-join-tables.md) TraceabilityLink join tables |
 | FR-REQ-2, FR-REQ-3 | [ADR-0006](../adr/0006-test-condition-optional.md) TestCondition optional |
 | FR-RBAC-1, FR-RBAC-2 | [ADR-0007](../adr/0007-real-multi-tenancy.md) Real multi-tenancy |
+| FR-RBAC-4, NFR-15 | [ADR-0004](../adr/0004-rbac-design.md) (system-role seeding: global templates, full catalog, idempotent migration) |
 | NFR-3 (UUID PKs) | [ADR-0008](../adr/0008-uuid-primary-keys.md) UUID primary keys |
 | FR-AUTH-* | [ADR-0003](../adr/0003-auth-token-strategy.md) Auth & token strategy |
 | NFR-11 | [ADR-0011](../adr/0011-login-rate-limiting.md) Login rate limiting |
