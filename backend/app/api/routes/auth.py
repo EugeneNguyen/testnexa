@@ -161,6 +161,12 @@ async def signup(
             field_errors={"email": ["An account with this email already exists."]},
         )
 
+    # 3b. `provider=local` AuthIdentity — required for `login()`'s
+    # User-joined-to-AuthIdentity lookup to ever find this user afterward.
+    # Without this row, a freshly bootstrapped org_admin gets a token from
+    # this response but can never log in again.
+    db.add(AuthIdentity(user_id=user.actor_id, provider=AuthProvider.local, is_primary=True))
+
     # 4. Create the Organization; flush alone to isolate a slug-uniqueness
     # collision (TC-RBAC-003) — 422, not 409 (ADR-0016).
     org = Organization(name=payload.org_name, slug=payload.org_slug)
