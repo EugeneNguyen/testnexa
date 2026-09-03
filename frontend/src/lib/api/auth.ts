@@ -35,6 +35,7 @@ export async function login(email: string, password: string): Promise<LoginRespo
     return await apiFetch<LoginResponse>("/api/v1/auth/login", {
       method: "POST",
       credentials: "include",
+      skipAuthRetry: true,
       body: JSON.stringify({ email, password }),
     });
   } catch (error) {
@@ -47,4 +48,52 @@ export async function login(email: string, password: string): Promise<LoginRespo
     }
     throw error;
   }
+}
+
+export interface RefreshResponse {
+  access_token: string;
+}
+
+/**
+ * AUTH-2 silent refresh call.
+ *
+ * Source: API Document §2 (`POST /auth/refresh` request/response contract).
+ *
+ * No request body — the only input is the httpOnly `refresh_token` cookie,
+ * hence `credentials: "include"`. Response is `{access_token}` only;
+ * `org_context`/`orgs` are not re-sent (the frontend already holds those from
+ * `login()`). On a non-2xx response, rejects with `ApiError` — per the API
+ * contract every rejection cause (missing/expired/revoked/rotated-out
+ * cookie) collapses to a single `401 invalid_refresh_token`, so there is
+ * nothing finer-grained for callers to branch on.
+ *
+ * `skipAuthRetry: true` is required here: `apiFetch`'s 401 interceptor calls
+ * this function to recover from a 401, so this call must never itself be
+ * subject to that same interceptor (infinite recursion otherwise).
+ */
+export async function refresh(): Promise<RefreshResponse> {
+  return apiFetch<RefreshResponse>("/api/v1/auth/refresh", {
+    method: "POST",
+    credentials: "include",
+    skipAuthRetry: true,
+  });
+}
+
+export interface MeResponse {
+  actor_id: string;
+  email: string;
+  actor_type: string;
+}
+
+/**
+ * AUTH-2 identity check.
+ *
+ * Source: API Document §2 (`GET /auth/me` request/response contract).
+ *
+ * Requires `Authorization: Bearer <access_token>` — `apiFetch` attaches it
+ * automatically from `lib/auth/tokenStore` when a token is present, so this
+ * call needs no special handling beyond delegating to `apiFetch`.
+ */
+export async function me(): Promise<MeResponse> {
+  return apiFetch<MeResponse>("/api/v1/auth/me");
 }
