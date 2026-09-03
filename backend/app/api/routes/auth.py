@@ -19,7 +19,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, Request, Response, status
 from fastapi.responses import JSONResponse
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_actor, get_db
@@ -212,15 +212,35 @@ async def refresh(
        the presented refresh token is NOT revoked here, only this attempt
        fails — a later refresh can still succeed if membership is
        reactivated before the token's `expires_at`.
-    5. Rotate: revoke the presented row (`revoked_reason="rotated"`); insert
-       a new row with a freshly generated raw token, same `user_id`,
-       `issued_at=now`, and `expires_at` copied verbatim from the old row
-       (NOT recomputed as `now + JWT_REFRESH_TTL_DAYS` — the ADR-0013
-       absolute-expiry-inheritance rule).
+    5. Rotate: revoke the presented row (`revoked_reason="rotated"`) via a
+       conditional `UPDATE ... WHERE id = :id AND revoked_at IS NULL`
+       compare-and-swap (see below), not an ORM attribute-mutation +
+       commit; insert a new row with a freshly generated raw token, same
+       `user_id`, `issued_at=now`, and `expires_at` copied verbatim from
+       the old row (NOT recomputed as `now + JWT_REFRESH_TTL_DAYS` — the
+       ADR-0013 absolute-expiry-inheritance rule).
     6. Issue a new access token; set the new raw refresh token as the
        httpOnly cookie (same params as `login()`); return `{access_token}`
        only — no `org_context`/`orgs` (the frontend already holds those from
        login).
+
+    Concurrency (fix round 1 finding): two genuinely concurrent requests
+    presenting the SAME still-valid raw token both pass the step-3 read
+    check (neither has committed a revocation yet). Revoking via an ORM
+    attribute-mutation (`stored_token.revoked_at = now`) + commit is NOT
+    safe against this — both requests' `UPDATE`s are unconditional on `id`
+    alone, so Postgres serializes them and BOTH succeed, BOTH insert a live
+    child token. That silently mints a second live session from a single
+    stolen-and-replayed token, breaking ADR-0013's stated guarantee that
+    rotation kills every outstanding copy of the old token. The fix is a
+    single atomic conditional `UPDATE ... WHERE id = :id AND revoked_at IS
+    NULL`, checked by `rowcount`: whichever request's `UPDATE` commits
+    first flips `revoked_at` from `NULL`, so the loser's own `UPDATE`
+    matches zero rows (its `WHERE` clause no longer holds) and must be
+    treated as "already rotated" — 401, no child token inserted, no cookie
+    set. This needs no `SELECT ... FOR UPDATE` / row lock held across the
+    request; the database's own row-level locking during the `UPDATE`
+    itself is sufficient to make exactly one of the two calls win.
     """
     raw_token = request.cookies.get("refresh_token")
     if raw_token is None:
@@ -264,10 +284,29 @@ async def refresh(
             "Your account has no active organization membership. Contact your administrator.",
         )
 
-    # Rotate: revoke the presented token, issue a new one inheriting the
-    # original's absolute expiry.
-    stored_token.revoked_at = now
-    stored_token.revoked_reason = "rotated"
+    # Rotate: revoke the presented token via an atomic compare-and-swap, not
+    # an unconditional ORM attribute-mutation + commit — see the docstring's
+    # "Concurrency" section. `WHERE id = :id AND revoked_at IS NULL` only
+    # matches (and only flips `revoked_at`) if this call is the first to
+    # revoke this specific row; a concurrent duplicate call loses the race
+    # and gets rowcount == 0 here.
+    cas_result = await db.execute(
+        update(RefreshToken)
+        .where(RefreshToken.id == stored_token.id, RefreshToken.revoked_at.is_(None))
+        .values(revoked_at=now, revoked_reason="rotated")
+    )
+    if cas_result.rowcount != 1:
+        # Lost the race: another concurrent request already rotated (or
+        # otherwise revoked) this exact row in between our read and our
+        # write. Treat identically to "already rotated/revoked" — no child
+        # token, no new cookie, nothing to roll back (our UPDATE matched
+        # nothing, so there is no partial write to undo).
+        await db.rollback()
+        return _error(
+            status.HTTP_401_UNAUTHORIZED,
+            "invalid_refresh_token",
+            "Your session has expired. Please log in again.",
+        )
 
     new_raw_refresh_token = create_refresh_token(str(stored_token.user_id))
     db.add(

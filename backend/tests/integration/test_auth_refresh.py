@@ -9,7 +9,9 @@ no separate skip-guard is needed here.
 
 Covers exactly the AUTH-2-scoped cases from
 `docs/test-cases/2026-09-03-test-cases.md`: TC-AUTH-006, 007, 008, 018, 019,
-020, 021, 022, 023.
+020, 021, 022, 023, plus one fix-round test
+(`test_concurrent_refresh_with_same_token_only_one_wins`) proving the
+TOCTOU-race fix in the rotation `UPDATE` (see that test's own docstring).
 
 Each test seeds its own `User`/`AuthIdentity`/`Organization`/`OrgMembership`/
 `RefreshToken` rows directly via `AsyncSessionLocal` (the test process shares
@@ -23,6 +25,7 @@ test precisely control the seeded `RefreshToken` row's
 TC-AUTH-007/008/018/019/021/022 need to assert on.
 """
 
+import asyncio
 import os
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
@@ -301,6 +304,80 @@ async def test_refresh_token_is_single_use() -> None:  # TC-AUTH-018
         second_response = await _post_refresh(raw_token)
         assert second_response.status_code == 401
         assert second_response.json()["code"] == "invalid_refresh_token"
+    finally:
+        await _cleanup(email, user_id, org_ids)
+
+
+# --- Fix round 1: TOCTOU race — two truly concurrent requests presenting the ---------------
+# --- same still-valid raw token must NOT both succeed in rotating it. ----------------------
+
+
+@pytest.mark.asyncio
+async def test_concurrent_refresh_with_same_token_only_one_wins() -> None:
+    """Two genuinely concurrent `/auth/refresh` calls with the SAME raw token: exactly one wins.
+
+    Chosen over a same-process "call the conditional-update path twice in a
+    row" proxy: this repo's integration suite already runs against a live
+    async server backed by real Postgres, so genuine concurrency is directly
+    available here (`asyncio.gather` firing two real HTTP requests at once)
+    and is strictly better evidence for a race-condition fix than a
+    sequential stand-in — a sequential double-call can't actually exercise
+    the interleaving (both requests' SELECTs completing before either
+    UPDATE) that made the original bug possible in the first place, only the
+    *outcome* of one possible interleaving. Two concurrent coroutines against
+    an async (asyncpg) backend naturally interleave at their I/O await
+    points, which reliably reproduces the race here.
+
+    Before the fix (unconditional ORM `stored_token.revoked_at = now` +
+    commit, `UPDATE` keyed only on `id`): both requests would read
+    `revoked_at IS NULL` before either wrote, both would proceed, and BOTH
+    would successfully rotate — inserting two live child tokens from one
+    presented token. After the fix (conditional
+    `UPDATE ... WHERE id = :id AND revoked_at IS NULL` + rowcount check):
+    exactly one request's `UPDATE` can ever flip `revoked_at` from `NULL`,
+    so exactly one succeeds (200, one live child token) and the other loses
+    the race and is rejected (401 `invalid_refresh_token`, no child token).
+    """
+    email = _unique_email()
+    user_id = None
+    org_ids: list = []
+    try:
+        async with AsyncSessionLocal() as session:
+            user = await _create_user(session, email, DEFAULT_PASSWORD)
+            org = await _create_org(session, "tc-race")
+            await _create_membership(session, user, org, OrgMembershipStatus.active)
+            _row, raw_token = await _create_refresh_token(session, user)
+            await session.commit()
+            user_id, org_id = user.actor_id, org.id
+        org_ids = [org_id]
+
+        # Fire both requests at once, presenting the identical raw token —
+        # simulates a stolen-and-replayed token racing the legitimate
+        # client's own refresh (or a naive double-fire from one client).
+        response_a, response_b = await asyncio.gather(
+            _post_refresh(raw_token), _post_refresh(raw_token)
+        )
+
+        statuses = sorted([response_a.status_code, response_b.status_code])
+        assert statuses == [200, 401], (
+            f"expected exactly one winner (200) and one loser (401), got {statuses}"
+        )
+
+        loser_response = response_a if response_a.status_code == 401 else response_b
+        assert loser_response.json()["code"] == "invalid_refresh_token"
+
+        # Exactly one live child token must exist for this user afterward —
+        # not two. (The original row is revoked either way; count only
+        # non-revoked descendants.)
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(RefreshToken).where(
+                    RefreshToken.user_id == user_id,
+                    RefreshToken.revoked_at.is_(None),
+                )
+            )
+            live_tokens = result.scalars().all()
+        assert len(live_tokens) == 1
     finally:
         await _cleanup(email, user_id, org_ids)
 
