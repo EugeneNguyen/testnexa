@@ -1,0 +1,442 @@
+# Database Document — Project Scaffold
+
+**Date:** 2026-09-03
+**Owner:** xuanbinh91@gmail.com (CTO)
+**Sources:** [07 ERD](../product-discovery/07-erd-draft.md), [Scaffold design spec](../superpowers/specs/2026-09-03-project-scaffold-design.md), [ADR-0005](../adr/0005-traceability-link-dedicated-join-tables.md), [ADR-0006](../adr/0006-test-condition-optional.md), [ADR-0007](../adr/0007-real-multi-tenancy.md), [ADR-0008](../adr/0008-uuid-primary-keys.md)
+
+This document is the implementation-level schema, refined from the [07 ERD](../product-discovery/07-erd-draft.md) draft per the ADRs above. No code — this is the reference for the Alembic migration that will be written when implementation is authorized.
+
+---
+
+## 1. Entity count reconciliation
+
+07's "28 entities" (20 core + 8 extended) is a business-entity count. The physical schema below has more tables, all structural additions with no independent business meaning of their own:
+
+- **28 → 31**: `TraceabilityLink` (1 entity in 07) is replaced by 4 dedicated tables (`RequirementTestCaseLink`, `RequirementTestConditionLink`, `TestConditionTestCaseLink`, `TestCaseDefectLink`) per ADR-0005.
+- **+1**: `RefreshToken` — an implementation necessity for revocable sessions (AUTH-2), not in 07's original entity list.
+- **+3 pure junction tables**: `TestSuiteTestCase`, `TestPlanTestSuite`, `TestCaseTestDesignTechnique` — many-to-many joins 07 drew as diagram relationships (`}o--o{`) without naming a table. These carry no attributes beyond the two FK columns.
+
+**Total physical tables: 35.**
+
+## 2. Schema-wide conventions
+
+- **Primary keys:** every table has a surrogate `id UUID PRIMARY KEY`, generated application-side as **UUIDv7** (time-sortable) — no auto-increment integers anywhere, including junction/link tables. See [ADR-0008](../adr/0008-uuid-primary-keys.md).
+- **Timestamps:** every table has `created_at TIMESTAMPTZ NOT NULL DEFAULT now()` and `updated_at TIMESTAMPTZ NOT NULL DEFAULT now()` (auto-touched on update), **except `TestLog`**, which has only `logged_at` — no `updated_at` column exists, enforcing immutability at the schema level, not just via a missing API endpoint.
+- **Tenant isolation:** every tenant-scoped table carries a resolvable path to `org_id` (directly or via one FK hop) so every query can filter by `org_id` — see NFR-1 in the [Requirements Document](../requirements/2026-09-03-project-scaffold-requirements.md).
+- **Deletes:** FKs default to `ON DELETE RESTRICT` for core test-asset entities (favor status-field transitions — e.g. `TestCase.status = deprecated` — over hard deletes, to preserve audit history). Junction/link tables use `ON DELETE CASCADE` on both FK columns (a link is meaningless once either side is gone). Lookup tables (`Role`, `Permission`, `TestLevel`, `TestType`, `TestDesignTechnique`, `Environment`) allow hard delete by an admin with the corresponding `.delete` permission.
+- **Enums:** modeled as Postgres `ENUM` types (or `VARCHAR` + `CHECK` constraint, implementation's choice) — never free text, per NFR-5.
+
+## 3. Tables by cluster
+
+### 3.1 `tenancy.py` — Organization, OrgMembership
+
+**Organization**
+| Column | Type | Constraints |
+|---|---|---|
+| id | uuid | PK |
+| name | varchar | not null |
+| slug | varchar | not null, unique (deployment-wide, RBAC-1) |
+| default_standards_profile | varchar | nullable |
+| created_at, updated_at | timestamptz | not null |
+
+**OrgMembership**
+| Column | Type | Constraints |
+|---|---|---|
+| id | uuid | PK |
+| org_id | uuid | FK → organization.id, not null, indexed |
+| user_id | uuid | FK → user.id, not null, indexed |
+| status | enum(invited, active, suspended) | not null, default invited |
+| joined_at | timestamptz | nullable (set on invite-acceptance) |
+| created_at, updated_at | timestamptz | not null |
+
+Unique: `(org_id, user_id)`.
+
+### 3.2 `auth.py` — AuthIdentity, RefreshToken
+
+**AuthIdentity**
+| Column | Type | Constraints |
+|---|---|---|
+| id | uuid | PK |
+| user_id | uuid | FK → user.id, not null, indexed |
+| provider | enum(local, oidc, saml, ldap, github, google) | not null — **only `local` has working auth logic in this scaffold**; others are schema-ready per 07, unimplemented (out of scope) |
+| external_id | varchar | nullable |
+| is_primary | boolean | not null, default true |
+| last_login_at | timestamptz | nullable |
+| created_at, updated_at | timestamptz | not null |
+
+**RefreshToken** *(not in 07 — added per [ADR-0003](../adr/0003-auth-token-strategy.md))*
+| Column | Type | Constraints |
+|---|---|---|
+| id | uuid | PK |
+| user_id | uuid | FK → user.id, not null, indexed |
+| token_hash | varchar | not null — raw token never stored |
+| issued_at | timestamptz | not null |
+| expires_at | timestamptz | not null |
+| revoked_at | timestamptz | nullable |
+| revoked_reason | varchar | nullable (e.g. `logout`, `admin_force_logout`) |
+| created_at, updated_at | timestamptz | not null |
+
+### 3.3 `rbac.py` — Role, Permission, RolePermission, RoleAssignment
+
+**Role**
+| Column | Type | Constraints |
+|---|---|---|
+| id | uuid | PK |
+| org_id | uuid | FK → organization.id, **nullable** (null = built-in system-role template) |
+| name | varchar | not null |
+| is_system_role | boolean | not null, default false |
+| created_at, updated_at | timestamptz | not null |
+
+**Permission** *(global catalog, no org scoping)*
+| Column | Type | Constraints |
+|---|---|---|
+| id | uuid | PK |
+| code | varchar | not null, unique — `<resource>.<action>` (see [API Document](../api/2026-09-03-api-design.md) §Permission codes) |
+| resource | varchar | not null |
+| action | varchar | not null |
+| created_at, updated_at | timestamptz | not null |
+
+**RolePermission** *(junction)*
+| Column | Type | Constraints |
+|---|---|---|
+| id | uuid | PK |
+| role_id | uuid | FK → role.id, not null, on delete cascade |
+| permission_id | uuid | FK → permission.id, not null, on delete cascade |
+| created_at | timestamptz | not null |
+
+Unique: `(role_id, permission_id)`.
+
+**RoleAssignment**
+| Column | Type | Constraints |
+|---|---|---|
+| id | uuid | PK |
+| actor_id | uuid | FK → actor.id, not null, indexed |
+| org_id | uuid | FK → organization.id, not null, indexed |
+| project_id | uuid | FK → project.id, **nullable** (null = org-wide role) |
+| role_id | uuid | FK → role.id, not null |
+| created_at, updated_at | timestamptz | not null |
+
+Unique: `(actor_id, org_id, project_id, role_id)`.
+
+### 3.4 `actor.py` — Actor, User, AIAgent (joined-table inheritance)
+
+**Actor** *(supertype)*
+| Column | Type | Constraints |
+|---|---|---|
+| id | uuid | PK |
+| actor_type | enum(user, ai_agent) | not null |
+| created_at, updated_at | timestamptz | not null |
+
+**User**
+| Column | Type | Constraints |
+|---|---|---|
+| id | uuid | PK |
+| actor_id | uuid | FK → actor.id, not null, unique (1:1) |
+| name | varchar | not null |
+| email | varchar | not null, unique (deployment-wide) |
+| password_hash | varchar | not null (argon2) |
+| created_at, updated_at | timestamptz | not null |
+
+**AIAgent** *(credential fields added beyond 07's draft, per AUTH-4)*
+| Column | Type | Constraints |
+|---|---|---|
+| id | uuid | PK |
+| actor_id | uuid | FK → actor.id, not null, unique (1:1) |
+| agent_name | varchar | not null |
+| model_or_provider | varchar | nullable |
+| mcp_session_ref | varchar | nullable |
+| acting_on_behalf_of_user_id | uuid | FK → user.id, not null — accountability link, not an approver |
+| key_hash | varchar | not null (argon2) |
+| key_prefix | varchar(8) | not null — last-4/first-4-style display hint, never the full key |
+| issued_at | timestamptz | not null |
+| revoked_at | timestamptz | nullable |
+| created_at, updated_at | timestamptz | not null |
+
+> `Actor` is never queried alone in practice — the backend uses one shared "resolve actor to `User` or `AIAgent`" helper everywhere a `created_by`/`executed_by`/`reported_by` field is serialized, per [ADR-0002](../adr/0002-backend-framework-orm-migrations.md)'s consequence note.
+
+### 3.5 `project.py` — Project, Release
+
+**Project**
+| Column | Type | Constraints |
+|---|---|---|
+| id | uuid | PK |
+| org_id | uuid | FK → organization.id, not null, indexed — tenant isolation root |
+| name | varchar | not null |
+| standards_profile | varchar | nullable |
+| created_at, updated_at | timestamptz | not null |
+
+Unique: `(org_id, name)`.
+
+**Release**
+| Column | Type | Constraints |
+|---|---|---|
+| id | uuid | PK |
+| project_id | uuid | FK → project.id, not null, indexed |
+| version_label | varchar | not null |
+| target_date | date | nullable |
+| created_at, updated_at | timestamptz | not null |
+
+### 3.6 `assets.py` — Requirement, TestCondition, TestCase, TestStep, TestSuite (+ junction)
+
+**Requirement**
+| Column | Type | Constraints |
+|---|---|---|
+| id | uuid | PK |
+| project_id | uuid | FK → project.id, not null, indexed |
+| external_ref | varchar | nullable |
+| description | text | not null |
+| source | varchar | nullable |
+| created_at, updated_at | timestamptz | not null |
+
+**TestCondition**
+| Column | Type | Constraints |
+|---|---|---|
+| id | uuid | PK |
+| requirement_id | uuid | FK → requirement.id, not null, indexed |
+| description | text | not null |
+| priority | enum(low, medium, high) | not null |
+| created_at, updated_at | timestamptz | not null |
+
+**TestCase**
+| Column | Type | Constraints |
+|---|---|---|
+| id | uuid | PK |
+| test_condition_id | uuid | FK → test_condition.id, **nullable** — [ADR-0006](../adr/0006-test-condition-optional.md) |
+| test_level_id | uuid | FK → test_level.id, not null |
+| test_type_id | uuid | FK → test_type.id, not null |
+| created_by_actor_id | uuid | FK → actor.id, not null |
+| title | varchar | not null |
+| preconditions | text | nullable |
+| expected_result | text | nullable |
+| status | enum(draft, reviewed, approved, deprecated) | not null, default draft |
+| created_at, updated_at | timestamptz | not null |
+
+**TestStep**
+| Column | Type | Constraints |
+|---|---|---|
+| id | uuid | PK |
+| test_case_id | uuid | FK → test_case.id, not null, indexed, on delete cascade |
+| sequence | integer | not null |
+| action | text | not null |
+| expected_result | text | nullable |
+| created_at, updated_at | timestamptz | not null |
+
+Unique: `(test_case_id, sequence)`.
+
+**TestSuite**
+| Column | Type | Constraints |
+|---|---|---|
+| id | uuid | PK |
+| project_id | uuid | FK → project.id, not null, indexed |
+| name | varchar | not null |
+| purpose | varchar | nullable (e.g. regression/smoke/acceptance) |
+| created_at, updated_at | timestamptz | not null |
+
+**TestSuiteTestCase** *(junction, many-to-many)*
+| Column | Type | Constraints |
+|---|---|---|
+| id | uuid | PK |
+| test_suite_id | uuid | FK → test_suite.id, not null, on delete cascade |
+| test_case_id | uuid | FK → test_case.id, not null, on delete cascade |
+| created_at | timestamptz | not null |
+
+Unique: `(test_suite_id, test_case_id)`.
+
+### 3.7 `planning.py` — TestPlan, EntryExitCriteria, TestCycle, Environment (+ junction)
+
+**TestPlan**
+| Column | Type | Constraints |
+|---|---|---|
+| id | uuid | PK |
+| project_id | uuid | FK → project.id, not null, indexed |
+| created_by_actor_id | uuid | FK → actor.id, not null |
+| identifier | varchar | not null — IEEE 829/29119-3 Test Plan Identifier |
+| scope | text | nullable |
+| approach | text | nullable |
+| staffing_and_training | text | nullable |
+| schedule | text | nullable |
+| status | enum(draft, approved, superseded) | not null, default draft |
+| created_at, updated_at | timestamptz | not null |
+
+**TestPlanTestSuite** *(junction, many-to-many)*
+| Column | Type | Constraints |
+|---|---|---|
+| id | uuid | PK |
+| test_plan_id | uuid | FK → test_plan.id, not null, on delete cascade |
+| test_suite_id | uuid | FK → test_suite.id, not null, on delete cascade |
+| created_at | timestamptz | not null |
+
+Unique: `(test_plan_id, test_suite_id)`.
+
+**EntryExitCriteria**
+| Column | Type | Constraints |
+|---|---|---|
+| id | uuid | PK |
+| test_plan_id | uuid | FK → test_plan.id, not null, indexed, on delete cascade |
+| type | enum(entry, exit, suspension, resumption) | not null |
+| condition_text | text | not null |
+| created_at, updated_at | timestamptz | not null |
+
+**Environment** — *scoped to `project_id` (refinement beyond 07's unscoped draft, required for tenant isolation per NFR-1)*
+| Column | Type | Constraints |
+|---|---|---|
+| id | uuid | PK |
+| project_id | uuid | FK → project.id, not null, indexed |
+| name | varchar | not null |
+| config_notes | text | nullable |
+| created_at, updated_at | timestamptz | not null |
+
+**TestCycle**
+| Column | Type | Constraints |
+|---|---|---|
+| id | uuid | PK |
+| test_plan_id | uuid | FK → test_plan.id, not null, indexed |
+| release_id | uuid | FK → release.id, not null |
+| environment_id | uuid | FK → environment.id, not null |
+| name | varchar | not null |
+| start_date | date | nullable |
+| end_date | date | nullable |
+| created_at, updated_at | timestamptz | not null |
+
+### 3.8 `execution.py` — TestExecution, TestLog, Defect
+
+**TestExecution**
+| Column | Type | Constraints |
+|---|---|---|
+| id | uuid | PK |
+| test_cycle_id | uuid | FK → test_cycle.id, not null, indexed |
+| test_case_id | uuid | FK → test_case.id, not null, indexed |
+| executed_by_actor_id | uuid | FK → actor.id, not null |
+| result | enum(pass, fail, blocked, skipped) | not null |
+| actual_result | text | nullable |
+| executed_at | timestamptz | not null |
+| created_at, updated_at | timestamptz | not null |
+
+Composite index: `(test_cycle_id, test_case_id)` — dashboard aggregation (EXEC-1) and execution-scope-check (PLAN-3) both filter on this pair.
+
+**TestLog** — *append-only, no `updated_at`, no update/delete API path*
+| Column | Type | Constraints |
+|---|---|---|
+| id | uuid | PK |
+| test_execution_id | uuid | FK → test_execution.id, not null, indexed |
+| logged_at | timestamptz | not null, default now() |
+| event_type | enum(status_change, comment, attachment, agent_action) | not null |
+| payload | jsonb | not null |
+| created_at | timestamptz | not null |
+
+Index: `(test_execution_id, logged_at)` — ordered timeline reads (EXEC-2).
+
+**Defect**
+| Column | Type | Constraints |
+|---|---|---|
+| id | uuid | PK |
+| test_execution_id | uuid | FK → test_execution.id, not null, indexed |
+| reported_by_actor_id | uuid | FK → actor.id, not null |
+| external_ref | varchar | nullable |
+| severity | enum(low, medium, high, critical) | not null |
+| status | varchar | not null, default `open` |
+| created_at, updated_at | timestamptz | not null |
+
+### 3.9 `trace.py` — the 4 dedicated link tables ([ADR-0005](../adr/0005-traceability-link-dedicated-join-tables.md))
+
+All four share the same shape: surrogate `uuid` PK, two FK columns, unique constraint on the pair, `created_at` only (links are immutable — delete-and-recreate, never edited).
+
+| Table | FK 1 | FK 2 |
+|---|---|---|
+| RequirementTestCaseLink | requirement_id → requirement.id | test_case_id → test_case.id |
+| RequirementTestConditionLink | requirement_id → requirement.id | test_condition_id → test_condition.id |
+| TestConditionTestCaseLink | test_condition_id → test_condition.id | test_case_id → test_case.id |
+| TestCaseDefectLink | test_case_id → test_case.id | defect_id → defect.id |
+
+Each FK: not null, indexed, `on delete cascade`. Unique constraint on `(fk_1, fk_2)` per table.
+
+### 3.10 `taxonomy.py` — TestDesignTechnique, TestLevel, TestType (+ junction)
+
+**TestDesignTechnique**
+| Column | Type | Constraints |
+|---|---|---|
+| id | uuid | PK |
+| name | varchar | not null, unique |
+| istqb_chapter_ref | varchar | nullable |
+| created_at, updated_at | timestamptz | not null |
+
+**TestLevel**
+| Column | Type | Constraints |
+|---|---|---|
+| id | uuid | PK |
+| name | varchar | not null, unique |
+| created_at, updated_at | timestamptz | not null |
+
+**TestType**
+| Column | Type | Constraints |
+|---|---|---|
+| id | uuid | PK |
+| name | varchar | not null, unique |
+| created_at, updated_at | timestamptz | not null |
+
+**TestCaseTestDesignTechnique** *(junction, many-to-many, ADMIN-1)*
+| Column | Type | Constraints |
+|---|---|---|
+| id | uuid | PK |
+| test_case_id | uuid | FK → test_case.id, not null, on delete cascade |
+| test_design_technique_id | uuid | FK → test_design_technique.id, not null, on delete cascade |
+| created_at | timestamptz | not null |
+
+Unique: `(test_case_id, test_design_technique_id)`.
+
+### 3.11 `governance.py` — Approval, RiskItem, Attachment
+
+**Approval** — *`approved_by_user_id` FKs `user.id` directly, never `actor.id`, structurally enforcing human-only per [ADR-0004](../adr/0004-rbac-design.md)*
+| Column | Type | Constraints |
+|---|---|---|
+| id | uuid | PK |
+| test_plan_id | uuid | FK → test_plan.id, not null, indexed |
+| approved_by_user_id | uuid | FK → user.id, not null |
+| approved_at | timestamptz | not null |
+| role | varchar | not null — descriptive note, "policy: human User only, never AIAgent" |
+| created_at | timestamptz | not null |
+
+**RiskItem**
+| Column | Type | Constraints |
+|---|---|---|
+| id | uuid | PK |
+| requirement_id | uuid | FK → requirement.id, nullable |
+| test_plan_id | uuid | FK → test_plan.id, nullable |
+| description | text | not null |
+| likelihood | enum(low, medium, high) | not null |
+| impact | enum(low, medium, high) | not null |
+| mitigation | text | nullable |
+| created_at, updated_at | timestamptz | not null |
+
+Check constraint: `requirement_id IS NOT NULL OR test_plan_id IS NOT NULL`.
+
+**Attachment**
+| Column | Type | Constraints |
+|---|---|---|
+| id | uuid | PK |
+| test_case_id | uuid | FK → test_case.id, not null, indexed |
+| url_or_path | varchar | not null |
+| mime_type | varchar | not null |
+| size_bytes | bigint | not null |
+| created_at, updated_at | timestamptz | not null |
+
+Storage backend (local filesystem vs. S3-compatible) is an application-config concern (`ATTACHMENT_STORAGE` env var), not a schema concern — `url_or_path` is opaque to the DB either way.
+
+## 4. Indexing summary
+
+- Every FK column is indexed (listed inline per table above; omitted only where a table has ≤1 FK and it's already covered by a unique constraint).
+- Every table with a direct `org_id` or `project_id` column has that column indexed — the primary lever for NFR-1 tenant-isolation query performance.
+- Composite indexes called out explicitly: `TestExecution(test_cycle_id, test_case_id)`, `TestLog(test_execution_id, logged_at)`.
+- The 4 link tables in §3.9 are each indexed on both FK columns individually (supports lookup from either direction for RTM traversal, FR-TRACE-1).
+
+## 5. Deviations from the 07 ERD draft (for the record)
+
+| 07 draft | This schema | Why |
+|---|---|---|
+| `TraceabilityLink` (1 polymorphic table) | 4 dedicated link tables | ADR-0005 |
+| No `RefreshToken` table | Added | ADR-0003 (revocable sessions) |
+| `TestCase.test_condition_id` implied required | Nullable | ADR-0006 |
+| `Environment` unscoped | `project_id` FK added, not null | NFR-1 tenant isolation |
+| Integer/unspecified PK style | UUIDv7 everywhere | ADR-0008 |
+| No `AIAgent` credential fields | `key_hash`/`key_prefix`/`issued_at`/`revoked_at` added | AUTH-4 |
+| `}o--o{` many-to-many drawn without table names | `TestSuiteTestCase`, `TestPlanTestSuite`, `TestCaseTestDesignTechnique` named explicitly | Implementation necessity |
