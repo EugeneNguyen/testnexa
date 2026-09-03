@@ -54,7 +54,11 @@ class RefreshToken(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("user.actor_id", ondelete="RESTRICT"), nullable=False, index=True
     )
-    token_hash: Mapped[str] = mapped_column(String, nullable=False)
+    # Unique index (ADR-0013): AUTH-2's `POST /auth/refresh` makes
+    # `WHERE token_hash = ?` a hot-path lookup on every renewal — AUTH-1
+    # never indexed this since nothing looked it up by value. Uniqueness
+    # also backs the single-use rotation invariant at the DB level.
+    token_hash: Mapped[str] = mapped_column(String, nullable=False, unique=True, index=True)
     issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
