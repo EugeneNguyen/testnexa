@@ -23,8 +23,10 @@ Each FR ID maps 1:1 to the acceptance criteria already ratified in `docs/user-st
 |---|---|---|---|
 | FR-AUTH-1 | Local password login (email + password → access+refresh token); org auto-select on exactly 1 active membership, picker on 2+, 403 on zero | Must | User, AuthIdentity, OrgMembership |
 | FR-AUTH-2 | Session persistence via revocable, DB-backed refresh token — rotate-on-use, silent renewal on access-token expiry, revoked/expired token → 401 + redirect to login | Must | RefreshToken |
-| FR-AUTH-3 | Explicit logout revokes refresh token server-side | Must | RefreshToken |
-| FR-AUTH-4 | AI agent bearer authentication via long-lived scoped credential | Should | AIAgent, Actor |
+| FR-AUTH-3 | Explicit logout revokes the current session's refresh token server-side (idempotent — a missing/foreign/already-revoked cookie is a no-op, not an error) and clears both tokens client-side unconditionally, independent of the server call's outcome | Must | RefreshToken |
+| FR-AUTH-4 | AI agent bearer authentication via long-lived scoped credential (`tnx_agent_<prefix>_<secret>`, argon2-hashed); issuance/revocation is a human-only, org_admin-permission-gated action ([ADR-0015](../adr/0015-ai-agent-credential-mechanics.md)) | Should | AIAgent, Actor, RoleAssignment, Permission |
+
+FR-AUTH-4 delivers a minimal, generic `has_permission`/`require_permission` implementation (org-wide `RoleAssignment` resolution only) ahead of FR-RBAC-3/4 landing their own business flows — see [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md). FR-RBAC-3's project-scoped grant resolution and FR-RBAC-4's full seeded permission catalog remain that pair's own scope, not pulled forward by this story.
 
 ### 2.2 Multi-tenancy & RBAC — [rbac-tenancy-stories.md](../user-stories/2026-09-03-rbac-tenancy-stories.md)
 
@@ -116,7 +118,10 @@ Each FR ID maps 1:1 to the acceptance criteria already ratified in `docs/user-st
 | NFR-12 | Refresh tokens are single-use (rotated on every `POST /auth/refresh` call); a rotated-out, revoked, or expired token is rejected with 401, no new token issued. A rotated token's `expires_at` is inherited from the token it replaces (not reset), capping total session lifetime at `JWT_REFRESH_TTL_DAYS` from the original login regardless of renewal frequency. | AUTH-2 scope decision 2026-09-03, [ADR-0013](../adr/0013-refresh-token-rotation-policy.md) |
 | NFR-13 | `POST /auth/refresh` re-validates the caller still has ≥1 active `OrgMembership`, same check as login; a member suspended mid-session loses the ability to silently renew their session at the next refresh, not just at next full login. | AUTH-2 scope decision 2026-09-03, [ADR-0013](../adr/0013-refresh-token-rotation-policy.md) |
 | NFR-14 | `POST /auth/logout` is idempotent — a missing, foreign (belonging to a different user), or already-revoked/rotated-out refresh cookie returns the same `204` as a successful revoke, never an error — and revokes only the current session's token (`revoked_reason="logout"`), never every session for the user. `GET /auth/me`'s access-token TTL is not shortened by logout; the client clears its access token unconditionally on logout regardless of whether the server call succeeds. | AUTH-3 scope decision 2026-09-03, [ADR-0014](../adr/0014-logout-session-revocation-policy.md) |
-| NFR-15 | The RBAC-4 system-role seed migration is idempotent — re-running it inserts no duplicate `Role`/`Permission`/`RolePermission` rows, enforced by a partial unique index on `role.name WHERE org_id IS NULL` plus existence-checked inserts. | RBAC-4 scope decision 2026-09-03, [ADR-0004](../adr/0004-rbac-design.md) |
+| NFR-17 | `AIAgent` credential issuance/revocation (`POST /orgs/{org_id}/agents`, `.../revoke`) is restricted to human `User` actors, independent of `RoleAssignment` contents — double-enforced (never seeded to an agent-eligible role bundle, and hardcoded at the route), same pattern as NFR-2/FR-GOV-1's human-only Approval rule. | AUTH-4 scope decision 2026-09-03, [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md) |
+| NFR-18 | Every successful `AIAgent` bearer authentication updates `AIAgent.last_used_at` — the `AuthIdentity.last_login_at`-equivalent audit field AC3 requires for agent sessions. A revoked agent's key is rejected (401) at the same lookup that would otherwise update this field, before any update occurs. | AUTH-4 AC3, [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md) |
+| NFR-19 | Org-scoped routes (first instance: `/orgs/{org_id}/agents*`) return 404 when the caller has no `OrgMembership` in the path's `org_id` at all, and 403 only when membership exists but the required permission is missing — generalizes NFR-1's cross-tenant-404 rule to the permission-check boundary, not just resource-fetch. | AUTH-4 scope decision 2026-09-03, [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md) |
+| NFR-20 | The RBAC-4 system-role seed migration is idempotent — re-running it inserts no duplicate `Role`/`Permission`/`RolePermission` rows, enforced by a partial unique index on `role.name WHERE org_id IS NULL` plus existence-checked inserts. | RBAC-4 scope decision 2026-09-03, [ADR-0004](../adr/0004-rbac-design.md) |
 
 ## 4. Traceability — requirements to architecture decisions
 
@@ -127,11 +132,13 @@ Each FR ID maps 1:1 to the acceptance criteria already ratified in `docs/user-st
 | FR-TRACE-* | [ADR-0005](../adr/0005-traceability-link-dedicated-join-tables.md) TraceabilityLink join tables |
 | FR-REQ-2, FR-REQ-3 | [ADR-0006](../adr/0006-test-condition-optional.md) TestCondition optional |
 | FR-RBAC-1, FR-RBAC-2 | [ADR-0007](../adr/0007-real-multi-tenancy.md) Real multi-tenancy |
-| FR-RBAC-4, NFR-15 | [ADR-0004](../adr/0004-rbac-design.md) (system-role seeding: global templates, full catalog, idempotent migration) |
+| FR-RBAC-4, NFR-20 | [ADR-0004](../adr/0004-rbac-design.md) (system-role seeding: global templates, full catalog, idempotent migration) |
 | NFR-3 (UUID PKs) | [ADR-0008](../adr/0008-uuid-primary-keys.md) UUID primary keys |
 | FR-AUTH-* | [ADR-0003](../adr/0003-auth-token-strategy.md) Auth & token strategy |
 | NFR-11 | [ADR-0011](../adr/0011-login-rate-limiting.md) Login rate limiting |
 | FR-AUTH-2, NFR-12, NFR-13 | [ADR-0013](../adr/0013-refresh-token-rotation-policy.md) Refresh token rotation & session-persistence policy |
+| FR-AUTH-3, NFR-14 | [ADR-0014](../adr/0014-logout-session-revocation-policy.md) Logout: idempotent single-session revocation |
+| FR-AUTH-4, NFR-17, NFR-18, NFR-19 | [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md) AI agent credential mechanics & minimal-RBAC-now decision |
 | FR-MCP-* | [ADR-0002](../adr/0002-backend-framework-orm-migrations.md) (async backend), [ADR-0003](../adr/0003-auth-token-strategy.md) (AIAgent credential) |
 
 Full field-level traceability (Requirement → design technique → test case → execution → defect) is itself FR-TRACE-1/2 — this document is the requirements layer that feeds the [WBS](../wbs/2026-09-03-project-scaffold-wbs.md), [Database Document](../database/2026-09-03-database-design.md), [API Document](../api/2026-09-03-api-design.md), and [Test Plan](../test-plan/2026-09-03-master-test-plan.md).

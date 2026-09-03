@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-03
 **Owner:** xuanbinh91@gmail.com (CTO)
-**Sources:** [Test Design](../test-design/2026-09-03-test-design.md), [Master Test Plan](../test-plan/2026-09-03-master-test-plan.md), [docs/user-stories/*](../user-stories/), [AUTH-1 scope plan](../superpowers/plans/2026-09-03-auth-1-local-password-login-plan.md), [AUTH-2 scope plan](../superpowers/plans/2026-09-03-auth-2-session-persistence-plan.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md)
+**Sources:** [Test Design](../test-design/2026-09-03-test-design.md), [Master Test Plan](../test-plan/2026-09-03-master-test-plan.md), [docs/user-stories/*](../user-stories/), [AUTH-1 scope plan](../superpowers/plans/2026-09-03-auth-1-local-password-login-plan.md), [AUTH-2 scope plan](../superpowers/plans/2026-09-03-auth-2-session-persistence-plan.md), [AUTH-3 scope plan](../superpowers/plans/2026-09-03-auth-3-logout-plan.md), [AUTH-4 scope plan](../superpowers/plans/2026-09-03-auth-4-agent-bearer-auth-plan.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md), [ADR-0014](../adr/0014-logout-session-revocation-policy.md), [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md)
 
 Concrete test cases derived from each user story's acceptance criteria. IDs group by feature area; **Story** column links back to the source acceptance criterion. Priority: **P1** = release-blocking, **P2** = should-have, **P3** = exploratory/structural-only (per FR priority in the Requirements Document).
 
@@ -26,10 +26,21 @@ Concrete test cases derived from each user story's acceptance criteria. IDs grou
 | TC-AUTH-021 | Refresh rejected once org access is lost | User's only `OrgMembership` transitions from `active` to `suspended` after login, refresh token itself still valid | POST `/auth/refresh` | 403 `no_active_organization`; refresh token **not** revoked by this rejection (a later refresh succeeds again if membership is reactivated before the token's `expires_at`) | P1 | AUTH-2 |
 | TC-AUTH-022 | Rotation inherits original session's absolute expiry | Token refreshed 3 times in a row (3 rotations) | Inspect the 4th-generation token's `expires_at` | Equal to the 1st-generation token's `expires_at` (copied forward each rotation), not `now + 30d` from the most recent rotation | P2 | AUTH-2 |
 | TC-AUTH-023 | `GET /auth/me` returns current actor identity | Valid access token | GET `/auth/me` | 200; `{actor_id, email, actor_type}` matches the authenticated `User` | P2 | AUTH-2 |
-| TC-AUTH-009 | Logout revokes current session | Active session | POST `/auth/logout` | Refresh token revoked server-side; both tokens cleared client-side | P1 | AUTH-3 |
-| TC-AUTH-010 | AIAgent bearer auth attributes actor correctly | AIAgent with issued API key | MCP call using the key creates a TestCase | `created_by_actor_id` resolves to the AIAgent, not any User | P2 | AUTH-4 |
+| TC-AUTH-009 | Logout revokes current session | Active session | POST `/auth/logout`, then POST `/auth/refresh` with the same (now-revoked) cookie | `/auth/logout` returns 204, `RefreshToken.revoked_reason="logout"`; the subsequent `/auth/refresh` call 401s `invalid_refresh_token`; frontend's token store cleared and redirected to `/login` regardless of the logout call's own success | P1 | AUTH-3 |
+| TC-AUTH-024 | Logout with no refresh cookie is a no-op success | Active session, valid access token, `refresh_token` cookie absent/already cleared | POST `/auth/logout` with no cookie sent | 204; no `RefreshToken` row touched; response still clears the (already-absent) cookie | P2 | AUTH-3 |
+| TC-AUTH-025 | Logout with already-revoked/rotated-out cookie is a no-op success | Refresh token already revoked (via a prior logout, or rotated out by `/auth/refresh`) | POST `/auth/logout` with the dead cookie | 204; no error, no double-revocation side effect (CAS `rowcount` is 0, row untouched beyond its existing `revoked_at`) | P2 | AUTH-3 |
+| TC-AUTH-026 | Logout doesn't revoke a different session's refresh token | 2 active sessions (2 `RefreshToken` rows) for the same user | Logout session A | Session A's cookie now 401s on `/auth/refresh`; session B's refresh token still succeeds normally | P1 | AUTH-3 |
+| TC-AUTH-027 | Logout rejected without a valid access token | No/expired/malformed bearer token | POST `/auth/logout` | 401 `invalid_token` (same generic body `GET /auth/me` uses via `get_current_actor`); no revocation attempted | P2 | AUTH-3 |
+| TC-AUTH-010 | AIAgent bearer auth attributes actor correctly | AIAgent with issued, non-revoked API key | Call `GET /auth/me` with `Authorization: Bearer <raw key>` | 200; `{actor_id, agent_name, actor_type: "ai_agent"}` resolves to the AIAgent, not any User (mechanism-level proof — see AUTH-4 scope plan §1 for why a real business route isn't used here, none exist yet) | P2 | AUTH-4 |
 | TC-AUTH-011 | AIAgent blocked from Approval-permission route | AIAgent authenticated | Call `/test-plans/{id}/approve` | 403, regardless of role bundle | P1 | AUTH-4 / RBAC-5 |
-| TC-AUTH-012 | org_admin issues/revokes AIAgent credential | org_admin authenticated | POST create agent, then POST revoke | Key shown once at creation; after revoke, further calls with that key 401 | P2 | AUTH-4 |
+| TC-AUTH-012 | org_admin issues/revokes AIAgent credential | Human User with `ai_agent.create`/`.update` in `org_id` (fixture-seeded RoleAssignment) | POST `/orgs/{org_id}/agents`, then POST `.../revoke` | Create: 201, `api_key` (raw `tnx_agent_...`) shown once, `key_prefix` also returned; Revoke: 200; a subsequent `GET /auth/me` call using the revoked raw key → 401 `invalid_token` | P2 | AUTH-4 |
+| TC-AUTH-028 | Revoked AIAgent key rejected before any state update | AIAgent key revoked via fixture (`revoked_at` set) | `GET /auth/me` with that key | 401 `invalid_token` (generic body, same shape as human path); `AIAgent.last_used_at` unchanged (rejection happens at the lookup, before update) | P1 | AUTH-4 |
+| TC-AUTH-029 | Key-prefix-narrowed lookup still verifies the full secret | Two AIAgent rows exist; craft a bearer value with agent A's `key_prefix` but agent B's (or a random) secret segment | `GET /auth/me` with the crafted value | 401 `invalid_token` — prefix match alone must not authenticate; argon2 verify against the prefix-matched candidate's `key_hash` must fail | P1 | AUTH-4 |
+| TC-AUTH-030 | `last_used_at` updates on every successful agent authentication | AIAgent key valid, `last_used_at` currently NULL | Call `GET /auth/me` twice, a few seconds apart | After call 1: `last_used_at` set (was NULL); after call 2: `last_used_at` advances to the later timestamp, not left at call 1's value | P2 | AUTH-4 |
+| TC-AUTH-031 | AIAgent cannot issue or revoke its own (or any) credential | AIAgent authenticated, `RoleAssignment` fixture-seeded to (incorrectly) grant `ai_agent.create`/`.update` anyway | POST `/orgs/{org_id}/agents` and `.../revoke` using the AIAgent's own bearer key | Both 403 `actor_forbidden`, unconditionally — human-only gate rejects before/independent of the permission check (NFR-17) | P1 | AUTH-4 |
+| TC-AUTH-032 | Org-scoped agent route: no membership vs. membership-without-permission | (a) Human User with zero `OrgMembership` in `org_id`; (b) Human User with active `OrgMembership` in `org_id` but no `ai_agent.create` grant | POST `/orgs/{org_id}/agents` as (a), then as (b) | (a) 404 `not_found`; (b) 403 — the two must not be conflated (NFR-19) | P1 | AUTH-4 |
+| TC-AUTH-033 | AC2 proof: AIAgent lacking the required permission → 403, same RBAC path as a human | AIAgent with a fixture-seeded `RoleAssignment` granting some other permission but not `ai_agent.update`, in `org_id` | Call `.../revoke` using the AIAgent's bearer key | 403 — same generic permission-denied shape a human `User` lacking `ai_agent.update` would get on the same route (not the human-only-gate's `actor_forbidden`; this proves the permission check itself, isolated from TC-AUTH-031's human-only gate) | P1 | AUTH-4 |
+| TC-AUTH-034 | `has_permission` org-wide grant recognized (AUTH-4's own RBAC-matrix slice) | Actor (human or AIAgent) with an org-wide `RoleAssignment` (`project_id = null`) granting `ai_agent.update`, fixture-seeded directly | Call `.../revoke` | 403 does **not** occur — permission recognized without any project-scoped grant present, proving the org-wide resolution branch works standalone | P2 | AUTH-4 |
 | TC-AUTH-013 | Login rejected, zero org memberships | User exists, no OrgMembership rows at all | POST `/auth/login` with correct credentials | 403 `no_active_organization`; no token issued | P1 | AUTH-1 |
 | TC-AUTH-014 | Login rejected, only suspended/invited memberships | User has 1 `suspended` + 1 `invited` OrgMembership, none `active` | POST `/auth/login` with correct credentials | 403 `no_active_organization` | P1 | AUTH-1 |
 | TC-AUTH-015 | Suspended/invited memberships excluded from org list | User has 1 `active` + 1 `suspended` OrgMembership | Login | `org_context: "auto"`; `orgs` contains only the active org, suspended org absent | P1 | AUTH-1 |
@@ -162,7 +173,7 @@ Concrete test cases derived from each user story's acceptance criteria. IDs grou
 
 | Feature area | Test case count | P1 count |
 |---|---|---|
-| Auth | 23 | 16 |
+| Auth | 34 | 22 |
 | RBAC & Multi-Tenancy | 15 | 11 |
 | Project & Release | 5 | 3 |
 | Requirement & Test Case Authoring | 9 | 7 |
@@ -172,6 +183,6 @@ Concrete test cases derived from each user story's acceptance criteria. IDs grou
 | Taxonomy & Generic Admin CRUD | 5 | 2 |
 | Traceability Matrix | 5 | 4 |
 | AI Agent / MCP | 7 | 0 |
-| **Total** | **94** | **59** |
+| **Total** | **105** | **65** |
 
 MCP's P3-only weighting matches its exploratory, no-validated-WTP status per the personas doc — structural coverage exists, but nothing here blocks a release.

@@ -1,9 +1,18 @@
 """seed rbac system roles
 
 Revision ID: 34053c46f9fc
-Revises: 3ea2dea9a1db
+Revises: d33d66f4b3c3
 Create Date: 2026-09-03 00:00:00.000000
 
+Rebased onto AUTH-4's 2 migrations (`40af3d77bb97`, `d33d66f4b3c3`) that
+landed on `main` while this branch was in flight — `d33d66f4b3c3` seeds 2
+extra `Permission` rows (`ai_agent.create`/`.update`) ahead of this one, so
+this migration's `org_admin` bundle is computed from every `Permission` code
+present in the table after this migration's own inserts (not just this
+migration's own static catalog) — see the `code_to_id.keys()` bundle-build
+call below — so `org_admin` stays a genuine superuser (TC-RBAC-018: its
+`RolePermission` count equals the *total* `Permission` row count) regardless
+of what other stories seed into the shared catalog before or after RBAC-4.
 """
 import uuid
 from typing import Sequence, Union
@@ -19,7 +28,7 @@ from app.db.rbac_seed_catalog import (
 
 # revision identifiers, used by Alembic.
 revision: str = '34053c46f9fc'
-down_revision: Union[str, None] = '3ea2dea9a1db'
+down_revision: Union[str, None] = 'd33d66f4b3c3'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -102,8 +111,11 @@ def upgrade() -> None:
         bind.execute(sa.insert(role_table), new_roles)
 
     # --- RolePermission bundle rows (existence-checked by (role_id, permission_id)) --
-    all_codes = {code for code, _resource, _action in catalog}
-    bundles = build_role_bundles(all_codes)  # {role_name: {codes}}
+    # `org_admin`'s bundle must be every `Permission` row that actually
+    # exists in the table (including rows seeded by other stories' own
+    # migrations, e.g. AUTH-4's `ai_agent.create`/`.update`), not just this
+    # migration's own static catalog — see module docstring.
+    bundles = build_role_bundles(set(code_to_id.keys()))  # {role_name: {codes}}
 
     role_ids = list(role_name_to_id.values())
     existing_pairs = {

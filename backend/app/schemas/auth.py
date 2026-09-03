@@ -50,12 +50,23 @@ class RefreshResponse(BaseModel):
 
 
 class MeResponse(BaseModel):
-    """Response of `GET /auth/me` (API Document §2, ADR-0013).
+    """Response of `GET /auth/me` (API Document §2, ADR-0013, ADR-0015).
 
-    Identity-only for AUTH-2 — no resolved permission codes yet (deferred
-    until an RBAC story exists to resolve them).
+    Identity-only — no resolved permission codes yet (deferred until an RBAC
+    story exists to resolve them).
+
+    AUTH-4 extends this to a second actor shape: `get_current_actor` can now
+    resolve to either a `User` or an `AIAgent` (ADR-0015), and `GET /auth/me`
+    branches on `actor_type` to serialize the right one. Rather than a
+    `Union` of two separate response models, this is kept as a single model
+    with `email`/`agent_name` both optional (Pydantic-v2-idiomatic, simpler
+    for the route/OpenAPI schema than a discriminated union for two fields):
+    - `actor_type == "user"`: `email` set, `agent_name` `None`.
+    - `actor_type == "ai_agent"`: `agent_name` set, `email` `None` — an
+      `AIAgent` has no email address at all (Database Document §3.4).
     """
 
     actor_id: str
-    email: str
     actor_type: str
+    email: str | None = None
+    agent_name: str | None = None

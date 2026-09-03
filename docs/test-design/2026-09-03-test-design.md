@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-03
 **Owner:** xuanbinh91@gmail.com (CTO)
-**Sources:** [Master Test Plan](../test-plan/2026-09-03-master-test-plan.md), [Requirements Document](../requirements/2026-09-03-project-scaffold-requirements.md), [Database Document](../database/2026-09-03-database-design.md), [ADR-0011](../adr/0011-login-rate-limiting.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md)
+**Sources:** [Master Test Plan](../test-plan/2026-09-03-master-test-plan.md), [Requirements Document](../requirements/2026-09-03-project-scaffold-requirements.md), [Database Document](../database/2026-09-03-database-design.md), [ADR-0011](../adr/0011-login-rate-limiting.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md), [ADR-0014](../adr/0014-logout-session-revocation-policy.md), [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md)
 
 Applies ISTQB CTFL v4.0.1 design techniques deliberately — the same vocabulary this product's `TestDesignTechnique` entity asks its own users to declare (ADMIN-1) is used to design the tests below.
 
@@ -12,7 +12,7 @@ Applies ISTQB CTFL v4.0.1 design techniques deliberately — the same vocabulary
 
 | Feature area | Primary technique(s) | Why |
 |---|---|---|
-| Auth (login, tokens) | Equivalence partitioning (valid/invalid credentials, valid/expired/revoked/rotated-out refresh tokens, active/suspended/invited/zero org memberships) | Small, well-defined input classes |
+| Auth (login, tokens, logout) | Equivalence partitioning (valid/invalid credentials, valid/expired/revoked/rotated-out refresh tokens, active/suspended/invited/zero org memberships, idempotent-no-op logout classes) | Small, well-defined input classes |
 | Login rate limiting | Boundary value analysis (attempt count at 4, 5, 6 within the window; just-inside vs. just-outside the 15-minute window) | NFR-11/ADR-0011 — classic BVA target, same as pagination/attachment limits below |
 | RBAC / permission checks | Decision table (role × permission code → allow/deny) | Combinatorial — the exact case ISTQB recommends a decision table for |
 | Multi-tenancy isolation | Equivalence partitioning (same-org vs. cross-org resource) + boundary (org with 0 vs. 1 vs. 2+ orgs) | Isolation bugs cluster at the org-boundary edge |
@@ -30,7 +30,10 @@ Applies ISTQB CTFL v4.0.1 design techniques deliberately — the same vocabulary
 **Org-membership classes at login (distinct from the credentials check above — all use correct credentials):** exactly 1 `active` membership → 200, `org_context: "auto"`; 2+ `active` memberships → 200, `org_context: "picker"`; 0 `active` memberships (none at all, or only `suspended`/`invited`) → 403 `no_active_organization`, no token issued — tested as its own case, distinct from the 401 credentials-failure class, since the failure reasons and status codes must not be conflated.
 **Org-membership classes at refresh (ADR-0013 — same partition re-applied at a second choke point):** ≥1 active membership at refresh time → normal rotation proceeds; 0 active memberships (e.g. suspended after login, before this refresh) → 403 `no_active_organization`, refresh token itself left un-revoked — tested as distinct from the token-validity classes above, since this failure is about the actor's current standing, not the token's own state.
 **Rotation-chain class:** a token rotated N times still enforces the *original* session's `expires_at` on refresh N+1 — tested by asserting the Nth-generation token's `expires_at` equals the 1st generation's, not `now + 30d`.
+**Logout classes (ADR-0014 — deliberately equivalence-partitioned around idempotency, not just success/failure):** valid session + valid refresh cookie → `204`, `RefreshToken.revoked_reason="logout"`, a subsequent `POST /auth/refresh` with the same cookie now 401s (the actual revocation assertion, not just the `204` status — a route that always returns `204` without revoking anything would pass a status-only test). **Idempotent-no-op class (all collapse to the same `204`, tested as one equivalence class with multiple representative members, not four separate behaviors):** no refresh cookie present, cookie hash not found, cookie already revoked/rotated-out, cookie belongs to a different `user_id` than the authenticated caller. **Invalid-access-token class:** missing/expired/malformed bearer token → 401 (same generic `get_current_actor` body `GET /auth/me` uses) — the one and only non-2xx outcome this route has. **Isolation class:** two `RefreshToken` rows for the same user (or two different users) — logging out session A must leave session B's refresh usable, tested as a distinct case from the single-session rotation isolation `TC-AUTH-008` already covers for `/auth/refresh`, since logout's cross-user `WHERE` clause is new relative to that route.
 **Rate-limit class:** 6th failed attempt for the same `(client_ip, email)` pair within the 15-minute window → 429 `rate_limited`, regardless of whether attempt 6 itself used correct credentials (the throttle fires before the credentials check completes evaluating a new attempt); a successful login resets the counter for that pair, tested explicitly (attempt 3 fails, attempt 4 succeeds, attempts 5–8 fail — must take 5 more failures to trigger 429, not fail on attempt 2 post-reset).
+
+**AIAgent bearer-key classes ([ADR-0015](../adr/0015-ai-agent-credential-mechanics.md)):** valid, non-revoked `tnx_agent_...` key → `get_current_actor` resolves the `AIAgent` (not any `User`) and updates `last_used_at`; revoked key (`revoked_at` set) → 401, same generic `invalid_token` body as every other rejection, `last_used_at` **not** updated (rejection happens at the lookup, before any update); well-formed-looking key whose `key_prefix` matches a real row but whose secret segment fails the argon2 verify (e.g. a truncated/corrupted key sharing another key's prefix by chance) → 401, tested as a distinct case from "prefix not found at all" to prove the lookup-narrowing step doesn't short-circuit the verify; bearer token that doesn't start with `tnx_agent_` → falls through to the JWT-decode branch as today (no new failure mode introduced for the human path).
 
 ## 3. RBAC — decision table (representative slice)
 
@@ -50,12 +53,15 @@ Full table generated mechanically from the seeded `Permission` catalog (~100 cod
 
 `org_admin` has no ❌ cells at all — its assertion is "bundle size == full catalog size", not a per-code allow/deny walk. Every other ❌/✅/🚫 cell is a distinct test case: authenticate as an actor holding exactly that role, call the route gated by that permission code, assert the resulting status code (200/201 for ✅, 403 for ❌, 403-and-unconditional for 🚫 — RBAC-5's double-enforcement means the 🚫 cells are tested twice: once confirming the permission was never seeded, once confirming the endpoint rejects it even if it somehow were).
 
+**AUTH-4's slice of this table ([ADR-0015](../adr/0015-ai-agent-credential-mechanics.md)):** `has_permission`/`require_permission` themselves are implemented by AUTH-4, but only the org-wide-grant branch (`RoleAssignment.project_id IS NULL`) is exercised by AUTH-4's own tests, against a fixture-seeded custom `Role`/`Permission`/`RoleAssignment` (not the full 5-system-role catalog, which doesn't exist until RBAC-4's seed migration lands). The full decision table above — 5 named system roles × the complete seeded `Permission` catalog, including the project-scoped branch — remains RBAC-3/RBAC-4's own coverage obligation, not satisfied by AUTH-4.
+
 ## 4. Multi-tenancy isolation — equivalence classes + boundary
 
 - **Class A (same-org access):** Actor in Org X requests a resource in Org X → 200.
 - **Class B (cross-org access):** Actor in Org X requests a resource in Org Y → 404 (never 403 — NFR-1). Tested against every entity type that carries an `org_id` path, not just one representative entity, since the router factory (ADMIN-2) is generic but a per-entity regression is still possible if a bespoke route forgets the filter.
 - **Boundary — org count (instance level, RBAC-1):** 0 orgs on a fresh instance → first signup creates one + grants org_admin.
 - **Boundary — org count (per-user, at login, AUTH-1 — see §2's org-membership classes for the full case list):** exactly 1 active org membership for a user → auto-select, no picker; 2+ → picker shown; 0 active memberships → 403, login rejected, distinct from both of the above.
+- **Class C (org-scoped route, no membership at all vs. membership-but-no-permission — NFR-19, [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md)):** first exercised by `/orgs/{org_id}/agents*`. Caller with zero `OrgMembership` in the path's `org_id` (including a nonexistent `org_id`) → 404, same existence-hiding rule as Class B. Caller with an `OrgMembership` in that `org_id` but lacking the route's `require_permission` code → 403. The two must be tested as distinct cases against the same route, not conflated — a caller who's a member of the org but merely under-permissioned must never see a 404 (that would incorrectly imply the org itself is unreachable), and a genuine outsider must never see a 403 (that would confirm the org exists).
 
 ## 5. State transition testing
 
@@ -98,7 +104,18 @@ Permission-parity is tested once generically (any entity, lacking `.create`/`.up
 **TestLog:** attempt `PATCH`/`DELETE` against any TestLog row → route does not exist at all (404 from the router, not a 403 from a permission check — the absence is structural, per EXEC-2 and the Database Document's schema-level immutability note).
 **Approval:** attempt `DELETE` on an Approval row → no such route exists; superseding a plan creates a new record, the original is asserted still present and unchanged.
 
-## 10. MCP-specific design notes
+**AIAgent credential human-only gate ([ADR-0015](../adr/0015-ai-agent-credential-mechanics.md)):** an `AIAgent` bearer credential calling `POST /orgs/{org_id}/agents` or `.../revoke` → 403 `actor_forbidden`, unconditionally, even if that agent's `RoleAssignment` happens to grant `ai_agent.create`/`.update` — same double-enforcement pattern as RBAC-5's Approval check, tested the same two ways (permission never seeded to an agent-eligible role bundle in practice; endpoint rejects it even if it somehow were).
+
+## 10. AIAgent credential lifecycle — state coverage
+
+`AIAgent` has no enum status field, but `revoked_at` behaves as a one-way state flip (`NULL` → set), analogous in test shape to the state-transition techniques in §5:
+
+- **Issuance:** `POST /orgs/{org_id}/agents` with valid `acting_on_behalf_of_user_id` (active `OrgMembership` in `org_id`) → `AIAgent` row created, raw key returned once; response body's `api_key` is asserted absent from any subsequent response (identity/list views, if any exist for `AIAgent` via the generic CRUD surface, must never re-expose it — only `key_prefix`).
+- **Revocation:** `revoked_at` set once → subsequent revoke calls on the same agent are idempotent (200, unchanged `revoked_at`), not an error — tested as a distinct case from "revoke a nonexistent agent_id" (404).
+- **Post-revocation reuse:** the same raw key, presented again after revocation, → 401, tested immediately after the revoke call in the same test to rule out a caching/eventual-consistency gap.
+- **`last_used_at` progression:** `NULL` at issuance (never used yet) → set on first successful authentication → advances (not reset) on each subsequent successful authentication, tested across at least 2 authenticated calls to confirm it's a running "last used," not a write-once "first used" field.
+
+## 11. MCP-specific design notes
 
 Every MCP tool test asserts **contract parity** with its backing REST route (MCP-1's "no divergent data contract" requirement) — the same request/response fixture is run through both the REST endpoint and the MCP tool, and the two response bodies are diffed as part of the test, not just independently asserted against a hardcoded expectation.
 

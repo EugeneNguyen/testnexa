@@ -95,6 +95,13 @@ class AIAgent(Actor):
     key_prefix: Mapped[str] = mapped_column(String(8), nullable=False)
     issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # AUTH-4/ADR-0015: the AC3 `AuthIdentity.last_login_at`-equivalent for
+    # agent sessions. Nullable — NULL until the agent's first successful
+    # bearer-key authentication (an agent that's been issued a key but never
+    # used it yet). Updated on every successful `get_current_actor` agent-key
+    # resolution (`app/core/rbac.py`), not throttled to session boundaries —
+    # see ADR-0015 for why "every request" wins over debounce complexity here.
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Own `created_at`/`updated_at` columns on the `ai_agent` table — see User's
     # equivalent fields above for why these use distinct Python attribute names.
     ai_agent_created_at: Mapped[datetime] = mapped_column(
