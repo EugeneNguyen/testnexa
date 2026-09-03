@@ -54,6 +54,8 @@ Unique: `(org_id, user_id)`.
 
 **Creation flow** (RBAC-1, [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md)) is application logic, not a schema concern — no dedicated migration beyond what RBAC-4 already seeds (the `org_admin` `Role` a first signup/second-org creation assigns already exists as a global template, `org_id = NULL`). Two creation paths exist: bootstrap `POST /auth/signup` (public, closes once any `Organization` row exists) and authenticated `POST /orgs` (existing org_admin). Both insert one `Organization` row + one `OrgMembership(status=active)` row + one org-wide `RoleAssignment` (`project_id = NULL`, `role_id` = the seeded `org_admin` `Role`) for the creator, in the same transaction.
 
+`default_standards_profile` (PROJ-1, [ADR-0017](../adr/0017-project-creation-flow.md)) had no consumer until PROJ-1: it's the org-wide fallback a new `Project.standards_profile` inherits when the create request omits the field — see §3.5.
+
 ### 3.2 `auth.py` — AuthIdentity, RefreshToken
 
 **AuthIdentity**
@@ -204,6 +206,8 @@ Raw key format on the wire: `tnx_agent_<key_prefix>_<secret>` — `key_prefix` i
 | created_at, updated_at | timestamptz | not null |
 
 Unique: `(org_id, name)`.
+
+**Creation flow** (PROJ-1, [ADR-0017](../adr/0017-project-creation-flow.md)): `POST /orgs/{org_id}/projects` — bespoke, org-path-scoped (reuses `require_permission` and the established any-status-`OrgMembership` 404-vs-403 check as-is, same shape as `agents.py`/`organizations.py`). `standards_profile`, if omitted from the request, inherits `Organization.default_standards_profile` at creation time (a one-time copy, not a live reference — later changes to the org's default do not retroactively change an existing Project's value); an explicit value (including explicit `null`) in the request always overrides. Creating the row also inserts one project-scoped `RoleAssignment` (`org_id` = the Project's org, `project_id` = the new Project, `role_id` = the seeded `test_manager` `Role`) for the creator, unconditionally — not derived from the creator's org-level role, since only `org_admin`'s seeded bundle currently reaches `project.create` at all. `GET`/`PATCH /projects/{id}` resolve `org_id` from the fetched row itself (no `org_id` path segment), anticipating the eventual generic CRUD factory's item-route shape.
 
 **Release**
 | Column | Type | Constraints |
