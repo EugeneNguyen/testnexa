@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-03
 **Owner:** xuanbinh91@gmail.com (CTO)
-**Sources:** [Test Design](../test-design/2026-09-03-test-design.md), [Master Test Plan](../test-plan/2026-09-03-master-test-plan.md), [docs/user-stories/*](../user-stories/), [AUTH-1 scope plan](../superpowers/plans/2026-09-03-auth-1-local-password-login-plan.md), [AUTH-2 scope plan](../superpowers/plans/2026-09-03-auth-2-session-persistence-plan.md), [AUTH-3 scope plan](../superpowers/plans/2026-09-03-auth-3-logout-plan.md), [AUTH-4 scope plan](../superpowers/plans/2026-09-03-auth-4-agent-bearer-auth-plan.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md), [ADR-0014](../adr/0014-logout-session-revocation-policy.md), [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md)
+**Sources:** [Test Design](../test-design/2026-09-03-test-design.md), [Master Test Plan](../test-plan/2026-09-03-master-test-plan.md), [docs/user-stories/*](../user-stories/), [AUTH-1 scope plan](../superpowers/plans/2026-09-03-auth-1-local-password-login-plan.md), [AUTH-2 scope plan](../superpowers/plans/2026-09-03-auth-2-session-persistence-plan.md), [AUTH-3 scope plan](../superpowers/plans/2026-09-03-auth-3-logout-plan.md), [AUTH-4 scope plan](../superpowers/plans/2026-09-03-auth-4-agent-bearer-auth-plan.md), [RBAC-1 scope plan](../superpowers/plans/2026-09-03-rbac-1-create-org-plan.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md), [ADR-0014](../adr/0014-logout-session-revocation-policy.md), [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md), [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md)
 
 Concrete test cases derived from each user story's acceptance criteria. IDs group by feature area; **Story** column links back to the source acceptance criterion. Priority: **P1** = release-blocking, **P2** = should-have, **P3** = exploratory/structural-only (per FR priority in the Requirements Document).
 
@@ -51,9 +51,13 @@ Concrete test cases derived from each user story's acceptance criteria. IDs grou
 
 | ID | Title | Preconditions | Steps | Expected result | Priority | Story |
 |---|---|---|---|---|---|---|
-| TC-RBAC-001 | First-ever signup bootstraps org | Fresh instance, zero orgs | Complete first signup | Organization created; user granted org_admin automatically | P1 | RBAC-1 |
-| TC-RBAC-002 | Cross-org data isolation | 2 orgs exist, each with a Project/Requirement/TestCase | org_admin of Org A requests a resource id belonging to Org B | 404 (not 403, not data) | P1 | RBAC-1 / NFR-1 |
-| TC-RBAC-003 | Org slug uniqueness | Org "acme" exists | Create second org with slug "acme" | Rejected, 422 unique-constraint violation | P2 | RBAC-1 |
+| TC-RBAC-001 | First-ever signup bootstraps org | Fresh instance, zero orgs | POST `/auth/signup` | 200; Organization+User+OrgMembership(active)+org-wide org_admin RoleAssignment created; tokens issued (`org_context: "auto"`) | P1 | RBAC-1 |
+| TC-RBAC-002 | Cross-org data isolation | 2 orgs exist, each with a Project/Requirement/TestCase | org_admin of Org A requests a resource id belonging to Org B | 404 (not 403, not data) | P1 | RBAC-1 / NFR-1 — **blocked**: no Project/Requirement/TestCase CRUD routes exist yet (API Document §3 is design-only); owned by whichever story adds the first tenant-scoped CRUD route, reusing the `/orgs/{org_id}/agents*` 404-vs-403 pattern (ADR-0015) |
+| TC-RBAC-003 | Org slug uniqueness | Org "acme" exists | Authenticated org_admin: POST `/orgs` with slug "acme" | Rejected, 422 (not 409 — reserved for signup-closed, ADR-0016) | P2 | RBAC-1 |
+| TC-RBAC-020 | Concurrent first-signup race is serialized | Fresh instance, zero orgs | Fire 2 concurrent `POST /auth/signup` requests | Exactly one `Organization` row exists afterward — `pg_advisory_xact_lock` prevents both succeeding | P2 | RBAC-1 |
+| TC-RBAC-021 | Signup closes after bootstrap | 1 org already exists | POST `/auth/signup` | 409 `signup_closed`; no new User/Organization rows created | P1 | RBAC-1 |
+| TC-RBAC-022 | Existing org_admin creates a second, isolated org | User is org_admin of Org A (org-wide RoleAssignment) | POST `/orgs` with `{name, slug}` | 201; new Organization created; creator gets OrgMembership(active)+org-wide org_admin RoleAssignment in it; Org A's own OrgMembership/RoleAssignment rows unchanged | P1 | RBAC-1 |
+| TC-RBAC-023 | `has_permission_in_any_org` ignores project-scoped-only grants | Actor's only `organization.create`-granting RoleAssignment is project-scoped (`project_id` non-null) | POST `/orgs` | 403 — a project-scoped grant does not satisfy the any-org, org-wide-only gate | P2 | RBAC-1 |
 | TC-RBAC-004 | Invite member by email | org_admin authenticated | POST invite with email | OrgMembership created, status `invited` | P1 | RBAC-2 |
 | TC-RBAC-005 | Invited user completes signup | Pending invite exists | User signs up via invite link | OrgMembership status becomes `active` | P1 | RBAC-2 |
 | TC-RBAC-006 | Suspend member blocks access, keeps RoleAssignment | Active member with RoleAssignment | org_admin suspends member; suspended user calls any API | 403/401 on all calls; RoleAssignment rows still present in DB | P1 | RBAC-2 |
@@ -174,7 +178,7 @@ Concrete test cases derived from each user story's acceptance criteria. IDs grou
 | Feature area | Test case count | P1 count |
 |---|---|---|
 | Auth | 34 | 22 |
-| RBAC & Multi-Tenancy | 15 | 11 |
+| RBAC & Multi-Tenancy | 19 | 13 |
 | Project & Release | 5 | 3 |
 | Requirement & Test Case Authoring | 9 | 7 |
 | Test Planning | 8 | 6 |
@@ -183,6 +187,6 @@ Concrete test cases derived from each user story's acceptance criteria. IDs grou
 | Taxonomy & Generic Admin CRUD | 5 | 2 |
 | Traceability Matrix | 5 | 4 |
 | AI Agent / MCP | 7 | 0 |
-| **Total** | **105** | **65** |
+| **Total** | **109** | **67** |
 
 MCP's P3-only weighting matches its exploratory, no-validated-WTP status per the personas doc — structural coverage exists, but nothing here blocks a release.
