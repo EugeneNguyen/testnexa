@@ -22,7 +22,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_db
+from app.api.deps import get_current_actor, get_db
 from app.core.config import settings
 from app.core.security import (
     create_access_token,
@@ -32,8 +32,8 @@ from app.core.security import (
 )
 from app.models.actor import User
 from app.models.auth import AuthIdentity, AuthProvider, LoginAttempt, RefreshToken
-from app.models.tenancy import OrgMembership, OrgMembershipStatus, Organization
-from app.schemas.auth import LoginRequest, LoginResponse, OrgSummary
+from app.models.tenancy import Organization, OrgMembership, OrgMembershipStatus
+from app.schemas.auth import LoginRequest, LoginResponse, MeResponse, OrgSummary, RefreshResponse
 
 router = APIRouter()
 
@@ -186,3 +186,119 @@ async def login(
         org_context=org_context,
         orgs=[OrgSummary(id=org.id, name=org.name, slug=org.slug) for org in orgs],
     )
+
+
+@router.post("/auth/refresh", response_model=RefreshResponse)
+async def refresh(
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+) -> RefreshResponse | JSONResponse:
+    """Rotate a refresh token; issue a new access token (ADR-0013).
+
+    No request body — the only input is the `refresh_token` httpOnly cookie.
+    Errors are returned as plain `JSONResponse`s via `_error()`, same pattern
+    as `login()` above, NOT `HTTPException` — this is a route handler with
+    its own response object, not a dependency.
+
+    Order of operations (ADR-0013 / API Document §2):
+    1. Missing cookie -> 401 `invalid_refresh_token`.
+    2. Hash the cookie value; look up `RefreshToken` by `token_hash`.
+    3. Not found, or already revoked (includes rotated-out), or expired ->
+       401 `invalid_refresh_token` — one generic code for all four causes,
+       no distinct per-cause codes (no enumeration of *why* a token is bad).
+    4. Re-check active `OrgMembership` for the token's `user_id`; zero active
+       -> 403 `no_active_organization`. This is a non-destructive rejection:
+       the presented refresh token is NOT revoked here, only this attempt
+       fails — a later refresh can still succeed if membership is
+       reactivated before the token's `expires_at`.
+    5. Rotate: revoke the presented row (`revoked_reason="rotated"`); insert
+       a new row with a freshly generated raw token, same `user_id`,
+       `issued_at=now`, and `expires_at` copied verbatim from the old row
+       (NOT recomputed as `now + JWT_REFRESH_TTL_DAYS` — the ADR-0013
+       absolute-expiry-inheritance rule).
+    6. Issue a new access token; set the new raw refresh token as the
+       httpOnly cookie (same params as `login()`); return `{access_token}`
+       only — no `org_context`/`orgs` (the frontend already holds those from
+       login).
+    """
+    raw_token = request.cookies.get("refresh_token")
+    if raw_token is None:
+        return _error(
+            status.HTTP_401_UNAUTHORIZED,
+            "invalid_refresh_token",
+            "Your session has expired. Please log in again.",
+        )
+
+    token_hash = hash_refresh_token(raw_token)
+    result = await db.execute(select(RefreshToken).where(RefreshToken.token_hash == token_hash))
+    stored_token = result.scalars().first()
+
+    now = datetime.now(UTC)
+    if (
+        stored_token is None
+        or stored_token.revoked_at is not None
+        or stored_token.expires_at < now
+    ):
+        return _error(
+            status.HTTP_401_UNAUTHORIZED,
+            "invalid_refresh_token",
+            "Your session has expired. Please log in again.",
+        )
+
+    # Re-check active org membership (ADR-0013) — same rule as login, but a
+    # rejection here does NOT revoke the presented token.
+    org_result = await db.execute(
+        select(Organization)
+        .join(OrgMembership, OrgMembership.org_id == Organization.id)
+        .where(
+            OrgMembership.user_id == stored_token.user_id,
+            OrgMembership.status == OrgMembershipStatus.active,
+        )
+    )
+    orgs = list(org_result.scalars().all())
+    if not orgs:
+        return _error(
+            status.HTTP_403_FORBIDDEN,
+            "no_active_organization",
+            "Your account has no active organization membership. Contact your administrator.",
+        )
+
+    # Rotate: revoke the presented token, issue a new one inheriting the
+    # original's absolute expiry.
+    stored_token.revoked_at = now
+    stored_token.revoked_reason = "rotated"
+
+    new_raw_refresh_token = create_refresh_token(str(stored_token.user_id))
+    db.add(
+        RefreshToken(
+            user_id=stored_token.user_id,
+            token_hash=hash_refresh_token(new_raw_refresh_token),
+            issued_at=now,
+            expires_at=stored_token.expires_at,  # inherited verbatim, ADR-0013
+        )
+    )
+    await db.commit()
+
+    access_token = create_access_token(str(stored_token.user_id))
+
+    response.set_cookie(
+        key="refresh_token",
+        value=new_raw_refresh_token,
+        httponly=True,
+        samesite="lax",
+        secure=(settings.ENV != "dev"),
+    )
+
+    return RefreshResponse(access_token=access_token)
+
+
+@router.get("/auth/me", response_model=MeResponse)
+async def me(user: User = Depends(get_current_actor)) -> MeResponse:
+    """Return the current actor's identity (API Document §2, ADR-0013).
+
+    Identity-only for AUTH-2 — no resolved permission codes yet. `User`'s PK
+    column is `actor_id`, not `id` (joined-table-inheritance quirk, Database
+    Document §3.4) — there is no separate `User.id`.
+    """
+    return MeResponse(actor_id=str(user.actor_id), email=user.email, actor_type="user")
