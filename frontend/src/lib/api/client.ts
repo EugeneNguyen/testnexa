@@ -151,6 +151,14 @@ export async function apiFetch<T>(path: string, init?: ApiFetchOptions): Promise
     throw error;
   }
 
+  // AUTH-3: `204 No Content` (e.g. `POST /auth/logout`) has no body at all —
+  // calling `response.json()` unconditionally on it throws trying to parse
+  // an empty string as JSON. Resolve with `undefined` instead; callers that
+  // expect no payload type this as `apiFetch<void>`.
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
   return (await response.json()) as T;
 }
 

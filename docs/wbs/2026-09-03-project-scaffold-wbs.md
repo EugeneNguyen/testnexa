@@ -24,7 +24,7 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 | 2.1 | `security.py` — JWT issue/verify, argon2 password hashing | 1.4 | S | FR-AUTH-1 |
 | 2.2 | Local login route, org auto-select/picker/403-zero-org resolution | 2.1, 1.2 | M | FR-AUTH-1 |
 | 2.2b | `POST /auth/refresh` (rotate-on-use, org re-check), `GET /auth/me`, minimal `get_current_actor` (bearer JWT verify only, no permission codes) | 2.2 | M | FR-AUTH-2, NFR-12, NFR-13, [ADR-0013](../adr/0013-refresh-token-rotation-policy.md) |
-| 2.2c | `POST /auth/logout` (revoke current refresh token, clear cookie) | 2.2b | S | FR-AUTH-3 |
+| 2.2c | `POST /auth/logout` — authenticated, idempotent revoke-current-session (CAS scoped to `user_id`, `revoked_reason="logout"`), `204`, clears refresh cookie | 2.2b | S | FR-AUTH-3, NFR-14, [ADR-0014](../adr/0014-logout-session-revocation-policy.md) |
 | 2.3 | AIAgent API-key issuance/revocation (admin-facing) + bearer auth | 2.1 | M | FR-AUTH-4 |
 | 2.4 | `rbac.py` — `require_permission(code)` dependency, permission-code registry generated from model registry | 1.3 | M | FR-RBAC-3, NFR-10 |
 | 2.5 | Org/OrgMembership routes — create org (first-user bootstrap), invite/suspend/reactivate members | 2.4 | M | FR-RBAC-1, FR-RBAC-2 |
@@ -68,7 +68,8 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 | 6.2 | Typed API client + TanStack Query hooks (`useEntityList`, `useEntity`, `useCreateEntity`, `useUpdateEntity`, `useDeleteEntity`) | 6.1, 3.2 | M | [API Document](../api/2026-09-03-api-design.md) |
 | 6.3a | Token store module (`apiFetch` reads/attaches `Authorization`, 401→refresh→retry-once with concurrent-refresh dedup) | 6.2, 2.2b | M | FR-AUTH-2 |
 | 6.3b | `AuthContext` boot-time silent refresh (`isInitializing`), `ProtectedRoute` guard | 6.3a | S | FR-AUTH-2 |
-| 6.3c | Logout action (calls `/auth/logout`, clears token store, redirects to login) | 6.3a, 2.2c | S | FR-AUTH-3 |
+| 6.3c | Logout action (calls `/auth/logout`, unconditionally clears token store + org state and redirects to `/login` regardless of the call's success/failure) | 6.3a, 2.2c | S | FR-AUTH-3, NFR-14 |
+| 6.3d | `AppHeader` navbar (CoreUI `CHeader`, brand + "Log out" button wired to 6.3c) mounted inside `ProtectedRoute`, replacing the bare unwrapped `children` render | 6.3c, 6.3b | S | FR-AUTH-3, ADR-0012 |
 
 ## 7. Generic CRUD UI
 

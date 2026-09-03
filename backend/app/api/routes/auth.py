@@ -353,3 +353,77 @@ async def me(user: User = Depends(get_current_actor)) -> MeResponse:
     Document §3.4) — there is no separate `User.id`.
     """
     return MeResponse(actor_id=str(user.actor_id), email=user.email, actor_type="user")
+
+
+@router.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT)
+async def logout(
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_actor),
+) -> Response:
+    """Revoke the caller's current-session refresh token; idempotent (ADR-0014).
+
+    No request body. Authenticated the same way `me()` is — a missing/
+    invalid/expired bearer access token 401s via `get_current_actor` before
+    this handler ever runs (`code: "invalid_token"`, the same generic body
+    `GET /auth/me` produces). That is the ONLY non-2xx outcome this route
+    ever produces.
+
+    Order of operations (ADR-0014 / API Document §2):
+    1. Read the `refresh_token` httpOnly cookie, same as `refresh()`. Missing
+       entirely -> nothing to revoke, fall through to the success response.
+    2. If present, hash it and attempt to revoke the matching `RefreshToken`
+       row via the same atomic conditional `UPDATE ... WHERE ... AND
+       revoked_at IS NULL` compare-and-swap `refresh()` uses (see that
+       route's docstring "Concurrency" section for why this must be a CAS
+       and not an ORM attribute-mutation + commit) — NOT an unconditional
+       `UPDATE` keyed on `token_hash` alone. The `WHERE` clause here also
+       scopes on `user_id = :authenticated_user_id`, which `refresh()`'s
+       version has no need for (it only ever sees the token's own claimed
+       owner): this closes the case where the authenticated caller's bearer
+       token and their `refresh_token` cookie name different users, so
+       logout can never revoke a session it doesn't own.
+    3. Whatever the CAS `rowcount` turns out to be — 1 (a live session
+       belonging to this user was revoked), or 0 (no cookie, hash not
+       found, already revoked/rotated-out, or the row belongs to a
+       different user) — the response is identical: `204 No Content`. This
+       is deliberate, not a shortcut: logout's job is "make sure this
+       session is dead," and in every zero-rowcount case it already is. No
+       distinct error code is exposed per-cause (same no-enumeration-leak
+       posture `refresh()`'s `invalid_refresh_token` takes).
+    4. Clear the `refresh_token` cookie on the response regardless of
+       whether anything was revoked server-side, with the exact same
+       `httponly`/`samesite`/`secure` attributes `login()`/`refresh()` set
+       it with — some browsers won't recognize a `delete_cookie` call as
+       targeting the same cookie otherwise and will leave the stale value
+       sitting in the jar (harmless server-side, since the DB row is dead
+       either way, but sloppy).
+
+    The access token itself is never invalidated here — it remains usable
+    until its own short TTL naturally lapses (AUTH-3 AC2, out of scope for
+    this route; no token-blocklist exists in this scaffold).
+    """
+    raw_token = request.cookies.get("refresh_token")
+    if raw_token is not None:
+        token_hash = hash_refresh_token(raw_token)
+        now = datetime.now(UTC)
+        await db.execute(
+            update(RefreshToken)
+            .where(
+                RefreshToken.token_hash == token_hash,
+                RefreshToken.user_id == user.actor_id,
+                RefreshToken.revoked_at.is_(None),
+            )
+            .values(revoked_at=now, revoked_reason="logout")
+        )
+        await db.commit()
+
+    response.delete_cookie(
+        key="refresh_token",
+        httponly=True,
+        samesite="lax",
+        secure=(settings.ENV != "dev"),
+    )
+    response.status_code = status.HTTP_204_NO_CONTENT
+    return response

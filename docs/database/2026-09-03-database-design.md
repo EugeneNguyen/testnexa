@@ -65,7 +65,7 @@ Unique: `(org_id, user_id)`.
 | last_login_at | timestamptz | nullable |
 | created_at, updated_at | timestamptz | not null |
 
-**RefreshToken** *(not in 07 — added per [ADR-0003](../adr/0003-auth-token-strategy.md); rotation semantics per [ADR-0013](../adr/0013-refresh-token-rotation-policy.md))*
+**RefreshToken** *(not in 07 — added per [ADR-0003](../adr/0003-auth-token-strategy.md); rotation semantics per [ADR-0013](../adr/0013-refresh-token-rotation-policy.md); logout revocation semantics per [ADR-0014](../adr/0014-logout-session-revocation-policy.md))*
 | Column | Type | Constraints |
 |---|---|---|
 | id | uuid | PK |
@@ -74,7 +74,7 @@ Unique: `(org_id, user_id)`.
 | issued_at | timestamptz | not null |
 | expires_at | timestamptz | not null — on rotation, copied verbatim from the token being replaced, **not** recomputed as `now + JWT_REFRESH_TTL_DAYS` (ADR-0013: caps a session's absolute lifetime at 30 days from original login regardless of renewal frequency) |
 | revoked_at | timestamptz | nullable |
-| revoked_reason | varchar | nullable — `logout` (AUTH-3), `admin_force_logout` (no admin UI yet, but any write to this column achieves it), `rotated` (ADR-0013: every `POST /auth/refresh` revokes the token it consumes, single-use) |
+| revoked_reason | varchar | nullable — `logout` (AUTH-3/ADR-0014: revoked via the atomic `WHERE token_hash = ? AND user_id = ? AND revoked_at IS NULL` compare-and-swap, scoped to the authenticated caller so a foreign token is never touched), `admin_force_logout` (no admin UI yet, but any write to this column achieves it), `rotated` (ADR-0013: every `POST /auth/refresh` revokes the token it consumes, single-use) |
 | created_at, updated_at | timestamptz | not null |
 
 **Rotation chain note:** a session is a chain of `RefreshToken` rows linked only implicitly (each rotation's new row copies the prior row's `expires_at`) — there is no explicit `session_id`/chain-root column. This is a deliberate minimalism: the copy-forward is sufficient to bound absolute session lifetime without an extra column, and nothing in AUTH-2's scope needs to enumerate a session's full rotation history.

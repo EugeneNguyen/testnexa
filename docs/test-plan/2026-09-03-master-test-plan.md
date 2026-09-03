@@ -4,7 +4,7 @@
 **Date:** 2026-09-03
 **Owner:** xuanbinh91@gmail.com (CTO)
 **Format:** IEEE 829 Test Plan sections, applied to testing the scaffold itself — the tool tests its own build using the same document shape it's designed to produce for its users.
-**Sources:** [Requirements Document](../requirements/2026-09-03-project-scaffold-requirements.md), [Scaffold design spec](../superpowers/specs/2026-09-03-project-scaffold-design.md), [Test Design](../test-design/2026-09-03-test-design.md), [Test Cases](../test-cases/2026-09-03-test-cases.md), [AUTH-1 scope plan](../superpowers/plans/2026-09-03-auth-1-local-password-login-plan.md), [AUTH-2 scope plan](../superpowers/plans/2026-09-03-auth-2-session-persistence-plan.md)
+**Sources:** [Requirements Document](../requirements/2026-09-03-project-scaffold-requirements.md), [Scaffold design spec](../superpowers/specs/2026-09-03-project-scaffold-design.md), [Test Design](../test-design/2026-09-03-test-design.md), [Test Cases](../test-cases/2026-09-03-test-cases.md), [AUTH-1 scope plan](../superpowers/plans/2026-09-03-auth-1-local-password-login-plan.md), [AUTH-2 scope plan](../superpowers/plans/2026-09-03-auth-2-session-persistence-plan.md), [AUTH-3 scope plan](../superpowers/plans/2026-09-03-auth-3-logout-plan.md)
 
 ---
 
@@ -46,6 +46,7 @@ Test-design techniques applied per feature area are detailed in the [Test Design
 - NFR-1 (tenant isolation) and NFR-9 (RBAC matrix) are release-blocking: no scaffold build is considered complete with a known cross-tenant leak or an unverified permission-denial path.
 - NFR-11 (login rate limiting) is release-blocking for AUTH-1: `POST /auth/login` must not ship without the 429 throttle verified at the HTTP layer, not just unit-tested in isolation.
 - NFR-12/NFR-13 (refresh rotation, org re-check) are release-blocking for AUTH-2: `POST /auth/refresh` must not ship without single-use rotation and the revoked/expired-token 401 path verified at the HTTP layer ([ADR-0013](../adr/0013-refresh-token-rotation-policy.md)) — a refresh endpoint that silently allows indefinite reuse of one token defeats the story's own revocability requirement.
+- NFR-14 (logout idempotency/scoping) is release-blocking for AUTH-3: `POST /auth/logout` must not ship without (a) an integration test proving the revoked refresh token is actually rejected by a subsequent `POST /auth/refresh`, and (b) the idempotent-204 path verified for missing/foreign/already-revoked cookies ([ADR-0014](../adr/0014-logout-session-revocation-policy.md)) — a logout that silently no-ops on the happy path, or errors on the idempotent paths, defeats the story's "log out on a shared machine" premise either way.
 
 ## 7. Suspension criteria and resumption requirements
 

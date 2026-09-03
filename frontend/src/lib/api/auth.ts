@@ -97,3 +97,27 @@ export interface MeResponse {
 export async function me(): Promise<MeResponse> {
   return apiFetch<MeResponse>("/api/v1/auth/me");
 }
+
+/**
+ * AUTH-3 logout call.
+ *
+ * Source: API Document §2 (`POST /auth/logout` request/response contract).
+ *
+ * No request body; `credentials: "include"` so the httpOnly `refresh_token`
+ * cookie is sent for the backend to revoke (ADR-0014). Response is
+ * `204 No Content` — `apiFetch<void>` resolves with `undefined`.
+ *
+ * `skipAuthRetry` is deliberately left unset (unlike `login`/`refresh`): if
+ * the caller's access token is already expired at click time, letting
+ * `apiFetch`'s normal 401→refresh→retry interceptor run is fine — the retry
+ * still ends at the same session's (rotated) refresh token being revoked,
+ * and if the refresh itself fails, the interceptor's own failure path
+ * already clears the token store and redirects, which is what logout wants
+ * anyway. See AUTH-3 scope plan §3 for the full edge-case reasoning.
+ */
+export async function logout(): Promise<void> {
+  await apiFetch<void>("/api/v1/auth/logout", {
+    method: "POST",
+    credentials: "include",
+  });
+}
