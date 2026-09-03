@@ -95,13 +95,13 @@ describe("apiFetch", () => {
       const href = String(url);
       if (href.includes("/auth/refresh")) {
         return jsonResponse(
-          { code: "invalid_refresh_token", message: "expired", field_errors: null },
+          { code: "invalid_refresh_token", message: "refresh failed", field_errors: null },
           401,
         );
       }
       if (href.includes("/api/v1/widgets")) {
         return jsonResponse(
-          { code: "invalid_token", message: "expired", field_errors: null },
+          { code: "widget_error", message: "widget failed", field_errors: null },
           401,
         );
       }
@@ -109,7 +109,16 @@ describe("apiFetch", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(apiFetch("/api/v1/widgets")).rejects.toMatchObject({ status: 401 });
+    // Asserting the ORIGINAL widget call's error (code/message) is what
+    // propagates — not the distinct refresh-call error — is the point of
+    // this test: it proves apiFetch rethrows the original 401, discarding
+    // refresh's own error, rather than merely checking `status: 401` (which
+    // both mocked responses share and can't distinguish).
+    await expect(apiFetch("/api/v1/widgets")).rejects.toMatchObject({
+      status: 401,
+      message: "widget failed",
+      body: { code: "widget_error", message: "widget failed", field_errors: null },
+    });
 
     expect(getAccessToken()).toBeNull();
     expect(assignMock).toHaveBeenCalledWith("/login");
