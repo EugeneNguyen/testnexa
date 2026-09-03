@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-03
 **Owner:** xuanbinh91@gmail.com (CTO)
-**Sources:** [Scaffold design spec](../superpowers/specs/2026-09-03-project-scaffold-design.md), [Database Document](../database/2026-09-03-database-design.md), [Requirements Document](../requirements/2026-09-03-project-scaffold-requirements.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md) (refresh rotation policy), [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md) (AI agent credential mechanics)
+**Sources:** [Scaffold design spec](../superpowers/specs/2026-09-03-project-scaffold-design.md), [Database Document](../database/2026-09-03-database-design.md), [Requirements Document](../requirements/2026-09-03-project-scaffold-requirements.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md) (refresh rotation policy), [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md) (AI agent credential mechanics), [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md) (organization bootstrap & creation flow)
 
 REST over HTTPS, JSON bodies, base path `/api/v1`. FastAPI auto-generates the OpenAPI schema from the implementation — this document is the design-level contract new routes must match, not a substitute for the generated spec once code exists.
 
@@ -30,6 +30,8 @@ REST over HTTPS, JSON bodies, base path `/api/v1`. FastAPI auto-generates the Op
 | POST | `/auth/refresh` | none (valid refresh cookie required) | FR-AUTH-2 |
 | POST | `/auth/logout` | authenticated | FR-AUTH-3 |
 | GET | `/auth/me` | authenticated | returns current Actor identity; drives frontend route guards |
+| POST | `/auth/signup` | none (public, bootstrap-only) | FR-RBAC-1 — creates the deployment's first Organization + org_admin User |
+| POST | `/orgs` | `organization.create` in any org (any-org gate, not path-scoped) | FR-RBAC-1 — existing org_admin creates a further Organization |
 | POST | `/orgs/{org_id}/agents` | `ai_agent.create` (org_admin only) | FR-AUTH-4 — issues AIAgent + one-time API key |
 | POST | `/orgs/{org_id}/agents/{agent_id}/revoke` | `ai_agent.update` | FR-AUTH-4 |
 
@@ -47,6 +49,10 @@ REST over HTTPS, JSON bodies, base path `/api/v1`. FastAPI auto-generates the Op
 - **Inherits absolute expiry:** the new token's `expires_at` is copied from the one it replaces, not reset to `now + 30d` — a session's total lifetime is capped at `JWT_REFRESH_TTL_DAYS` from the original login no matter how often it's silently renewed.
 - **Re-checks active org membership**, same rule as login: 0 active `OrgMembership` rows → `403 no_active_organization`, refresh token itself left un-revoked (a later attempt can still succeed if membership is reactivated before the token expires).
 - Rejected with `401` (generic body, `code: "invalid_refresh_token"`) for: cookie missing, hash not found, already-revoked (including rotated-out), or expired — the frontend treats all of these identically (clear local auth state, redirect to `/login`); no distinct error code is exposed per-cause.
+
+`POST /auth/signup` (RBAC-1, [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md)) request: `{name, email, password, org_name, org_slug}`. Public — no `Authorization` header. Available only while zero `Organization` rows exist deployment-wide (NFR-21); once the first org exists, `409 signup_closed`. Concurrent first-signup calls are serialized via a `pg_advisory_xact_lock` so exactly one `Organization` results from a race. On success: creates `User` (argon2 password hash, same as login), `Organization(name=org_name, slug=org_slug)`, `OrgMembership(status=active)`, and an org-wide `RoleAssignment` to RBAC-4's seeded `org_admin` `Role` — then issues tokens exactly like `POST /auth/login` (access token in the body, refresh token as an httpOnly cookie), response shaped like `LoginResponse` (`org_context: "auto"`, `orgs: [the new org]`). `org_slug` collision → `422` (matches **TC-RBAC-003**; distinct from the `409` bootstrap-closed case above, never conflated).
+
+`POST /orgs` (RBAC-1, [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md)) request: `{name, slug}`. Authenticated (`User` or `AIAgent` — no human-only gate; AC doesn't restrict this to humans and RBAC-4's `ai_agent_scoped` bundle doesn't include `organization.create` anyway, so in practice only an `org_admin`-bundle actor ever passes). Gate: `has_permission_in_any_org(actor_id, "organization.create")` — checks org-wide (`project_id IS NULL`) `RoleAssignment`s across *every* org the actor belongs to, since there is no target `org_id` yet to scope a path-based `require_permission` check by; `403 permission_denied` if the actor holds it nowhere. No 404-vs-403 boundary here (NFR-19 doesn't apply — there's no target org's existence to hide). On success: creates `Organization` + the creator's own `OrgMembership(active)` + org-wide `org_admin` `RoleAssignment` in it — the creator is always a member of any org they create, since RBAC-2's invite flow doesn't exist yet to add anyone else afterward. `slug` collision → `422`, same as signup. Response: `{id, name, slug}`.
 
 `GET /auth/me` request: no body, `Authorization: Bearer <access_token>` required — accepts either a human JWT or an agent bearer key (AUTH-4). Response: `{actor_id, email, actor_type}` for a `User`; `{actor_id, agent_name, actor_type: "ai_agent"}` for an `AIAgent` (no `email` field — agents have none). The fuller "+ resolved permission codes" contract (§2 table's original wording) is deferred until an RBAC story exists to resolve permission codes at all — this route ships identity-only for AUTH-2/4, since it exists primarily as the protected route those stories' flows need to prove themselves against, not as the RBAC-driving route it will eventually become.
 
@@ -74,7 +80,7 @@ One factory, parametrized per entity+schema, producing 5 routes. Example shown f
 
 Entities served by the generic factory: `Organization`\*, `Project`, `Release`, `Requirement`, `TestCondition`, `TestCase`, `TestStep`, `TestSuite`, `TestPlan`, `EntryExitCriteria`, `TestCycle`, `Environment`, `Defect`, `RiskItem`, `Attachment`, `Role`, `Permission`\*\*, `TestDesignTechnique`, `TestLevel`, `TestType`, `OrgMembership`, `RoleAssignment`.
 
-\* `Organization` create is only reachable via the signup/bootstrap flow (RBAC-1), not a bare `POST /organizations`.
+\* `Organization` create is only reachable via `POST /auth/signup` or `POST /orgs` (§2, RBAC-1/[ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md)), never a bare `POST /organizations` — the generic factory still serves `GET`/`PATCH`/`DELETE /organizations/{id}` for this entity, only `create` is bespoke.
 \*\* `Permission` is read-only via the generic factory — the catalog is seeded, not user-editable, so only `GET` routes are registered for it.
 
 ## 4. Bespoke routes
@@ -145,6 +151,12 @@ Same `actor_forbidden` shape is reused verbatim for an `AIAgent` bearer credenti
 ```
 {"code": "invalid_refresh_token", "message": "Your session has expired. Please log in again.", "field_errors": null}
 ```
+
+**409, signup attempted after the deployment already has an Organization:**
+```
+{"code": "signup_closed", "message": "Self-registration is closed. Contact your administrator for an invite.", "field_errors": null}
+```
+Distinct from the `422` slug-uniqueness rejection either creation route also returns — `409` here means "signup itself is unavailable," never "your chosen slug collided" ([ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md)).
 
 **429, login throttled:**
 ```

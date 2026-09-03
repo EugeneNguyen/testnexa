@@ -19,7 +19,8 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, Request, Response, status
 from fastapi.responses import JSONResponse
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select, text, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_actor, get_db
@@ -27,13 +28,22 @@ from app.core.config import settings
 from app.core.security import (
     create_access_token,
     create_refresh_token,
+    hash_password,
     hash_refresh_token,
     verify_password_or_dummy,
 )
 from app.models.actor import AIAgent, User
 from app.models.auth import AuthIdentity, AuthProvider, LoginAttempt, RefreshToken
+from app.models.rbac import Role, RoleAssignment
 from app.models.tenancy import Organization, OrgMembership, OrgMembershipStatus
-from app.schemas.auth import LoginRequest, LoginResponse, MeResponse, OrgSummary, RefreshResponse
+from app.schemas.auth import (
+    LoginRequest,
+    LoginResponse,
+    MeResponse,
+    OrgSummary,
+    RefreshResponse,
+    SignupRequest,
+)
 
 router = APIRouter()
 
@@ -42,12 +52,186 @@ router = APIRouter()
 _RATE_LIMIT_WINDOW_MINUTES = 15
 _RATE_LIMIT_MAX_ATTEMPTS = 5
 
+# RBAC-1 / ADR-0016: fixed bigint key for `pg_advisory_xact_lock`, acquired
+# by every `POST /auth/signup` call before its bootstrap-closed exists-check.
+# Serializes concurrent first-signup attempts against each other so exactly
+# one Organization results from a race, without needing a row lock on a
+# table that may have zero rows at the time. Value is arbitrary (no meaning
+# beyond "a fixed constant every signup call agrees on") — picked by keying
+# a fixed string through Python's `zlib.crc32` once, at write-time, purely
+# so it's stable and doesn't collide with the small integers app code might
+# otherwise pick out of habit: `zlib.crc32(b"testnexa:auth:signup:bootstrap")`.
+_SIGNUP_BOOTSTRAP_LOCK_KEY = 2214374888
 
-def _error(status_code: int, code: str, message: str) -> JSONResponse:
+
+def _error(
+    status_code: int,
+    code: str,
+    message: str,
+    field_errors: dict[str, list[str]] | None = None,
+) -> JSONResponse:
     """Build an error response matching the API Document §1 error shape."""
     return JSONResponse(
         status_code=status_code,
-        content={"code": code, "message": message, "field_errors": None},
+        content={"code": code, "message": message, "field_errors": field_errors},
+    )
+
+
+@router.post("/auth/signup", response_model=LoginResponse, status_code=status.HTTP_201_CREATED)
+async def signup(
+    payload: SignupRequest,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+) -> LoginResponse | JSONResponse:
+    """Bootstrap-only public signup: first-ever User + Organization (RBAC-1, ADR-0016).
+
+    Public — no `get_current_actor` dependency at all. Distinct code path
+    from `POST /orgs` (`app/api/routes/organizations.py`): this route takes
+    signup credentials for a brand-new `User` and only ever works while zero
+    `Organization` rows exist deployment-wide; `POST /orgs` is for an
+    already-authenticated actor minting a further org.
+
+    Order of operations:
+    1. Acquire `pg_advisory_xact_lock(_SIGNUP_BOOTSTRAP_LOCK_KEY)` FIRST,
+       inside this call's transaction, before the exists-check below — two
+       concurrent first-signup calls both observing zero orgs before either
+       commits would otherwise both succeed (ADR-0016's rejected
+       "rely on the slug unique constraint instead" alternative doesn't
+       catch this: two concurrent bootstraps typically pick *different*
+       slugs). The lock is released automatically when this transaction
+       ends (commit on success, rollback on any of the early-return paths
+       below), same lifetime as `pg_advisory_xact_lock`'s name implies.
+    2. `SELECT EXISTS(SELECT 1 FROM organization)` — any row at all means
+       bootstrap has already happened -> `409 signup_closed`. This is
+       deliberately checked with the lock already held, not before it.
+    3. Hash the password (`hash_password`, same as `login()`'s stored hash);
+       create the `User` row; flush alone first so a `User.email` unique
+       collision is caught (and reported) independently of the `Organization
+       .slug` one two steps later.
+    4. Create the `Organization(name=org_name, slug=org_slug)` row; flush
+       alone so a `slug` collision is caught (and reported) independently of
+       step 3's email collision — `422`, not `409` (`409` is reserved
+       exclusively for the bootstrap-closed case in step 2, ADR-0016).
+    5. Create the `OrgMembership(status=active)` + an org-wide
+       (`project_id=None`) `RoleAssignment` pointing at RBAC-4's seeded
+       `org_admin` system `Role` (`org_id IS NULL`) — this row already
+       exists from RBAC-4's migration; this route only assigns it, never
+       creates a new `Role`.
+    6. Issue tokens + set the refresh-token cookie exactly like `login()`
+       does (same helpers, same cookie params); commit; return a
+       `LoginResponse`-shaped body (`org_context: "auto"`, `orgs: [the new
+       org]` — a fresh signup always has exactly one org, never a picker).
+    """
+    email = payload.email.lower()
+
+    # 1. Advisory lock, acquired before the exists-check, same transaction
+    # as every insert below.
+    await db.execute(
+        text("SELECT pg_advisory_xact_lock(:key)"), {"key": _SIGNUP_BOOTSTRAP_LOCK_KEY}
+    )
+
+    # 2. Bootstrap-closed check.
+    any_org_id = await db.scalar(select(Organization.id).limit(1))
+    if any_org_id is not None:
+        await db.rollback()
+        return _error(
+            status.HTTP_409_CONFLICT,
+            "signup_closed",
+            "Self-registration is closed. Contact your administrator for an invite.",
+        )
+
+    # RBAC-4's seeded org-wide org_admin system Role (org_id IS NULL) — must
+    # exist post RBAC-4's migration; not created here (ADR-0016).
+    org_admin_role = await db.scalar(
+        select(Role).where(Role.name == "org_admin", Role.org_id.is_(None))
+    )
+
+    # 3. Create the User; flush alone to isolate an email-uniqueness
+    # collision from the org-slug collision step 4 checks separately.
+    user = User(name=payload.name, email=email, password_hash=hash_password(payload.password))
+    db.add(user)
+    try:
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+        return _error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "validation_error",
+            "Request failed validation.",
+            field_errors={"email": ["An account with this email already exists."]},
+        )
+
+    # 3b. `provider=local` AuthIdentity — required for `login()`'s
+    # User-joined-to-AuthIdentity lookup to ever find this user afterward.
+    # Without this row, a freshly bootstrapped org_admin gets a token from
+    # this response but can never log in again.
+    db.add(AuthIdentity(user_id=user.actor_id, provider=AuthProvider.local, is_primary=True))
+
+    # 4. Create the Organization; flush alone to isolate a slug-uniqueness
+    # collision (TC-RBAC-003) — 422, not 409 (ADR-0016).
+    org = Organization(name=payload.org_name, slug=payload.org_slug)
+    db.add(org)
+    try:
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+        return _error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "validation_error",
+            "Request failed validation.",
+            field_errors={"org_slug": ["This organization slug is already taken."]},
+        )
+
+    # 5. Membership + org-wide org_admin RoleAssignment (Q3/ADR-0016: the
+    # creator of an org always auto-joins it as its org_admin).
+    now = datetime.now(UTC)
+    db.add(
+        OrgMembership(
+            org_id=org.id,
+            user_id=user.actor_id,
+            status=OrgMembershipStatus.active,
+            joined_at=now,
+        )
+    )
+    db.add(
+        RoleAssignment(
+            actor_id=user.actor_id,
+            org_id=org.id,
+            project_id=None,
+            role_id=org_admin_role.id,
+        )
+    )
+
+    # 6. Issue tokens; persist the refresh token's hash (ADR-0003) — same
+    # shape as login()'s own token-issuance block.
+    access_token = create_access_token(str(user.actor_id))
+    raw_refresh_token = create_refresh_token(str(user.actor_id))
+    db.add(
+        RefreshToken(
+            user_id=user.actor_id,
+            token_hash=hash_refresh_token(raw_refresh_token),
+            issued_at=now,
+            expires_at=now + timedelta(days=settings.JWT_REFRESH_TTL_DAYS),
+        )
+    )
+    await db.commit()
+
+    # Refresh token: httpOnly cookie only, never in the JSON body — same
+    # params login() sets it with (see that route for the `max_age`/`secure`
+    # rationale).
+    response.set_cookie(
+        key="refresh_token",
+        value=raw_refresh_token,
+        httponly=True,
+        samesite="lax",
+        secure=(settings.ENV != "dev"),
+        max_age=settings.JWT_REFRESH_TTL_DAYS * 24 * 60 * 60,
+    )
+
+    return LoginResponse(
+        access_token=access_token,
+        org_context="auto",
+        orgs=[OrgSummary(id=org.id, name=org.name, slug=org.slug)],
     )
 
 

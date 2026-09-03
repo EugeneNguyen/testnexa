@@ -30,7 +30,10 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 | 2.3c | `rbac.py` — minimal generic `has_permission`/`require_permission` (org-wide `RoleAssignment` resolution only; pulled forward from 2.4, project-scoped branch left for RBAC-3) + `ai_agent.create`/`ai_agent.update` permission-seed data migration | 1.3, 2.3b | M | FR-AUTH-4 AC2, [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md) |
 | 2.3d | `POST /orgs/{org_id}/agents` + `.../revoke` routes (human-only gate, org_admin-permission-gated, 404-vs-403 org-membership boundary) | 2.3c | M | FR-AUTH-4, NFR-17, NFR-19 |
 | 2.4 | `rbac.py` — `require_permission(code)` project-scoped branch + permission-code registry generated from model registry (extends 2.3c's org-wide-only implementation) | 1.3, 2.3c | M | FR-RBAC-3, NFR-10 |
-| 2.5 | Org/OrgMembership routes — create org (first-user bootstrap), invite/suspend/reactivate members | 2.4 | M | FR-RBAC-1, FR-RBAC-2 |
+| 2.5a | `has_permission_in_any_org(actor_id, code)` — `core/rbac.py` sibling to `has_permission`, no `org_id` filter (no target org exists yet pre-creation); gates 2.5c only | 2.3c | S | FR-RBAC-1, [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md) |
+| 2.5b | `POST /auth/signup` — public, bootstrap-only (closes once ≥1 `Organization` exists, `pg_advisory_xact_lock`-serialized against concurrent first signups); creates User+Organization+OrgMembership(active)+org_admin RoleAssignment (RBAC-4's seeded Role, not a per-org copy), issues tokens via 2.2's existing cookie/token code | 2.2, 1.3 | M | FR-RBAC-1, NFR-21, [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md) |
+| 2.5c | `POST /orgs` — authenticated, `has_permission_in_any_org("organization.create")` gate (no 404-vs-403 boundary — no target org to hide); creates a second Organization + creator's own OrgMembership/org_admin RoleAssignment in it | 2.5a, 1.3 | S | FR-RBAC-1, [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md) |
+| 2.5d | OrgMembership routes — invite/suspend/reactivate members | 2.5c | M | FR-RBAC-2 |
 | 2.6 | RoleAssignment routes — org-wide/project-scoped grants | 2.4 | S | FR-RBAC-3 |
 | 2.7 | Human-only Approval defense-in-depth check | 2.4 | S | FR-RBAC-5 |
 | 2.8 | Login throttle: `LoginAttempt` table + per-(IP, email) failed-attempt counter, 429 above threshold | 2.2 | S | NFR-11, [ADR-0011](../adr/0011-login-rate-limiting.md) |
@@ -115,7 +118,7 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 |---|---|---|
 | 11.1 | Requirement Document | Done |
 | 11.2 | WBS (this document) | Done |
-| 11.3 | ADRs (0001–0015 + index) | Done |
+| 11.3 | ADRs (0001–0016 + index) | Done |
 | 11.4 | Database Document | Done |
 | 11.5 | API Document | Done |
 | 11.6 | Master Test Plan | Done |

@@ -19,6 +19,7 @@ Index of ADRs for the Project Scaffold. Format: [MADR](https://adr.github.io/mad
 | [0013](0013-refresh-token-rotation-policy.md) | Refresh token rotation & session-persistence policy: rotate-on-use, absolute-expiry-inherited, org re-check on refresh | Accepted |
 | [0014](0014-logout-session-revocation-policy.md) | Logout: idempotent single-session revocation, client-side-clear-always | Accepted |
 | [0015](0015-ai-agent-credential-mechanics.md) | AI agent credential mechanics: key format, key_prefix lookup, minimal-RBAC-now, 404-vs-403 org-scoped precedent | Accepted |
+| [0016](0016-organization-bootstrap-creation-flow.md) | Organization bootstrap & creation flow: signup vs. `POST /orgs` split, bootstrap-closes-after-first-org, advisory-lock concurrency guard, any-org permission gate | Accepted |
 
 **Deciders on all ADRs below:** xuanbinh91@gmail.com (CTO), unless noted otherwise.
 **Date:** 2026-09-03

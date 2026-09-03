@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-03
 **Owner:** xuanbinh91@gmail.com (CTO)
-**Sources:** [07 ERD](../product-discovery/07-erd-draft.md), [Scaffold design spec](../superpowers/specs/2026-09-03-project-scaffold-design.md), [ADR-0005](../adr/0005-traceability-link-dedicated-join-tables.md), [ADR-0006](../adr/0006-test-condition-optional.md), [ADR-0007](../adr/0007-real-multi-tenancy.md), [ADR-0008](../adr/0008-uuid-primary-keys.md), [ADR-0011](../adr/0011-login-rate-limiting.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md), [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md)
+**Sources:** [07 ERD](../product-discovery/07-erd-draft.md), [Scaffold design spec](../superpowers/specs/2026-09-03-project-scaffold-design.md), [ADR-0005](../adr/0005-traceability-link-dedicated-join-tables.md), [ADR-0006](../adr/0006-test-condition-optional.md), [ADR-0007](../adr/0007-real-multi-tenancy.md), [ADR-0008](../adr/0008-uuid-primary-keys.md), [ADR-0011](../adr/0011-login-rate-limiting.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md), [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md), [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md)
 
 This document is the implementation-level schema, refined from the [07 ERD](../product-discovery/07-erd-draft.md) draft per the ADRs above. No code — this is the reference for the Alembic migration that will be written when implementation is authorized.
 
@@ -51,6 +51,8 @@ This document is the implementation-level schema, refined from the [07 ERD](../p
 | created_at, updated_at | timestamptz | not null |
 
 Unique: `(org_id, user_id)`.
+
+**Creation flow** (RBAC-1, [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md)) is application logic, not a schema concern — no dedicated migration beyond what RBAC-4 already seeds (the `org_admin` `Role` a first signup/second-org creation assigns already exists as a global template, `org_id = NULL`). Two creation paths exist: bootstrap `POST /auth/signup` (public, closes once any `Organization` row exists) and authenticated `POST /orgs` (existing org_admin). Both insert one `Organization` row + one `OrgMembership(status=active)` row + one org-wide `RoleAssignment` (`project_id = NULL`, `role_id` = the seeded `org_admin` `Role`) for the creator, in the same transaction.
 
 ### 3.2 `auth.py` — AuthIdentity, RefreshToken
 

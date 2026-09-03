@@ -229,6 +229,44 @@ async def has_permission(actor_id: str, org_id: str, code: str, project_id: str 
         return result.first() is not None
 
 
+async def has_permission_in_any_org(actor_id: str, code: str) -> bool:
+    """Check whether `actor_id` holds permission `code` org-wide in ANY org they belong to.
+
+    RBAC-1 / ADR-0016: `POST /orgs` (minting a *second* org) has no target
+    `org_id` in its path yet — the org doesn't exist until the call
+    succeeds — so `has_permission`'s path-scoped `org_id` filter doesn't fit.
+    This is a bespoke sibling, not a modification of `has_permission`: same
+    `RoleAssignment` -> `Role` -> `RolePermission` -> `Permission` join, but
+    with NO `org_id` filter at all (checks across every org the actor holds
+    any `RoleAssignment` in).
+
+    Still filters `RoleAssignment.project_id IS NULL` — org-wide grants
+    only, same default `has_permission` uses. A project-scoped-only grant
+    (`project_id` non-null) must NOT satisfy this gate (TC-RBAC-023):
+    creating an org is inherently an org-wide action, not a project-scoped
+    one, so a permission held only within one project says nothing about
+    whether the actor may create a brand-new organization.
+    """
+    actor_uuid = uuid.UUID(str(actor_id))
+
+    query = (
+        select(Permission.id)
+        .join(RolePermission, RolePermission.permission_id == Permission.id)
+        .join(Role, Role.id == RolePermission.role_id)
+        .join(RoleAssignment, RoleAssignment.role_id == Role.id)
+        .where(
+            RoleAssignment.actor_id == actor_uuid,
+            Permission.code == code,
+            RoleAssignment.project_id.is_(None),
+        )
+        .limit(1)
+    )
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(query)
+        return result.first() is not None
+
+
 def require_permission(code: str) -> Callable[..., Any]:
     """Build a FastAPI dependency that 403s unless the current actor holds `code`.
 

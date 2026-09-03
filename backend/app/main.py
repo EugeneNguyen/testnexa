@@ -23,7 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.requests import Request
 from fastapi.responses import JSONResponse
 
-from app.api.routes import agents, auth, health
+from app.api.routes import agents, auth, health, organizations
 
 app = FastAPI(title="TestNexa API", version="0.1.0")
 
@@ -74,3 +74,6 @@ app.include_router(health.router)
 app.include_router(auth.router, prefix="/api/v1", tags=["auth"])
 # AUTH-4/ADR-0015: agent credential issuance/revocation routes.
 app.include_router(agents.router, prefix="/api/v1", tags=["agents"])
+# RBAC-1/ADR-0016: authenticated org-creation route (`POST /orgs`) — the
+# `POST /auth/signup` bootstrap sibling lives in `auth.router` above.
+app.include_router(organizations.router, prefix="/api/v1", tags=["organizations"])
