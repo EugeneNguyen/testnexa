@@ -74,3 +74,10 @@ No new migration — `RefreshToken.revoked_at`/`revoked_reason` already exist an
 ## 5. Status
 
 Confirmed — ready for implementation. No code written yet; awaiting go-ahead to start Task 1.
+
+**2026-09-03 update — backend implementation complete.** `POST /auth/logout` added to `backend/app/api/routes/auth.py` (authenticated via `get_current_actor`, atomic CAS revoke scoped to `token_hash` + `user_id`, `204 No Content`, cookie cleared). New test file `backend/tests/integration/test_auth_logout.py` covers TC-AUTH-009/024/025/026/027 plus the ADR-0014 cross-user-scoping case. Test results against the isolated `testnexa-auth3-test` Docker stack:
+- `backend/tests/unit` — 26 passed
+- `backend/tests/integration/test_auth_logout.py` — 6 passed
+- `backend/tests/integration/test_auth_refresh.py` (regression check) — 10 passed, no regressions
+
+Frontend work (AppHeader, AuthContext.logout(), lib/api/auth.ts, ProtectedRoute, e2e) is out of scope for this backend-only pass; see §2 for the remaining file list.
