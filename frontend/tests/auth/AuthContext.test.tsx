@@ -38,15 +38,31 @@ describe("AuthProvider boot-time silent refresh", () => {
     clearAccessToken();
   });
 
-  it("starts with isInitializing true before the boot refresh settles", () => {
+  it("starts with isInitializing true before the boot refresh settles", async () => {
+    // `requestRefresh()` (lib/api/client.ts) is now shared by AuthContext's
+    // boot effect too (fix round 1), so its `refreshPromise` module state is
+    // shared across every test in this file. A fetch mock left permanently
+    // pending would leave that shared promise stuck forever and poison
+    // later tests, so this resolves it (deliberately with an
+    // uncontroversial value) before the test ends instead of leaving it
+    // hanging.
+    let resolveFetch: (response: Response) => void = () => {};
     const fetchMock = vi.fn(
-      () => new Promise<Response>(() => {}), // never resolves within this test
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveFetch = resolve;
+        }),
     );
     vi.stubGlobal("fetch", fetchMock);
 
     renderProvider();
 
     expect(screen.getByTestId("initializing")).toHaveTextContent("true");
+
+    resolveFetch(jsonResponse({ access_token: "irrelevant-token" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("initializing")).toHaveTextContent("false");
+    });
   });
 
   it("populates the token store and settles isInitializing on a successful boot refresh", async () => {

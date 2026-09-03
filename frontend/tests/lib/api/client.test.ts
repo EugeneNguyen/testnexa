@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { apiFetch } from "../../../src/lib/api/client";
+import { apiFetch, requestRefresh } from "../../../src/lib/api/client";
 import { login, refresh } from "../../../src/lib/api/auth";
 import { clearAccessToken, getAccessToken, setAccessToken } from "../../../src/lib/auth/tokenStore";
 
@@ -178,6 +178,49 @@ describe("apiFetch", () => {
 
     await expect(login("a@b.com", "wrong-password")).rejects.toMatchObject({ status: 401 });
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("dedups a boot-triggered requestRefresh() call with a concurrent interceptor-triggered 401 refresh", async () => {
+    // Regression test for fix round 1: AuthContext's boot-time refresh used
+    // to call the raw refresh() (lib/api/auth.ts), bypassing this module's
+    // shared refreshPromise dedup entirely. Two concurrent callers -- one
+    // "boot-triggered" (calling requestRefresh() directly, exactly like
+    // AuthContext's boot effect now does), one "interceptor-triggered" (an
+    // authenticated apiFetch call hitting a 401 and recovering via the same
+    // requestRefresh()) -- must collapse into exactly one real
+    // POST /auth/refresh call, never two presentations of the same
+    // single-use refresh cookie (ADR-0013).
+    setAccessToken("expired-token");
+    let refreshCallCount = 0;
+    let widgetCallCount = 0;
+    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+      const href = String(url);
+      if (href.includes("/auth/refresh")) {
+        refreshCallCount += 1;
+        return jsonResponse({ access_token: "new-token" }, 200);
+      }
+      if (href.includes("/api/v1/widgets")) {
+        widgetCallCount += 1;
+        if (widgetCallCount === 1) {
+          return jsonResponse(
+            { code: "invalid_token", message: "expired", field_errors: null },
+            401,
+          );
+        }
+        return jsonResponse({ items: [] }, 200);
+      }
+      throw new Error(`unexpected fetch to ${href}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const [bootResult, interceptorResult] = await Promise.all([
+      requestRefresh(), // simulated boot-triggered caller
+      apiFetch("/api/v1/widgets"), // triggers apiFetch's own 401 -> requestRefresh() internally
+    ]);
+
+    expect(bootResult).toEqual({ access_token: "new-token" });
+    expect(interceptorResult).toEqual({ items: [] });
+    expect(refreshCallCount).toBe(1);
   });
 
   it("does not trigger a recursive refresh when /auth/refresh itself returns 401", async () => {

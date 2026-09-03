@@ -10,20 +10,27 @@
  * `login()` (`POST /auth/login`'s response carries them; nothing else does).
  *
  * AUTH-2 boot-time silent refresh: on mount, this provider calls
- * `POST /auth/refresh` once (via `refresh()`, `lib/api/auth.ts`) to attempt
- * restoring a session from the httpOnly `refresh_token` cookie — the token
- * store starts empty on every page load (module state, not persisted), so
- * without this call a full page reload would always look logged-out even
- * with a valid refresh cookie still sitting in the browser. `isInitializing`
- * is `true` until that call settles (success or failure), then `false`
- * forever after; `ProtectedRoute` gates rendering on it so that no
- * protected-route content — and therefore no `apiFetch` call a protected
- * page might make — can mount before the boot refresh has had its chance to
- * populate the token store. This ordering matters beyond just UX: `apiFetch`
- * itself dedupes concurrent refreshes it triggers, but that dedup does not
- * cover this boot-time call, so an authenticated `apiFetch` firing while the
- * boot refresh is still in flight could race it and get spuriously
- * rejected against an already-rotated single-use refresh cookie (ADR-0013).
+ * `POST /auth/refresh` once (via `requestRefresh()`, `lib/api/client.ts` —
+ * NOT the raw `refresh()` from `lib/api/auth.ts`) to attempt restoring a
+ * session from the httpOnly `refresh_token` cookie — the token store starts
+ * empty on every page load (module state, not persisted), so without this
+ * call a full page reload would always look logged-out even with a valid
+ * refresh cookie still sitting in the browser. `isInitializing` is `true`
+ * until that call settles (success or failure), then `false` forever after;
+ * `ProtectedRoute` gates rendering on it so that no protected-route content —
+ * and therefore no `apiFetch` call a protected page might make — can mount
+ * before the boot refresh has had its chance to populate the token store.
+ *
+ * Calling `requestRefresh()` here specifically (rather than `refresh()`
+ * directly) matters beyond just UX: `apiFetch`'s own 401 interceptor and
+ * this boot effect now share the exact same in-flight-promise dedup
+ * (`requestRefresh`'s `refreshPromise` memoization in `client.ts`). Refresh
+ * tokens are single-use (ADR-0013) — without sharing that dedup, this
+ * boot-time call and a near-simultaneous interceptor-triggered refresh could
+ * each present the same cookie, and one would get spuriously rejected. This
+ * is reachable in practice (React StrictMode double-invoking this effect in
+ * dev; two tabs cold-loading concurrently in prod) and was fixed after being
+ * reproduced by the AUTH-2 E2E suite.
  *
  * On boot-refresh failure — `401 invalid_refresh_token` (no/expired/revoked/
  * rotated-out cookie) or `403 no_active_organization` (org membership lost),
@@ -58,7 +65,8 @@ import {
   useMemo,
   useState,
 } from "react";
-import { login as loginRequest, OrgSummary, refresh as refreshRequest } from "../lib/api/auth";
+import { login as loginRequest, OrgSummary } from "../lib/api/auth";
+import { requestRefresh } from "../lib/api/client";
 import { getAccessToken, setAccessToken as setStoredAccessToken, subscribe } from "../lib/auth/tokenStore";
 
 interface AuthContextValue {
@@ -90,7 +98,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     async function bootRefresh() {
       try {
-        const response = await refreshRequest();
+        // Shared with apiFetch's own 401 interceptor (`lib/api/client.ts`)
+        // via its in-flight-promise memoization — see that module's
+        // docstring on `requestRefresh`. This is deliberate, not
+        // incidental: it's what prevents this boot-time call and a
+        // near-simultaneous interceptor-triggered refresh (e.g. React
+        // StrictMode's double-invoked effects in dev, or two tabs
+        // cold-loading at once in prod) from presenting the same
+        // single-use refresh cookie (ADR-0013) twice.
+        const response = await requestRefresh();
         if (!cancelled) {
           setStoredAccessToken(response.access_token);
         }

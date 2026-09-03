@@ -47,13 +47,29 @@ export interface ApiFetchOptions extends RequestInit {
 }
 
 /**
- * In-flight refresh promise, shared by every concurrent 401 so a burst of
- * simultaneous unauthorized requests triggers exactly one
- * `POST /auth/refresh` call, not one per request (AUTH-2 plan, Task 3).
+ * In-flight refresh promise, shared by every concurrent caller so a burst of
+ * simultaneous refresh needs triggers exactly one `POST /auth/refresh` call,
+ * not one per caller (AUTH-2 plan, Task 3).
+ *
+ * Exported (not just used internally by the 401 interceptor below) so that
+ * `AuthContext`'s boot-time silent refresh (Task 4) can share this exact
+ * same in-flight-promise memoization instead of calling `refresh()`
+ * (`lib/api/auth.ts`) raw. Refresh tokens are single-use (ADR-0013) — two
+ * concurrent callers presenting the same cookie means one gets a fresh
+ * token and the other gets a spurious 401, which is reachable in practice
+ * (React StrictMode double-invoking the boot effect in dev; two tabs
+ * cold-loading concurrently in prod) if the boot path and the interceptor
+ * path don't dedupe against each other. Every caller — boot effect,
+ * reactive 401, or both firing in the same tick — funnels through this one
+ * function, so at most one `POST /auth/refresh` is ever in flight at a time.
+ *
+ * Callers are each responsible for calling `setAccessToken` on their own
+ * success path after awaiting this — this function only performs the
+ * network call + dedup, it does not touch the token store itself.
  */
 let refreshPromise: Promise<{ access_token: string }> | null = null;
 
-function requestRefresh(): Promise<{ access_token: string }> {
+export function requestRefresh(): Promise<{ access_token: string }> {
   if (!refreshPromise) {
     refreshPromise = refreshRequest().finally(() => {
       refreshPromise = null;
