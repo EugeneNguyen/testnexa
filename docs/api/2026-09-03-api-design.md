@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-03
 **Owner:** xuanbinh91@gmail.com (CTO)
-**Sources:** [Scaffold design spec](../superpowers/specs/2026-09-03-project-scaffold-design.md), [Database Document](../database/2026-09-03-database-design.md), [Requirements Document](../requirements/2026-09-03-project-scaffold-requirements.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md) (refresh rotation policy)
+**Sources:** [Scaffold design spec](../superpowers/specs/2026-09-03-project-scaffold-design.md), [Database Document](../database/2026-09-03-database-design.md), [Requirements Document](../requirements/2026-09-03-project-scaffold-requirements.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md) (refresh rotation policy), [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md) (AI agent credential mechanics)
 
 REST over HTTPS, JSON bodies, base path `/api/v1`. FastAPI auto-generates the OpenAPI schema from the implementation — this document is the design-level contract new routes must match, not a substitute for the generated spec once code exists.
 
@@ -19,6 +19,7 @@ REST over HTTPS, JSON bodies, base path `/api/v1`. FastAPI auto-generates the Op
   {"code": "string", "message": "human-readable string", "field_errors": {"field_name": ["msg"]} | null}
   ```
 - **Status codes:** `401` = unauthenticated (missing/expired/invalid token, or bad login credentials); `403` = authenticated-or-would-be-authenticated but permission-denied or blocked for a non-credentials reason (includes `POST /auth/login` with valid credentials but zero active org memberships — see §2); `404` = not found **or** cross-tenant (NFR-1 — never distinguishes the two); `422` = validation error (`field_errors` populated); `429` = rate-limited (currently only `POST /auth/login`'s throttle, ADR-0011/NFR-11).
+- **404-vs-403 on org-scoped routes** (NFR-19, [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md)): the caller having zero `OrgMembership` in the path's `org_id` (including a nonexistent `org_id`) is a 404, same NFR-1 existence-hiding rule as a resource fetch; membership present but the route's `require_permission` check fails is a 403. First established for `/orgs/{org_id}/agents*` (§2), applies to every org-scoped route after it.
 - **Permission codes:** `<resource>.<action>`. Resource = snake_case entity name. Default actions `create/read/update/delete` for writable entities; `read`-only for `TestLog` and the 4 traceability link tables (system-appended, no direct write API). Special verbs beyond CRUD: `test_plan.approve`, `requirement.export_rtm`. The full code list is generated mechanically from the model registry at startup (one Alembic-seeded `Permission` row per `resource.action` pair) — not hand-maintained.
 
 ## 2. Auth routes (bespoke)
@@ -47,7 +48,11 @@ REST over HTTPS, JSON bodies, base path `/api/v1`. FastAPI auto-generates the Op
 - **Re-checks active org membership**, same rule as login: 0 active `OrgMembership` rows → `403 no_active_organization`, refresh token itself left un-revoked (a later attempt can still succeed if membership is reactivated before the token expires).
 - Rejected with `401` (generic body, `code: "invalid_refresh_token"`) for: cookie missing, hash not found, already-revoked (including rotated-out), or expired — the frontend treats all of these identically (clear local auth state, redirect to `/login`); no distinct error code is exposed per-cause.
 
-`GET /auth/me` request: no body, `Authorization: Bearer <access_token>` required. Response: `{actor_id, email, actor_type}`. The fuller "+ resolved permission codes" contract (§2 table's original wording) is deferred until an RBAC story exists to resolve permission codes at all — this route ships identity-only for AUTH-2, since it exists primarily as the protected route AUTH-2's silent-refresh flow needs to prove itself against, not as the RBAC-driving route it will eventually become.
+`GET /auth/me` request: no body, `Authorization: Bearer <access_token>` required — accepts either a human JWT or an agent bearer key (AUTH-4). Response: `{actor_id, email, actor_type}` for a `User`; `{actor_id, agent_name, actor_type: "ai_agent"}` for an `AIAgent` (no `email` field — agents have none). The fuller "+ resolved permission codes" contract (§2 table's original wording) is deferred until an RBAC story exists to resolve permission codes at all — this route ships identity-only for AUTH-2/4, since it exists primarily as the protected route those stories' flows need to prove themselves against, not as the RBAC-driving route it will eventually become.
+
+`POST /orgs/{org_id}/agents` (AUTH-4, [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md)): request `{agent_name, model_or_provider?, acting_on_behalf_of_user_id}`. Requires a human `User` bearer token (hardcoded check, independent of `RoleAssignment` — an `AIAgent` bearer credential calling this route gets `403 actor_forbidden` regardless of any permission it might hold, NFR-17) **and** `require_permission("ai_agent.create")` scoped to `org_id`. `acting_on_behalf_of_user_id` must resolve to an active `OrgMembership` in `org_id`, or `422`. On success: creates `Actor(actor_type=ai_agent)` + `AIAgent` row (`issued_at=now`, `revoked_at=NULL`, `last_used_at=NULL`), generates the raw key, and returns `{agent_id, agent_name, api_key, key_prefix}` — `api_key` is the full raw `tnx_agent_...` value, shown exactly once, never retrievable again (only `AIAgent.key_hash` is persisted). Caller with zero `OrgMembership` in `org_id` → `404` (NFR-19); membership present but missing `ai_agent.create` → `403`.
+
+`POST /orgs/{org_id}/agents/{agent_id}/revoke` (AUTH-4): same human-only + `require_permission("ai_agent.update")` gate as issuance. Sets `AIAgent.revoked_at = now()`; idempotent — revoking an already-revoked agent returns `200` with the existing `revoked_at`, not an error. A revoked agent's key is rejected (`401 invalid_token`, same generic body as every other `get_current_actor` rejection) on its very next use — checked via `revoked_at IS NULL` at the lookup itself, not a separate cache/blocklist.
 
 `POST /auth/logout` request: no body, `Authorization: Bearer <access_token>` required — the only input beyond that is the `refresh_token` httpOnly cookie, if present (never a request field). Response: `204 No Content`, no body — every other auth route returns a schema because it carries data; logout carries none. Per [ADR-0014](../adr/0014-logout-session-revocation-policy.md):
 - Revokes only the **current session's** refresh token (`revoked_reason="logout"`), scoped to the authenticated caller's `user_id` — never every session for the user ("log out everywhere" is out of scope).
@@ -124,6 +129,7 @@ Single generic code for every `get_current_actor` rejection reason — missing/m
 ```
 {"code": "actor_forbidden", "message": "This action is restricted to human users.", "field_errors": null}
 ```
+Same `actor_forbidden` shape is reused verbatim for an `AIAgent` bearer credential calling `POST /orgs/{org_id}/agents` or `.../revoke` (NFR-17, [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md)) — one human-only-gate error code across both enforcement points, not a route-specific variant.
 
 **403, login with valid credentials but no active org membership:**
 ```

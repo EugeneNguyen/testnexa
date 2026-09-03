@@ -1,8 +1,10 @@
 """FastAPI application entrypoint.
 
 AUTH-1 adds the first real feature route (`POST /api/v1/auth/login`)
-alongside the scaffold's health check. Remaining feature/business routes and
-full RBAC enforcement are deferred to later tasks.
+alongside the scaffold's health check. AUTH-4 adds the agent-credential
+routes (`app/api/routes/agents.py`). Remaining feature/business routes and
+full RBAC enforcement (beyond AUTH-4's minimal `has_permission`/
+`require_permission` plumbing, ADR-0015) are deferred to later tasks.
 
 AUTH-2 (Task 1 fix round 1) adds a global `HTTPException` handler — see
 `http_exception_handler` below for why this is needed even though `auth.py`'s
@@ -21,7 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.requests import Request
 from fastapi.responses import JSONResponse
 
-from app.api.routes import auth, health
+from app.api.routes import agents, auth, health
 
 app = FastAPI(title="TestNexa API", version="0.1.0")
 
@@ -70,3 +72,5 @@ app.include_router(health.router)
 # `/api/*` straight through to the backend, so the router itself must be
 # mounted under this prefix (unlike the unprefixed health route).
 app.include_router(auth.router, prefix="/api/v1", tags=["auth"])
+# AUTH-4/ADR-0015: agent credential issuance/revocation routes.
+app.include_router(agents.router, prefix="/api/v1", tags=["agents"])
