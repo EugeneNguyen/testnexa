@@ -1,0 +1,1 @@
+Bespoke workflow screens (Login, OrgSwitcher, RequirementDetail, TestSuiteBuilder, TestExecutionRunner, TraceabilityMatrix, etc.) ship with feature work; this directory is a structural placeholder only.
