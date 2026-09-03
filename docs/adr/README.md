@@ -1,0 +1,19 @@
+# Architecture Decision Records
+
+Index of ADRs for the Project Scaffold. Format: [MADR](https://adr.github.io/madr/)-style (Context / Decision / Consequences / Alternatives). First ADRs for this repo — no prior `docs/adr/` existed (noted in the [scaffold design spec](../superpowers/specs/2026-09-03-project-scaffold-design.md)).
+
+| # | Title | Status |
+|---|---|---|
+| [0001](0001-full-erd-scope-over-validated-mvp.md) | Full 07 ERD scope over validated MVP | Accepted |
+| [0002](0002-backend-framework-orm-migrations.md) | Backend framework/ORM/migrations: FastAPI + PostgreSQL + SQLAlchemy 2.0 + Alembic | Accepted |
+| [0003](0003-auth-token-strategy.md) | Auth & token strategy: JWT + DB-revocable refresh + AIAgent API key | Accepted |
+| [0004](0004-rbac-design.md) | RBAC: dependency-injected permission checks over shared Actor | Accepted |
+| [0005](0005-traceability-link-dedicated-join-tables.md) | TraceabilityLink as dedicated join tables, not a generic polymorphic table | Accepted |
+| [0006](0006-test-condition-optional.md) | TestCondition is optional, not mandatory | Accepted |
+| [0007](0007-real-multi-tenancy.md) | Real multi-org multi-tenancy (not collapsed to one row) | Accepted |
+| [0008](0008-uuid-primary-keys.md) | All primary keys are UUIDs, no auto-increment | Accepted |
+| [0009](0009-frontend-stack.md) | Frontend stack: Vite + React Router + TanStack Query + RHF + Zod + Tailwind | Accepted |
+| [0010](0010-single-port-docker-compose-topology.md) | Single-port Docker Compose topology, dev+prod profiles | Accepted |
+
+**Deciders on all ADRs below:** xuanbinh91@gmail.com (CTO), unless noted otherwise.
+**Date:** 2026-09-03
