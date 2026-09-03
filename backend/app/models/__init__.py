@@ -22,7 +22,7 @@ from app.models.assets import (
     TestSuite,
     TestSuiteTestCase,
 )
-from app.models.auth import AuthIdentity, RefreshToken
+from app.models.auth import AuthIdentity, LoginAttempt, RefreshToken
 from app.models.execution import Defect, TestExecution, TestLog
 from app.models.governance import Approval, Attachment, RiskItem
 from app.models.planning import (
@@ -58,6 +58,7 @@ __all__ = [
     "Defect",
     "EntryExitCriteria",
     "Environment",
+    "LoginAttempt",
     "OrgMembership",
     "Organization",
     "Permission",

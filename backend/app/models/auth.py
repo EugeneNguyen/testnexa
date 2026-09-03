@@ -1,14 +1,15 @@
-"""Auth cluster: AuthIdentity, RefreshToken.
+"""Auth cluster: AuthIdentity, RefreshToken, LoginAttempt.
 
 Source: Database Document §3.2. Only `provider="local"` has working auth
 logic anywhere in this scaffold; other providers are schema-ready, unimplemented.
+`LoginAttempt` backs the AUTH-1/ADR-0011 login throttle (NFR-11).
 """
 
 import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Uuid
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Uuid, func
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -60,3 +61,29 @@ class RefreshToken(Base):
     revoked_reason: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = created_at_column()
     updated_at: Mapped[datetime] = updated_at_column()
+
+
+class LoginAttempt(Base):
+    """Not in the 07 ERD — added per ADR-0011 for the login throttle (NFR-11).
+
+    Append-only: no `updated_at`, no update/delete API path (same
+    immutability pattern as `TestLog`) — the throttle query is "count
+    `succeeded = false` rows for this `(email, client_ip)` within the last 15
+    minutes." `email` is stored lowercased and recorded even when it doesn't
+    resolve to a `User`, so a throttle check works identically for a
+    nonexistent email.
+    """
+
+    __tablename__ = "login_attempt"
+    __table_args__ = (
+        Index("ix_login_attempt_email_ip_attempted_at", "email", "client_ip", "attempted_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=generate_uuid7)
+    email: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    client_ip: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    succeeded: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    attempted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    created_at: Mapped[datetime] = created_at_column()
