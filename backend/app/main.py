@@ -3,10 +3,23 @@
 AUTH-1 adds the first real feature route (`POST /api/v1/auth/login`)
 alongside the scaffold's health check. Remaining feature/business routes and
 full RBAC enforcement are deferred to later tasks.
+
+AUTH-2 (Task 1 fix round 1) adds a global `HTTPException` handler — see
+`http_exception_handler` below for why this is needed even though `auth.py`'s
+own module docstring documents avoiding `HTTPException` for exactly this
+reason: that workaround (return a `JSONResponse` directly from the route) is
+only available to route handlers, not to a FastAPI *dependency* like
+`app.core.rbac.get_current_actor`, which has no response object of its own
+to return — it can only raise. This handler is what makes the API Document
+§1/NFR-8 flat error-body contract hold for `HTTPException`s raised from
+dependencies (and any future route that raises `HTTPException` directly
+instead of using `auth.py`'s `_error()`/`JSONResponse` pattern).
 """
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.requests import Request
+from fastapi.responses import JSONResponse
 
 from app.api.routes import auth, health
 
@@ -24,6 +37,33 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
+    """Flatten `HTTPException(detail={...})` to the API Document §1/NFR-8 shape.
+
+    FastAPI's default `HTTPException` handler wraps whatever `detail` is
+    passed one level deeper (`{"detail": {...}}` on the wire), which does not
+    match this API's `{"code", "message", "field_errors"}` top-level error
+    shape. `auth.py`'s login route sidesteps this by returning a
+    `JSONResponse` directly rather than raising `HTTPException` at all (see
+    that module's own docstring) — but that option only exists for a route
+    handler, not for a dependency like `get_current_actor`, which can only
+    raise. This handler makes the same flat contract hold for `HTTPException`
+    raised anywhere else in the app (dependency or route), starting with
+    `get_current_actor`'s 401.
+    """
+    if isinstance(exc.detail, dict) and {"code", "message"} <= exc.detail.keys():
+        return JSONResponse(status_code=exc.status_code, content=exc.detail)
+    # Fallback for a plain-string-detail HTTPException (shouldn't happen in
+    # this codebase's own routes/dependencies, but FastAPI/Starlette
+    # internals — e.g. 404 on an unmatched route — can still raise one).
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"code": "http_error", "message": str(exc.detail), "field_errors": None},
+    )
+
 
 app.include_router(health.router)
 # API design doc §1: base path `/api/v1`. nginx (nginx.dev.conf) proxies

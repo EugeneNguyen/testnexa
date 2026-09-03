@@ -1,15 +1,18 @@
 """Unit tests for `app/core/rbac.py`'s `get_current_actor` (AUTH-2, Task 1).
 
-Pure in-process tests: no DB, no live server. Mirrors the style of
-`tests/unit/test_security.py`. `get_current_actor` is a FastAPI dependency
-that needs an `AsyncSession` to look up `User` by the token's `sub` claim —
-since this repo's `CLAUDE.md` forbids a live DB/network in unit tests and no
-existing unit test establishes a DB-mocking convention yet, these tests use a
-minimal hand-rolled fake session (`_FakeSession`) whose `execute()` returns a
-fake `Result` wired to return a preset `User | None` from
-`.scalars().first()` — the only method `get_current_actor` calls on the
-session. This keeps the fake to exactly the surface under test rather than
-pulling in a generic SQLAlchemy-mocking library for one call site.
+Pure in-process tests: no DB, no live server (except
+`test_401_response_body_is_flat_not_nested_under_detail`, which spins up an
+in-process `TestClient` — still no real network/DB, `httpx`'s ASGI transport
+never leaves the process). Mirrors the style of `tests/unit/test_security.py`.
+`get_current_actor` is a FastAPI dependency that needs an `AsyncSession` to
+look up `User` by the token's `sub` claim — since this repo's `CLAUDE.md`
+forbids a live DB/network in unit tests and no existing unit test establishes
+a DB-mocking convention yet, these tests use a minimal hand-rolled fake
+session (`_FakeSession`) whose `execute()` returns a fake `Result` wired to
+return a preset `User | None` from `.scalars().first()` — the only method
+`get_current_actor` calls on the session. This keeps the fake to exactly the
+surface under test rather than pulling in a generic SQLAlchemy-mocking
+library for one call site.
 
 `require_permission`/`has_permission`/`require_human_actor` stay
 `NotImplementedError` per this task's scope — not covered here.
@@ -19,12 +22,14 @@ import uuid
 
 import jwt
 import pytest
-from fastapi import HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
+from fastapi.testclient import TestClient
 
 from app.core.config import settings
 from app.core.rbac import get_current_actor
 from app.core.security import create_access_token
+from app.main import http_exception_handler
 from app.models.actor import User
 
 
@@ -150,17 +155,56 @@ async def test_missing_credentials_raises_401() -> None:
     assert session.executed is False
 
 
-# --- error shape ------------------------------------------------------------
+# --- 401 error shape on the wire ------------------------------------------------------------
+#
+# Fix round 1 (Critical finding): the previous version of this test
+# (`test_401_error_body_matches_api_error_shape`) only asserted against
+# `exc_info.value.detail` — the Python-level `HTTPException.detail` dict —
+# which is NOT what FastAPI serializes onto the wire by default (it nests it
+# one level deeper as `{"detail": {...}}`). That made the test's own name a
+# false promise: it could not have caught the missing-global-handler bug.
+# Replaced with a real `TestClient` hitting a real ASGI app wired with the
+# actual `app.main.http_exception_handler` and the actual `get_current_actor`
+# dependency, asserting the literal JSON response body FastAPI/Starlette
+# produce for a 401 raised inside a dependency.
 
 
-async def test_401_error_body_matches_api_error_shape() -> None:
-    session = _FakeSession(None)
+def _build_protected_test_app() -> FastAPI:
+    """Throwaway FastAPI app, not `app.main.app` itself.
 
-    with pytest.raises(HTTPException) as exc_info:
-        await get_current_actor(credentials=None, db=session)
+    Registers the real `http_exception_handler` (imported from `app.main`,
+    not reimplemented here) plus one throwaway route depending on the real
+    `get_current_actor`. A standalone app rather than mounting onto the
+    shared `app.main.app`/`app.api.routes.auth` router: this task does not
+    own `routes/auth.py` (Task 2's `GET /auth/me` will be the real route
+    exercising this exact path against the real app), and a shared global
+    `app` singleton shouldn't gain a test-only route as a side effect of
+    running this test suite.
+    """
+    test_app = FastAPI()
+    test_app.add_exception_handler(HTTPException, http_exception_handler)
 
-    detail = exc_info.value.detail
-    assert set(detail.keys()) == {"code", "message", "field_errors"}
-    assert detail["field_errors"] is None
-    assert isinstance(detail["code"], str)
-    assert isinstance(detail["message"], str)
+    @test_app.get("/__protected")
+    async def _protected(actor: User = Depends(get_current_actor)) -> dict[str, str]:
+        return {"actor_id": str(actor.actor_id)}
+
+    return test_app
+
+
+def test_401_response_body_is_flat_not_nested_under_detail() -> None:
+    """API Document §1 / NFR-8: every non-2xx response body is the flat
+    `{"code", "message", "field_errors"}` shape — never FastAPI's default
+    `{"detail": {...}}` nesting. Calling with no `Authorization` header hits
+    `get_current_actor`'s `credentials is None` 401 path.
+    """
+    client = TestClient(_build_protected_test_app())
+
+    response = client.get("/__protected")
+
+    assert response.status_code == 401
+    body = response.json()
+    assert "detail" not in body
+    assert set(body.keys()) == {"code", "message", "field_errors"}
+    assert body["field_errors"] is None
+    assert isinstance(body["code"], str)
+    assert isinstance(body["message"], str)

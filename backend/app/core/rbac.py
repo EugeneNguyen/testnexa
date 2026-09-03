@@ -50,12 +50,16 @@ def _unauthorized() -> HTTPException:
 
     A `fastapi.HTTPException`, not a `JSONResponse` like `auth.py`'s
     `_error()` — `get_current_actor` is a dependency, not a route handler,
-    and this scaffold has no global exception handler to unwrap a
-    `JSONResponse` returned from a dependency. FastAPI's default
-    `HTTPException` handler serializes `detail` verbatim as the response
-    body (no extra `{"detail": ...}` wrapping for a dict `detail`), so this
-    still matches the API Document §1 `{"code", "message", "field_errors"}`
-    shape on the wire.
+    so it has no response object of its own to return, only something to
+    raise. Raising `HTTPException(detail={...})` alone is NOT sufficient to
+    get the flat API Document §1 `{"code", "message", "field_errors"}` shape
+    on the wire: FastAPI's default handler wraps `detail` one level deeper
+    (`{"detail": {...}}`), which is exactly the pitfall `auth.py`'s module
+    docstring documents avoiding via `JSONResponse`. The flattening for this
+    dependency's 401 (and any other `HTTPException` raised anywhere in the
+    app) is instead done by the global `http_exception_handler` registered
+    in `app/main.py` — that handler, not this function alone, is what makes
+    the shape hold on the wire.
     """
     return HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=_INVALID_TOKEN_ERROR)
 
