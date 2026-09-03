@@ -7,7 +7,7 @@ Source: API Document §2 (`POST /auth/login`, `POST /auth/refresh`,
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
 
 class LoginRequest(BaseModel):
@@ -15,6 +15,29 @@ class LoginRequest(BaseModel):
 
     email: EmailStr
     password: str
+
+
+# RBAC-1 / ADR-0016: same `slug` pattern `CreateOrgRequest` (`app/schemas/
+# organizations.py`) validates — kept as a private literal here (not
+# imported from that module) to avoid a schemas-importing-schemas cycle;
+# `app/schemas/organizations.py` imports `OrgSummary` *from* this module,
+# so the reverse import would be circular.
+_SLUG_PATTERN = r"^[a-z0-9-]+$"
+
+
+class SignupRequest(BaseModel):
+    """Body of `POST /auth/signup` (RBAC-1, ADR-0016).
+
+    Bootstrap-only: creates a brand-new `User` + the deployment's first
+    `Organization` in one call. `org_slug` is user-supplied, never
+    server-derived from `org_name` (ADR-0016 decision Q5).
+    """
+
+    name: str
+    email: EmailStr
+    password: str
+    org_name: str
+    org_slug: str = Field(pattern=_SLUG_PATTERN)
 
 
 class OrgSummary(BaseModel):

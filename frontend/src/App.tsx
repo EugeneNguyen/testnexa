@@ -7,6 +7,7 @@ import { apiFetch } from "./lib/api/client";
 import Login from "./pages/workflows/Login";
 import OrgHome from "./pages/workflows/OrgHome";
 import OrgPicker from "./pages/workflows/OrgPicker";
+import Signup from "./pages/workflows/Signup";
 
 interface HealthResponse {
   status: string;
@@ -58,6 +59,7 @@ function App() {
       <Routes>
         <Route path="/" element={<ScaffoldVerificationPage />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/signup" element={<Signup />} />
         <Route
           path="/orgs/pick"
           element={

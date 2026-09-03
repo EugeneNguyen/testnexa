@@ -12,7 +12,7 @@
  * to avoid double-submit.
  */
 import { FormEvent, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   CAlert,
   CButton,
@@ -97,6 +97,9 @@ function Login() {
                     {submitting ? "Logging in..." : "Log in"}
                   </CButton>
                 </CForm>
+                <p className="mt-3 mb-0 text-body-secondary small">
+                  New to TestNexa? <Link to="/signup">Sign up</Link>
+                </p>
               </CCardBody>
             </CCard>
           </CCol>

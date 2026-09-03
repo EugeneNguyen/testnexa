@@ -82,7 +82,13 @@ import {
   useMemo,
   useState,
 } from "react";
-import { login as loginRequest, logout as logoutRequest, OrgSummary } from "../lib/api/auth";
+import {
+  login as loginRequest,
+  logout as logoutRequest,
+  OrgSummary,
+  signup as signupRequest,
+  SignupPayload,
+} from "../lib/api/auth";
 import { requestRefresh } from "../lib/api/client";
 import { clearAccessToken, getAccessToken, setAccessToken as setStoredAccessToken, subscribe } from "../lib/auth/tokenStore";
 
@@ -92,6 +98,7 @@ interface AuthContextValue {
   orgs: OrgSummary[];
   isInitializing: boolean;
   login: (email: string, password: string) => Promise<void>;
+  signup: (payload: SignupPayload) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -153,6 +160,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setOrgs(response.orgs);
   }, []);
 
+  // RBAC-1 bootstrap signup: same post-success state update as `login()`
+  // above — `POST /auth/signup`'s response is `LoginResponse`-shaped
+  // (`org_context: "auto"`, `orgs: [the new org]`), so this mirrors `login`
+  // field-for-field rather than introducing a distinct code path.
+  const signup = useCallback(async (payload: SignupPayload) => {
+    const response = await signupRequest(payload);
+    setStoredAccessToken(response.access_token);
+    setOrgContext(response.org_context);
+    setOrgs(response.orgs);
+  }, []);
+
   const logout = useCallback(async () => {
     try {
       await logoutRequest();
@@ -168,8 +186,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ accessToken, orgContext, orgs, isInitializing, login, logout }),
-    [accessToken, orgContext, orgs, isInitializing, login, logout],
+    () => ({ accessToken, orgContext, orgs, isInitializing, login, signup, logout }),
+    [accessToken, orgContext, orgs, isInitializing, login, signup, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

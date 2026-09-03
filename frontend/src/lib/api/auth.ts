@@ -50,6 +50,47 @@ export async function login(email: string, password: string): Promise<LoginRespo
   }
 }
 
+/**
+ * RBAC-1 bootstrap signup request body (`POST /auth/signup`, ADR-0016).
+ */
+export interface SignupPayload {
+  name: string;
+  email: string;
+  password: string;
+  org_name: string;
+  org_slug: string;
+}
+
+/**
+ * RBAC-1 bootstrap signup call.
+ *
+ * Source: API Document §2 (`POST /auth/signup` request/response contract),
+ * ADR-0016 (organization bootstrap & creation flow).
+ *
+ * Public — no bearer token required or sent. `credentials: "include"` is
+ * required for the same reason `login()` needs it: the backend sets the
+ * httpOnly `refresh_token` cookie on success. Response is `LoginResponse`-
+ * shaped (`org_context: "auto"`, `orgs: [the new org]`) — reuses the same
+ * type `login()` returns rather than a separate `SignupResponse` interface,
+ * since the two are byte-for-byte the same shape on the wire.
+ *
+ * Rejects with an `ApiError` on failure: `409 signup_closed` once an
+ * Organization already exists deployment-wide, `422` on an `email` or
+ * `org_slug` uniqueness collision (`error.body`'s `field_errors` carries
+ * which field, per the API Document §1 shape) — both are left as-is here
+ * (unlike `login()`'s 422 rewrite) since the backend's `field_errors` body
+ * on this route's 422 is directly renderable, not the generic Pydantic
+ * validation-error shape `login()` guards against.
+ */
+export async function signup(payload: SignupPayload): Promise<LoginResponse> {
+  return apiFetch<LoginResponse>("/api/v1/auth/signup", {
+    method: "POST",
+    credentials: "include",
+    skipAuthRetry: true,
+    body: JSON.stringify(payload),
+  });
+}
+
 export interface RefreshResponse {
   access_token: string;
 }
