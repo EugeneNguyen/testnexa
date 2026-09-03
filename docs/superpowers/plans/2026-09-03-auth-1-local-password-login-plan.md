@@ -21,6 +21,8 @@ AUTH-1 is now a real vertical slice on top of a working scaffold, not a bootstra
 - `RefreshToken` row is created and persisted at login time (hash only, per `hash_refresh_token`) even though rotation/revocation logic is AUTH-2 — otherwise AUTH-2 has nothing to revoke.
 - Frontend: `Login` page (email+password form), `OrgPicker` page, `AuthContext` (access token in memory), `lib/api/auth.ts` login call built on the existing `apiFetch` wrapper (`frontend/src/lib/api/client.ts` — already exists, do not recreate).
 - Generic 401 body (API design doc's standard error shape: `{code, message, field_errors: null}`) on bad credentials, timing-safe against user enumeration.
+- Zero-eligible-org rejection: no `active` `OrgMembership` → 403 (not 401 — credentials were correct), distinct error code (e.g. `no_active_organization`), no token issued.
+- Basic login throttle: per-(IP, email) failed-attempt counter, in-process/DB-backed (no Redis per ADR-0003's existing no-Redis stance) — 5 failures / 15 min window → 429. Full lockout/notification policy stays a separate follow-up story; this is the minimal always-on guard, in the same route either way.
 
 **Explicitly out of scope (belongs to later stories):**
 - `/auth/refresh`, `/auth/logout`, `/auth/me` routes — AUTH-2/AUTH-3.
@@ -35,8 +37,9 @@ AUTH-1 is now a real vertical slice on top of a working scaffold, not a bootstra
 - `backend/app/schemas/auth.py` — `LoginRequest`, `LoginResponse`, `OrgSummary` (Pydantic v2)
 - `backend/app/api/routes/auth.py` — `POST /auth/login`
 - `backend/app/api/deps.py` — `get_db` (doesn't exist yet; check `app/db/session.py` for the session factory to wrap)
+- `backend/app/core/rate_limit.py` (or a `LoginAttempt` model/table + query helper — table name TBD at implementation time) — per-(IP, email) failed-attempt counter for the 429 throttle
 - `backend/tests/unit/test_security.py` — hash/verify roundtrip, token encode/decode roundtrip, expiry claim correctness
-- `backend/tests/integration/test_auth_login.py` — valid login, invalid login (401 generic, same shape for wrong-password vs no-such-email), single-org auto-select, multi-org picker payload, suspended-membership exclusion, plaintext-not-logged check
+- `backend/tests/integration/test_auth_login.py` — valid login, invalid login (401 generic, same shape for wrong-password vs no-such-email), single-org auto-select, multi-org picker payload, suspended-membership exclusion, zero-active-org (403), throttle triggers 429 after 5 fails, plaintext-not-logged check
 
 **Backend — modify**
 - `backend/app/core/security.py` — replace 6 of 9 stub functions (see §1) with real implementations
@@ -58,19 +61,19 @@ No infra files (`docker-compose.yml`, Dockerfiles, `alembic.ini`, migrations) ne
 
 - **User-enumeration timing leak:** if email not found, must still run an argon2 verify against a dummy hash before returning 401, so response time doesn't distinguish "no such email" from "wrong password."
 - **Suspended `OrgMembership` — resolved:** RBAC-tenancy story is explicit: "when they suspend a member, ... all API access for that org is denied until reactivated." So a suspended membership must not appear in the login org list — only `status=active` memberships count toward `org_context: "auto"|"picker"` resolution. `invited` (not yet accepted) also excluded — an invited-but-not-active member has no working access yet either.
-- **Zero orgs (only suspended/invited, or none at all):** still genuinely unresolved by any doc — see open question §4.1.
+- **Zero orgs (only suspended/invited, or none at all) — resolved:** reject at login with 403 `no_active_organization`, distinct from the generic 401 (credentials were correct, there's just nowhere to send them). No token issued.
 - **Case sensitivity:** email lookup should be case-insensitive (store/compare lowercased) to avoid "works sometimes" bug reports.
 - **Multiple `AuthIdentity` rows per user:** schema supports multiple providers; AUTH-1 only implements `provider=local`. Login lookup must filter to `provider=local` explicitly, not just by email, so a future OIDC-only user with no local identity gets the same generic 401, not a 500.
 - **Plaintext password never logged:** applies to app logs, error tracebacks, and any request-logging middleware — password field must be excluded/redacted at the middleware level, not just "don't log it" in the route handler.
 - **Argon2 parameters:** need explicit memory/time-cost params (not library defaults) so hash cost is a deliberate decision, not accidental.
 - **Refresh token storage:** AC for AUTH-1 only requires that login *returns* a refresh token; the DB table and revocation logic are real per scaffold spec ("stored server-side... not purely stateless") — the `RefreshToken` row must be created at login time even though rotation/revocation logic lands in AUTH-2, otherwise AUTH-2 has nothing to revoke.
-- **Brute-force / credential stuffing:** AC doesn't mention rate limiting or lockout, but a login endpoint without either is a real gap — flagged as open question, not silently added or silently skipped.
+- **Brute-force / credential stuffing — resolved:** minimal throttle in scope for AUTH-1 (see §1) — 5 failed attempts per (IP, email) per 15 min → 429. Full lockout/notification policy explicitly deferred to a separate follow-up story, not silently dropped.
 
-## 4. Open questions (remaining — most of the original 7 are resolved by scaffold-era docs)
+## 4. Open questions — all resolved
 
-1. **Zero eligible orgs at login** (no `active` `OrgMembership` row at all, or only `suspended`/`invited` ones): AC only covers the 1-org and 2+-org cases. Needs a decision — reject login outright with a distinct message (e.g. "no active organization"), or let the token issue with an empty `orgs: []` and let the frontend show a dead-end state? Leaning toward rejecting at login (403/409, not the generic 401 — this isn't a credentials problem) but that's a product call, not mine to default silently.
-2. **Rate limiting / lockout policy** — not in the AC, not in ADR-0003, not in the API design doc's NFR list. A login endpoint shipping with neither is a real gap. Confirm whether it's explicitly deferred to a later story or should be folded into AUTH-1's definition of done.
-3. **Dev/test provisioning path** — confirmed no seed data beyond system roles/taxonomy (scaffold plan explicitly: "No demo Org/Project/sample records"), and real user creation is RBAC-1's signup/bootstrap flow, not AUTH-1. Backend integration tests will create `User`/`Organization`/`OrgMembership`/`AuthIdentity` rows directly via fixtures, bypassing the API — confirming that's acceptable rather than expecting AUTH-1 to also stand up a provisioning path.
+1. ~~Zero eligible orgs at login~~ → 403 `no_active_organization`, no token issued (CTO decision, 2026-09-03).
+2. ~~Rate limiting / lockout policy~~ → minimal per-(IP, email) throttle in AUTH-1 scope; full policy deferred to a follow-up story (CTO decision, 2026-09-03).
+3. **Dev/test provisioning path** — confirmed no seed data beyond system roles/taxonomy (scaffold plan explicitly: "No demo Org/Project/sample records"), and real user creation is RBAC-1's signup/bootstrap flow, not AUTH-1. Backend integration tests create `User`/`Organization`/`OrgMembership`/`AuthIdentity` rows directly via fixtures, bypassing the API.
 
 **Resolved by scaffold-era docs (no longer open):**
 - Username vs. email → email-only; `User.email` is the unique login key, no `username` field exists on the model.
@@ -78,6 +81,6 @@ No infra files (`docker-compose.yml`, Dockerfiles, `alembic.ini`, migrations) ne
 - Token TTLs / signing key source → `Settings.JWT_ACCESS_TTL_MINUTES=15`, `JWT_REFRESH_TTL_DAYS=30`, `JWT_SECRET` env var already defined in `app/core/config.py`.
 - Scope-bootstrap ordering → moot, scaffold merged separately; AUTH-1 is now a slice on top of it.
 
-## 5. Not decided by this document
+## 5. Status
 
-No code, migrations, or config are created by this plan. Ready to implement pending answers to §4.1/§4.2 (§4.3 has a reasonable default — flag, don't block on it).
+No code, migrations, or config are created by this plan. All open questions resolved — ready to implement pending explicit go-ahead.
