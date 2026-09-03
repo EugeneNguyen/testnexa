@@ -34,6 +34,9 @@ REST over HTTPS, JSON bodies, base path `/api/v1`. FastAPI auto-generates the Op
 | POST | `/orgs` | `organization.create` in any org (any-org gate, not path-scoped) | FR-RBAC-1 — existing org_admin creates a further Organization |
 | POST | `/orgs/{org_id}/agents` | `ai_agent.create` (org_admin only) | FR-AUTH-4 — issues AIAgent + one-time API key |
 | POST | `/orgs/{org_id}/agents/{agent_id}/revoke` | `ai_agent.update` | FR-AUTH-4 |
+| POST | `/orgs/{org_id}/projects` | `project.create` | FR-PROJ-1 — creates Project, auto-assigns creator a project-scoped `test_manager` `RoleAssignment` |
+| GET | `/projects/{id}` | `project.read` | FR-PROJ-1 — 404 if cross-tenant, org resolved from the row |
+| PATCH | `/projects/{id}` | `project.update` | FR-PROJ-1 — partial update (`name`, `standards_profile`) |
 
 `POST /auth/login` request: `{email, password}`. Response: `{access_token, org_context: "auto" | "picker", orgs: [...] }` per AUTH-1's single-org-vs-multi-org branch; refresh token is set as an httpOnly cookie, never in the JSON body.
 
@@ -60,6 +63,10 @@ REST over HTTPS, JSON bodies, base path `/api/v1`. FastAPI auto-generates the Op
 
 `POST /orgs/{org_id}/agents/{agent_id}/revoke` (AUTH-4): same human-only + `require_permission("ai_agent.update")` gate as issuance. Sets `AIAgent.revoked_at = now()`; idempotent — revoking an already-revoked agent returns `200` with the existing `revoked_at`, not an error. A revoked agent's key is rejected (`401 invalid_token`, same generic body as every other `get_current_actor` rejection) on its very next use — checked via `revoked_at IS NULL` at the lookup itself, not a separate cache/blocklist.
 
+`POST /orgs/{org_id}/projects` (PROJ-1, [ADR-0017](../adr/0017-project-creation-flow.md)) request: `{name, standards_profile?}`. Bespoke, org-path-scoped — same `require_permission("project.create")` + any-status-`OrgMembership` 404-vs-403 boundary as `/orgs/{org_id}/agents*` (no member of `org_id` at all → `404`; member but missing `project.create` → `403`). `standards_profile` omitted → inherits `Organization.default_standards_profile` (one-time copy at creation, not a live reference); supplied (including explicit `null`) → used as given. `(org_id, name)` collision → `422`, same shape/posture as `POST /orgs`'s slug collision. On success: creates `Project` + a project-scoped `RoleAssignment` (`role` = seeded `test_manager`) for the creator, unconditionally — not derived from the creator's own org-level role. Response: `{id, org_id, name, standards_profile}`.
+
+`GET /projects/{id}` / `PATCH /projects/{id}` (PROJ-1): no `org_id` in the path — the row is fetched first and its own `org_id` used for the 404-vs-403 boundary (missing row or caller has no `OrgMembership` in the row's org → `404`; membership present but missing `project.read`/`.update` → `403`). `PATCH` body is partial (`name?`, `standards_profile?`); an explicit `null` for `standards_profile` clears it, an omitted field leaves it unchanged. Rename collision on `(org_id, name)` → `422`.
+
 `POST /auth/logout` request: no body, `Authorization: Bearer <access_token>` required — the only input beyond that is the `refresh_token` httpOnly cookie, if present (never a request field). Response: `204 No Content`, no body — every other auth route returns a schema because it carries data; logout carries none. Per [ADR-0014](../adr/0014-logout-session-revocation-policy.md):
 - Revokes only the **current session's** refresh token (`revoked_reason="logout"`), scoped to the authenticated caller's `user_id` — never every session for the user ("log out everywhere" is out of scope).
 - **Idempotent**: missing cookie, hash not found, already-revoked/rotated-out, or a cookie belonging to a different user all return the same `204`, nothing revoked — logout never errors on the conditions it exists to make harmless. The only non-2xx outcome is a missing/invalid **access** token, rejected by the same `get_current_actor` dependency `GET /auth/me` uses (generic 401, `code: "invalid_token"`).
@@ -78,10 +85,11 @@ One factory, parametrized per entity+schema, producing 5 routes. Example shown f
 | PATCH | `/requirements/{id}` | `requirement.update` | partial update |
 | DELETE | `/requirements/{id}` | `requirement.delete` | hard delete for lookups; RESTRICT-blocked (409) if referenced, for core assets |
 
-Entities served by the generic factory: `Organization`\*, `Project`, `Release`, `Requirement`, `TestCondition`, `TestCase`, `TestStep`, `TestSuite`, `TestPlan`, `EntryExitCriteria`, `TestCycle`, `Environment`, `Defect`, `RiskItem`, `Attachment`, `Role`, `Permission`\*\*, `TestDesignTechnique`, `TestLevel`, `TestType`, `OrgMembership`, `RoleAssignment`.
+Entities served by the generic factory: `Organization`\*, `Project`\*\*\*, `Release`, `Requirement`, `TestCondition`, `TestCase`, `TestStep`, `TestSuite`, `TestPlan`, `EntryExitCriteria`, `TestCycle`, `Environment`, `Defect`, `RiskItem`, `Attachment`, `Role`, `Permission`\*\*, `TestDesignTechnique`, `TestLevel`, `TestType`, `OrgMembership`, `RoleAssignment`.
 
 \* `Organization` create is only reachable via `POST /auth/signup` or `POST /orgs` (§2, RBAC-1/[ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md)), never a bare `POST /organizations` — the generic factory still serves `GET`/`PATCH`/`DELETE /organizations/{id}` for this entity, only `create` is bespoke.
 \*\* `Permission` is read-only via the generic factory — the catalog is seeded, not user-editable, so only `GET` routes are registered for it.
+\*\*\* `Project` create is bespoke and org-path-scoped (`POST /orgs/{org_id}/projects`, §2, PROJ-1/[ADR-0017](../adr/0017-project-creation-flow.md)), same posture as `Organization`\*. Unlike `Organization`, `GET`/`PATCH /projects/{id}` are *also* already built bespoke (row-resolved `org_id`, no path segment) rather than deferred to the factory — their contract already matches what the eventual factory item-route would produce, so they're expected to be absorbed unchanged rather than rebuilt when §3 lands. `DELETE /projects/{id}` remains factory-deferred (no story has asked for Project deletion yet).
 
 ## 4. Bespoke routes
 
