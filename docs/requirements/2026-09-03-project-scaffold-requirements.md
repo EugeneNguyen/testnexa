@@ -121,6 +121,7 @@ FR-AUTH-4 delivers a minimal, generic `has_permission`/`require_permission` impl
 | NFR-17 | `AIAgent` credential issuance/revocation (`POST /orgs/{org_id}/agents`, `.../revoke`) is restricted to human `User` actors, independent of `RoleAssignment` contents — double-enforced (never seeded to an agent-eligible role bundle, and hardcoded at the route), same pattern as NFR-2/FR-GOV-1's human-only Approval rule. | AUTH-4 scope decision 2026-09-03, [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md) |
 | NFR-18 | Every successful `AIAgent` bearer authentication updates `AIAgent.last_used_at` — the `AuthIdentity.last_login_at`-equivalent audit field AC3 requires for agent sessions. A revoked agent's key is rejected (401) at the same lookup that would otherwise update this field, before any update occurs. | AUTH-4 AC3, [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md) |
 | NFR-19 | Org-scoped routes (first instance: `/orgs/{org_id}/agents*`) return 404 when the caller has no `OrgMembership` in the path's `org_id` at all, and 403 only when membership exists but the required permission is missing — generalizes NFR-1's cross-tenant-404 rule to the permission-check boundary, not just resource-fetch. | AUTH-4 scope decision 2026-09-03, [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md) |
+| NFR-20 | The RBAC-4 system-role seed migration is idempotent — re-running it inserts no duplicate `Role`/`Permission`/`RolePermission` rows, enforced by a partial unique index on `role.name WHERE org_id IS NULL` plus existence-checked inserts. | RBAC-4 scope decision 2026-09-03, [ADR-0004](../adr/0004-rbac-design.md) |
 
 ## 4. Traceability — requirements to architecture decisions
 
@@ -131,6 +132,7 @@ FR-AUTH-4 delivers a minimal, generic `has_permission`/`require_permission` impl
 | FR-TRACE-* | [ADR-0005](../adr/0005-traceability-link-dedicated-join-tables.md) TraceabilityLink join tables |
 | FR-REQ-2, FR-REQ-3 | [ADR-0006](../adr/0006-test-condition-optional.md) TestCondition optional |
 | FR-RBAC-1, FR-RBAC-2 | [ADR-0007](../adr/0007-real-multi-tenancy.md) Real multi-tenancy |
+| FR-RBAC-4, NFR-20 | [ADR-0004](../adr/0004-rbac-design.md) (system-role seeding: global templates, full catalog, idempotent migration) |
 | NFR-3 (UUID PKs) | [ADR-0008](../adr/0008-uuid-primary-keys.md) UUID primary keys |
 | FR-AUTH-* | [ADR-0003](../adr/0003-auth-token-strategy.md) Auth & token strategy |
 | NFR-11 | [ADR-0011](../adr/0011-login-rate-limiting.md) Login rate limiting |

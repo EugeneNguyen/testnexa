@@ -102,6 +102,20 @@ Composite index: `(email, client_ip, attempted_at)` — the throttle query is "c
 | is_system_role | boolean | not null, default false |
 | created_at, updated_at | timestamptz | not null |
 
+Partial unique index: `name` **WHERE `org_id IS NULL`** — prevents duplicate system-role templates (a plain `UNIQUE(org_id, name)` wouldn't catch this, since standard SQL treats `NULL <> NULL`, so two `(NULL, 'org_admin')` rows would not collide under a composite constraint). Org-scoped custom roles (`org_id` non-null) are unaffected by this index — nothing stops two different orgs each naming a custom role "QA Lead".
+
+**System roles (seeded by an Alembic data migration, RBAC-4 — not created through the UI, not per-org runtime logic):** 5 rows, all `org_id = NULL`, `is_system_role = true`: `org_admin`, `test_manager`, `tester`, `auditor`, `ai_agent_scoped`. Being global templates (not org-scoped rows), they're available for `RoleAssignment` in every org — the per-org scoping happens on `RoleAssignment.org_id`, not on `Role.org_id`. Bundles (against the full `Permission` catalog below):
+
+| Role | Bundle |
+|---|---|
+| `org_admin` | Every seeded `Permission` (superuser within its org) |
+| `test_manager` | `test_plan.*` + `.approve`, `entry_exit_criteria.*`, `test_cycle.*`, `test_suite.*`, `approval.create`/`.read`, `requirement.read`/`.export_rtm`, `defect.read`, `risk_item.*`, `test_case.read`, `test_step.read`, `test_condition.read` |
+| `tester` | `test_case.*`, `test_step.*`, `test_condition.*`, `test_execution.*`, `test_log.read`, `defect.create`/`.read`/`.update`, `test_plan.read`, `test_suite.read`, `requirement.read` — no `approval.*`, no `test_plan.approve` |
+| `auditor` | `.read` on all 29 resources + `requirement.export_rtm` — nothing else, no writes anywhere |
+| `ai_agent_scoped` | `test_case.create`/`.read`/`.update`, `test_step.create`/`.read`/`.update`, `test_execution.create`/`.read`/`.update`, `test_log.read` — no delete, no `approval.*`, no `role`/`role_assignment`/`org_membership` anything, and per [ADR-0004](../adr/0004-rbac-design.md)/RBAC-5, `test_plan.approve` is never seeded into this bundle |
+
+Downgrading the seed migration removes only the 5 `Role` rows (`RolePermission` rows cascade via the FK below); the `Permission` catalog rows are left in place.
+
 **Permission** *(global catalog, no org scoping)*
 | Column | Type | Constraints |
 |---|---|---|
@@ -110,6 +124,8 @@ Composite index: `(email, client_ip, attempted_at)` — the throttle query is "c
 | resource | varchar | not null |
 | action | varchar | not null |
 | created_at, updated_at | timestamptz | not null |
+
+**Seeded catalog (RBAC-4, ~100 rows):** standard CRUD (`create`/`read`/`update`/`delete`) for 23 resources — `organization`, `org_membership`, `role`, `role_assignment`, `project`, `release`, `requirement`, `test_condition`, `test_case`, `test_step`, `test_suite`, `test_plan`, `entry_exit_criteria`, `test_cycle`, `environment`, `test_execution`, `defect`, `risk_item`, `attachment`, `test_design_technique`, `test_level`, `test_type`, `approval`; `read`-only for 6 resources — `permission`, `test_log`, `requirement_test_case_link`, `requirement_test_condition_link`, `test_condition_test_case_link`, `test_case_defect_link`; plus 2 special verbs — `test_plan.approve`, `requirement.export_rtm`. Seeded as an explicit, hand-authored resource list in the same Alembic data migration as the system roles (not generated from the model registry at runtime) — see [API Document](../api/2026-09-03-api-design.md) §1.
 
 **RolePermission** *(junction)*
 | Column | Type | Constraints |

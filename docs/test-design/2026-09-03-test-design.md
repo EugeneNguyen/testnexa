@@ -37,17 +37,21 @@ Applies ISTQB CTFL v4.0.1 design techniques deliberately — the same vocabulary
 
 ## 3. RBAC — decision table (representative slice)
 
-Full table generated mechanically from the seeded `Permission` catalog × 5 system roles at test-authoring time (per Master Test Plan §14 risk mitigation); representative slice below illustrates the shape:
+Full table generated mechanically from the seeded `Permission` catalog (~100 codes, 29 resources — [Database Document](../database/2026-09-03-database-design.md) §3.3) × 5 system roles at test-authoring time (per Master Test Plan §14 risk mitigation); representative slice below illustrates the shape:
 
 | Permission code | org_admin | test_manager | tester | auditor | ai_agent_scoped |
 |---|---|---|---|---|---|
 | `test_plan.approve` | ✅ | ✅ | ❌ | ❌ | 🚫 (structurally excluded, never seeded) |
-| `test_case.create` | ✅ | ✅ | ✅ | ❌ | ✅ (project-scoped only) |
+| `test_case.create` | ✅ | ❌ | ✅ | ❌ | ✅ |
+| `test_case.delete` | ✅ | ❌ | ✅ | ❌ | ❌ (no delete in the ai_agent bundle) |
+| `test_case.read` | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `requirement.export_rtm` | ✅ | ✅ | ❌ | ✅ | ❌ |
-| `org.manage_members` | ✅ | ❌ | ❌ | ❌ | ❌ |
-| `*.delete` (any entity) | project-dependent | ❌ | ❌ | ❌ | ❌ |
+| `org_membership.create` | ✅ | ❌ | ❌ | ❌ | ❌ |
+| `role.create` | ✅ | ❌ | ❌ | ❌ | ❌ |
+| `.read` (any of the 29 resources) | ✅ | resource-dependent | resource-dependent | ✅ (all) | resource-dependent |
+| `.delete` (any resource) | ✅ (all) | resource-dependent | ❌ | ❌ | ❌ (never, by design) |
 
-Every ❌/✅/🚫 cell is a distinct test case: authenticate as an actor holding exactly that role, call the route gated by that permission code, assert the resulting status code (200/201 for ✅, 403 for ❌, 403-and-unconditional for 🚫 — RBAC-5's double-enforcement means the 🚫 cells are tested twice: once confirming the permission was never seeded, once confirming the endpoint rejects it even if it somehow were).
+`org_admin` has no ❌ cells at all — its assertion is "bundle size == full catalog size", not a per-code allow/deny walk. Every other ❌/✅/🚫 cell is a distinct test case: authenticate as an actor holding exactly that role, call the route gated by that permission code, assert the resulting status code (200/201 for ✅, 403 for ❌, 403-and-unconditional for 🚫 — RBAC-5's double-enforcement means the 🚫 cells are tested twice: once confirming the permission was never seeded, once confirming the endpoint rejects it even if it somehow were).
 
 **AUTH-4's slice of this table ([ADR-0015](../adr/0015-ai-agent-credential-mechanics.md)):** `has_permission`/`require_permission` themselves are implemented by AUTH-4, but only the org-wide-grant branch (`RoleAssignment.project_id IS NULL`) is exercised by AUTH-4's own tests, against a fixture-seeded custom `Role`/`Permission`/`RoleAssignment` (not the full 5-system-role catalog, which doesn't exist until RBAC-4's seed migration lands). The full decision table above — 5 named system roles × the complete seeded `Permission` catalog, including the project-scoped branch — remains RBAC-3/RBAC-4's own coverage obligation, not satisfied by AUTH-4.
 
@@ -114,3 +118,9 @@ Permission-parity is tested once generically (any entity, lacking `.create`/`.up
 ## 11. MCP-specific design notes
 
 Every MCP tool test asserts **contract parity** with its backing REST route (MCP-1's "no divergent data contract" requirement) — the same request/response fixture is run through both the REST endpoint and the MCP tool, and the two response bodies are diffed as part of the test, not just independently asserted against a hardcoded expectation.
+
+## 11. RBAC-4 seed migration — idempotency (negative/regression testing)
+
+**Re-run class:** apply the seed migration to a fresh DB, record `role`/`permission`/`role_permission` row counts, apply it a second time (simulating a redeploy re-running migrations), assert identical counts — no duplicate system-role rows, no unique-constraint error surfaced to the caller. Distinct from a plain "insert succeeds" happy-path test, since the risk here is silent duplication, not a crash.
+**Constraint-boundary class:** attempt to insert a second `Role` row with `name='org_admin'`, `org_id=NULL` directly (bypassing the migration's own existence check) → rejected by the partial unique index at the DB level, proving the constraint — not just the migration's own care — is what prevents duplicates.
+**Non-interference class:** insert a custom `Role` with `org_id` set to a real org and `name='org_admin'` (same name as a system role) → succeeds, proving the partial index scopes only to `org_id IS NULL` rows and doesn't block per-org custom-role naming.

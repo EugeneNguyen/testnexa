@@ -66,6 +66,10 @@ Concrete test cases derived from each user story's acceptance criteria. IDs grou
 | TC-RBAC-013 | Custom role creation | org_admin authenticated | Create a custom Role scoped to the org | Role created with `org_id` set, usable in RoleAssignment | P2 | RBAC-4 |
 | TC-RBAC-014 | ai_agent_scoped never has approval permission | Seed migration applied | Inspect `ai_agent_scoped`'s RolePermission rows | `test_plan.approve` absent | P1 | RBAC-5 |
 | TC-RBAC-015 | Reject adding approval permission to an AIAgent-targeted role | Custom role assigned to an AIAgent | Attempt to add `test_plan.approve` to that role via admin UI/API | Rejected | P1 | RBAC-5 |
+| TC-RBAC-016 | Seed migration idempotent on re-run | Seed migration already applied | Apply the same migration a second time | `role`/`permission`/`role_permission` row counts unchanged; no error | P1 | RBAC-4 |
+| TC-RBAC-017 | Partial unique index rejects duplicate system role | Seed migration applied | Insert a second `Role` row with `name='org_admin'`, `org_id=NULL` directly | Rejected by DB constraint | P1 | RBAC-4 |
+| TC-RBAC-018 | org_admin bundle equals full Permission catalog | Seed migration applied | Count `org_admin`'s `RolePermission` rows vs. total `Permission` row count | Counts equal — every seeded permission is granted | P1 | RBAC-4 |
+| TC-RBAC-019 | Downgrade removes roles, keeps Permission catalog | Seed migration applied | Run `alembic downgrade -1` for the seed migration | 5 system `Role` rows and their `RolePermission` rows gone; `Permission` catalog rows still present | P2 | RBAC-4 |
 
 ## Project & Release
 
