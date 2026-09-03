@@ -1,11 +1,43 @@
 """Password hashing, JWT issuance/verification, and AI-agent API-key handling.
 
-STUB MODULE — function signatures + docstrings only, per ADR-0003
-(auth & token strategy). No auth logic is implemented in this scaffold;
-implementation is deferred to a later task.
+AUTH-1 implements the human-login half of this module per ADR-0003 (auth &
+token strategy): argon2 password hashing, JWT access-token issuance/
+verification, and opaque refresh-token issuance/hashing. The
+`generate_api_key`/`hash_api_key`/`verify_api_key` trio stays
+`NotImplementedError` — AI-agent bearer auth is AUTH-4, out of scope here.
 """
 
+import hashlib
+import secrets
+from datetime import UTC, datetime, timedelta
 from typing import Any
+
+import jwt
+from passlib.context import CryptContext
+
+from app.core.config import settings
+
+# Argon2id via passlib, with explicit cost params rather than library
+# defaults (NFR-3, AUTH-1 scope plan edge case "Argon2 parameters"). These
+# sit inside OWASP's Argon2 cheat-sheet guidance for an interactive login
+# path: time_cost=3, memory_cost=65536 KiB (64 MiB), parallelism=4. AIAgent
+# API-key hashing (AUTH-4, out of scope) is off the request-latency-sensitive
+# login path and may justify a different cost trade-off when implemented.
+_pwd_context = CryptContext(
+    schemes=["argon2"],
+    argon2__time_cost=3,
+    argon2__memory_cost=65536,
+    argon2__parallelism=4,
+)
+
+# Fixed dummy hash used by `verify_password_or_dummy` so a login attempt
+# against a nonexistent email (or a user with no `provider=local`
+# AuthIdentity) still pays the same argon2-verify cost as a real one — closes
+# the timing side-channel that would otherwise let an attacker distinguish
+# "no such user" from "wrong password" (AUTH-1 acceptance criteria, Test
+# Design §2, scope plan edge case "User-enumeration timing leak"). Computed
+# once at import time, not per-request.
+_DUMMY_PASSWORD_HASH = _pwd_context.hash("dummy-password-for-timing-safety")
 
 
 def hash_password(password: str) -> str:
@@ -13,45 +45,90 @@ def hash_password(password: str) -> str:
 
     Used for `User.password_hash` (Database Document §actor.py).
     """
-    raise NotImplementedError("feature work")
+    return _pwd_context.hash(password)
 
 
 def verify_password(password: str, password_hash: str) -> bool:
     """Verify a plaintext password against a stored argon2 hash."""
-    raise NotImplementedError("feature work")
+    return _pwd_context.verify(password, password_hash)
+
+
+def verify_password_or_dummy(password: str, password_hash: str | None) -> bool:
+    """Timing-safe password check for the login route.
+
+    Always runs an argon2 verify, even when `password_hash` is `None` (email
+    not found, or the `User` has no `provider=local` `AuthIdentity`) — in
+    that case it verifies against a fixed dummy hash instead of short-
+    circuiting. Without this, "no such user" would return measurably faster
+    than "wrong password", letting an attacker enumerate valid emails by
+    response timing alone. Always returns `False` when `password_hash` is
+    `None`, regardless of the dummy-hash verify's own (meaningless) result.
+    """
+    if password_hash is None:
+        _pwd_context.verify(password, _DUMMY_PASSWORD_HASH)
+        return False
+    return _pwd_context.verify(password, password_hash)
 
 
 def create_access_token(actor_id: str, expires_minutes: int | None = None) -> str:
     """Issue a short-lived JWT access token for the given actor.
 
-    TTL defaults to `Settings.JWT_ACCESS_TTL_MINUTES`.
+    TTL defaults to `Settings.JWT_ACCESS_TTL_MINUTES`. Claims: `sub` (actor
+    id), `iat`, `exp`, and `type: "access"` (distinguishes this from any
+    future JWT-shaped token type; refresh tokens themselves are opaque, see
+    `create_refresh_token`).
     """
-    raise NotImplementedError("feature work")
+    ttl_minutes = expires_minutes if expires_minutes is not None else settings.JWT_ACCESS_TTL_MINUTES
+    now = datetime.now(UTC)
+    claims: dict[str, Any] = {
+        "sub": str(actor_id),
+        "iat": now,
+        "exp": now + timedelta(minutes=ttl_minutes),
+        "type": "access",
+    }
+    return jwt.encode(claims, settings.JWT_SECRET, algorithm="HS256")
 
 
 def create_refresh_token(actor_id: str, expires_days: int | None = None) -> str:
     """Issue a long-lived refresh token (raw value; the DB stores only its hash).
 
     Backed by the `RefreshToken` table (Database Document §auth.py) so it is
-    server-side revocable per ADR-0003.
+    server-side revocable per ADR-0003. Unlike the access token this is an
+    opaque, high-entropy random string (`secrets.token_urlsafe`), NOT a JWT —
+    it carries no embedded claims, so it can't be decoded/inspected, only
+    looked up by its hash. `actor_id`/`expires_days` are accepted to match
+    this module's stub-defined signature and are used by the caller (the
+    login route) to populate the corresponding `RefreshToken` row's
+    `user_id`/`expires_at` columns — the token string itself does not encode
+    either.
     """
-    raise NotImplementedError("feature work")
+    del actor_id, expires_days  # not encoded in the opaque token itself; see docstring
+    return secrets.token_urlsafe(32)
 
 
 def decode_token(token: str) -> dict[str, Any]:
-    """Decode and verify a JWT (access or refresh), returning its claims.
+    """Decode and verify a JWT access token, returning its claims.
 
-    Must raise on expiry/invalid signature — caller maps that to 401.
+    Raises `jwt.PyJWTError` (e.g. `jwt.ExpiredSignatureError`,
+    `jwt.InvalidSignatureError`) on expiry/invalid signature — the caller
+    maps that to a `401`. Only access tokens are JWTs in this scaffold;
+    refresh tokens are opaque and are never passed to this function.
     """
-    raise NotImplementedError("feature work")
+    return jwt.decode(token, settings.JWT_SECRET, algorithms=["HS256"])
 
 
 def hash_refresh_token(raw_token: str) -> str:
     """Hash a raw refresh token for storage in `RefreshToken.token_hash`.
 
-    The raw token is never persisted, only its hash.
+    SHA-256 hex digest, not argon2: the raw token is already a high-entropy
+    (256-bit) random value from `secrets.token_urlsafe`, not a low-entropy
+    human password guessable via brute force — a fast cryptographic hash is
+    sufficient to prevent recovering the raw token from a leaked hash, and
+    running the deliberately-slow argon2 KDF here would just be needless CPU
+    cost on every refresh (AUTH-1 scope plan edge case "Refresh token
+    storage"). The raw token is never persisted, only this hash.
     """
-    raise NotImplementedError("feature work")
+    return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
 
 
 def generate_api_key() -> tuple[str, str]:

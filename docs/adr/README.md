@@ -12,8 +12,10 @@ Index of ADRs for the Project Scaffold. Format: [MADR](https://adr.github.io/mad
 | [0006](0006-test-condition-optional.md) | TestCondition is optional, not mandatory | Accepted |
 | [0007](0007-real-multi-tenancy.md) | Real multi-org multi-tenancy (not collapsed to one row) | Accepted |
 | [0008](0008-uuid-primary-keys.md) | All primary keys are UUIDs, no auto-increment | Accepted |
-| [0009](0009-frontend-stack.md) | Frontend stack: Vite + React Router + TanStack Query + RHF + Zod + Tailwind | Accepted |
+| [0009](0009-frontend-stack.md) | Frontend stack: Vite + React Router + TanStack Query + RHF + Zod + ~~Tailwind~~ | Partially superseded by 0012 |
 | [0010](0010-single-port-docker-compose-topology.md) | Single-port Docker Compose topology, dev+prod profiles | Accepted |
+| [0011](0011-login-rate-limiting.md) | Login rate limiting: DB-backed per-(IP, email) throttle, no Redis | Accepted |
+| [0012](0012-coreui-design-system.md) | CoreUI for React as the project's design system (replaces Tailwind) | Accepted |
 
 **Deciders on all ADRs below:** xuanbinh91@gmail.com (CTO), unless noted otherwise.
 **Date:** 2026-09-03

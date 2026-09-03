@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-03
 **Owner:** xuanbinh91@gmail.com (CTO)
-**Sources:** [Master Test Plan](../test-plan/2026-09-03-master-test-plan.md), [Requirements Document](../requirements/2026-09-03-project-scaffold-requirements.md), [Database Document](../database/2026-09-03-database-design.md)
+**Sources:** [Master Test Plan](../test-plan/2026-09-03-master-test-plan.md), [Requirements Document](../requirements/2026-09-03-project-scaffold-requirements.md), [Database Document](../database/2026-09-03-database-design.md), [ADR-0011](../adr/0011-login-rate-limiting.md)
 
 Applies ISTQB CTFL v4.0.1 design techniques deliberately — the same vocabulary this product's `TestDesignTechnique` entity asks its own users to declare (ADMIN-1) is used to design the tests below.
 
@@ -12,7 +12,8 @@ Applies ISTQB CTFL v4.0.1 design techniques deliberately — the same vocabulary
 
 | Feature area | Primary technique(s) | Why |
 |---|---|---|
-| Auth (login, tokens) | Equivalence partitioning (valid/invalid credentials, valid/expired/revoked tokens) | Small, well-defined input classes |
+| Auth (login, tokens) | Equivalence partitioning (valid/invalid credentials, valid/expired/revoked tokens, active/suspended/invited/zero org memberships) | Small, well-defined input classes |
+| Login rate limiting | Boundary value analysis (attempt count at 4, 5, 6 within the window; just-inside vs. just-outside the 15-minute window) | NFR-11/ADR-0011 — classic BVA target, same as pagination/attachment limits below |
 | RBAC / permission checks | Decision table (role × permission code → allow/deny) | Combinatorial — the exact case ISTQB recommends a decision table for |
 | Multi-tenancy isolation | Equivalence partitioning (same-org vs. cross-org resource) + boundary (org with 0 vs. 1 vs. 2+ orgs) | Isolation bugs cluster at the org-boundary edge |
 | TestPlan / TestExecution / Defect status | State transition testing | Each has an explicit enum lifecycle (draft→approved→superseded; pass/fail/blocked/skipped; open→...→closed) |
@@ -24,8 +25,10 @@ Applies ISTQB CTFL v4.0.1 design techniques deliberately — the same vocabulary
 
 ## 2. Auth — equivalence classes
 
-**Valid classes:** correct email+password → 200; valid non-expired access token → request succeeds; valid non-revoked refresh token → new access token issued.
+**Valid classes:** correct email+password with ≥1 active org membership → 200; valid non-expired access token → request succeeds; valid non-revoked refresh token → new access token issued.
 **Invalid classes:** wrong password → 401 generic message; unknown email → 401 **identical** generic message (no enumeration leak, tested explicitly as its own case — response body/timing must not differ from the wrong-password case); expired access token → 401; revoked refresh token → 401 + forced re-login; AIAgent key used on a human-only route → 403.
+**Org-membership classes at login (distinct from the credentials check above — all use correct credentials):** exactly 1 `active` membership → 200, `org_context: "auto"`; 2+ `active` memberships → 200, `org_context: "picker"`; 0 `active` memberships (none at all, or only `suspended`/`invited`) → 403 `no_active_organization`, no token issued — tested as its own case, distinct from the 401 credentials-failure class, since the failure reasons and status codes must not be conflated.
+**Rate-limit class:** 6th failed attempt for the same `(client_ip, email)` pair within the 15-minute window → 429 `rate_limited`, regardless of whether attempt 6 itself used correct credentials (the throttle fires before the credentials check completes evaluating a new attempt); a successful login resets the counter for that pair, tested explicitly (attempt 3 fails, attempt 4 succeeds, attempts 5–8 fail — must take 5 more failures to trigger 429, not fail on attempt 2 post-reset).
 
 ## 3. RBAC — decision table (representative slice)
 
@@ -45,7 +48,8 @@ Every ❌/✅/🚫 cell is a distinct test case: authenticate as an actor holdin
 
 - **Class A (same-org access):** Actor in Org X requests a resource in Org X → 200.
 - **Class B (cross-org access):** Actor in Org X requests a resource in Org Y → 404 (never 403 — NFR-1). Tested against every entity type that carries an `org_id` path, not just one representative entity, since the router factory (ADMIN-2) is generic but a per-entity regression is still possible if a bespoke route forgets the filter.
-- **Boundary — org count:** 0 orgs on a fresh instance → first signup creates one + grants org_admin (RBAC-1); exactly 1 org for a user → auto-select, no picker (AUTH-1); 2+ orgs for a user → picker shown (AUTH-1).
+- **Boundary — org count (instance level, RBAC-1):** 0 orgs on a fresh instance → first signup creates one + grants org_admin.
+- **Boundary — org count (per-user, at login, AUTH-1 — see §2's org-membership classes for the full case list):** exactly 1 active org membership for a user → auto-select, no picker; 2+ → picker shown; 0 active memberships → 403, login rejected, distinct from both of the above.
 
 ## 5. State transition testing
 
@@ -80,6 +84,8 @@ Permission-parity is tested once generically (any entity, lacking `.create`/`.up
 **Pagination:** `page_size=0` (reject or clamp — define as clamp-to-1), `page_size=25` (default, valid), `page_size=26` (reject or clamp to max — define as clamp-to-25 per NFR-6), empty result set (`total=0`, empty `items`), exact last-page boundary (`page` beyond `total/page_size` → empty `items`, not an error).
 
 **Attachments:** file at exactly the configured size limit (valid), one byte over (rejected), allowed mime type (valid), disallowed mime type (rejected) — limits themselves are configurable per NFR-7, so this suite must read the configured limit rather than hardcoding a number.
+
+**Login throttle (NFR-11/ADR-0011):** 4th failed attempt for a `(client_ip, email)` pair (still allowed, 401), 5th failed attempt (still allowed, 401 — the 5th failure itself is not throttled, it's what *causes* the next attempt to be throttled), 6th attempt (429, regardless of credential correctness), a successful attempt between failures resets the count to 0 for that pair. Window boundary: an attempt just inside the 15-minute window from the first counted failure still counts toward the threshold; an attempt just after the window has elapsed since the oldest counted failure does not.
 
 ## 9. Negative testing — immutability
 

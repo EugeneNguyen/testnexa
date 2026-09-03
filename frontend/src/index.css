@@ -1,3 +1,3 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* Tailwind removed per ADR-0012 (CoreUI is the design system). CoreUI's
+   stylesheet is imported once in main.tsx (@coreui/coreui/dist/css/coreui.min.css)
+   — this file is for app-specific overrides only, none needed yet. */

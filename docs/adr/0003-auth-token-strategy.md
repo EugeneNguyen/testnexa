@@ -3,7 +3,7 @@
 **Date:** 2026-09-03
 **Status:** Accepted
 **Deciders:** xuanbinh91@gmail.com (CTO)
-**Related:** [Scaffold design spec](../superpowers/specs/2026-09-03-project-scaffold-design.md), [AUTH-1..4 user stories](../user-stories/2026-09-03-auth-stories.md)
+**Related:** [Scaffold design spec](../superpowers/specs/2026-09-03-project-scaffold-design.md), [AUTH-1..4 user stories](../user-stories/2026-09-03-auth-stories.md), [ADR-0011](0011-login-rate-limiting.md) (login throttle, decided separately)
 
 ## Context
 
