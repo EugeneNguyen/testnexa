@@ -49,6 +49,12 @@ REST over HTTPS, JSON bodies, base path `/api/v1`. FastAPI auto-generates the Op
 
 `GET /auth/me` request: no body, `Authorization: Bearer <access_token>` required. Response: `{actor_id, email, actor_type}`. The fuller "+ resolved permission codes" contract (§2 table's original wording) is deferred until an RBAC story exists to resolve permission codes at all — this route ships identity-only for AUTH-2, since it exists primarily as the protected route AUTH-2's silent-refresh flow needs to prove itself against, not as the RBAC-driving route it will eventually become.
 
+`POST /auth/logout` request: no body, `Authorization: Bearer <access_token>` required — the only input beyond that is the `refresh_token` httpOnly cookie, if present (never a request field). Response: `204 No Content`, no body — every other auth route returns a schema because it carries data; logout carries none. Per [ADR-0014](../adr/0014-logout-session-revocation-policy.md):
+- Revokes only the **current session's** refresh token (`revoked_reason="logout"`), scoped to the authenticated caller's `user_id` — never every session for the user ("log out everywhere" is out of scope).
+- **Idempotent**: missing cookie, hash not found, already-revoked/rotated-out, or a cookie belonging to a different user all return the same `204`, nothing revoked — logout never errors on the conditions it exists to make harmless. The only non-2xx outcome is a missing/invalid **access** token, rejected by the same `get_current_actor` dependency `GET /auth/me` uses (generic 401, `code: "invalid_token"`).
+- Clears the `refresh_token` cookie on the response (same `httponly`/`samesite`/`secure` attributes it was set with).
+- The access token itself is **not** server-side-invalidated — it remains usable until its own `JWT_ACCESS_TTL_MINUTES` (15) TTL lapses naturally (AUTH-3 AC2). The frontend clears its copy from `lib/auth/tokenStore` immediately and unconditionally on logout, independent of whether this call succeeds (ADR-0014) — the client no longer *presenting* the token is what protects a shared/public machine, since the server can't force it to expire early without a deny-list this scaffold doesn't have.
+
 ## 3. Generic CRUD routes (router factory, applied to ~24 of 36 tables)
 
 One factory, parametrized per entity+schema, producing 5 routes. Example shown for `requirement`; the same shape applies to every entity listed in the [Database Document](../database/2026-09-03-database-design.md) except the bespoke ones in §4 and the read-only ones in §5.

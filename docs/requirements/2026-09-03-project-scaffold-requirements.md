@@ -23,7 +23,7 @@ Each FR ID maps 1:1 to the acceptance criteria already ratified in `docs/user-st
 |---|---|---|---|
 | FR-AUTH-1 | Local password login (email + password → access+refresh token); org auto-select on exactly 1 active membership, picker on 2+, 403 on zero | Must | User, AuthIdentity, OrgMembership |
 | FR-AUTH-2 | Session persistence via revocable, DB-backed refresh token — rotate-on-use, silent renewal on access-token expiry, revoked/expired token → 401 + redirect to login | Must | RefreshToken |
-| FR-AUTH-3 | Explicit logout revokes refresh token server-side | Must | RefreshToken |
+| FR-AUTH-3 | Explicit logout revokes the current session's refresh token server-side (idempotent — a missing/foreign/already-revoked cookie is a no-op, not an error) and clears both tokens client-side unconditionally, independent of the server call's outcome | Must | RefreshToken |
 | FR-AUTH-4 | AI agent bearer authentication via long-lived scoped credential | Should | AIAgent, Actor |
 
 ### 2.2 Multi-tenancy & RBAC — [rbac-tenancy-stories.md](../user-stories/2026-09-03-rbac-tenancy-stories.md)
@@ -115,6 +115,7 @@ Each FR ID maps 1:1 to the acceptance criteria already ratified in `docs/user-st
 | NFR-11 | `POST /auth/login` enforces a basic brute-force throttle: 5 failed attempts per (IP, email) pair per 15-minute window → 429, before any full lockout/notification policy exists. Throttle state does not require Redis (ADR-0003's existing no-Redis stance). | AUTH-1 scope decision 2026-09-03, [ADR-0011](../adr/0011-login-rate-limiting.md) |
 | NFR-12 | Refresh tokens are single-use (rotated on every `POST /auth/refresh` call); a rotated-out, revoked, or expired token is rejected with 401, no new token issued. A rotated token's `expires_at` is inherited from the token it replaces (not reset), capping total session lifetime at `JWT_REFRESH_TTL_DAYS` from the original login regardless of renewal frequency. | AUTH-2 scope decision 2026-09-03, [ADR-0013](../adr/0013-refresh-token-rotation-policy.md) |
 | NFR-13 | `POST /auth/refresh` re-validates the caller still has ≥1 active `OrgMembership`, same check as login; a member suspended mid-session loses the ability to silently renew their session at the next refresh, not just at next full login. | AUTH-2 scope decision 2026-09-03, [ADR-0013](../adr/0013-refresh-token-rotation-policy.md) |
+| NFR-14 | `POST /auth/logout` is idempotent — a missing, foreign (belonging to a different user), or already-revoked/rotated-out refresh cookie returns the same `204` as a successful revoke, never an error — and revokes only the current session's token (`revoked_reason="logout"`), never every session for the user. `GET /auth/me`'s access-token TTL is not shortened by logout; the client clears its access token unconditionally on logout regardless of whether the server call succeeds. | AUTH-3 scope decision 2026-09-03, [ADR-0014](../adr/0014-logout-session-revocation-policy.md) |
 
 ## 4. Traceability — requirements to architecture decisions
 
@@ -129,6 +130,7 @@ Each FR ID maps 1:1 to the acceptance criteria already ratified in `docs/user-st
 | FR-AUTH-* | [ADR-0003](../adr/0003-auth-token-strategy.md) Auth & token strategy |
 | NFR-11 | [ADR-0011](../adr/0011-login-rate-limiting.md) Login rate limiting |
 | FR-AUTH-2, NFR-12, NFR-13 | [ADR-0013](../adr/0013-refresh-token-rotation-policy.md) Refresh token rotation & session-persistence policy |
+| FR-AUTH-3, NFR-14 | [ADR-0014](../adr/0014-logout-session-revocation-policy.md) Logout: idempotent single-session revocation |
 | FR-MCP-* | [ADR-0002](../adr/0002-backend-framework-orm-migrations.md) (async backend), [ADR-0003](../adr/0003-auth-token-strategy.md) (AIAgent credential) |
 
 Full field-level traceability (Requirement → design technique → test case → execution → defect) is itself FR-TRACE-1/2 — this document is the requirements layer that feeds the [WBS](../wbs/2026-09-03-project-scaffold-wbs.md), [Database Document](../database/2026-09-03-database-design.md), [API Document](../api/2026-09-03-api-design.md), and [Test Plan](../test-plan/2026-09-03-master-test-plan.md).
