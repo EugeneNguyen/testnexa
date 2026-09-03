@@ -1,9 +1,11 @@
 # ADR-0009: Frontend stack — Vite + React Router + TanStack Query + RHF + Zod + Tailwind
 
 **Date:** 2026-09-03
-**Status:** Accepted
+**Status:** Partially superseded — see note below
 **Deciders:** xuanbinh91@gmail.com (CTO)
-**Related:** [Scaffold design spec](../superpowers/specs/2026-09-03-project-scaffold-design.md)
+**Related:** [Scaffold design spec](../superpowers/specs/2026-09-03-project-scaffold-design.md), [ADR-0012](0012-coreui-design-system.md) (styling-layer decision superseded)
+
+> **2026-09-03, later same day:** the Tailwind CSS portion of this decision is superseded by [ADR-0012](0012-coreui-design-system.md) — CoreUI for React is now the project's design system. Everything else below (Vite, React Router, TanStack Query, React Hook Form + Zod) still stands.
 
 ## Context
 
