@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-03
 **Owner:** xuanbinh91@gmail.com (CTO)
-**Sources:** [Master Test Plan](../test-plan/2026-09-03-master-test-plan.md), [Requirements Document](../requirements/2026-09-03-project-scaffold-requirements.md), [Database Document](../database/2026-09-03-database-design.md), [ADR-0011](../adr/0011-login-rate-limiting.md)
+**Sources:** [Master Test Plan](../test-plan/2026-09-03-master-test-plan.md), [Requirements Document](../requirements/2026-09-03-project-scaffold-requirements.md), [Database Document](../database/2026-09-03-database-design.md), [ADR-0011](../adr/0011-login-rate-limiting.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md)
 
 Applies ISTQB CTFL v4.0.1 design techniques deliberately — the same vocabulary this product's `TestDesignTechnique` entity asks its own users to declare (ADMIN-1) is used to design the tests below.
 
@@ -12,7 +12,7 @@ Applies ISTQB CTFL v4.0.1 design techniques deliberately — the same vocabulary
 
 | Feature area | Primary technique(s) | Why |
 |---|---|---|
-| Auth (login, tokens) | Equivalence partitioning (valid/invalid credentials, valid/expired/revoked tokens, active/suspended/invited/zero org memberships) | Small, well-defined input classes |
+| Auth (login, tokens) | Equivalence partitioning (valid/invalid credentials, valid/expired/revoked/rotated-out refresh tokens, active/suspended/invited/zero org memberships) | Small, well-defined input classes |
 | Login rate limiting | Boundary value analysis (attempt count at 4, 5, 6 within the window; just-inside vs. just-outside the 15-minute window) | NFR-11/ADR-0011 — classic BVA target, same as pagination/attachment limits below |
 | RBAC / permission checks | Decision table (role × permission code → allow/deny) | Combinatorial — the exact case ISTQB recommends a decision table for |
 | Multi-tenancy isolation | Equivalence partitioning (same-org vs. cross-org resource) + boundary (org with 0 vs. 1 vs. 2+ orgs) | Isolation bugs cluster at the org-boundary edge |
@@ -25,9 +25,11 @@ Applies ISTQB CTFL v4.0.1 design techniques deliberately — the same vocabulary
 
 ## 2. Auth — equivalence classes
 
-**Valid classes:** correct email+password with ≥1 active org membership → 200; valid non-expired access token → request succeeds; valid non-revoked refresh token → new access token issued.
-**Invalid classes:** wrong password → 401 generic message; unknown email → 401 **identical** generic message (no enumeration leak, tested explicitly as its own case — response body/timing must not differ from the wrong-password case); expired access token → 401; revoked refresh token → 401 + forced re-login; AIAgent key used on a human-only route → 403.
+**Valid classes:** correct email+password with ≥1 active org membership → 200; valid non-expired access token → request succeeds; valid non-revoked, non-expired, not-yet-used refresh token → new access token issued + new refresh token issued (rotation).
+**Invalid classes:** wrong password → 401 generic message; unknown email → 401 **identical** generic message (no enumeration leak, tested explicitly as its own case — response body/timing must not differ from the wrong-password case); expired access token → 401; revoked refresh token → 401 + forced re-login; **rotated-out refresh token (already consumed by a prior refresh) → 401**, tested as a distinct case from "explicitly revoked" even though both return the same generic body ([ADR-0013](../adr/0013-refresh-token-rotation-policy.md) — single-use enforcement is the mechanism under test, not just the revoked-flag path); missing refresh cookie entirely → 401; AIAgent key used on a human-only route → 403.
 **Org-membership classes at login (distinct from the credentials check above — all use correct credentials):** exactly 1 `active` membership → 200, `org_context: "auto"`; 2+ `active` memberships → 200, `org_context: "picker"`; 0 `active` memberships (none at all, or only `suspended`/`invited`) → 403 `no_active_organization`, no token issued — tested as its own case, distinct from the 401 credentials-failure class, since the failure reasons and status codes must not be conflated.
+**Org-membership classes at refresh (ADR-0013 — same partition re-applied at a second choke point):** ≥1 active membership at refresh time → normal rotation proceeds; 0 active memberships (e.g. suspended after login, before this refresh) → 403 `no_active_organization`, refresh token itself left un-revoked — tested as distinct from the token-validity classes above, since this failure is about the actor's current standing, not the token's own state.
+**Rotation-chain class:** a token rotated N times still enforces the *original* session's `expires_at` on refresh N+1 — tested by asserting the Nth-generation token's `expires_at` equals the 1st generation's, not `now + 30d`.
 **Rate-limit class:** 6th failed attempt for the same `(client_ip, email)` pair within the 15-minute window → 429 `rate_limited`, regardless of whether attempt 6 itself used correct credentials (the throttle fires before the credentials check completes evaluating a new attempt); a successful login resets the counter for that pair, tested explicitly (attempt 3 fails, attempt 4 succeeds, attempts 5–8 fail — must take 5 more failures to trigger 429, not fail on attempt 2 post-reset).
 
 ## 3. RBAC — decision table (representative slice)

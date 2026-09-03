@@ -22,7 +22,7 @@ Each FR ID maps 1:1 to the acceptance criteria already ratified in `docs/user-st
 | ID | Title | Priority | Entities |
 |---|---|---|---|
 | FR-AUTH-1 | Local password login (email + password → access+refresh token); org auto-select on exactly 1 active membership, picker on 2+, 403 on zero | Must | User, AuthIdentity, OrgMembership |
-| FR-AUTH-2 | Session persistence via revocable, DB-backed refresh token | Must | RefreshToken |
+| FR-AUTH-2 | Session persistence via revocable, DB-backed refresh token — rotate-on-use, silent renewal on access-token expiry, revoked/expired token → 401 + redirect to login | Must | RefreshToken |
 | FR-AUTH-3 | Explicit logout revokes refresh token server-side | Must | RefreshToken |
 | FR-AUTH-4 | AI agent bearer authentication via long-lived scoped credential | Should | AIAgent, Actor |
 
@@ -113,6 +113,8 @@ Each FR ID maps 1:1 to the acceptance criteria already ratified in `docs/user-st
 | NFR-9 | RBAC allow/deny behavior is covered by integration tests at the HTTP layer against a real (dockerized) Postgres, per role — not unit-tested against mocked permission logic alone. | Spec Testing section |
 | NFR-10 | The generic CRUD admin surface enforces permissions via the exact same `require_permission` dependency as bespoke routes — UI hiding of actions is a convenience, never the enforcement boundary. | ADMIN-2, ADR-0004 |
 | NFR-11 | `POST /auth/login` enforces a basic brute-force throttle: 5 failed attempts per (IP, email) pair per 15-minute window → 429, before any full lockout/notification policy exists. Throttle state does not require Redis (ADR-0003's existing no-Redis stance). | AUTH-1 scope decision 2026-09-03, [ADR-0011](../adr/0011-login-rate-limiting.md) |
+| NFR-12 | Refresh tokens are single-use (rotated on every `POST /auth/refresh` call); a rotated-out, revoked, or expired token is rejected with 401, no new token issued. A rotated token's `expires_at` is inherited from the token it replaces (not reset), capping total session lifetime at `JWT_REFRESH_TTL_DAYS` from the original login regardless of renewal frequency. | AUTH-2 scope decision 2026-09-03, [ADR-0013](../adr/0013-refresh-token-rotation-policy.md) |
+| NFR-13 | `POST /auth/refresh` re-validates the caller still has ≥1 active `OrgMembership`, same check as login; a member suspended mid-session loses the ability to silently renew their session at the next refresh, not just at next full login. | AUTH-2 scope decision 2026-09-03, [ADR-0013](../adr/0013-refresh-token-rotation-policy.md) |
 
 ## 4. Traceability — requirements to architecture decisions
 
@@ -126,6 +128,7 @@ Each FR ID maps 1:1 to the acceptance criteria already ratified in `docs/user-st
 | NFR-3 (UUID PKs) | [ADR-0008](../adr/0008-uuid-primary-keys.md) UUID primary keys |
 | FR-AUTH-* | [ADR-0003](../adr/0003-auth-token-strategy.md) Auth & token strategy |
 | NFR-11 | [ADR-0011](../adr/0011-login-rate-limiting.md) Login rate limiting |
+| FR-AUTH-2, NFR-12, NFR-13 | [ADR-0013](../adr/0013-refresh-token-rotation-policy.md) Refresh token rotation & session-persistence policy |
 | FR-MCP-* | [ADR-0002](../adr/0002-backend-framework-orm-migrations.md) (async backend), [ADR-0003](../adr/0003-auth-token-strategy.md) (AIAgent credential) |
 
 Full field-level traceability (Requirement → design technique → test case → execution → defect) is itself FR-TRACE-1/2 — this document is the requirements layer that feeds the [WBS](../wbs/2026-09-03-project-scaffold-wbs.md), [Database Document](../database/2026-09-03-database-design.md), [API Document](../api/2026-09-03-api-design.md), and [Test Plan](../test-plan/2026-09-03-master-test-plan.md).

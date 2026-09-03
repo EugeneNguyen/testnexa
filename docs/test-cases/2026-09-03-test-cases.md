@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-03
 **Owner:** xuanbinh91@gmail.com (CTO)
-**Sources:** [Test Design](../test-design/2026-09-03-test-design.md), [Master Test Plan](../test-plan/2026-09-03-master-test-plan.md), [docs/user-stories/*](../user-stories/), [AUTH-1 scope plan](../superpowers/plans/2026-09-03-auth-1-local-password-login-plan.md)
+**Sources:** [Test Design](../test-design/2026-09-03-test-design.md), [Master Test Plan](../test-plan/2026-09-03-master-test-plan.md), [docs/user-stories/*](../user-stories/), [AUTH-1 scope plan](../superpowers/plans/2026-09-03-auth-1-local-password-login-plan.md), [AUTH-2 scope plan](../superpowers/plans/2026-09-03-auth-2-session-persistence-plan.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md)
 
 Concrete test cases derived from each user story's acceptance criteria. IDs group by feature area; **Story** column links back to the source acceptance criterion. Priority: **P1** = release-blocking, **P2** = should-have, **P3** = exploratory/structural-only (per FR priority in the Requirements Document).
 
@@ -17,9 +17,15 @@ Concrete test cases derived from each user story's acceptance criteria. IDs grou
 | TC-AUTH-003 | Login, single-org user | User has exactly 1 OrgMembership | Login | That org auto-selected, no picker shown | P1 | AUTH-1 |
 | TC-AUTH-004 | Login, multi-org user | User has 2+ OrgMemberships | Login | Org picker shown | P1 | AUTH-1 |
 | TC-AUTH-005 | Password never logged/stored plaintext | — | Inspect DB row and application logs after signup/login | `password_hash` is argon2, no plaintext anywhere | P1 | AUTH-1 |
-| TC-AUTH-006 | Silent refresh on access-token expiry | Valid refresh cookie present | Access token expires, next API call made | New access token obtained transparently, no forced re-login | P1 | AUTH-2 |
-| TC-AUTH-007 | Refresh with revoked token | Refresh token revoked (admin force-logout or prior logout) | POST `/auth/refresh` | 401; redirected to login | P1 | AUTH-2 |
-| TC-AUTH-008 | Refresh tokens are individually revocable | 2 active sessions for same user | Revoke session A's refresh token | Session A's next refresh 401s; session B unaffected | P2 | AUTH-2 |
+| TC-AUTH-006 | Silent refresh on access-token expiry | Valid refresh cookie present, access token expired | Call `GET /auth/me` (401), frontend interceptor calls `POST /auth/refresh`, retries original request once | New access token obtained transparently; retried `GET /auth/me` succeeds; no forced re-login | P1 | AUTH-2 |
+| TC-AUTH-007 | Refresh with revoked token | Refresh token revoked directly via DB fixture (`revoked_at` set — no logout/admin-revoke route exists yet, see AUTH-2 scope plan) | POST `/auth/refresh` | 401 `invalid_refresh_token`; no new token issued; frontend redirects to `/login` | P1 | AUTH-2 |
+| TC-AUTH-008 | Refresh tokens are individually revocable | 2 active sessions (2 `RefreshToken` rows) for same user | Revoke session A's refresh token via DB fixture | Session A's next refresh 401s; session B's refresh still succeeds normally | P2 | AUTH-2 |
+| TC-AUTH-018 | Refresh token is single-use (rotation) | Valid, unused refresh token | Call `POST /auth/refresh` once (succeeds, new cookie set), then present the *original* (now rotated-out) token again | First call 200s with a new token; second call 401s even though the original token had not otherwise expired or been explicitly revoked | P1 | AUTH-2 |
+| TC-AUTH-019 | Refresh rejected once token itself expires | Refresh token with `expires_at` in the past (fixture-seeded) | POST `/auth/refresh` | 401 `invalid_refresh_token`; no new token issued | P1 | AUTH-2 |
+| TC-AUTH-020 | Refresh rejected with no cookie at all | No `refresh_token` cookie sent | POST `/auth/refresh` | 401 `invalid_refresh_token` (same generic body as revoked/expired — no distinct code) | P2 | AUTH-2 |
+| TC-AUTH-021 | Refresh rejected once org access is lost | User's only `OrgMembership` transitions from `active` to `suspended` after login, refresh token itself still valid | POST `/auth/refresh` | 403 `no_active_organization`; refresh token **not** revoked by this rejection (a later refresh succeeds again if membership is reactivated before the token's `expires_at`) | P1 | AUTH-2 |
+| TC-AUTH-022 | Rotation inherits original session's absolute expiry | Token refreshed 3 times in a row (3 rotations) | Inspect the 4th-generation token's `expires_at` | Equal to the 1st-generation token's `expires_at` (copied forward each rotation), not `now + 30d` from the most recent rotation | P2 | AUTH-2 |
+| TC-AUTH-023 | `GET /auth/me` returns current actor identity | Valid access token | GET `/auth/me` | 200; `{actor_id, email, actor_type}` matches the authenticated `User` | P2 | AUTH-2 |
 | TC-AUTH-009 | Logout revokes current session | Active session | POST `/auth/logout` | Refresh token revoked server-side; both tokens cleared client-side | P1 | AUTH-3 |
 | TC-AUTH-010 | AIAgent bearer auth attributes actor correctly | AIAgent with issued API key | MCP call using the key creates a TestCase | `created_by_actor_id` resolves to the AIAgent, not any User | P2 | AUTH-4 |
 | TC-AUTH-011 | AIAgent blocked from Approval-permission route | AIAgent authenticated | Call `/test-plans/{id}/approve` | 403, regardless of role bundle | P1 | AUTH-4 / RBAC-5 |
@@ -152,7 +158,7 @@ Concrete test cases derived from each user story's acceptance criteria. IDs grou
 
 | Feature area | Test case count | P1 count |
 |---|---|---|
-| Auth | 17 | 12 |
+| Auth | 23 | 16 |
 | RBAC & Multi-Tenancy | 15 | 11 |
 | Project & Release | 5 | 3 |
 | Requirement & Test Case Authoring | 9 | 7 |
@@ -162,6 +168,6 @@ Concrete test cases derived from each user story's acceptance criteria. IDs grou
 | Taxonomy & Generic Admin CRUD | 5 | 2 |
 | Traceability Matrix | 5 | 4 |
 | AI Agent / MCP | 7 | 0 |
-| **Total** | **88** | **54** |
+| **Total** | **94** | **59** |
 
 MCP's P3-only weighting matches its exploratory, no-validated-WTP status per the personas doc — structural coverage exists, but nothing here blocks a release.
