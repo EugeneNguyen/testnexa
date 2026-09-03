@@ -39,14 +39,14 @@ permission_table = sa.table(
 
 
 def upgrade() -> None:
-    # AUTH-4/ADR-0014: seeds exactly the two Permission catalog rows this
+    # AUTH-4/ADR-0015: seeds exactly the two Permission catalog rows this
     # story's own routes (`app/api/routes/agents.py`) need —
     # `ai_agent.create` / `ai_agent.update` — via a data migration, matching
     # RBAC-4's stated pattern of seeding via data migration rather than a
     # UI/API flow. This is NOT the full canonical permission catalog or
     # seeded system roles (`Role`/`RoleAssignment`) — that remains RBAC-4's
     # job; this story's own tests seed `Role`/`RoleAssignment` rows directly
-    # via fixtures against these two `Permission` rows (ADR-0014's stated
+    # via fixtures against these two `Permission` rows (ADR-0015's stated
     # fixture-bypass precedent, matching AUTH-1's precedent for
     # `User`/`Organization`/`OrgMembership`).
     op.bulk_insert(

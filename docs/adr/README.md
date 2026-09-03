@@ -17,7 +17,8 @@ Index of ADRs for the Project Scaffold. Format: [MADR](https://adr.github.io/mad
 | [0011](0011-login-rate-limiting.md) | Login rate limiting: DB-backed per-(IP, email) throttle, no Redis | Accepted |
 | [0012](0012-coreui-design-system.md) | CoreUI for React as the project's design system (replaces Tailwind) | Accepted |
 | [0013](0013-refresh-token-rotation-policy.md) | Refresh token rotation & session-persistence policy: rotate-on-use, absolute-expiry-inherited, org re-check on refresh | Accepted |
-| [0014](0014-ai-agent-credential-mechanics.md) | AI agent credential mechanics: key format, key_prefix lookup, minimal-RBAC-now, 404-vs-403 org-scoped precedent | Accepted |
+| [0014](0014-logout-session-revocation-policy.md) | Logout: idempotent single-session revocation, client-side-clear-always | Accepted |
+| [0015](0015-ai-agent-credential-mechanics.md) | AI agent credential mechanics: key format, key_prefix lookup, minimal-RBAC-now, 404-vs-403 org-scoped precedent | Accepted |
 
 **Deciders on all ADRs below:** xuanbinh91@gmail.com (CTO), unless noted otherwise.
 **Date:** 2026-09-03

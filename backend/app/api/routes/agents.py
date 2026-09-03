@@ -1,12 +1,12 @@
-"""AUTH-4: AI-agent credential issuance/revocation routes (ADR-0014).
+"""AUTH-4: AI-agent credential issuance/revocation routes (ADR-0015).
 
 Source: API Document §2 (`POST /orgs/{org_id}/agents`,
-`POST /orgs/{org_id}/agents/{agent_id}/revoke` contracts), ADR-0014 (AI agent
+`POST /orgs/{org_id}/agents/{agent_id}/revoke` contracts), ADR-0015 (AI agent
 credential mechanics & minimal-RBAC-now decision), ADR-0007 (real
 multi-tenancy — the 404-vs-403 boundary these routes establish as precedent).
 
 Both routes share the same gate order, deliberately checked in this
-sequence (not interchangeable — see ADR-0014 §"404-vs-403 boundary"):
+sequence (not interchangeable — see ADR-0015 §"404-vs-403 boundary"):
 1. Human-only gate (hardcoded, independent of `RoleAssignment` contents —
    an `AIAgent` bearer credential can never issue/revoke agent credentials,
    mirrors RBAC-5's Approval double-enforcement pattern). 403 `actor_forbidden`.
@@ -65,7 +65,7 @@ def _error(status_code: int, code: str, message: str) -> JSONResponse:
 async def _org_membership_exists(db: AsyncSession, org_id: UUID, user_id: UUID) -> bool:
     """Any-status `OrgMembership` existence check for the 404-vs-403 boundary.
 
-    Deliberately NOT filtered to `status == active` — ADR-0014 is explicit
+    Deliberately NOT filtered to `status == active` — ADR-0015 is explicit
     that *any* membership (invited/active/suspended) counts for the
     existence check ("the requester has *any* `OrgMembership` in the path's
     `org_id`"). This is a different, narrower question than "is this
@@ -87,7 +87,7 @@ async def create_agent(
     actor: User | AIAgent = Depends(get_current_actor),
     db: AsyncSession = Depends(get_db),
 ) -> CreateAgentResponse | JSONResponse:
-    """Issue a new AIAgent bearer API key (ADR-0014).
+    """Issue a new AIAgent bearer API key (ADR-0015).
 
     Order of operations (see module docstring for why this exact order):
     1. Human-only gate.
@@ -168,7 +168,7 @@ async def revoke_agent(
     actor: User | AIAgent = Depends(get_current_actor),
     db: AsyncSession = Depends(get_db),
 ) -> RevokeAgentResponse | JSONResponse:
-    """Revoke an AIAgent's bearer API key (ADR-0014).
+    """Revoke an AIAgent's bearer API key (ADR-0015).
 
     Idempotent: revoking an already-revoked agent returns 200 with the
     existing `revoked_at`, not an error — mirrors `RefreshToken`'s

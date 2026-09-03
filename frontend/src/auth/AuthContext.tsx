@@ -55,6 +55,23 @@
  * token), but `/orgs/pick` will render its own already-existing empty-`orgs`
  * redirect back to `/login` (see `OrgPicker.tsx`) until the user's next
  * explicit login. This is an accepted AUTH-2-scope limitation, not a bug.
+ *
+ * AUTH-3 logout (ADR-0014): `logout()` calls the `POST /auth/logout` API
+ * function, then — in a `finally` block, so it runs whether that call
+ * resolves or rejects — unconditionally clears the token store
+ * (`clearAccessToken()`) and resets `orgContext`/`orgs` back to `null`/`[]`.
+ * The client-side clear is what actually protects a shared/public machine,
+ * so it must never be skipped just because the network round-trip to revoke
+ * the server-side refresh token failed (accepted trade-off, ADR-0014's
+ * Consequences section). Any rejection from the API call itself is swallowed
+ * here (not rethrown) — logout isn't a security boundary the caller needs to
+ * react to failing; the cleanup already happened. Navigation to `/login`
+ * afterward is the caller's (the navbar button's) responsibility, not this
+ * method's — `logout()` here is scoped to state-clearing only, matching
+ * `login()`'s own shape (it doesn't navigate either — `Login.tsx` does that
+ * on success). `AppHeader`'s logout button, which lives under
+ * `<BrowserRouter>` (`main.tsx`), uses `useNavigate()` itself after awaiting
+ * this method.
  */
 import {
   createContext,
@@ -65,9 +82,9 @@ import {
   useMemo,
   useState,
 } from "react";
-import { login as loginRequest, OrgSummary } from "../lib/api/auth";
+import { login as loginRequest, logout as logoutRequest, OrgSummary } from "../lib/api/auth";
 import { requestRefresh } from "../lib/api/client";
-import { getAccessToken, setAccessToken as setStoredAccessToken, subscribe } from "../lib/auth/tokenStore";
+import { clearAccessToken, getAccessToken, setAccessToken as setStoredAccessToken, subscribe } from "../lib/auth/tokenStore";
 
 interface AuthContextValue {
   accessToken: string | null;
@@ -75,6 +92,7 @@ interface AuthContextValue {
   orgs: OrgSummary[];
   isInitializing: boolean;
   login: (email: string, password: string) => Promise<void>;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -135,9 +153,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setOrgs(response.orgs);
   }, []);
 
+  const logout = useCallback(async () => {
+    try {
+      await logoutRequest();
+    } catch {
+      // Swallowed deliberately (ADR-0014): logout isn't a security boundary
+      // the caller needs to react to failing — the client-side clear below
+      // is what actually matters and must run regardless.
+    } finally {
+      clearAccessToken();
+      setOrgContext(null);
+      setOrgs([]);
+    }
+  }, []);
+
   const value = useMemo<AuthContextValue>(
-    () => ({ accessToken, orgContext, orgs, isInitializing, login }),
-    [accessToken, orgContext, orgs, isInitializing, login],
+    () => ({ accessToken, orgContext, orgs, isInitializing, login, logout }),
+    [accessToken, orgContext, orgs, isInitializing, login, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

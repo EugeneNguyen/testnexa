@@ -2,7 +2,7 @@
 
 AUTH-1 implements the human-login half of this module per ADR-0003 (auth &
 token strategy): argon2 password hashing, JWT access-token issuance/
-verification, and opaque refresh-token issuance/hashing. AUTH-4 (ADR-0014)
+verification, and opaque refresh-token issuance/hashing. AUTH-4 (ADR-0015)
 adds the other half: the `generate_api_key`/`hash_api_key`/`verify_api_key`
 trio backing `AIAgent` bearer credentials.
 """
@@ -134,7 +134,7 @@ def hash_refresh_token(raw_token: str) -> str:
 def generate_api_key() -> tuple[str, str]:
     """Generate a new opaque AIAgent API key.
 
-    Returns `(raw_key, key_prefix)`. Raw key format (ADR-0014):
+    Returns `(raw_key, key_prefix)`. Raw key format (ADR-0015):
     `tnx_agent_<key_prefix>_<secret>` where:
     - `tnx_agent_` is a fixed literal prefix so `get_current_actor`
       (`app/core/rbac.py`) can cheaply discriminate an agent key from a human
@@ -143,7 +143,7 @@ def generate_api_key() -> tuple[str, str]:
       6 random bytes base64url-encode to exactly 8 characters with no
       padding to strip (6 is a multiple of 3), so the length is exact, not
       just "approximately 8". Stored in `AIAgent.key_prefix` and doubles as
-      a lookup-narrowing index (see module docstring / ADR-0014): argon2
+      a lookup-narrowing index (see module docstring / ADR-0015): argon2
       hashes are salted and non-deterministic, so `AIAgent.key_hash` can't
       be looked up by equality — the presented key's prefix narrows a
       `SELECT` to (in practice) zero or one candidate row before paying the

@@ -1,7 +1,7 @@
 """Pydantic v2 schemas for the AUTH-4 agent-credential routes.
 
 Source: API Document §2 (`POST /orgs/{org_id}/agents`,
-`POST /orgs/{org_id}/agents/{agent_id}/revoke` contracts), ADR-0014 (AI
+`POST /orgs/{org_id}/agents/{agent_id}/revoke` contracts), ADR-0015 (AI
 agent credential mechanics).
 """
 
@@ -29,7 +29,7 @@ class CreateAgentResponse(BaseModel):
 
     `api_key` is the raw, unhashed credential — shown here once, at
     issuance, and never persisted or retrievable again (GitHub-PAT-style,
-    ADR-0014). Callers must never log this response body.
+    ADR-0015). Callers must never log this response body.
     """
 
     agent_id: UUID
@@ -43,7 +43,7 @@ class RevokeAgentResponse(BaseModel):
 
     Idempotent: revoking an already-revoked agent returns 200 with the
     existing `revoked_at` (not a fresh one, not an error) — mirrors
-    `RefreshToken`'s revoke-is-idempotent posture (ADR-0014).
+    `RefreshToken`'s revoke-is-idempotent posture (ADR-0015).
     """
 
     agent_id: UUID

@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-03
 **Owner:** xuanbinh91@gmail.com (CTO)
-**Sources:** [07 ERD](../product-discovery/07-erd-draft.md), [Scaffold design spec](../superpowers/specs/2026-09-03-project-scaffold-design.md), [ADR-0005](../adr/0005-traceability-link-dedicated-join-tables.md), [ADR-0006](../adr/0006-test-condition-optional.md), [ADR-0007](../adr/0007-real-multi-tenancy.md), [ADR-0008](../adr/0008-uuid-primary-keys.md), [ADR-0011](../adr/0011-login-rate-limiting.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md), [ADR-0014](../adr/0014-ai-agent-credential-mechanics.md)
+**Sources:** [07 ERD](../product-discovery/07-erd-draft.md), [Scaffold design spec](../superpowers/specs/2026-09-03-project-scaffold-design.md), [ADR-0005](../adr/0005-traceability-link-dedicated-join-tables.md), [ADR-0006](../adr/0006-test-condition-optional.md), [ADR-0007](../adr/0007-real-multi-tenancy.md), [ADR-0008](../adr/0008-uuid-primary-keys.md), [ADR-0011](../adr/0011-login-rate-limiting.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md), [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md)
 
 This document is the implementation-level schema, refined from the [07 ERD](../product-discovery/07-erd-draft.md) draft per the ADRs above. No code — this is the reference for the Alembic migration that will be written when implementation is authorized.
 
@@ -65,7 +65,7 @@ Unique: `(org_id, user_id)`.
 | last_login_at | timestamptz | nullable |
 | created_at, updated_at | timestamptz | not null |
 
-**RefreshToken** *(not in 07 — added per [ADR-0003](../adr/0003-auth-token-strategy.md); rotation semantics per [ADR-0013](../adr/0013-refresh-token-rotation-policy.md))*
+**RefreshToken** *(not in 07 — added per [ADR-0003](../adr/0003-auth-token-strategy.md); rotation semantics per [ADR-0013](../adr/0013-refresh-token-rotation-policy.md); logout revocation semantics per [ADR-0014](../adr/0014-logout-session-revocation-policy.md))*
 | Column | Type | Constraints |
 |---|---|---|
 | id | uuid | PK |
@@ -74,7 +74,7 @@ Unique: `(org_id, user_id)`.
 | issued_at | timestamptz | not null |
 | expires_at | timestamptz | not null — on rotation, copied verbatim from the token being replaced, **not** recomputed as `now + JWT_REFRESH_TTL_DAYS` (ADR-0013: caps a session's absolute lifetime at 30 days from original login regardless of renewal frequency) |
 | revoked_at | timestamptz | nullable |
-| revoked_reason | varchar | nullable — `logout` (AUTH-3), `admin_force_logout` (no admin UI yet, but any write to this column achieves it), `rotated` (ADR-0013: every `POST /auth/refresh` revokes the token it consumes, single-use) |
+| revoked_reason | varchar | nullable — `logout` (AUTH-3/ADR-0014: revoked via the atomic `WHERE token_hash = ? AND user_id = ? AND revoked_at IS NULL` compare-and-swap, scoped to the authenticated caller so a foreign token is never touched), `admin_force_logout` (no admin UI yet, but any write to this column achieves it), `rotated` (ADR-0013: every `POST /auth/refresh` revokes the token it consumes, single-use) |
 | created_at, updated_at | timestamptz | not null |
 
 **Rotation chain note:** a session is a chain of `RefreshToken` rows linked only implicitly (each rotation's new row copies the prior row's `expires_at`) — there is no explicit `session_id`/chain-root column. This is a deliberate minimalism: the copy-forward is sufficient to bound absolute session lifetime without an extra column, and nothing in AUTH-2's scope needs to enumerate a session's full rotation history.
@@ -162,10 +162,10 @@ Unique: `(actor_id, org_id, project_id, role_id)`.
 | mcp_session_ref | varchar | nullable |
 | acting_on_behalf_of_user_id | uuid | FK → user.id, not null — accountability link, not an approver |
 | key_hash | varchar | not null (argon2) |
-| key_prefix | varchar(8) | not null, **indexed** — display hint AND the lookup-narrowing key: argon2 hashes aren't equality-lookupable, so `get_current_actor`'s agent branch selects candidates by `key_prefix` first, then argon2-verifies the full raw key against `key_hash` ([ADR-0014](../adr/0014-ai-agent-credential-mechanics.md)) |
+| key_prefix | varchar(8) | not null, **indexed** — display hint AND the lookup-narrowing key: argon2 hashes aren't equality-lookupable, so `get_current_actor`'s agent branch selects candidates by `key_prefix` first, then argon2-verifies the full raw key against `key_hash` ([ADR-0015](../adr/0015-ai-agent-credential-mechanics.md)) |
 | issued_at | timestamptz | not null |
 | revoked_at | timestamptz | nullable |
-| last_used_at | timestamptz | nullable — updated on every successful agent-bearer authentication; the `AuthIdentity.last_login_at`-equivalent for agent sessions ([ADR-0014](../adr/0014-ai-agent-credential-mechanics.md), AUTH-4 AC3) |
+| last_used_at | timestamptz | nullable — updated on every successful agent-bearer authentication; the `AuthIdentity.last_login_at`-equivalent for agent sessions ([ADR-0015](../adr/0015-ai-agent-credential-mechanics.md), AUTH-4 AC3) |
 | created_at, updated_at | timestamptz | not null |
 
 Raw key format on the wire: `tnx_agent_<key_prefix>_<secret>` — `key_prefix` is 8 URL-safe characters (matches the column above), `secret` is a `secrets.token_urlsafe(32)`-length random string. The literal `tnx_agent_` prefix lets the auth dependency branch on bearer-token shape before attempting a JWT decode.
@@ -449,7 +449,7 @@ Storage backend (local filesystem vs. S3-compatible) is an application-config co
 - Composite indexes called out explicitly: `TestExecution(test_cycle_id, test_case_id)`, `TestLog(test_execution_id, logged_at)`.
 - The 4 link tables in §3.9 are each indexed on both FK columns individually (supports lookup from either direction for RTM traversal, FR-TRACE-1).
 - `RefreshToken.token_hash` has a unique index (ADR-0013) — the refresh route's lookup key, a hot path once sessions persist across restarts.
-- `AIAgent.key_prefix` is indexed ([ADR-0014](../adr/0014-ai-agent-credential-mechanics.md)) — narrows the agent-bearer lookup to a candidate row before the argon2 verify; not unique (astronomically-unlikely prefix collision is handled by verifying each candidate, not assumed away).
+- `AIAgent.key_prefix` is indexed ([ADR-0015](../adr/0015-ai-agent-credential-mechanics.md)) — narrows the agent-bearer lookup to a candidate row before the argon2 verify; not unique (astronomically-unlikely prefix collision is handled by verifying each candidate, not assumed away).
 
 ## 5. Deviations from the 07 ERD draft (for the record)
 
@@ -464,5 +464,5 @@ Storage backend (local filesystem vs. S3-compatible) is an application-config co
 | `}o--o{` many-to-many drawn without table names | `TestSuiteTestCase`, `TestPlanTestSuite`, `TestCaseTestDesignTechnique` named explicitly | Implementation necessity |
 | No `LoginAttempt` table | Added | ADR-0011 (login rate limiting) |
 | `RefreshToken.token_hash` unspecified index | Unique index added | ADR-0013 (refresh rotation makes it a lookup key, not just a write target) |
-| No `AIAgent.last_used_at` column | Added, nullable, updated per successful agent auth | ADR-0014 (AUTH-4 AC3, `AuthIdentity.last_login_at`-equivalent) |
-| `AIAgent.key_prefix` unspecified index | Indexed (non-unique) | ADR-0014 (lookup-narrowing key for argon2 verify, not just a display hint) |
+| No `AIAgent.last_used_at` column | Added, nullable, updated per successful agent auth | ADR-0015 (AUTH-4 AC3, `AuthIdentity.last_login_at`-equivalent) |
+| `AIAgent.key_prefix` unspecified index | Indexed (non-unique) | ADR-0015 (lookup-narrowing key for argon2 verify, not just a display hint) |

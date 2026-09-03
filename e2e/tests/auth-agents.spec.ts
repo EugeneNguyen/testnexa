@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 
 /**
  * AUTH-4 E2E: real deployed stack (nginx -> backend -> real Postgres),
- * exercising the full AI-agent bearer-credential lifecycle (ADR-0014):
+ * exercising the full AI-agent bearer-credential lifecycle (ADR-0015):
  * human login -> issue an agent credential -> the agent's raw key resolves
  * via `GET /auth/me` -> revoke -> the same raw key immediately 401s.
  *
@@ -22,7 +22,7 @@ import { expect, test } from "@playwright/test";
  * package to reuse. The `ai_agent.create`/`ai_agent.update` `Permission`
  * catalog rows themselves are NOT seeded here — they already exist via the
  * backend's own Alembic data migration (`d33d66f4b3c3_seed_ai_agent_permissions`,
- * ADR-0014) in any environment running this backend; the seed script only
+ * ADR-0015) in any environment running this backend; the seed script only
  * looks them up by `code` and grants them to a fresh `Role`/`RoleAssignment`
  * pair for a fresh human `User`, matching the same fixture-bypass precedent
  * `backend/tests/integration/test_agents.py` uses.
@@ -206,7 +206,7 @@ test.describe("AUTH-4 agent bearer credential lifecycle", () => {
 
       // 3. Call GET /auth/me with the agent's raw key — confirms
       // get_current_actor resolves the AIAgent, not the human User who
-      // issued it (ADR-0014 AC1's mechanism-level proof, TC-AUTH-010).
+      // issued it (ADR-0015 AC1's mechanism-level proof, TC-AUTH-010).
       const meAsAgentResponse = await request.get("/api/v1/auth/me", {
         headers: { Authorization: `Bearer ${rawApiKey}` },
       });
@@ -227,7 +227,7 @@ test.describe("AUTH-4 agent bearer credential lifecycle", () => {
       expect(revokeBody.revoked_at).toBeTruthy();
 
       // 5. The same raw key now 401s — revocation takes effect immediately,
-      // no separate cache/blocklist to propagate (ADR-0014).
+      // no separate cache/blocklist to propagate (ADR-0015).
       const meAfterRevokeResponse = await request.get("/api/v1/auth/me", {
         headers: { Authorization: `Bearer ${rawApiKey}` },
       });

@@ -1,5 +1,5 @@
 """Unit tests for `app/core/security.py` — password hashing, JWT issuance/
-verification, refresh-token generation/hashing, and (AUTH-4/ADR-0014)
+verification, refresh-token generation/hashing, and (AUTH-4/ADR-0015)
 AIAgent API-key generation/hashing/verification.
 
 Pure in-process tests: no DB, no live server. Mirrors the style of
@@ -147,7 +147,7 @@ def test_hash_refresh_token_looks_like_sha256_hex_digest() -> None:
     assert all(c in "0123456789abcdef" for c in digest)
 
 
-# --- generate_api_key / hash_api_key / verify_api_key (AUTH-4/ADR-0014) --------------------
+# --- generate_api_key / hash_api_key / verify_api_key (AUTH-4/ADR-0015) --------------------
 #
 # Raw key format: `tnx_agent_<key_prefix(8 url-safe chars)>_<secret(43 url-safe
 # chars, secrets.token_urlsafe(32))>`. See `generate_api_key`'s own docstring
@@ -215,7 +215,7 @@ def test_hash_api_key_has_argon2_prefix() -> None:
 
 
 def test_verify_api_key_prefix_matched_but_secret_corrupted_fails() -> None:
-    # TC-AUTH-025's mechanism at the unit level: a candidate row's key_hash
+    # TC-AUTH-029's mechanism at the unit level: a candidate row's key_hash
     # only ever matches its own exact raw key — a value sharing the same
     # `tnx_agent_<prefix>_` shape but a different secret segment (as if two
     # keys coincidentally shared a key_prefix) must fail the argon2 verify,

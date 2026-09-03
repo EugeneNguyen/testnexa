@@ -1,4 +1,4 @@
-# ADR-0014: AI agent credential mechanics & minimal-RBAC-now decision
+# ADR-0015: AI agent credential mechanics & minimal-RBAC-now decision
 
 **Date:** 2026-09-03
 **Status:** Accepted

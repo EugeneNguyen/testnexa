@@ -1,4 +1,4 @@
-"""Integration tests for AUTH-4 (AI agent bearer authentication, ADR-0014).
+"""Integration tests for AUTH-4 (AI agent bearer authentication, ADR-0015).
 
 Real HTTP requests via `httpx.AsyncClient` against a live server
 (`TEST_API_BASE_URL`), matching the style of `test_auth_login.py` /
@@ -7,7 +7,7 @@ fixture (`_require_live_server`, autouse=True, session-scoped) applies
 automatically to this module too.
 
 Covers the AUTH-4-scoped cases from `docs/test-cases/2026-09-03-test-cases.md`:
-TC-AUTH-010, 012, 024, 025, 026, 027, 028, 029, 030. TC-AUTH-011 (AIAgent
+TC-AUTH-010, 012, 028, 029, 030, 031, 032, 033, 034. TC-AUTH-011 (AIAgent
 blocked from `/test-plans/{id}/approve`) is intentionally NOT implemented
 here — that route doesn't exist yet in this codebase (no business-entity
 routes are built), see the AUTH-4 scope plan §1's "AC1 is verified at the
@@ -23,18 +23,18 @@ doesn't exist yet, so there is no other way to get `Role`/`RoleAssignment`
 rows into place. Cleans up in a `finally` block. Emails/org slugs are unique
 per test as an extra safety net against cross-test collisions.
 
-TC-AUTH-029/030 (AC2's own proof + the org-wide-grant-recognized case)
+TC-AUTH-033/034 (AC2's own proof + the org-wide-grant-recognized case)
 exercise `require_permission`/`has_permission` directly through a small
 in-process throwaway FastAPI app (mirroring `tests/unit/test_rbac.py`'s
 `_build_protected_test_app()` pattern) rather than through the real
 `POST /orgs/{org_id}/agents/{agent_id}/revoke` route. This is deliberate,
 not a shortcut: `agents.py`'s real routes hardcode a human-only gate
-*before* the permission check (ADR-0014 — "an `AIAgent` bearer credential
+*before* the permission check (ADR-0015 — "an `AIAgent` bearer credential
 calling `.../revoke` -> 403 `actor_forbidden`, unconditionally, even if that
 agent's `RoleAssignment` happens to grant `ai_agent.update`"), so an
 `AIAgent` caller hitting the real `.../revoke` route can never reach the
-permission check at all — that's exactly TC-AUTH-027, tested separately
-below. TC-AUTH-029/030 need to isolate `require_permission`'s own
+permission check at all — that's exactly TC-AUTH-031, tested separately
+below. TC-AUTH-033/034 need to isolate `require_permission`'s own
 allow/deny behavior instead, independent of that hardcoded gate — the AUTH-4
 scope plan §1 explicitly names "a second synthetic `require_permission`-gated
 route in the test" as an acceptable proof surface for exactly this reason.
@@ -338,11 +338,11 @@ async def test_org_admin_equivalent_issues_and_revokes_agent_credential() -> Non
         await _cleanup(emails=[email], user_ids=user_ids, org_ids=org_ids, role_ids=role_ids, agent_ids=agent_ids)
 
 
-# --- TC-AUTH-024: revoked key rejected, last_used_at unchanged -----------------------------
+# --- TC-AUTH-028: revoked key rejected, last_used_at unchanged -----------------------------
 
 
 @pytest.mark.asyncio
-async def test_revoked_agent_key_rejected_before_any_last_used_at_update() -> None:  # TC-AUTH-024
+async def test_revoked_agent_key_rejected_before_any_last_used_at_update() -> None:  # TC-AUTH-028
     email = _unique_email("tc024")
     user_ids: list = []
     org_ids: list = []
@@ -380,11 +380,11 @@ async def test_revoked_agent_key_rejected_before_any_last_used_at_update() -> No
         await _cleanup(emails=[email], user_ids=user_ids, org_ids=org_ids, agent_ids=agent_ids)
 
 
-# --- TC-AUTH-025: prefix-narrowed lookup still verifies the full secret --------------------
+# --- TC-AUTH-029: prefix-narrowed lookup still verifies the full secret --------------------
 
 
 @pytest.mark.asyncio
-async def test_prefix_matched_but_wrong_secret_is_rejected() -> None:  # TC-AUTH-025
+async def test_prefix_matched_but_wrong_secret_is_rejected() -> None:  # TC-AUTH-029
     email = _unique_email("tc025")
     user_ids: list = []
     org_ids: list = []
@@ -421,11 +421,11 @@ async def test_prefix_matched_but_wrong_secret_is_rejected() -> None:  # TC-AUTH
         await _cleanup(emails=[email], user_ids=user_ids, org_ids=org_ids, agent_ids=agent_ids)
 
 
-# --- TC-AUTH-026: last_used_at advances across 2 successive authenticated calls ------------
+# --- TC-AUTH-030: last_used_at advances across 2 successive authenticated calls ------------
 
 
 @pytest.mark.asyncio
-async def test_last_used_at_advances_across_two_successive_calls() -> None:  # TC-AUTH-026
+async def test_last_used_at_advances_across_two_successive_calls() -> None:  # TC-AUTH-030
     email = _unique_email("tc026")
     user_ids: list = []
     org_ids: list = []
@@ -467,11 +467,11 @@ async def test_last_used_at_advances_across_two_successive_calls() -> None:  # T
         await _cleanup(emails=[email], user_ids=user_ids, org_ids=org_ids, agent_ids=agent_ids)
 
 
-# --- TC-AUTH-027: AIAgent cannot issue or revoke any credential, unconditionally -----------
+# --- TC-AUTH-031: AIAgent cannot issue or revoke any credential, unconditionally -----------
 
 
 @pytest.mark.asyncio
-async def test_agent_cannot_issue_or_revoke_credentials_even_with_the_permission_granted() -> None:  # TC-AUTH-027
+async def test_agent_cannot_issue_or_revoke_credentials_even_with_the_permission_granted() -> None:  # TC-AUTH-031
     email = _unique_email("tc027")
     user_ids: list = []
     org_ids: list = []
@@ -520,11 +520,11 @@ async def test_agent_cannot_issue_or_revoke_credentials_even_with_the_permission
         await _cleanup(emails=[email], user_ids=user_ids, org_ids=org_ids, role_ids=role_ids, agent_ids=agent_ids)
 
 
-# --- TC-AUTH-028: no membership -> 404, membership-without-permission -> 403 ---------------
+# --- TC-AUTH-032: no membership -> 404, membership-without-permission -> 403 ---------------
 
 
 @pytest.mark.asyncio
-async def test_no_membership_yields_404_membership_without_permission_yields_403() -> None:  # TC-AUTH-028
+async def test_no_membership_yields_404_membership_without_permission_yields_403() -> None:  # TC-AUTH-032
     email_a = _unique_email("tc028a")
     email_b = _unique_email("tc028b")
     user_ids: list = []
@@ -565,11 +565,11 @@ async def test_no_membership_yields_404_membership_without_permission_yields_403
         await _cleanup(emails=[email_a, email_b], user_ids=user_ids, org_ids=org_ids)
 
 
-# --- Synthetic require_permission-gated app, for TC-AUTH-029/030 ---------------------------
+# --- Synthetic require_permission-gated app, for TC-AUTH-033/034 ---------------------------
 #
 # See module docstring for why: the real `.../revoke` route's human-only
 # gate always fires before `require_permission` for an AIAgent caller, which
-# would make TC-AUTH-029/030 indistinguishable from TC-AUTH-027 if driven
+# would make TC-AUTH-033/034 indistinguishable from TC-AUTH-031 if driven
 # through that real route. This throwaway app wires the real
 # `get_current_actor`/`require_permission`/`has_permission` functions (real
 # live DB via `app.api.deps.get_db`) behind a route with NO human-only gate,
@@ -597,11 +597,11 @@ def _synthetic_check_path(org_id) -> str:
     return f"/__test/orgs/{org_id}/synthetic-permission-check"
 
 
-# --- TC-AUTH-029: AC2 proof — AIAgent lacking the permission -> 403, permission_denied -----
+# --- TC-AUTH-033: AC2 proof — AIAgent lacking the permission -> 403, permission_denied -----
 
 
 @pytest.mark.asyncio
-async def test_agent_lacking_required_permission_gets_permission_denied_403() -> None:  # TC-AUTH-029
+async def test_agent_lacking_required_permission_gets_permission_denied_403() -> None:  # TC-AUTH-033
     email = _unique_email("tc029")
     user_ids: list = []
     org_ids: list = []
@@ -630,7 +630,7 @@ async def test_agent_lacking_required_permission_gets_permission_denied_403() ->
 
         # The agent's own raw `tnx_agent_...` key, NOT `_access_token_for` (a
         # human JWT) — `get_current_actor`'s JWT branch only ever resolves
-        # against `User` (ADR-0014: JWTs are minted for human logins only),
+        # against `User` (ADR-0015: JWTs are minted for human logins only),
         # so a JWT here would 401 before `require_permission` is ever
         # reached, silently testing nothing about the permission check.
         #
@@ -653,7 +653,7 @@ async def test_agent_lacking_required_permission_gets_permission_denied_403() ->
         assert response.status_code == 403
         body = response.json()
         assert body["code"] == "permission_denied"
-        assert body["code"] != "actor_forbidden"  # distinct from TC-AUTH-027's human-only gate
+        assert body["code"] != "actor_forbidden"  # distinct from TC-AUTH-031's human-only gate
     finally:
         await _cleanup(
             emails=[email],
@@ -665,11 +665,11 @@ async def test_agent_lacking_required_permission_gets_permission_denied_403() ->
         )
 
 
-# --- TC-AUTH-030: org-wide RoleAssignment (project_id=null) granting the permission ---------
+# --- TC-AUTH-034: org-wide RoleAssignment (project_id=null) granting the permission ---------
 
 
 @pytest.mark.asyncio
-async def test_org_wide_role_assignment_grants_permission_without_project_scope() -> None:  # TC-AUTH-030
+async def test_org_wide_role_assignment_grants_permission_without_project_scope() -> None:  # TC-AUTH-034
     email = _unique_email("tc030")
     user_ids: list = []
     org_ids: list = []
@@ -697,7 +697,7 @@ async def test_org_wide_role_assignment_grants_permission_without_project_scope(
             agent_ids = [agent.actor_id]
             org_id, agent_id = org.id, agent.actor_id
 
-        # Agent's own raw key + AsyncClient/ASGITransport — see TC-AUTH-029's
+        # Agent's own raw key + AsyncClient/ASGITransport — see TC-AUTH-033's
         # comment above for why (both fixes apply identically here).
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=_build_permission_only_test_app()), base_url="http://test"

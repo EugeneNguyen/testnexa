@@ -1,3 +1,5 @@
+.claude/worktrees/
+
 # Local-only, per-developer isolated test-environment port overrides
 # (CLAUDE.md "Running the stack": never commit this — it exists solely so a
 # feature worktree can stand up a second, isolated compose project without

@@ -4,7 +4,7 @@
 dependency (`Depends(get_db)`). `get_current_actor` (AUTH-2, Task 1)
 re-exports the actor-resolution dependency implemented in `app/core/rbac.py`
 so route modules depend on `app.api.deps` uniformly. `require_permission`
-(AUTH-4/ADR-0014) is re-exported the same way now that it's implemented.
+(AUTH-4/ADR-0015) is re-exported the same way now that it's implemented.
 `has_permission`/`require_human_actor` stay import-from-`app.core.rbac`
 directly where needed — `has_permission` is a plain async helper, not a
 FastAPI dependency, and `require_human_actor` is still stubbed.

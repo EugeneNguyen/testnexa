@@ -20,7 +20,7 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     # ### commands manually written to match the autogenerate style of
     # fbf02a6e4764_initial_schema.py — no live DB available to autogenerate
-    # against at implementation time (AUTH-4, ADR-0014). Additive, nullable
+    # against at implementation time (AUTH-4, ADR-0015). Additive, nullable
     # column: the AC3 `AuthIdentity.last_login_at`-equivalent for AIAgent
     # sessions, NULL until an agent's first successful bearer-key auth. ###
     op.add_column('ai_agent', sa.Column('last_used_at', sa.DateTime(timezone=True), nullable=True))

@@ -1,12 +1,12 @@
 """RBAC permission-check dependencies and actor resolution.
 
 AUTH-2 (Task 1) implemented `get_current_actor` for the human-JWT path only.
-AUTH-4 (ADR-0014) extends it with a second bearer scheme — an `AIAgent`
+AUTH-4 (ADR-0015) extends it with a second bearer scheme — an `AIAgent`
 API-key branch — and implements `has_permission`/`require_permission`: the
 generic `RoleAssignment` -> `Role` -> `RolePermission` -> `Permission`
 resolution plumbing any org-scoped route needs, seeded via test fixtures
 directly (RBAC-1..5's own business flows — org bootstrap, invites, seeded
-system roles — are still unbuilt and out of scope here; see ADR-0014).
+system roles — are still unbuilt and out of scope here; see ADR-0015).
 
 `require_human_actor` stays untouched/stubbed — RBAC-5's job, unrelated to
 this story. AUTH-4's own human-only gate on the agent-issuance/revocation
@@ -42,7 +42,7 @@ _bearer_scheme = HTTPBearer(auto_error=False)
 # resolves to no `User`, unrecognized/revoked/wrong AIAgent key) —
 # deliberately not distinguished, same no-enumeration-leak posture
 # ADR-0011/AUTH-1's login route takes for invalid_credentials, extended to
-# the agent-key path by ADR-0014 ("no distinct error code, same
+# the agent-key path by ADR-0015 ("no distinct error code, same
 # no-enumeration posture"). `GET /auth/me` reuses this shape as-is since it
 # depends on `get_current_actor` directly.
 _INVALID_TOKEN_ERROR = {
@@ -51,7 +51,7 @@ _INVALID_TOKEN_ERROR = {
     "field_errors": None,
 }
 
-# Fixed literal prefix every AIAgent API key starts with (ADR-0014). Lets
+# Fixed literal prefix every AIAgent API key starts with (ADR-0015). Lets
 # `get_current_actor` cheaply branch on bearer-token *shape* via a plain
 # `startswith` check before attempting anything JWT-specific, instead of
 # the more expensive/ambiguous "try to decode as JWT, fall back to key
@@ -105,7 +105,7 @@ async def _resolve_agent_actor(raw_key: str, db: AsyncSession) -> AIAgent:
     Narrows via `key_prefix` first (extracted from the presented raw key,
     not trusted from anywhere else), then argon2-verifies the full raw key
     against each narrowed candidate's `key_hash` in turn — `key_prefix` is
-    NOT assumed unique (ADR-0014 edge case: two independently generated
+    NOT assumed unique (ADR-0015 edge case: two independently generated
     8-char prefixes colliding is astronomically unlikely but not
     impossible), so this iterates rather than `.first()`-and-trusts.
     `revoked_at IS NULL` is enforced in the `WHERE` clause itself, not
@@ -113,7 +113,7 @@ async def _resolve_agent_actor(raw_key: str, db: AsyncSession) -> AIAgent:
     a never-existed one — same posture as the human 401 path's "can't tell
     'no such user' from 'wrong password'".
 
-    On a match, stamps `last_used_at = now()` and commits (ADR-0014: updated
+    On a match, stamps `last_used_at = now()` and commits (ADR-0015: updated
     on every successful agent-bearer authentication, not just at issuance).
     Raises the shared `_unauthorized()` 401 if no candidate's key matches.
     """
@@ -140,7 +140,7 @@ async def get_current_actor(
     """Resolve the bearer credential to the calling `User` or `AIAgent`.
 
     Branches on credential *shape* before attempting to interpret it
-    (ADR-0014): a `tnx_agent_`-prefixed credential is resolved as an AIAgent
+    (ADR-0015): a `tnx_agent_`-prefixed credential is resolved as an AIAgent
     API key (`_resolve_agent_actor`); anything else is attempted as a human
     JWT access token, the AUTH-2 behavior, unchanged.
 
@@ -199,7 +199,7 @@ async def has_permission(actor_id: str, org_id: str, code: str, project_id: str 
     exercise) resolves org-wide grants only: `RoleAssignment.project_id IS
     NULL`. Passing a `project_id` additionally matches project-scoped
     grants (`RoleAssignment.project_id == project_id`) — implemented per
-    ADR-0014/RBAC-3's documented design even though no route in this story
+    ADR-0015/RBAC-3's documented design even though no route in this story
     exercises it yet; RBAC-3 owns that coverage when it lands.
     """
     actor_uuid = uuid.UUID(str(actor_id))
@@ -242,7 +242,7 @@ def require_permission(code: str) -> Callable[..., Any]:
     request's own resolved path parameters (`request.path_params["org_id"]`)
     rather than a dependency-declared function parameter — `require_permission`
     is a bare dependency factory used across different route shapes, all of
-    which are `/orgs/{org_id}/...`-rooted (ADR-0014's 404-vs-403 boundary
+    which are `/orgs/{org_id}/...`-rooted (ADR-0015's 404-vs-403 boundary
     applies to exactly this shape of route); reading it off `request` avoids
     every call site having to redeclare `org_id: uuid.UUID` as its own path
     parameter just to satisfy this dependency. `project_id` is read the same

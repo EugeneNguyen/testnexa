@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider, useAuth } from "../../src/auth/AuthContext";
 import { clearAccessToken, getAccessToken } from "../../src/lib/auth/tokenStore";
@@ -129,4 +129,87 @@ describe("AuthProvider boot-time silent refresh", () => {
       });
     },
   );
+});
+
+/**
+ * AUTH-3 (ADR-0014): `logout()`'s client-side cleanup must run unconditionally,
+ * even when the underlying `POST /auth/logout` API call rejects outright
+ * (network failure) — that cleanup is the actual security property AUTH-3
+ * delivers for a shared/public machine, and must not be held hostage to
+ * network reachability.
+ */
+describe("AuthProvider.logout()", () => {
+  function LogoutConsumer() {
+    const { accessToken, orgContext, orgs, login, logout } = useAuth();
+    return (
+      <div>
+        <div data-testid="access-token">{accessToken ?? "none"}</div>
+        <div data-testid="org-context">{orgContext ?? "none"}</div>
+        <div data-testid="orgs-count">{orgs.length}</div>
+        <button onClick={() => void login("user@example.com", "password")}>Log in</button>
+        <button onClick={() => void logout()}>Log out</button>
+      </div>
+    );
+  }
+
+  beforeEach(() => {
+    clearAccessToken();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    clearAccessToken();
+  });
+
+  it("clears the token store and resets org state even when the logout API call rejects", async () => {
+    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+      const href = String(url);
+      if (href.includes("/auth/refresh")) {
+        // Boot-time silent refresh: no session to restore.
+        return jsonResponse(
+          { code: "invalid_refresh_token", message: "no session", field_errors: null },
+          401,
+        );
+      }
+      if (href.includes("/auth/login")) {
+        return jsonResponse({
+          access_token: "session-token",
+          org_context: "auto",
+          orgs: [{ id: "org-1", name: "Org One", slug: "org-one" }],
+        });
+      }
+      if (href.includes("/auth/logout")) {
+        throw new Error("network failure");
+      }
+      throw new Error(`unexpected fetch to ${href}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <AuthProvider>
+        <LogoutConsumer />
+      </AuthProvider>,
+    );
+
+    // Let the boot-time refresh settle (fails: no session) before driving login.
+    await waitFor(() => {
+      expect(screen.getByTestId("access-token")).toHaveTextContent("none");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Log in" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("access-token")).toHaveTextContent("session-token");
+    });
+    expect(screen.getByTestId("org-context")).toHaveTextContent("auto");
+    expect(screen.getByTestId("orgs-count")).toHaveTextContent("1");
+
+    fireEvent.click(screen.getByRole("button", { name: "Log out" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("access-token")).toHaveTextContent("none");
+    });
+    expect(getAccessToken()).toBeNull();
+    expect(screen.getByTestId("org-context")).toHaveTextContent("none");
+    expect(screen.getByTestId("orgs-count")).toHaveTextContent("0");
+  });
 });
