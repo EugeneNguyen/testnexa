@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-03
 **Owner:** xuanbinh91@gmail.com (CTO)
-**Sources:** [07 ERD](../product-discovery/07-erd-draft.md), [Scaffold design spec](../superpowers/specs/2026-09-03-project-scaffold-design.md), [ADR-0005](../adr/0005-traceability-link-dedicated-join-tables.md), [ADR-0006](../adr/0006-test-condition-optional.md), [ADR-0007](../adr/0007-real-multi-tenancy.md), [ADR-0008](../adr/0008-uuid-primary-keys.md), [ADR-0011](../adr/0011-login-rate-limiting.md)
+**Sources:** [07 ERD](../product-discovery/07-erd-draft.md), [Scaffold design spec](../superpowers/specs/2026-09-03-project-scaffold-design.md), [ADR-0005](../adr/0005-traceability-link-dedicated-join-tables.md), [ADR-0006](../adr/0006-test-condition-optional.md), [ADR-0007](../adr/0007-real-multi-tenancy.md), [ADR-0008](../adr/0008-uuid-primary-keys.md), [ADR-0011](../adr/0011-login-rate-limiting.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md)
 
 This document is the implementation-level schema, refined from the [07 ERD](../product-discovery/07-erd-draft.md) draft per the ADRs above. No code — this is the reference for the Alembic migration that will be written when implementation is authorized.
 
@@ -65,17 +65,19 @@ Unique: `(org_id, user_id)`.
 | last_login_at | timestamptz | nullable |
 | created_at, updated_at | timestamptz | not null |
 
-**RefreshToken** *(not in 07 — added per [ADR-0003](../adr/0003-auth-token-strategy.md))*
+**RefreshToken** *(not in 07 — added per [ADR-0003](../adr/0003-auth-token-strategy.md); rotation semantics per [ADR-0013](../adr/0013-refresh-token-rotation-policy.md))*
 | Column | Type | Constraints |
 |---|---|---|
 | id | uuid | PK |
 | user_id | uuid | FK → user.id, not null, indexed |
-| token_hash | varchar | not null — raw token never stored |
+| token_hash | varchar | not null, **unique, indexed** — raw token never stored. Uniqueness/index added in ADR-0013: `POST /auth/refresh` looks this column up by value on every renewal (a hot path once sessions persist across restarts), unlike AUTH-1 which only ever wrote it |
 | issued_at | timestamptz | not null |
-| expires_at | timestamptz | not null |
+| expires_at | timestamptz | not null — on rotation, copied verbatim from the token being replaced, **not** recomputed as `now + JWT_REFRESH_TTL_DAYS` (ADR-0013: caps a session's absolute lifetime at 30 days from original login regardless of renewal frequency) |
 | revoked_at | timestamptz | nullable |
-| revoked_reason | varchar | nullable (e.g. `logout`, `admin_force_logout`) |
+| revoked_reason | varchar | nullable — `logout` (AUTH-3), `admin_force_logout` (no admin UI yet, but any write to this column achieves it), `rotated` (ADR-0013: every `POST /auth/refresh` revokes the token it consumes, single-use) |
 | created_at, updated_at | timestamptz | not null |
+
+**Rotation chain note:** a session is a chain of `RefreshToken` rows linked only implicitly (each rotation's new row copies the prior row's `expires_at`) — there is no explicit `session_id`/chain-root column. This is a deliberate minimalism: the copy-forward is sufficient to bound absolute session lifetime without an extra column, and nothing in AUTH-2's scope needs to enumerate a session's full rotation history.
 
 **LoginAttempt** *(not in 07 — added per [ADR-0011](../adr/0011-login-rate-limiting.md), login rate limiting)*
 | Column | Type | Constraints |
@@ -443,6 +445,7 @@ Storage backend (local filesystem vs. S3-compatible) is an application-config co
 - Every table with a direct `org_id` or `project_id` column has that column indexed — the primary lever for NFR-1 tenant-isolation query performance.
 - Composite indexes called out explicitly: `TestExecution(test_cycle_id, test_case_id)`, `TestLog(test_execution_id, logged_at)`.
 - The 4 link tables in §3.9 are each indexed on both FK columns individually (supports lookup from either direction for RTM traversal, FR-TRACE-1).
+- `RefreshToken.token_hash` has a unique index (ADR-0013) — the refresh route's lookup key, a hot path once sessions persist across restarts.
 
 ## 5. Deviations from the 07 ERD draft (for the record)
 
@@ -456,3 +459,4 @@ Storage backend (local filesystem vs. S3-compatible) is an application-config co
 | No `AIAgent` credential fields | `key_hash`/`key_prefix`/`issued_at`/`revoked_at` added | AUTH-4 |
 | `}o--o{` many-to-many drawn without table names | `TestSuiteTestCase`, `TestPlanTestSuite`, `TestCaseTestDesignTechnique` named explicitly | Implementation necessity |
 | No `LoginAttempt` table | Added | ADR-0011 (login rate limiting) |
+| `RefreshToken.token_hash` unspecified index | Unique index added | ADR-0013 (refresh rotation makes it a lookup key, not just a write target) |

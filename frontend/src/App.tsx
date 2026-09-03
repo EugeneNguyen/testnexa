@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Route, Routes } from "react-router-dom";
 import { CCard, CCardBody, CCol, CContainer, CRow } from "@coreui/react";
 import { AuthProvider } from "./auth/AuthContext";
+import ProtectedRoute from "./auth/ProtectedRoute";
 import { apiFetch } from "./lib/api/client";
 import Login from "./pages/workflows/Login";
 import OrgHome from "./pages/workflows/OrgHome";
@@ -57,8 +58,22 @@ function App() {
       <Routes>
         <Route path="/" element={<ScaffoldVerificationPage />} />
         <Route path="/login" element={<Login />} />
-        <Route path="/orgs/pick" element={<OrgPicker />} />
-        <Route path="/orgs/:orgId" element={<OrgHome />} />
+        <Route
+          path="/orgs/pick"
+          element={
+            <ProtectedRoute>
+              <OrgPicker />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/orgs/:orgId"
+          element={
+            <ProtectedRoute>
+              <OrgHome />
+            </ProtectedRoute>
+          }
+        />
       </Routes>
     </AuthProvider>
   );

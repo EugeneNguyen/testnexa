@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-03
 **Owner:** xuanbinh91@gmail.com (CTO)
-**Sources:** [Scaffold design spec](../superpowers/specs/2026-09-03-project-scaffold-design.md), [Database Document](../database/2026-09-03-database-design.md), [Requirements Document](../requirements/2026-09-03-project-scaffold-requirements.md)
+**Sources:** [Scaffold design spec](../superpowers/specs/2026-09-03-project-scaffold-design.md), [Database Document](../database/2026-09-03-database-design.md), [Requirements Document](../requirements/2026-09-03-project-scaffold-requirements.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md) (refresh rotation policy)
 
 REST over HTTPS, JSON bodies, base path `/api/v1`. FastAPI auto-generates the OpenAPI schema from the implementation — this document is the design-level contract new routes must match, not a substitute for the generated spec once code exists.
 
@@ -28,7 +28,7 @@ REST over HTTPS, JSON bodies, base path `/api/v1`. FastAPI auto-generates the Op
 | POST | `/auth/login` | none (public) | FR-AUTH-1 |
 | POST | `/auth/refresh` | none (valid refresh cookie required) | FR-AUTH-2 |
 | POST | `/auth/logout` | authenticated | FR-AUTH-3 |
-| GET | `/auth/me` | authenticated | returns current Actor + resolved permission codes, drives frontend route guards |
+| GET | `/auth/me` | authenticated | returns current Actor identity; drives frontend route guards |
 | POST | `/orgs/{org_id}/agents` | `ai_agent.create` (org_admin only) | FR-AUTH-4 — issues AIAgent + one-time API key |
 | POST | `/orgs/{org_id}/agents/{agent_id}/revoke` | `ai_agent.update` | FR-AUTH-4 |
 
@@ -40,6 +40,14 @@ REST over HTTPS, JSON bodies, base path `/api/v1`. FastAPI auto-generates the Op
 - 0 active memberships → login rejected outright, `403 no_active_organization`, no token issued (credentials were valid — this is not a 401; see §7).
 
 `POST /auth/login` is also subject to the login throttle: `429 rate_limited` after 5 failed attempts for the same `(client_ip, email)` pair within 15 minutes (see [ADR-0011](../adr/0011-login-rate-limiting.md), NFR-11). A successful login clears that pair's counter. `LoginAttempt` (the table backing this) has no API route at all, generic or bespoke — it's write-only internal bookkeeping from the login route itself, never read via the API.
+
+`POST /auth/refresh` request: no body — the only input is the `refresh_token` httpOnly cookie (never a request field). Response: `{access_token}` only; `org_context`/`orgs` are not re-sent (the frontend already holds those from login — refresh's only job is renewing the access token). Per [ADR-0013](../adr/0013-refresh-token-rotation-policy.md):
+- **Rotates on every use:** the presented refresh token is revoked (`revoked_reason="rotated"`) and a new one is issued as a new httpOnly cookie in the same response, alongside the new access token. A rotated-out token presented again is rejected — no reuse-grace-window.
+- **Inherits absolute expiry:** the new token's `expires_at` is copied from the one it replaces, not reset to `now + 30d` — a session's total lifetime is capped at `JWT_REFRESH_TTL_DAYS` from the original login no matter how often it's silently renewed.
+- **Re-checks active org membership**, same rule as login: 0 active `OrgMembership` rows → `403 no_active_organization`, refresh token itself left un-revoked (a later attempt can still succeed if membership is reactivated before the token expires).
+- Rejected with `401` (generic body, `code: "invalid_refresh_token"`) for: cookie missing, hash not found, already-revoked (including rotated-out), or expired — the frontend treats all of these identically (clear local auth state, redirect to `/login`); no distinct error code is exposed per-cause.
+
+`GET /auth/me` request: no body, `Authorization: Bearer <access_token>` required. Response: `{actor_id, email, actor_type}`. The fuller "+ resolved permission codes" contract (§2 table's original wording) is deferred until an RBAC story exists to resolve permission codes at all — this route ships identity-only for AUTH-2, since it exists primarily as the protected route AUTH-2's silent-refresh flow needs to prove itself against, not as the RBAC-driving route it will eventually become.
 
 ## 3. Generic CRUD routes (router factory, applied to ~24 of 36 tables)
 
@@ -100,10 +108,11 @@ Every MCP-originated write records `created_by_actor_id`/`executed_by_actor_id` 
 
 ## 7. Cross-cutting error examples
 
-**401, expired access token:**
+**401, expired (or otherwise invalid) access token:**
 ```
-{"code": "token_expired", "message": "Access token has expired.", "field_errors": null}
+{"code": "invalid_token", "message": "Invalid or expired access token.", "field_errors": null}
 ```
+Single generic code for every `get_current_actor` rejection reason — missing/malformed `Authorization` header, expired/tampered/malformed JWT, or a well-formed, validly-signed token whose `sub` doesn't resolve to any `User` — deliberately not distinguished, same no-enumeration-leak posture as `invalid_credentials`/`invalid_refresh_token` below (see `backend/app/core/rbac.py`).
 
 **403, AIAgent attempting Approval:**
 ```
@@ -118,6 +127,11 @@ Every MCP-originated write records `created_by_actor_id`/`executed_by_actor_id` 
 **401, invalid login credentials (identical body whether the email exists or not — no enumeration leak):**
 ```
 {"code": "invalid_credentials", "message": "Invalid email or password.", "field_errors": null}
+```
+
+**401, refresh token missing/revoked/rotated-out/expired (single generic code for all four causes):**
+```
+{"code": "invalid_refresh_token", "message": "Your session has expired. Please log in again.", "field_errors": null}
 ```
 
 **429, login throttled:**

@@ -4,7 +4,7 @@
 **Date:** 2026-09-03
 **Owner:** xuanbinh91@gmail.com (CTO)
 **Format:** IEEE 829 Test Plan sections, applied to testing the scaffold itself — the tool tests its own build using the same document shape it's designed to produce for its users.
-**Sources:** [Requirements Document](../requirements/2026-09-03-project-scaffold-requirements.md), [Scaffold design spec](../superpowers/specs/2026-09-03-project-scaffold-design.md), [Test Design](../test-design/2026-09-03-test-design.md), [Test Cases](../test-cases/2026-09-03-test-cases.md), [AUTH-1 scope plan](../superpowers/plans/2026-09-03-auth-1-local-password-login-plan.md)
+**Sources:** [Requirements Document](../requirements/2026-09-03-project-scaffold-requirements.md), [Scaffold design spec](../superpowers/specs/2026-09-03-project-scaffold-design.md), [Test Design](../test-design/2026-09-03-test-design.md), [Test Cases](../test-cases/2026-09-03-test-cases.md), [AUTH-1 scope plan](../superpowers/plans/2026-09-03-auth-1-local-password-login-plan.md), [AUTH-2 scope plan](../superpowers/plans/2026-09-03-auth-2-session-persistence-plan.md)
 
 ---
 
@@ -45,6 +45,7 @@ Test-design techniques applied per feature area are detailed in the [Test Design
 - A route/feature **fails** if any acceptance criterion lacks coverage, or any covered criterion's test is red.
 - NFR-1 (tenant isolation) and NFR-9 (RBAC matrix) are release-blocking: no scaffold build is considered complete with a known cross-tenant leak or an unverified permission-denial path.
 - NFR-11 (login rate limiting) is release-blocking for AUTH-1: `POST /auth/login` must not ship without the 429 throttle verified at the HTTP layer, not just unit-tested in isolation.
+- NFR-12/NFR-13 (refresh rotation, org re-check) are release-blocking for AUTH-2: `POST /auth/refresh` must not ship without single-use rotation and the revoked/expired-token 401 path verified at the HTTP layer ([ADR-0013](../adr/0013-refresh-token-rotation-policy.md)) — a refresh endpoint that silently allows indefinite reuse of one token defeats the story's own revocability requirement.
 
 ## 7. Suspension criteria and resumption requirements
 
@@ -97,6 +98,7 @@ Testing is not a separate phase — per the WBS, each backend/frontend deliverab
 | E2E suite flakiness against a full docker-compose stack | Keep E2E scope to the two named flows (§9.4); push broader coverage to integration tests, which run faster and more deterministically against `postgres-test` directly |
 | Multi-tenancy (unvalidated per ADR-0007) adds test surface with unclear ROI if the feature itself gets cut post-scaffold | Isolation tests (NFR-1) are cheap relative to the cost of a real leak — keep them regardless of multi-tenancy's eventual product fate |
 | Login throttle test is timing-sensitive (15-minute window) and could be flaky/slow if tested literally | Test the throttle's counting/threshold logic against an injectable clock or a short-window test config, not a real 15-minute wall-clock wait |
+| Refresh-token rotation's multi-tab race (two tabs refreshing near-simultaneously, [ADR-0013](../adr/0013-refresh-token-rotation-policy.md)) is a known, accepted gap, not a bug to chase in the test suite | Test single-tab rotation/revocation behavior deterministically (TC-AUTH-006/007/008); do not attempt to assert away the multi-tab race in automated tests — it's a documented trade-off, not a regression target |
 
 ## 15. Approvals
 

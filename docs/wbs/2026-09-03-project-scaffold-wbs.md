@@ -22,7 +22,9 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 | # | Deliverable | Depends on | Size | Maps to |
 |---|---|---|---|---|
 | 2.1 | `security.py` — JWT issue/verify, argon2 password hashing | 1.4 | S | FR-AUTH-1 |
-| 2.2 | Local login/refresh/logout routes, DB-backed revocable refresh token, org auto-select/picker/403-zero-org resolution | 2.1, 1.2 | M | FR-AUTH-1..3 |
+| 2.2 | Local login route, org auto-select/picker/403-zero-org resolution | 2.1, 1.2 | M | FR-AUTH-1 |
+| 2.2b | `POST /auth/refresh` (rotate-on-use, org re-check), `GET /auth/me`, minimal `get_current_actor` (bearer JWT verify only, no permission codes) | 2.2 | M | FR-AUTH-2, NFR-12, NFR-13, [ADR-0013](../adr/0013-refresh-token-rotation-policy.md) |
+| 2.2c | `POST /auth/logout` (revoke current refresh token, clear cookie) | 2.2b | S | FR-AUTH-3 |
 | 2.3 | AIAgent API-key issuance/revocation (admin-facing) + bearer auth | 2.1 | M | FR-AUTH-4 |
 | 2.4 | `rbac.py` — `require_permission(code)` dependency, permission-code registry generated from model registry | 1.3 | M | FR-RBAC-3, NFR-10 |
 | 2.5 | Org/OrgMembership routes — create org (first-user bootstrap), invite/suspend/reactivate members | 2.4 | M | FR-RBAC-1, FR-RBAC-2 |
@@ -64,7 +66,9 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 |---|---|---|---|---|
 | 6.1 | Vite + React Router + TanStack Query + Tailwind scaffold | — | S | ADR-0009 |
 | 6.2 | Typed API client + TanStack Query hooks (`useEntityList`, `useEntity`, `useCreateEntity`, `useUpdateEntity`, `useDeleteEntity`) | 6.1, 3.2 | M | [API Document](../api/2026-09-03-api-design.md) |
-| 6.3 | Auth handling (access token in memory, silent refresh via httpOnly cookie on app boot), permission-code route guards | 6.2, 2.2 | M | FR-AUTH-1..3 |
+| 6.3a | Token store module (`apiFetch` reads/attaches `Authorization`, 401→refresh→retry-once with concurrent-refresh dedup) | 6.2, 2.2b | M | FR-AUTH-2 |
+| 6.3b | `AuthContext` boot-time silent refresh (`isInitializing`), `ProtectedRoute` guard | 6.3a | S | FR-AUTH-2 |
+| 6.3c | Logout action (calls `/auth/logout`, clears token store, redirects to login) | 6.3a, 2.2c | S | FR-AUTH-3 |
 
 ## 7. Generic CRUD UI
 
@@ -72,13 +76,13 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 |---|---|---|---|---|
 | 7.1 | `<EntityTable>`, `<EntityForm>` (react-hook-form + zod) generic components | 6.2 | M | FR-ADMIN-2 |
 | 7.2 | `entityConfigs/` — one field-config object per entity (28) | 7.1 | L | FR-ADMIN-2 |
-| 7.3 | Admin pages routed from an entity registry, permission-gated action buttons | 7.2, 6.3 | M | FR-ADMIN-2, NFR-10 |
+| 7.3 | Admin pages routed from an entity registry, permission-gated action buttons | 7.2, 6.3b | M | FR-ADMIN-2, NFR-10 |
 
 ## 8. Bespoke workflow screens
 
 | # | Deliverable | Depends on | Size | Maps to |
 |---|---|---|---|---|
-| 8.1 | Login, OrgSwitcher/ProjectSwitcher | 6.3 | M | FR-AUTH-1, FR-RBAC-1 |
+| 8.1 | Login, OrgSwitcher/ProjectSwitcher | 6.3b | M | FR-AUTH-1, FR-RBAC-1 |
 | 8.2 | RequirementDetail (Requirement → optional TestCondition → TestCase, both paths) | 7.1, 4.1 | M | FR-REQ-1..3 |
 | 8.3 | TestSuiteBuilder | 7.1, 4.1 | S | FR-REQ-4 |
 | 8.4 | TestExecutionRunner (pass/fail/blocked + notes, raises Defect) | 7.1, 4.3, 4.4 | M | FR-EXEC-1..3 |
@@ -107,7 +111,7 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 |---|---|---|
 | 11.1 | Requirement Document | Done |
 | 11.2 | WBS (this document) | Done |
-| 11.3 | ADRs (0001–0010 + index) | Done |
+| 11.3 | ADRs (0001–0013 + index) | Done |
 | 11.4 | Database Document | Done |
 | 11.5 | API Document | Done |
 | 11.6 | Master Test Plan | Done |

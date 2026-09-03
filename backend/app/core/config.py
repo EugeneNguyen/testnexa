@@ -32,7 +32,13 @@ class Settings(BaseSettings):
 
     # JWT / auth (ADR-0003)
     JWT_SECRET: str = "change-me-in-production"
-    JWT_ACCESS_TTL_MINUTES: int = 15
+    # `float`, not `int`: `timedelta(minutes=...)` accepts either, and this
+    # lets an isolated test env override it to a sub-minute value (e.g.
+    # `JWT_ACCESS_TTL_MINUTES=0.05` == 3s) to exercise a real access-token
+    # expiry -> refresh -> retry chain in an E2E test (fix round 2, Finding
+    # 3) without waiting out the real 15-minute default. Production default
+    # (15) is unaffected either way.
+    JWT_ACCESS_TTL_MINUTES: float = 15
     JWT_REFRESH_TTL_DAYS: int = 30
 
     # Attachment storage (Database Document §governance.py Attachment)

@@ -8,6 +8,14 @@
  *   nginx routes `/api/*` to the backend — so the base URL is `''` and the
  *   request path itself (e.g. `/api/health`) is used as-is.
  */
+import { clearAccessToken, getAccessToken, setAccessToken } from "../auth/tokenStore";
+// `refresh()` is imported from `./auth`, which itself imports `apiFetch` from
+// this module — a real circular import. This is intentional (AUTH-2 plan,
+// Task 3) and safe: both sides are function declarations only used inside
+// other functions' bodies, never evaluated at module-init time, so the cycle
+// resolves fine under ESM/Vite's live-binding semantics.
+import { refresh as refreshRequest } from "./auth";
+
 export const API_BASE_URL: string = import.meta.env.VITE_API_BASE_URL ?? "";
 
 export class ApiError extends Error {
@@ -27,6 +35,49 @@ export class ApiError extends Error {
   }
 }
 
+export interface ApiFetchOptions extends RequestInit {
+  /**
+   * Opts this call out of the 401 -> refresh -> retry interceptor below.
+   * Set internally by `login()` and `refresh()` (`lib/api/auth.ts`) on their
+   * own `apiFetch` calls — those two routes are the only unauthenticated
+   * ones (API Document §2), and a 401 from `refresh()` itself must never
+   * trigger another refresh attempt (infinite recursion risk otherwise).
+   */
+  skipAuthRetry?: boolean;
+}
+
+/**
+ * In-flight refresh promise, shared by every concurrent caller so a burst of
+ * simultaneous refresh needs triggers exactly one `POST /auth/refresh` call,
+ * not one per caller (AUTH-2 plan, Task 3).
+ *
+ * Exported (not just used internally by the 401 interceptor below) so that
+ * `AuthContext`'s boot-time silent refresh (Task 4) can share this exact
+ * same in-flight-promise memoization instead of calling `refresh()`
+ * (`lib/api/auth.ts`) raw. Refresh tokens are single-use (ADR-0013) — two
+ * concurrent callers presenting the same cookie means one gets a fresh
+ * token and the other gets a spurious 401, which is reachable in practice
+ * (React StrictMode double-invoking the boot effect in dev; two tabs
+ * cold-loading concurrently in prod) if the boot path and the interceptor
+ * path don't dedupe against each other. Every caller — boot effect,
+ * reactive 401, or both firing in the same tick — funnels through this one
+ * function, so at most one `POST /auth/refresh` is ever in flight at a time.
+ *
+ * Callers are each responsible for calling `setAccessToken` on their own
+ * success path after awaiting this — this function only performs the
+ * network call + dedup, it does not touch the token store itself.
+ */
+let refreshPromise: Promise<{ access_token: string }> | null = null;
+
+export function requestRefresh(): Promise<{ access_token: string }> {
+  if (!refreshPromise) {
+    refreshPromise = refreshRequest().finally(() => {
+      refreshPromise = null;
+    });
+  }
+  return refreshPromise;
+}
+
 /**
  * Fetch `path` (e.g. `/api/health`) against the resolved API base URL and
  * parse the JSON response body as `T`. Throws `ApiError` on a non-2xx
@@ -36,18 +87,31 @@ export class ApiError extends Error {
  * generic status-based message. Either way the parsed body (if any) is
  * attached as `ApiError.body` for callers that need finer-grained handling
  * (e.g. a `code` field).
+ *
+ * Attaches `Authorization: Bearer <token>` from `lib/auth/tokenStore` when a
+ * token is present — caller-supplied headers win on conflict, same merge
+ * order as the `Content-Type` default below.
+ *
+ * On a 401 from an authenticated call (i.e. `skipAuthRetry` not set), makes
+ * exactly one silent `refresh()` + retry attempt: on success, stores the new
+ * access token and retries the original request once; on failure, clears the
+ * token store, redirects to `/login`, and rejects with the *original* 401's
+ * `ApiError` (the redirect is a side effect — the page navigation unmounts
+ * whatever was awaiting this promise anyway).
  */
-export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+export async function apiFetch<T>(path: string, init?: ApiFetchOptions): Promise<T> {
   const url = `${API_BASE_URL}${path}`;
+  const token = getAccessToken();
 
   let response: Response;
   try {
     response = await fetch(url, {
+      ...init,
       headers: {
         "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...init?.headers,
       },
-      ...init,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Network request failed";
@@ -70,8 +134,40 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
         ? (body as { message: string }).message
         : `Request to ${url} failed with status ${response.status}`;
 
-    throw new ApiError(message, response.status, body);
+    const error = new ApiError(message, response.status, body);
+
+    if (response.status === 401 && !init?.skipAuthRetry) {
+      try {
+        const { access_token } = await requestRefresh();
+        setAccessToken(access_token);
+      } catch {
+        clearAccessToken();
+        window.location.assign("/login");
+        throw error;
+      }
+      return apiFetch<T>(path, { ...init, skipAuthRetry: true });
+    }
+
+    throw error;
   }
 
   return (await response.json()) as T;
+}
+
+// Fix round 2, Finding 3: dev-build-only test hook. No mounted production
+// page currently makes an authenticated call (`GET /auth/me` is wired up but
+// nothing renders it yet — see AUTH-2 plan/AuthContext's own documented
+// scope), so there is no natural in-app trigger E2E can drive to exercise
+// `apiFetch`'s real 401 -> refresh -> retry interceptor chain end to end
+// against a real backend. Rather than fabricate one, expose `apiFetch`
+// itself on `window` — gated by `import.meta.env.DEV` so Vite's production
+// build (`npm run build`, the `prod` Compose profile) tree-shakes this
+// block out entirely; it is never present outside a `vite dev` server (the
+// `dev` Compose profile e2e already runs against). This is the same
+// mechanism the app's own authenticated calls would use (reads the current
+// token from `lib/auth/tokenStore` automatically), so a test driving it via
+// `page.evaluate` is exercising the real production interceptor code, not a
+// stand-in for it.
+if (import.meta.env.DEV) {
+  (window as unknown as { __testApiFetch?: typeof apiFetch }).__testApiFetch = apiFetch;
 }

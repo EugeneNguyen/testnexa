@@ -1,6 +1,7 @@
-"""Pydantic v2 schemas for the AUTH-1 login route.
+"""Pydantic v2 schemas for the AUTH-1 login route and AUTH-2 session routes.
 
-Source: API Document §2 (`POST /auth/login` request/response contract).
+Source: API Document §2 (`POST /auth/login`, `POST /auth/refresh`,
+`GET /auth/me` request/response contracts), ADR-0013 (refresh rotation policy).
 """
 
 from typing import Literal
@@ -34,3 +35,27 @@ class LoginResponse(BaseModel):
     access_token: str
     org_context: Literal["auto", "picker"]
     orgs: list[OrgSummary]
+
+
+class RefreshResponse(BaseModel):
+    """Response of `POST /auth/refresh` (API Document §2, ADR-0013).
+
+    Deliberately does NOT include `org_context`/`orgs` — the frontend already
+    holds those from login; refresh's only job is renewing the access token.
+    The rotated raw refresh token is never included here either — it is set
+    as a new httpOnly cookie on the response, same as login.
+    """
+
+    access_token: str
+
+
+class MeResponse(BaseModel):
+    """Response of `GET /auth/me` (API Document §2, ADR-0013).
+
+    Identity-only for AUTH-2 — no resolved permission codes yet (deferred
+    until an RBAC story exists to resolve them).
+    """
+
+    actor_id: str
+    email: str
+    actor_type: str
