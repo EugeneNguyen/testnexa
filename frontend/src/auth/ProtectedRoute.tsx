@@ -13,10 +13,15 @@
  * transition, distinct from and unrelated to `apiFetch`'s own reactive
  * 401-interceptor redirect, which uses a hard `window.location.assign`
  * (full page reload). Do not conflate the two mechanisms.
+ *
+ * AUTH-3: once authenticated, renders `<AppHeader />` above `children` so
+ * every protected page gets the navbar (brand + "Log out" button) for free
+ * without wiring its own (scope plan §1/§4.3).
  */
 import { ReactNode } from "react";
 import { Navigate } from "react-router-dom";
 import { CSpinner } from "@coreui/react";
+import AppHeader from "../components/AppHeader";
 import { useAuth } from "./AuthContext";
 
 interface ProtectedRouteProps {
@@ -38,7 +43,12 @@ function ProtectedRoute({ children }: ProtectedRouteProps) {
     return <Navigate to="/login" replace />;
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      <AppHeader />
+      {children}
+    </>
+  );
 }
 
 export default ProtectedRoute;
