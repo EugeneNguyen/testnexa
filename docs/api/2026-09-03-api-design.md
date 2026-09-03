@@ -108,10 +108,11 @@ Every MCP-originated write records `created_by_actor_id`/`executed_by_actor_id` 
 
 ## 7. Cross-cutting error examples
 
-**401, expired access token:**
+**401, expired (or otherwise invalid) access token:**
 ```
-{"code": "token_expired", "message": "Access token has expired.", "field_errors": null}
+{"code": "invalid_token", "message": "Invalid or expired access token.", "field_errors": null}
 ```
+Single generic code for every `get_current_actor` rejection reason — missing/malformed `Authorization` header, expired/tampered/malformed JWT, or a well-formed, validly-signed token whose `sub` doesn't resolve to any `User` — deliberately not distinguished, same no-enumeration-leak posture as `invalid_credentials`/`invalid_refresh_token` below (see `backend/app/core/rbac.py`).
 
 **403, AIAgent attempting Approval:**
 ```

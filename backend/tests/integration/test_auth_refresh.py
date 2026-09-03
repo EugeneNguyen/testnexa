@@ -34,6 +34,7 @@ import httpx
 import pytest
 from sqlalchemy import delete, select
 
+from app.core.config import settings
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -194,6 +195,18 @@ async def test_refresh_issues_new_access_token_that_works_against_me() -> None: 
         body = refresh_response.json()
         assert set(body.keys()) == {"access_token"}
         new_access_token = body["access_token"]
+
+        # Fix round 2, Finding 1: the rotated refresh cookie must carry an
+        # explicit `Max-Age`, same as the login route — assert on the raw
+        # `Set-Cookie` header text (`response.headers.get_list`, since httpx
+        # may fold or repeat this header) so a regression to an implicit
+        # session cookie on the *refresh* path specifically (as opposed to
+        # just login) is caught too.
+        set_cookie_headers = refresh_response.headers.get_list("set-cookie")
+        refresh_cookie_header = next(h for h in set_cookie_headers if h.startswith("refresh_token="))
+        assert "max-age=" in refresh_cookie_header.lower()
+        expected_max_age = settings.JWT_REFRESH_TTL_DAYS * 24 * 60 * 60
+        assert f"Max-Age={expected_max_age}" in refresh_cookie_header
 
         async with httpx.AsyncClient(base_url=TEST_API_BASE_URL) as client:
             me_response = await client.get(ME_PATH, headers={"Authorization": f"Bearer {new_access_token}"})

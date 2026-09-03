@@ -173,12 +173,19 @@ async def login(
 
     # 7. Refresh token: httpOnly cookie only, never in the JSON body.
     # `secure=False` is only acceptable for local dev over plain HTTP.
+    # `max_age` (fix round 2, Finding 1): without it Starlette emits a
+    # session cookie (no `Max-Age`/`Expires` on the wire at all), which the
+    # browser discards on close — defeating AUTH-2's entire premise of
+    # surviving a browser restart even though the DB-side `RefreshToken` row
+    # is still live for `JWT_REFRESH_TTL_DAYS`. Tying the cookie's lifetime
+    # to that same window keeps the two in sync.
     response.set_cookie(
         key="refresh_token",
         value=raw_refresh_token,
         httponly=True,
         samesite="lax",
         secure=(settings.ENV != "dev"),
+        max_age=settings.JWT_REFRESH_TTL_DAYS * 24 * 60 * 60,
     )
 
     return LoginResponse(
@@ -321,12 +328,17 @@ async def refresh(
 
     access_token = create_access_token(str(stored_token.user_id))
 
+    # `max_age` (fix round 2, Finding 1) — same rationale as `login()` above:
+    # every rotation must keep re-issuing a persistent cookie, not a session
+    # cookie, or the browser-restart guarantee silently degrades back to
+    # "until browser close" on the very next refresh after login.
     response.set_cookie(
         key="refresh_token",
         value=new_raw_refresh_token,
         httponly=True,
         samesite="lax",
         secure=(settings.ENV != "dev"),
+        max_age=settings.JWT_REFRESH_TTL_DAYS * 24 * 60 * 60,
     )
 
     return RefreshResponse(access_token=access_token)

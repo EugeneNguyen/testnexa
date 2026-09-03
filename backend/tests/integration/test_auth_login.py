@@ -27,6 +27,7 @@ import httpx
 import pytest
 from sqlalchemy import delete, select
 
+from app.core.config import settings
 from app.core.security import hash_password
 from app.db.session import AsyncSessionLocal
 from app.models.actor import Actor, User
@@ -166,6 +167,17 @@ async def test_login_valid_credentials_returns_token_and_auto_org() -> None:  # 
         assert set_cookie is not None
         assert "refresh_token=" in set_cookie
         assert "httponly" in set_cookie.lower()
+        # Fix round 2, Finding 1: the cookie must carry an explicit
+        # `Max-Age` (Starlette's `set_cookie(max_age=...)`), not be a
+        # session cookie the browser discards on close — that would defeat
+        # AUTH-2's entire "survives a browser restart" premise even though
+        # the DB-side `RefreshToken` row stays live for 30 days. Assert on
+        # the raw `Set-Cookie` header text itself (not just that the cookie
+        # value round-trips) so a regression back to an implicit session
+        # cookie is actually caught.
+        assert "max-age=" in set_cookie.lower()
+        expected_max_age = settings.JWT_REFRESH_TTL_DAYS * 24 * 60 * 60
+        assert f"Max-Age={expected_max_age}" in set_cookie
     finally:
         await _cleanup(email, user_id, org_ids)
 

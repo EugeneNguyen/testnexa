@@ -153,3 +153,21 @@ export async function apiFetch<T>(path: string, init?: ApiFetchOptions): Promise
 
   return (await response.json()) as T;
 }
+
+// Fix round 2, Finding 3: dev-build-only test hook. No mounted production
+// page currently makes an authenticated call (`GET /auth/me` is wired up but
+// nothing renders it yet — see AUTH-2 plan/AuthContext's own documented
+// scope), so there is no natural in-app trigger E2E can drive to exercise
+// `apiFetch`'s real 401 -> refresh -> retry interceptor chain end to end
+// against a real backend. Rather than fabricate one, expose `apiFetch`
+// itself on `window` — gated by `import.meta.env.DEV` so Vite's production
+// build (`npm run build`, the `prod` Compose profile) tree-shakes this
+// block out entirely; it is never present outside a `vite dev` server (the
+// `dev` Compose profile e2e already runs against). This is the same
+// mechanism the app's own authenticated calls would use (reads the current
+// token from `lib/auth/tokenStore` automatically), so a test driving it via
+// `page.evaluate` is exercising the real production interceptor code, not a
+// stand-in for it.
+if (import.meta.env.DEV) {
+  (window as unknown as { __testApiFetch?: typeof apiFetch }).__testApiFetch = apiFetch;
+}

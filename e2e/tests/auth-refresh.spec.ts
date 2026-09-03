@@ -174,6 +174,66 @@ test.describe("AUTH-2 session persistence", () => {
     }
   });
 
+  test("session survives a genuine browser restart, not just a same-tab reload (AC1, fix round 2 Finding 1)", async ({
+    page,
+    context,
+    browser,
+  }) => {
+    // The `page.reload()` test above proves the session survives *within
+    // the same browser context* -- but a session cookie (no `Max-Age`/
+    // `Expires` on the wire) would ALSO survive a same-tab reload, which is
+    // exactly how the missing-`max_age` bug (fix round 2, Finding 1) slipped
+    // past that test. This test is the actual differentiator: it saves
+    // `context.storageState()` after login, then opens a genuinely NEW
+    // browser context (`browser.newContext({ storageState })`, Playwright's
+    // closest approximation of a real browser restart -- a fresh context has
+    // no in-memory state at all, only whatever was persisted into the saved
+    // storage state) and navigates fresh from there. This only works if the
+    // `refresh_token` cookie was actually persisted into the saved storage
+    // state WITH a real expiry -- a session cookie would serialize with
+    // Playwright's `expires: -1` sentinel and most likely not even be
+    // treated as still-valid the same way, so asserting a real numeric
+    // `expires` first makes the persistence claim explicit before relying on
+    // it.
+    const user = seedUser();
+    let newContext: Awaited<ReturnType<typeof browser.newContext>> | undefined;
+    try {
+      await page.goto("/login");
+      await page.getByLabel(/email/i).fill(user.email);
+      await page.getByLabel(/password/i).fill(user.password);
+      await page.getByRole("button", { name: /log in|sign in/i }).click();
+
+      await page.waitForURL(new RegExp(`/orgs/${user.orgId}`));
+      await expect(page.getByRole("heading", { name: `Org: ${user.orgId}` })).toBeVisible();
+
+      const storageState = await context.storageState();
+      const refreshCookie = storageState.cookies.find((cookie) => cookie.name === "refresh_token");
+      expect(refreshCookie).toBeDefined();
+      // Playwright serializes a session cookie's `expires` as `-1`; a real
+      // persistent cookie serializes as a Unix timestamp comfortably in the
+      // future. This is the assertion that would have caught the bug: before
+      // the fix, `expires` here was `-1`, and the new-context navigation
+      // below would still have happened to work in some Playwright versions
+      // purely because Chromium keeps a session cookie alive for the
+      // lifetime of the browser *process*, not just the tab -- an even
+      // sneakier false-negative than a plain reload, which is exactly why
+      // asserting the numeric expiry directly (not just "did navigation
+      // succeed") is the load-bearing check here.
+      const nearFutureSeconds = Date.now() / 1000 + 60 * 60 * 24; // now + 1 day
+      expect(refreshCookie!.expires).toBeGreaterThan(nearFutureSeconds);
+
+      newContext = await browser.newContext({ storageState });
+      const newPage = await newContext.newPage();
+      await newPage.goto(`/orgs/${user.orgId}`);
+
+      await expect(newPage).not.toHaveURL(/\/login/);
+      await expect(newPage.getByRole("heading", { name: `Org: ${user.orgId}` })).toBeVisible();
+    } finally {
+      await newContext?.close();
+      cleanupUser(user);
+    }
+  });
+
   test("revoked refresh token is rejected and the user ends up back at /login (AC2)", async ({ page }) => {
     const user = seedUser();
     try {
@@ -222,6 +282,90 @@ test.describe("AUTH-2 session persistence", () => {
       await page.reload();
       await page.waitForURL(/\/login/);
       await expect(page).toHaveURL(/\/login/);
+    } finally {
+      cleanupUser(user);
+    }
+  });
+});
+
+/**
+ * Fix round 2, Finding 3: TC-AUTH-006's exact scenario ("expired access
+ * token -> next API call -> frontend interceptor calls refresh -> retries ->
+ * succeeds transparently") had never run against a REAL backend before this.
+ * The gaps this closes:
+ * - `test_auth_refresh.py::test_refresh_issues_new_access_token_that_works_against_me`
+ *   proves the backend side (a fresh refresh + `/auth/me` call) but never
+ *   drives an actual 401 first.
+ * - The frontend Vitest suite for `apiFetch`'s interceptor mocks `fetch`
+ *   entirely -- no real backend involved.
+ * - This spec's other tests exercise boot-time refresh and a raw direct
+ *   `fetch('/auth/refresh')`, but never `apiFetch`'s own 401 interceptor
+ *   against a real 401 from a real backend call.
+ *
+ * Requires the target backend to actually issue short-lived access tokens
+ * (`JWT_ACCESS_TTL_MINUTES` overridden to a few seconds' worth, e.g. `0.05`)
+ * so the test can wait out a REAL expiry instead of waiting on the 15-minute
+ * production default or faking expiry client-side. Since that changes
+ * behavior for the whole target backend container (not just this test), the
+ * test is opt-in via `E2E_SHORT_ACCESS_TTL=1` rather than assumed -- running
+ * the full suite against a normally-configured backend skips it cleanly
+ * instead of hanging for 15 minutes waiting on the default TTL.
+ */
+test.describe("AUTH-2 TC-AUTH-006: real 401 -> refresh -> retry chain", () => {
+  test("an authenticated call with an expired access token transparently recovers via apiFetch's own interceptor", async ({
+    page,
+  }) => {
+    test.skip(
+      process.env.E2E_SHORT_ACCESS_TTL !== "1",
+      "Requires the target backend started with a short JWT_ACCESS_TTL_MINUTES override " +
+        "(e.g. JWT_ACCESS_TTL_MINUTES=0.05 on the backend container) so the access token " +
+        "actually expires within a few seconds instead of the real 15-minute default -- " +
+        "opt in with E2E_SHORT_ACCESS_TTL=1 once that override is deployed. See this file's " +
+        "docstring above this describe block.",
+    );
+
+    const user = seedUser();
+    try {
+      await page.goto("/login");
+      await page.getByLabel(/email/i).fill(user.email);
+      await page.getByLabel(/password/i).fill(user.password);
+      await page.getByRole("button", { name: /log in|sign in/i }).click();
+      await page.waitForURL(new RegExp(`/orgs/${user.orgId}`));
+      await expect(page.getByRole("heading", { name: `Org: ${user.orgId}` })).toBeVisible();
+
+      // Let the deliberately short-lived access token actually expire.
+      // Overridable so the wait can be tuned to whatever TTL override was
+      // actually deployed without touching test code.
+      const waitMs = Number(process.env.E2E_ACCESS_TOKEN_EXPIRY_WAIT_MS ?? 8000);
+      await page.waitForTimeout(waitMs);
+
+      // Trigger a real authenticated call through the app's own `apiFetch`
+      // (exposed as `window.__testApiFetch` in dev builds only, see
+      // `frontend/src/lib/api/client.ts`) -- this is the exact same function
+      // every real authenticated call in the app uses, reading the current
+      // (now-expired) access token from the module-private token store
+      // itself. This exercises the real chain: 401 from the backend ->
+      // `apiFetch`'s interceptor calls `POST /auth/refresh` -> retries the
+      // original request once -> succeeds.
+      const result = await page.evaluate(async () => {
+        const testWindow = window as unknown as {
+          __testApiFetch?: (path: string) => Promise<unknown>;
+        };
+        if (!testWindow.__testApiFetch) {
+          throw new Error("window.__testApiFetch is not present -- is this a dev build?");
+        }
+        return testWindow.__testApiFetch("/api/v1/auth/me");
+      });
+
+      expect(result).toMatchObject({
+        actor_id: user.userId,
+        email: user.email,
+        actor_type: "user",
+      });
+
+      // No forced re-login: the interceptor recovered transparently, so the
+      // page never bounced to /login.
+      await expect(page).not.toHaveURL(/\/login/);
     } finally {
       cleanupUser(user);
     }
