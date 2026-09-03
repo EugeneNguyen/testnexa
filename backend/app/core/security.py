@@ -2,9 +2,9 @@
 
 AUTH-1 implements the human-login half of this module per ADR-0003 (auth &
 token strategy): argon2 password hashing, JWT access-token issuance/
-verification, and opaque refresh-token issuance/hashing. The
-`generate_api_key`/`hash_api_key`/`verify_api_key` trio stays
-`NotImplementedError` — AI-agent bearer auth is AUTH-4, out of scope here.
+verification, and opaque refresh-token issuance/hashing. AUTH-4 (ADR-0014)
+adds the other half: the `generate_api_key`/`hash_api_key`/`verify_api_key`
+trio backing `AIAgent` bearer credentials.
 """
 
 import hashlib
@@ -134,18 +134,55 @@ def hash_refresh_token(raw_token: str) -> str:
 def generate_api_key() -> tuple[str, str]:
     """Generate a new opaque AIAgent API key.
 
-    Returns `(raw_key, key_prefix)`. The raw key is shown once at creation
-    (GitHub-PAT-style) and never stored; only its argon2 hash
-    (`AIAgent.key_hash`) and a display `key_prefix` are persisted.
+    Returns `(raw_key, key_prefix)`. Raw key format (ADR-0014):
+    `tnx_agent_<key_prefix>_<secret>` where:
+    - `tnx_agent_` is a fixed literal prefix so `get_current_actor`
+      (`app/core/rbac.py`) can cheaply discriminate an agent key from a human
+      JWT via a `startswith` check, without a decode-and-catch attempt first.
+    - `key_prefix` is 8 URL-safe characters — `secrets.token_urlsafe(6)`.
+      6 random bytes base64url-encode to exactly 8 characters with no
+      padding to strip (6 is a multiple of 3), so the length is exact, not
+      just "approximately 8". Stored in `AIAgent.key_prefix` and doubles as
+      a lookup-narrowing index (see module docstring / ADR-0014): argon2
+      hashes are salted and non-deterministic, so `AIAgent.key_hash` can't
+      be looked up by equality — the presented key's prefix narrows a
+      `SELECT` to (in practice) zero or one candidate row before paying the
+      argon2-verify cost, instead of scanning/verifying every active agent.
+    - `secret` is 43 URL-safe characters — `secrets.token_urlsafe(32)` (32
+      random bytes, the same entropy budget `create_refresh_token` uses for
+      human refresh tokens).
+
+    The raw key is shown once at creation (GitHub-PAT-style) and never
+    stored; only its argon2 hash (`AIAgent.key_hash`, via `hash_api_key`) and
+    the plaintext `key_prefix` are persisted. Callers must never log the
+    returned `raw_key` (same discipline as AUTH-1's plaintext-password rule).
     """
-    raise NotImplementedError("feature work")
+    key_prefix = secrets.token_urlsafe(6)
+    secret = secrets.token_urlsafe(32)
+    raw_key = f"tnx_agent_{key_prefix}_{secret}"
+    return raw_key, key_prefix
 
 
 def hash_api_key(raw_key: str) -> str:
-    """Hash a raw AIAgent API key with argon2 for storage in `AIAgent.key_hash`."""
-    raise NotImplementedError("feature work")
+    """Hash a raw AIAgent API key with argon2 for storage in `AIAgent.key_hash`.
+
+    Reuses the same `_pwd_context` (and cost params) as human password
+    hashing — the raw key is high-entropy like a refresh token, but ADR-0003
+    explicitly calls for "argon2-hashed at rest" for agent credentials too
+    (unlike `hash_refresh_token`, which deliberately uses a fast SHA-256
+    digest instead — see that function's docstring for why refresh tokens
+    are the one exception).
+    """
+    return _pwd_context.hash(raw_key)
 
 
 def verify_api_key(raw_key: str, key_hash: str) -> bool:
-    """Verify a raw AIAgent API key against a stored argon2 hash."""
-    raise NotImplementedError("feature work")
+    """Verify a raw AIAgent API key against a stored argon2 hash.
+
+    Called once per `key_prefix`-narrowed candidate row in
+    `get_current_actor`'s agent branch — see that function for the
+    iterate-until-match loop this feeds (prefix collisions are possible,
+    if astronomically unlikely, so lookup-by-prefix must not assume
+    uniqueness).
+    """
+    return _pwd_context.verify(raw_key, key_hash)

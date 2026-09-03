@@ -30,7 +30,7 @@ from app.core.security import (
     hash_refresh_token,
     verify_password_or_dummy,
 )
-from app.models.actor import User
+from app.models.actor import AIAgent, User
 from app.models.auth import AuthIdentity, AuthProvider, LoginAttempt, RefreshToken
 from app.models.tenancy import Organization, OrgMembership, OrgMembershipStatus
 from app.schemas.auth import LoginRequest, LoginResponse, MeResponse, OrgSummary, RefreshResponse
@@ -344,12 +344,28 @@ async def refresh(
     return RefreshResponse(access_token=access_token)
 
 
-@router.get("/auth/me", response_model=MeResponse)
-async def me(user: User = Depends(get_current_actor)) -> MeResponse:
-    """Return the current actor's identity (API Document §2, ADR-0013).
+@router.get("/auth/me", response_model=MeResponse, response_model_exclude_none=True)
+async def me(actor: User | AIAgent = Depends(get_current_actor)) -> MeResponse:
+    """Return the current actor's identity (API Document §2, ADR-0013, ADR-0014).
 
-    Identity-only for AUTH-2 — no resolved permission codes yet. `User`'s PK
-    column is `actor_id`, not `id` (joined-table-inheritance quirk, Database
-    Document §3.4) — there is no separate `User.id`.
+    Identity-only — no resolved permission codes yet. Both `User` and
+    `AIAgent`'s PK column is `actor_id`, not `id` (joined-table-inheritance
+    quirk, Database Document §3.4) — there is no separate `.id`.
+
+    AUTH-4: `get_current_actor` can now resolve either a `User` (human JWT)
+    or an `AIAgent` (`tnx_agent_...` API key, ADR-0014) — branch on
+    `isinstance` to serialize the right shape (`MeResponse.email` for a
+    `User`, `MeResponse.agent_name` for an `AIAgent`; the other field stays
+    `None` either way, per `MeResponse`'s own docstring).
+
+    `response_model_exclude_none=True`: the whichever-is-unset field
+    (`email` for an agent, `agent_name` for a human) is omitted from the
+    response body entirely rather than serialized as an explicit `null`.
+    This keeps the human-actor response body byte-for-byte identical to
+    AUTH-2's original `{actor_id, email, actor_type}` shape (no new
+    `"agent_name": null` key appearing) — additive on the wire only when an
+    `AIAgent` is actually the caller, per the plan's "additive" framing.
     """
-    return MeResponse(actor_id=str(user.actor_id), email=user.email, actor_type="user")
+    if isinstance(actor, AIAgent):
+        return MeResponse(actor_id=str(actor.actor_id), actor_type="ai_agent", agent_name=actor.agent_name)
+    return MeResponse(actor_id=str(actor.actor_id), actor_type="user", email=actor.email)

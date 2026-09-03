@@ -14,7 +14,7 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 |---|---|---|---|---|
 | 1.1 | DB models — all 28 business entities (36 physical tables incl. `RefreshToken`/`LoginAttempt` and junction tables — see Database Document §1) across 11 cluster modules (`tenancy`, `auth`, `rbac`, `actor`, `project`, `assets`, `planning`, `execution`, `trace`, `taxonomy`, `governance`) | — | L | [Database Document](../database/2026-09-03-database-design.md) |
 | 1.2 | Alembic initial migration (all 36 physical tables, UUIDv7 PKs) | 1.1 | M | ADR-0008 |
-| 1.3 | Alembic seed migration (5 system roles, permission bundles, taxonomy lookups) | 1.2 | M | FR-RBAC-4, FR-ADMIN-1 |
+| 1.3 | Alembic seed migration (5 system roles, permission bundles, taxonomy lookups) — excludes `ai_agent.create`/`.update`, seeded separately by 2.3c ahead of this task | 1.2 | M | FR-RBAC-4, FR-ADMIN-1 |
 | 1.4 | Core infra: DB session management, settings/config, Actor-resolution helper | 1.1 | S | ADR-0002 |
 
 ## 2. Auth & RBAC
@@ -25,8 +25,11 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 | 2.2 | Local login route, org auto-select/picker/403-zero-org resolution | 2.1, 1.2 | M | FR-AUTH-1 |
 | 2.2b | `POST /auth/refresh` (rotate-on-use, org re-check), `GET /auth/me`, minimal `get_current_actor` (bearer JWT verify only, no permission codes) | 2.2 | M | FR-AUTH-2, NFR-12, NFR-13, [ADR-0013](../adr/0013-refresh-token-rotation-policy.md) |
 | 2.2c | `POST /auth/logout` (revoke current refresh token, clear cookie) | 2.2b | S | FR-AUTH-3 |
-| 2.3 | AIAgent API-key issuance/revocation (admin-facing) + bearer auth | 2.1 | M | FR-AUTH-4 |
-| 2.4 | `rbac.py` — `require_permission(code)` dependency, permission-code registry generated from model registry | 1.3 | M | FR-RBAC-3, NFR-10 |
+| 2.3a | `security.py` — `generate_api_key`/`hash_api_key`/`verify_api_key` (`tnx_agent_<prefix>_<secret>` format, argon2) | 2.1 | S | FR-AUTH-4, [ADR-0014](../adr/0014-ai-agent-credential-mechanics.md) |
+| 2.3b | `get_current_actor` agent-key branch (prefix-narrowed lookup + argon2 verify, `AIAgent.last_used_at` update) + `AIAgent.last_used_at` migration | 2.3a | M | FR-AUTH-4, NFR-15 |
+| 2.3c | `rbac.py` — minimal generic `has_permission`/`require_permission` (org-wide `RoleAssignment` resolution only; pulled forward from 2.4, project-scoped branch left for RBAC-3) + `ai_agent.create`/`ai_agent.update` permission-seed data migration | 1.3, 2.3b | M | FR-AUTH-4 AC2, [ADR-0014](../adr/0014-ai-agent-credential-mechanics.md) |
+| 2.3d | `POST /orgs/{org_id}/agents` + `.../revoke` routes (human-only gate, org_admin-permission-gated, 404-vs-403 org-membership boundary) | 2.3c | M | FR-AUTH-4, NFR-14, NFR-16 |
+| 2.4 | `rbac.py` — `require_permission(code)` project-scoped branch + permission-code registry generated from model registry (extends 2.3c's org-wide-only implementation) | 1.3, 2.3c | M | FR-RBAC-3, NFR-10 |
 | 2.5 | Org/OrgMembership routes — create org (first-user bootstrap), invite/suspend/reactivate members | 2.4 | M | FR-RBAC-1, FR-RBAC-2 |
 | 2.6 | RoleAssignment routes — org-wide/project-scoped grants | 2.4 | S | FR-RBAC-3 |
 | 2.7 | Human-only Approval defense-in-depth check | 2.4 | S | FR-RBAC-5 |
@@ -111,7 +114,7 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 |---|---|---|
 | 11.1 | Requirement Document | Done |
 | 11.2 | WBS (this document) | Done |
-| 11.3 | ADRs (0001–0013 + index) | Done |
+| 11.3 | ADRs (0001–0014 + index) | Done |
 | 11.4 | Database Document | Done |
 | 11.5 | API Document | Done |
 | 11.6 | Master Test Plan | Done |

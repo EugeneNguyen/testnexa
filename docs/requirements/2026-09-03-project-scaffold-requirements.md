@@ -24,7 +24,9 @@ Each FR ID maps 1:1 to the acceptance criteria already ratified in `docs/user-st
 | FR-AUTH-1 | Local password login (email + password → access+refresh token); org auto-select on exactly 1 active membership, picker on 2+, 403 on zero | Must | User, AuthIdentity, OrgMembership |
 | FR-AUTH-2 | Session persistence via revocable, DB-backed refresh token — rotate-on-use, silent renewal on access-token expiry, revoked/expired token → 401 + redirect to login | Must | RefreshToken |
 | FR-AUTH-3 | Explicit logout revokes refresh token server-side | Must | RefreshToken |
-| FR-AUTH-4 | AI agent bearer authentication via long-lived scoped credential | Should | AIAgent, Actor |
+| FR-AUTH-4 | AI agent bearer authentication via long-lived scoped credential (`tnx_agent_<prefix>_<secret>`, argon2-hashed); issuance/revocation is a human-only, org_admin-permission-gated action ([ADR-0014](../adr/0014-ai-agent-credential-mechanics.md)) | Should | AIAgent, Actor, RoleAssignment, Permission |
+
+FR-AUTH-4 delivers a minimal, generic `has_permission`/`require_permission` implementation (org-wide `RoleAssignment` resolution only) ahead of FR-RBAC-3/4 landing their own business flows — see [ADR-0014](../adr/0014-ai-agent-credential-mechanics.md). FR-RBAC-3's project-scoped grant resolution and FR-RBAC-4's full seeded permission catalog remain that pair's own scope, not pulled forward by this story.
 
 ### 2.2 Multi-tenancy & RBAC — [rbac-tenancy-stories.md](../user-stories/2026-09-03-rbac-tenancy-stories.md)
 
@@ -115,6 +117,9 @@ Each FR ID maps 1:1 to the acceptance criteria already ratified in `docs/user-st
 | NFR-11 | `POST /auth/login` enforces a basic brute-force throttle: 5 failed attempts per (IP, email) pair per 15-minute window → 429, before any full lockout/notification policy exists. Throttle state does not require Redis (ADR-0003's existing no-Redis stance). | AUTH-1 scope decision 2026-09-03, [ADR-0011](../adr/0011-login-rate-limiting.md) |
 | NFR-12 | Refresh tokens are single-use (rotated on every `POST /auth/refresh` call); a rotated-out, revoked, or expired token is rejected with 401, no new token issued. A rotated token's `expires_at` is inherited from the token it replaces (not reset), capping total session lifetime at `JWT_REFRESH_TTL_DAYS` from the original login regardless of renewal frequency. | AUTH-2 scope decision 2026-09-03, [ADR-0013](../adr/0013-refresh-token-rotation-policy.md) |
 | NFR-13 | `POST /auth/refresh` re-validates the caller still has ≥1 active `OrgMembership`, same check as login; a member suspended mid-session loses the ability to silently renew their session at the next refresh, not just at next full login. | AUTH-2 scope decision 2026-09-03, [ADR-0013](../adr/0013-refresh-token-rotation-policy.md) |
+| NFR-14 | `AIAgent` credential issuance/revocation (`POST /orgs/{org_id}/agents`, `.../revoke`) is restricted to human `User` actors, independent of `RoleAssignment` contents — double-enforced (never seeded to an agent-eligible role bundle, and hardcoded at the route), same pattern as NFR-2/FR-GOV-1's human-only Approval rule. | AUTH-4 scope decision 2026-09-03, [ADR-0014](../adr/0014-ai-agent-credential-mechanics.md) |
+| NFR-15 | Every successful `AIAgent` bearer authentication updates `AIAgent.last_used_at` — the `AuthIdentity.last_login_at`-equivalent audit field AC3 requires for agent sessions. A revoked agent's key is rejected (401) at the same lookup that would otherwise update this field, before any update occurs. | AUTH-4 AC3, [ADR-0014](../adr/0014-ai-agent-credential-mechanics.md) |
+| NFR-16 | Org-scoped routes (first instance: `/orgs/{org_id}/agents*`) return 404 when the caller has no `OrgMembership` in the path's `org_id` at all, and 403 only when membership exists but the required permission is missing — generalizes NFR-1's cross-tenant-404 rule to the permission-check boundary, not just resource-fetch. | AUTH-4 scope decision 2026-09-03, [ADR-0014](../adr/0014-ai-agent-credential-mechanics.md) |
 
 ## 4. Traceability — requirements to architecture decisions
 
@@ -129,6 +134,7 @@ Each FR ID maps 1:1 to the acceptance criteria already ratified in `docs/user-st
 | FR-AUTH-* | [ADR-0003](../adr/0003-auth-token-strategy.md) Auth & token strategy |
 | NFR-11 | [ADR-0011](../adr/0011-login-rate-limiting.md) Login rate limiting |
 | FR-AUTH-2, NFR-12, NFR-13 | [ADR-0013](../adr/0013-refresh-token-rotation-policy.md) Refresh token rotation & session-persistence policy |
+| FR-AUTH-4, NFR-14, NFR-15, NFR-16 | [ADR-0014](../adr/0014-ai-agent-credential-mechanics.md) AI agent credential mechanics & minimal-RBAC-now decision |
 | FR-MCP-* | [ADR-0002](../adr/0002-backend-framework-orm-migrations.md) (async backend), [ADR-0003](../adr/0003-auth-token-strategy.md) (AIAgent credential) |
 
 Full field-level traceability (Requirement → design technique → test case → execution → defect) is itself FR-TRACE-1/2 — this document is the requirements layer that feeds the [WBS](../wbs/2026-09-03-project-scaffold-wbs.md), [Database Document](../database/2026-09-03-database-design.md), [API Document](../api/2026-09-03-api-design.md), and [Test Plan](../test-plan/2026-09-03-master-test-plan.md).
