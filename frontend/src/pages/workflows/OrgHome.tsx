@@ -24,10 +24,18 @@
  * a second form — functional and CoreUI-styled per the task scope, not
  * gold-plated with its own validation library wiring.
  *
+ * RBAC-2 (ADR-0017) adds a "Members" link to the new `/orgs/:orgId/members`
+ * screen — the only nav entry point into it beyond a direct URL, since this
+ * scaffold has no sidebar/nav-menu yet (AUTH-3 scope plan explicitly
+ * descoped one). Unconditional, not org_admin-gated here: `OrgMembers.tsx`
+ * itself gates on the backend's own `403`/`404` (see that file's docstring
+ * for why — there is no client-side permission signal anywhere in this
+ * codebase yet to gate a nav link on instead).
+ *
  * Built with CoreUI (ADR-0012).
  */
 import { useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -181,9 +189,20 @@ function OrgHome() {
               <CCardBody className="p-4">
                 <div className="d-flex justify-content-between align-items-center mb-3">
                   <h1 className="fs-4 mb-0">Org: {orgId}</h1>
-                  <CButton color="primary" onClick={openModal}>
-                    New Project
-                  </CButton>
+                  <div>
+                    <CButton
+                      as={Link}
+                      to={`/orgs/${orgId}/members`}
+                      color="secondary"
+                      variant="outline"
+                      className="me-2"
+                    >
+                      Members
+                    </CButton>
+                    <CButton color="primary" onClick={openModal}>
+                      New Project
+                    </CButton>
+                  </div>
                 </div>
 
                 {projects.length === 0 ? (

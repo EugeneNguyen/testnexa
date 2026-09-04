@@ -39,7 +39,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.db.rbac_seed_catalog import SYSTEM_ROLE_NAMES
 from app.db.session import AsyncSessionLocal
-from app.models.rbac import Permission, Role, RolePermission
+from app.models.rbac import Permission, Role, RoleAssignment, RolePermission
 from app.models.tenancy import Organization
 
 TEST_API_BASE_URL = os.environ.get("TEST_API_BASE_URL", "http://localhost:8000")
@@ -203,10 +203,18 @@ async def test_org_admin_has_every_permission() -> None:  # TC-RBAC-018
     assert org_admin_permission_count == total_permissions
 
 
-# --- TC-RBAC-019: `alembic downgrade -1` removes the 5 system Role rows (+ cascaded ----------
-# --- RolePermission rows), Permission catalog rows remain; re-`upgrade head` after -----------
-# --- to leave the DB seeded for anyone else. Runs last (file order = execution order, no ----
-# --- randomization plugin installed) since it destructively mutates seed state. -------------
+# --- TC-RBAC-019: downgrading past the seed migration removes the 5 system Role rows --------
+# --- (+ cascaded RolePermission rows), Permission catalog rows remain; re-`upgrade head` -----
+# --- after to leave the DB seeded for anyone else. Runs last (file order = execution order, --
+# --- no randomization plugin installed) since it destructively mutates seed state. -----------
+#
+# Targets the seed migration's own `down_revision` ('d33d66f4b3c3') rather than
+# a relative `alembic downgrade -1`: a relative offset only means "undo the
+# seed migration" while the seed migration is still the alembic head. RBAC-2
+# stacked `53ddeb6e4066_add_invite_table` on top of it, so `-1` from head now
+# undoes that unrelated, non-seed migration instead and leaves all 5 system
+# roles in place — an absolute target keeps this test correct no matter how
+# many further migrations land after the seed one.
 
 
 @pytest.mark.asyncio
@@ -220,10 +228,39 @@ async def test_migration_downgrade_removes_only_the_five_system_roles() -> None:
             await session.execute(select(func.count()).select_from(Permission))
         ).scalar_one()
 
+        # This is a destructive migration-mechanics test: it only means
+        # anything against a DB where nothing yet references the 5 system
+        # Role rows it deletes (the ordinary case for a freshly-migrated
+        # `postgres-test`). `role_assignment.role_id` has no `ON DELETE
+        # CASCADE`/`SET NULL` (a real actor's granted role must never
+        # silently vanish), so once any `RoleAssignment` exists against a
+        # system role — the normal, intended state of any DB that has seen
+        # real signups/org-admin grants, e.g. one cloned from a live
+        # environment for manual verification — the downgrade's `DELETE FROM
+        # role` legitimately raises `ForeignKeyViolationError`. That is
+        # correct migration behaviour, not a bug, so skip cleanly here
+        # rather than let an environment precondition this test was never
+        # designed to run under masquerade as an RBAC-2 regression.
+        role_assignment_count_against_system_roles = (
+            await session.execute(
+                select(func.count())
+                .select_from(RoleAssignment)
+                .where(RoleAssignment.role_id.in_(system_role_ids))
+            )
+        ).scalar_one()
+        if role_assignment_count_against_system_roles > 0:
+            pytest.skip(
+                "DB has real RoleAssignment rows against system roles (e.g. cloned from a "
+                "live environment) — `alembic downgrade` past the seed migration would "
+                "correctly fail its role_assignment_role_id_fkey FK, not exercise TC-RBAC-019's "
+                "intended clean-downgrade path. Run against a freshly-migrated, unused DB "
+                "(e.g. `postgres-test`) to exercise this test."
+            )
+
     try:
-        downgrade_result = _run_alembic("downgrade", "-1")
+        downgrade_result = _run_alembic("downgrade", "d33d66f4b3c3")
         assert downgrade_result.returncode == 0, (
-            f"alembic downgrade -1 failed:\n{downgrade_result.stdout}\n{downgrade_result.stderr}"
+            f"alembic downgrade d33d66f4b3c3 failed:\n{downgrade_result.stdout}\n{downgrade_result.stderr}"
         )
 
         async with AsyncSessionLocal() as session:

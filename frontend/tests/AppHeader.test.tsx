@@ -25,6 +25,7 @@ function renderHeader(logout = vi.fn().mockResolvedValue(undefined)) {
     isInitializing: false,
     login: vi.fn(),
     signup: vi.fn(),
+    acceptInvite: vi.fn(),
     logout,
   });
 
