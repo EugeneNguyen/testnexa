@@ -6,6 +6,8 @@
 
 This document is the implementation-level schema, refined from the [07 ERD](../product-discovery/07-erd-draft.md) draft per the ADRs above. No code — this is the reference for the Alembic migration that will be written when implementation is authorized.
 
+**SHELL-1** ([ADR-0018](../adr/0018-admin-shell-sidebar-layout.md), FR-SHELL-1) — reviewed, no schema impact. The admin shell (sidebar + navbar) is frontend-only: no new table, column, or index. Noted here explicitly so the gap isn't mistaken for an oversight.
+
 ---
 
 ## 1. Entity count reconciliation
@@ -120,7 +122,7 @@ Partial unique index: `name` **WHERE `org_id IS NULL`** — prevents duplicate s
 
 Downgrading the seed migration removes only the 5 `Role` rows (`RolePermission` rows cascade via the FK below); the `Permission` catalog rows are left in place.
 
-`test_manager`'s `release.create`/`.read`/`.update` grants above were added by a second, later data migration (PROJ-2, [ADR-0018](../adr/0018-release-creation-flow.md)) — not part of RBAC-4's original seed. Same existence-checked-insert idempotency posture, but a reader auditing `test_manager`'s full permission set must know to check both migrations, not RBAC-4's alone.
+`test_manager`'s `release.create`/`.read`/`.update` grants above were added by a second, later data migration (PROJ-2, [ADR-0019](../adr/0019-release-creation-flow.md)) — not part of RBAC-4's original seed. Same existence-checked-insert idempotency posture, but a reader auditing `test_manager`'s full permission set must know to check both migrations, not RBAC-4's alone.
 
 **Permission** *(global catalog, no org scoping)*
 | Column | Type | Constraints |
@@ -222,9 +224,9 @@ Unique: `(org_id, name)`.
 
 No uniqueness constraint on `version_label` — AC doesn't require it, and unlike `Project.name` (unique per org), two Releases in the same Project may share a `version_label` (e.g. a re-cut build under the same version).
 
-**Creation flow** (PROJ-2, [ADR-0018](../adr/0018-release-creation-flow.md)): `POST /projects/{project_id}/releases` — bespoke, project-path-scoped. No `org_id` path segment exists at this depth, so unlike `POST /orgs/{org_id}/projects` this route fetches the `Project` row first to resolve `org_id` for the 404-vs-403 boundary, then calls `has_permission` directly (`release.create`) — same posture as `GET`/`PATCH /projects/{id}`, one level down. `GET /projects/{project_id}/releases` (list) sorts by `target_date`, `NULLS LAST` pinned explicitly for both `asc`/`desc` (NFR-24) — not the query engine's untouched per-direction default. `GET /releases/{id}` and `GET /releases/{id}/test-cycles` are row-resolved (no path `project_id`), same one-level-deeper extension of `Project`'s own row-resolved read pattern.
+**Creation flow** (PROJ-2, [ADR-0019](../adr/0019-release-creation-flow.md)): `POST /projects/{project_id}/releases` — bespoke, project-path-scoped. No `org_id` path segment exists at this depth, so unlike `POST /orgs/{org_id}/projects` this route fetches the `Project` row first to resolve `org_id` for the 404-vs-403 boundary, then calls `has_permission` directly (`release.create`) — same posture as `GET`/`PATCH /projects/{id}`, one level down. `GET /projects/{project_id}/releases` (list) sorts by `target_date`, `NULLS LAST` pinned explicitly for both `asc`/`desc` (NFR-25) — not the query engine's untouched per-direction default. `GET /releases/{id}` and `GET /releases/{id}/test-cycles` are row-resolved (no path `project_id`), same one-level-deeper extension of `Project`'s own row-resolved read pattern.
 
-`GET /releases/{id}/test-cycles` (AC2's query — "what was tested for release X") returns every `TestCycle` with `release_id` matching the path `id`, each with its `TestExecution` rows nested in the response (not a cycles-only list) — proven queryable via `TestCycle.release_id`/`TestExecution.test_cycle_id`, both already non-nullable FKs. `TestCycle` itself has no create route in this codebase (FR-PLAN-3's scope); this query works against however a `TestCycle` row came to exist. The route requires all three of `release.read`, `test_cycle.read`, `test_execution.read` (NFR-25) — the one route in this scaffold exposing `TestExecution` data without a `test_cycle_id` in the request path, so a single-permission gate would let a Release-only viewer see execution data outside their own granted permissions.
+`GET /releases/{id}/test-cycles` (AC2's query — "what was tested for release X") returns every `TestCycle` with `release_id` matching the path `id`, each with its `TestExecution` rows nested in the response (not a cycles-only list) — proven queryable via `TestCycle.release_id`/`TestExecution.test_cycle_id`, both already non-nullable FKs. `TestCycle` itself has no create route in this codebase (FR-PLAN-3's scope); this query works against however a `TestCycle` row came to exist. The route requires all three of `release.read`, `test_cycle.read`, `test_execution.read` (NFR-26) — the one route in this scaffold exposing `TestExecution` data without a `test_cycle_id` in the request path, so a single-permission gate would let a Release-only viewer see execution data outside their own granted permissions.
 
 ### 3.6 `assets.py` — Requirement, TestCondition, TestCase, TestStep, TestSuite (+ junction)
 

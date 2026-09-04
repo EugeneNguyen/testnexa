@@ -105,8 +105,8 @@ def test_auditor_bundle_is_read_only_on_every_resource() -> None:
 
 
 def test_test_manager_bundle_includes_release_create_read_update_but_not_delete() -> None:
-    """PROJ-2/ADR-0018: `test_manager` gains `release.create`/`.read`/
-    `.update` (closing what ADR-0018 frames as an RBAC-4 oversight, given
+    """PROJ-2/ADR-0019: `test_manager` gains `release.create`/`.read`/
+    `.update` (closing what ADR-0019 frames as an RBAC-4 oversight, given
     `test_manager` already held full `test_cycle` CRUD) but NOT
     `release.delete`, since no delete route exists to reach it.
     """

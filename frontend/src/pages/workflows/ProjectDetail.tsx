@@ -1,5 +1,5 @@
 /**
- * Project-detail page (PROJ-2, ADR-0018) — the "select a project" landing
+ * Project-detail page (PROJ-2, ADR-0019) — the "select a project" landing
  * page PROJ-2's plan calls out as not existing yet, needed as a place to
  * hang Release UI off of. Route: `/projects/:projectId`.
  *
@@ -15,7 +15,7 @@
  * mapped onto the matching RHF field when present.
  *
  * Each Release row expands in place to fetch and render
- * `GET /releases/{id}/test-cycles` (ADR-0018 AC2's nested-executions audit
+ * `GET /releases/{id}/test-cycles` (ADR-0019 AC2's nested-executions audit
  * query) — read-only, no edit UI, this is an audit view only.
  *
  * Built with CoreUI (ADR-0012).

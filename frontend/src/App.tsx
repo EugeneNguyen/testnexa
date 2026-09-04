@@ -4,8 +4,10 @@ import { CCard, CCardBody, CCol, CContainer, CRow } from "@coreui/react";
 import { AuthProvider } from "./auth/AuthContext";
 import ProtectedRoute from "./auth/ProtectedRoute";
 import { apiFetch } from "./lib/api/client";
+import AcceptInvite from "./pages/workflows/AcceptInvite";
 import Login from "./pages/workflows/Login";
 import OrgHome from "./pages/workflows/OrgHome";
+import OrgMembers from "./pages/workflows/OrgMembers";
 import OrgPicker from "./pages/workflows/OrgPicker";
 import ProjectDetail from "./pages/workflows/ProjectDetail";
 import Signup from "./pages/workflows/Signup";
@@ -61,6 +63,14 @@ function App() {
         <Route path="/" element={<ScaffoldVerificationPage />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
+        {/*
+          RBAC-2 (ADR-0017) public accept-invite route: the invitee has no
+          account/credentials yet (new-email invite path), so this must sit
+          outside ProtectedRoute — matching the backend's own
+          `POST /invites/{token}/accept` being public, token-gated, not
+          `Authorization`-gated.
+        */}
+        <Route path="/invites/:token/accept" element={<AcceptInvite />} />
         <Route
           path="/orgs/pick"
           element={
@@ -74,6 +84,21 @@ function App() {
           element={
             <ProtectedRoute>
               <OrgHome />
+            </ProtectedRoute>
+          }
+        />
+        {/*
+          RBAC-2 org member management: authenticated (ProtectedRoute) — see
+          `OrgMembers.tsx`'s own docstring for why org_admin-gating happens
+          by attempting `GET /orgs/{org_id}/members` and rendering its
+          403/404 rather than a pre-emptive client-side role check (no such
+          signal exists anywhere in `AuthContext`/`GET /auth/me` yet).
+        */}
+        <Route
+          path="/orgs/:orgId/members"
+          element={
+            <ProtectedRoute>
+              <OrgMembers />
             </ProtectedRoute>
           }
         />

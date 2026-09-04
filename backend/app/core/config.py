@@ -41,6 +41,13 @@ class Settings(BaseSettings):
     JWT_ACCESS_TTL_MINUTES: float = 15
     JWT_REFRESH_TTL_DAYS: int = 30
 
+    # RBAC-2 / ADR-0017: email delivery is descoped this pass — the invite
+    # link is returned directly in `POST /orgs/{org_id}/members/invite`'s
+    # response body for the inviting admin to copy/share out-of-band. This
+    # is the base URL that link is built against; default matches
+    # ADR-0010's single external nginx port (54593) for local dev.
+    APP_BASE_URL: str = "http://localhost:54593"
+
     # Attachment storage (Database Document §governance.py Attachment)
     ATTACHMENT_STORAGE: Literal["local", "s3"] = "local"
     ATTACHMENT_S3_BUCKET: str | None = None

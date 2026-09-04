@@ -1,10 +1,10 @@
 /**
- * PROJ-2 Release create/list/read + audit-query calls (ADR-0018).
+ * PROJ-2 Release create/list/read + audit-query calls (ADR-0019).
  *
  * Source: `app/api/routes/releases.py` / `app/schemas/releases.py` (exact
  * request/response contracts) — mirrors `projects.ts`'s pattern: create/list
  * carry `project_id` in the path (no `org_id` segment exists at this depth,
- * ADR-0018 §1); single-fetch and the audit query drop `project_id` entirely,
+ * ADR-0019 §1); single-fetch and the audit query drop `project_id` entirely,
  * resolving org from the fetched `Release` -> `Project` chain server-side.
  */
 import { apiFetch } from "./client";
@@ -71,7 +71,7 @@ export async function createRelease(projectId: string, payload: CreateReleasePay
 
 /**
  * List Releases under `projectId`, paginated and sorted. Defaults to
- * `sort=target_date&order=asc` (`NULLS LAST` pinned server-side, ADR-0018) —
+ * `sort=target_date&order=asc` (`NULLS LAST` pinned server-side, ADR-0019) —
  * matching the backend route's own defaults, so an empty `params` object
  * behaves the same as omitting the query string entirely.
  *
@@ -113,7 +113,7 @@ export async function getRelease(id: string): Promise<ReleaseSummary> {
 
 /**
  * AC2's audit query: every TestCycle targeting `id`, each with its
- * TestExecutions nested (ADR-0018) — read-only, no follow-up call needed.
+ * TestExecutions nested (ADR-0019) — read-only, no follow-up call needed.
  *
  * Rejects with an `ApiError` on failure: `404`/`403` same boundary as
  * `getRelease`, but gated on all three of `release.read` AND

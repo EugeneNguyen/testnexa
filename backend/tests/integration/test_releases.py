@@ -1,5 +1,5 @@
 """Integration tests for `POST`/`GET /projects/{project_id}/releases`,
-`GET /releases/{id}`, `GET /releases/{id}/test-cycles` (PROJ-2, ADR-0018).
+`GET /releases/{id}`, `GET /releases/{id}/test-cycles` (PROJ-2, ADR-0019).
 
 Real HTTP requests via `httpx.AsyncClient` against a live server
 (`TEST_API_BASE_URL`), matching `test_projects.py`'s established style. The

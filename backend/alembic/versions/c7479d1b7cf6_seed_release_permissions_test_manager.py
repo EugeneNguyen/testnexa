@@ -1,16 +1,22 @@
 """seed release permissions test_manager
 
 Revision ID: c7479d1b7cf6
-Revises: 34053c46f9fc
+Revises: 53ddeb6e4066
 Create Date: 2026-09-04 00:00:00.000000
 
-PROJ-2/ADR-0018: `test_manager`'s seeded bundle gains `release.create`/
+PROJ-2/ADR-0019: `test_manager`'s seeded bundle gains `release.create`/
 `.read`/`.update` (deliberately NOT `.delete` — no delete route exists to
 reach it). The `Permission` rows themselves already exist (seeded by
 `34053c46f9fc`'s full catalog, since `release` is one of `CRUD_RESOURCES`
 in `rbac_seed_catalog.py`) — this migration only inserts the 3 new
 `RolePermission` rows linking the existing `test_manager` system `Role`
 (`org_id IS NULL`) to those existing `Permission` rows.
+
+Rebased onto RBAC-2's `53ddeb6e4066` (`add_invite_table`) at merge time —
+both this migration and `53ddeb6e4066` originally forked from `34053c46f9fc`
+independently (two branches in flight at once); this one was resequenced
+to land after `53ddeb6e4066` to keep the chain linear rather than leaving
+two heads.
 
 Existence-checked insert (mirrors `34053c46f9fc`'s idempotent-re-run style,
 NOT `d33d66f4b3c3`'s unconditional `bulk_insert` style) — this migration
@@ -25,7 +31,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = 'c7479d1b7cf6'
-down_revision: Union[str, None] = '34053c46f9fc'
+down_revision: Union[str, None] = '53ddeb6e4066'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

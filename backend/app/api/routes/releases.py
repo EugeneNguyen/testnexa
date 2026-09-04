@@ -1,13 +1,13 @@
-"""PROJ-2: `Release` create/read/list + audit-query routes (ADR-0018).
+"""PROJ-2: `Release` create/read/list + audit-query routes (ADR-0019).
 
 Source: API Document §2/§3 (`POST`/`GET /projects/{project_id}/releases`,
-`GET /releases/{id}`, `GET /releases/{id}/test-cycles` contracts), ADR-0018
+`GET /releases/{id}`, `GET /releases/{id}/test-cycles` contracts), ADR-0019
 (release creation flow — project-path-scoped bespoke create/list, row-resolved
 single-fetch/audit-query, `test_manager` RBAC bundle extension, triple-
 permission audit query gate).
 
 Four routes, two path shapes — the same deliberate split ADR-0017 established
-for `Project`, extended one level down the resource tree (ADR-0018):
+for `Project`, extended one level down the resource tree (ADR-0019):
 
 - `POST`/`GET /projects/{project_id}/releases` carry `project_id` explicitly
   in the path (no `org_id` segment exists at this depth). The `Project` row
@@ -20,7 +20,7 @@ for `Project`, extended one level down the resource tree (ADR-0018):
   `project_id` path segment at all — the `Release` row is fetched first,
   then its `Project` row, to resolve `org_id` for the 404-vs-403 boundary —
   one hop deeper than `projects.py`'s own row-resolved routes, same pattern
-  extended one level (ADR-0018).
+  extended one level (ADR-0019).
 """
 
 from uuid import UUID
@@ -53,7 +53,7 @@ _DEFAULT_PAGE_SIZE = 25
 _MAX_PAGE_SIZE = 25
 
 # Sortable columns for `GET /projects/{project_id}/releases` — only
-# `target_date` is named by ADR-0018/AC3; any other/unrecognized `sort`
+# `target_date` is named by ADR-0019/AC3; any other/unrecognized `sort`
 # value falls back to this same default rather than erroring, so a typo'd
 # query param degrades gracefully instead of 4xx-ing a read-only list route.
 _SORT_COLUMNS = {"target_date": Release.target_date}
@@ -104,7 +104,7 @@ async def create_release(
     actor: User | AIAgent = Depends(get_current_actor),
     db: AsyncSession = Depends(get_db),
 ) -> ReleaseSummary | JSONResponse:
-    """Create a Release under `project_id` (ADR-0018).
+    """Create a Release under `project_id` (ADR-0019).
 
     Order of operations (same reasoning as `projects.py`'s row-resolved
     routes, one level deeper since there's no `org_id` path segment at
@@ -119,7 +119,7 @@ async def create_release(
     3. Create the `Release`; flush alone (same flush-then-catch-IntegrityError
        posture as `projects.py`'s `create_project`) even though no
        `UniqueConstraint` exists on `(project_id, version_label)` today
-       (ADR-0018/plan: duplicate `version_label`s within a Project are
+       (ADR-0019/plan: duplicate `version_label`s within a Project are
        intentionally allowed) — this only guards against an unexpected FK
        violation, not a business-rule collision.
     """
@@ -158,14 +158,14 @@ async def list_releases(
     actor: User | AIAgent = Depends(get_current_actor),
     db: AsyncSession = Depends(get_db),
 ) -> ReleaseListResponse | JSONResponse:
-    """List Releases under `project_id`, paginated and sorted (ADR-0018).
+    """List Releases under `project_id`, paginated and sorted (ADR-0019).
 
     Same 404-vs-403 boundary as `create_release`, gated `release.read`.
-    Sorted by `target_date` (the only sortable column ADR-0018/AC3 names) —
+    Sorted by `target_date` (the only sortable column ADR-0019/AC3 names) —
     `NULLS LAST` is pinned explicitly via `.nulls_last()` for BOTH `asc` and
     `desc`, not left to Postgres's implicit per-direction default (`NULLS
     LAST` for `ASC`, `NULLS FIRST` for `DESC`), so a release with no
-    `target_date` always sorts to the end regardless of direction (NFR-24).
+    `target_date` always sorts to the end regardless of direction (NFR-25).
     """
     project = await db.get(Project, project_id)
     if project is None or not await _org_membership_exists(db, project.org_id, actor.actor_id):
@@ -207,7 +207,7 @@ async def get_release(
     actor: User | AIAgent = Depends(get_current_actor),
     db: AsyncSession = Depends(get_db),
 ) -> ReleaseSummary | JSONResponse:
-    """Fetch a single Release by id (ADR-0018).
+    """Fetch a single Release by id (ADR-0019).
 
     No `project_id`/`org_id` path segment — the row is fetched first, then
     its `Project`, to resolve `org_id` for the 404-vs-403 boundary: missing
@@ -238,14 +238,14 @@ async def get_release_test_cycles(
     db: AsyncSession = Depends(get_db),
 ) -> list[TestCycleSummary] | JSONResponse:
     """AC2's audit query: every TestCycle targeting this Release, with each
-    cycle's TestExecutions nested (ADR-0018).
+    cycle's TestExecutions nested (ADR-0019).
 
     Row-resolved same as `get_release`. Gated on all THREE permissions —
     `release.read` AND `test_cycle.read` AND `test_execution.read` — checked
     as three separate `has_permission` calls, `403` if any is missing (never
     a partial/degraded `200`). `release.read` is checked first since it's
     tied to the 404-vs-403 boundary already resolved above; the other two
-    follow in any order (ADR-0018's stated departure from the rest of the
+    follow in any order (ADR-0019's stated departure from the rest of the
     codebase's one-permission-per-bespoke-route posture — the sole place
     `TestExecution` data is exposed without a `test_cycle_id` in the request
     path).

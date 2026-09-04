@@ -37,7 +37,7 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 | 2.6 | RoleAssignment routes — org-wide/project-scoped grants | 2.4 | S | FR-RBAC-3 |
 | 2.7 | Human-only Approval defense-in-depth check | 2.4 | S | FR-RBAC-5 |
 | 2.8 | Login throttle: `LoginAttempt` table + per-(IP, email) failed-attempt counter, 429 above threshold | 2.2 | S | NFR-11, [ADR-0011](../adr/0011-login-rate-limiting.md) |
-| 2.9 | RBAC seed data migration — extend `test_manager` bundle with `release.create`/`.read`/`.update` (existence-checked insert, same idempotent pattern as 2.3c's) | 1.3 | S | FR-PROJ-2, [ADR-0018](../adr/0018-release-creation-flow.md) |
+| 2.9 | RBAC seed data migration — extend `test_manager` bundle with `release.create`/`.read`/`.update` (existence-checked insert, same idempotent pattern as 2.3c's) | 1.3 | S | FR-PROJ-2, [ADR-0019](../adr/0019-release-creation-flow.md) |
 
 ## 3. Generic CRUD API
 
@@ -45,8 +45,8 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 |---|---|---|---|---|
 | 3.0a | `app/schemas/projects.py` + `app/api/routes/projects.py` — `POST /orgs/{org_id}/projects` (bespoke, org-path-scoped, `require_permission`/404-vs-403 boundary reused as-is; `standards_profile` inherits `Organization.default_standards_profile` when omitted; creator auto-assigned project-scoped `test_manager` RoleAssignment) | 2.4, 1.2 | M | FR-PROJ-1, NFR-22, NFR-23, [ADR-0017](../adr/0017-project-creation-flow.md) |
 | 3.0b | `GET`/`PATCH /projects/{id}` — org resolved from the fetched row (no `org_id` path segment), anticipating the generic factory's eventual item-route shape | 3.0a | S | FR-PROJ-1, [ADR-0017](../adr/0017-project-creation-flow.md) |
-| 3.0c | `app/schemas/releases.py` + `app/api/routes/releases.py` — `POST`/`GET /projects/{project_id}/releases` (bespoke, project-path-scoped, `has_permission`-called-directly + 404-vs-403 boundary, same posture as 3.0b); list sorted by `target_date`, `NULLS LAST` pinned both directions | 3.0b, 2.9 | M | FR-PROJ-2, NFR-24, [ADR-0018](../adr/0018-release-creation-flow.md) |
-| 3.0d | `GET /releases/{id}` + `GET /releases/{id}/test-cycles` — row-resolved, no path `project_id`; the cycles query nests each cycle's `TestExecution`s, gated on `release.read` AND `test_cycle.read` AND `test_execution.read` | 3.0c | M | FR-PROJ-2, NFR-25, [ADR-0018](../adr/0018-release-creation-flow.md) |
+| 3.0c | `app/schemas/releases.py` + `app/api/routes/releases.py` — `POST`/`GET /projects/{project_id}/releases` (bespoke, project-path-scoped, `has_permission`-called-directly + 404-vs-403 boundary, same posture as 3.0b); list sorted by `target_date`, `NULLS LAST` pinned both directions | 3.0b, 2.9 | M | FR-PROJ-2, NFR-25, [ADR-0019](../adr/0019-release-creation-flow.md) |
+| 3.0d | `GET /releases/{id}` + `GET /releases/{id}/test-cycles` — row-resolved, no path `project_id`; the cycles query nests each cycle's `TestExecution`s, gated on `release.read` AND `test_cycle.read` AND `test_execution.read` | 3.0c | M | FR-PROJ-2, NFR-26, [ADR-0019](../adr/0019-release-creation-flow.md) |
 | 3.1 | Pydantic v2 schemas — 1:1 mirror of `app/models/` | 1.1 | M | [API Document](../api/2026-09-03-api-design.md) |
 | 3.2 | CRUD router factory (list/get/create/update/delete, pagination, exact-match filters, `require_permission` baked in) | 2.4, 3.1 | M | FR-ADMIN-2, NFR-6 |
 | 3.3 | Apply factory to all non-bespoke entities (~18 of 28, `Project`/`Release` excluded — already bespoke per 3.0a–3.0d) | 3.2 | M | FR-ADMIN-2 |
@@ -81,6 +81,7 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 | 6.3b | `AuthContext` boot-time silent refresh (`isInitializing`), `ProtectedRoute` guard | 6.3a | S | FR-AUTH-2 |
 | 6.3c | Logout action (calls `/auth/logout`, unconditionally clears token store + org state and redirects to `/login` regardless of the call's success/failure) | 6.3a, 2.2c | S | FR-AUTH-3, NFR-14 |
 | 6.3d | `AppHeader` navbar (CoreUI `CHeader`, brand + "Log out" button wired to 6.3c) mounted inside `ProtectedRoute`, replacing the bare unwrapped `children` render | 6.3c, 6.3b | S | FR-AUTH-3, ADR-0012 |
+| 6.4 | `AppSidebar` (CoreUI `CSidebar`/`CSidebarNav`, single nav-item array — org-home + org-members, `NavLink`-driven active state) + `AppShell` (sidebar + header + content, owns toggle-visibility state per CoreUI's own template pattern) wraps `ProtectedRoute`'s children, replacing 6.3d's bare `<AppHeader/>` mount; `AppHeader` gains a `CHeaderToggler` wired to that state | 6.3d | M | FR-SHELL-1, NFR-25, [ADR-0018](../adr/0018-admin-shell-sidebar-layout.md) |
 
 ## 7. Generic CRUD UI
 
@@ -96,7 +97,7 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 |---|---|---|---|---|
 | 8.1 | Login, OrgSwitcher/ProjectSwitcher | 6.3b | M | FR-AUTH-1, FR-RBAC-1 |
 | 8.1b | `OrgHome.tsx` project list + "New Project" CoreUI modal (name, optional standards_profile), inline standards_profile edit | 8.1, 3.0b | S | FR-PROJ-1, [ADR-0017](../adr/0017-project-creation-flow.md) |
-| 8.1c | `ProjectDetail.tsx` (route `/projects/:projectId`) — Release list (sortable `target_date` column) + "New Release" CoreUI modal; `OrgHome.tsx` project list items link here; per-release expand renders `GET .../test-cycles` result (cycles + nested executions, read-only audit view) | 8.1b, 3.0d | M | FR-PROJ-2, [ADR-0018](../adr/0018-release-creation-flow.md) |
+| 8.1c | `ProjectDetail.tsx` (route `/projects/:projectId`) — Release list (sortable `target_date` column) + "New Release" CoreUI modal; `OrgHome.tsx` project list items link here; per-release expand renders `GET .../test-cycles` result (cycles + nested executions, read-only audit view) | 8.1b, 3.0d | M | FR-PROJ-2, [ADR-0019](../adr/0019-release-creation-flow.md) |
 | 8.2 | RequirementDetail (Requirement → optional TestCondition → TestCase, both paths) | 7.1, 4.1 | M | FR-REQ-1..3 |
 | 8.3 | TestSuiteBuilder | 7.1, 4.1 | S | FR-REQ-4 |
 | 8.4 | TestExecutionRunner (pass/fail/blocked + notes, raises Defect) | 7.1, 4.3, 4.4 | M | FR-EXEC-1..3 |
@@ -118,6 +119,7 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 | 10.2 | Backend integration tests — RBAC allow/deny matrix at HTTP layer, real Postgres; includes login throttle (429) and zero-active-org (403) cases | 9.3, all §2–5 | L | NFR-9, NFR-11, [Test Design](../test-design/2026-09-03-test-design.md) |
 | 10.3 | Frontend unit tests (Vitest + RTL) — generic CRUD components + bespoke screens | per-task | ongoing | [Test Plan](../test-plan/2026-09-03-master-test-plan.md) |
 | 10.4 | E2E tests (Playwright) — login→requirement→test case→execution; RBAC-denial flow | 9.1, all §6–8 | L | [Test Case doc](../test-cases/2026-09-03-test-cases.md) |
+| 10.4b | E2E test — members→org-home round trip via the sidebar's nav link (`shell-nav.spec.ts`), asserted by URL after a real click, not browser back | 6.4, 9.1 | S | FR-SHELL-1 AC3, TC-SHELL-003 |
 
 ## 11. Documentation (this batch)
 

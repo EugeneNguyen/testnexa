@@ -1,4 +1,4 @@
-# ADR-0018: Release creation flow — project-path-scoped bespoke routes, `test_manager` RBAC bundle extension, triple-permission audit query gate
+# ADR-0019: Release creation flow — project-path-scoped bespoke routes, `test_manager` RBAC bundle extension, triple-permission audit query gate
 
 **Date:** 2026-09-04
 **Status:** Accepted

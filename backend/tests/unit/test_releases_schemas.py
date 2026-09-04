@@ -1,7 +1,7 @@
 """Unit tests for PROJ-2 request/response schemas —
 `CreateReleaseRequest`/`ReleaseSummary`/`ReleaseListResponse`/
 `TestExecutionSummary`/`TestCycleSummary` (`app/schemas/releases.py`,
-ADR-0018).
+ADR-0019).
 
 Pure Pydantic-model construction, no DB/network — mirrors the style of
 `tests/unit/test_projects_schemas.py`.

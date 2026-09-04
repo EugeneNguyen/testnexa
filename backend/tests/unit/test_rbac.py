@@ -27,10 +27,10 @@ from fastapi.security import HTTPAuthorizationCredentials
 from fastapi.testclient import TestClient
 
 from app.core.config import settings
-from app.core.rbac import get_current_actor
+from app.core.rbac import _actor_requires_active_membership_check, get_current_actor
 from app.core.security import create_access_token
 from app.main import http_exception_handler
-from app.models.actor import User
+from app.models.actor import AIAgent, User
 
 
 class _FakeScalars:
@@ -208,3 +208,35 @@ def test_401_response_body_is_flat_not_nested_under_detail() -> None:
     assert body["field_errors"] is None
     assert isinstance(body["code"], str)
     assert isinstance(body["message"], str)
+
+
+# --- _actor_requires_active_membership_check (RBAC-2 / ADR-0017) ---------------------------
+#
+# Pure branching logic, no DB access — `require_permission`'s suspended-
+# member gate (`_has_active_membership`, DB-touching) is integration-test
+# territory (TC-RBAC-006/031/035/036), same boundary `test_rbac1_schemas.py`
+# documents for `has_permission`/`has_permission_in_any_org`. This is the
+# one seam of that gate's logic that unit-tests can exercise directly:
+# proving an `AIAgent` actor is structurally exempt, not merely "usually
+# passes" (TC-RBAC-036's mechanism at the unit level).
+
+
+def _make_agent(actor_id: uuid.UUID) -> AIAgent:
+    return AIAgent(
+        actor_id=actor_id,
+        agent_name="Test Agent",
+        acting_on_behalf_of_user_id=uuid.uuid4(),
+        key_hash="$argon2$irrelevant$",
+        key_prefix="abcdefgh",
+        issued_at=None,  # not exercised by this pure function
+    )
+
+
+def test_active_membership_check_applies_to_user_actor() -> None:
+    user = _make_user(uuid.uuid4())
+    assert _actor_requires_active_membership_check(user) is True
+
+
+def test_active_membership_check_does_not_apply_to_ai_agent_actor() -> None:
+    agent = _make_agent(uuid.uuid4())
+    assert _actor_requires_active_membership_check(agent) is False
