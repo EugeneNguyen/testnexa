@@ -10,6 +10,9 @@ import OrgHome from "./pages/workflows/OrgHome";
 import OrgMembers from "./pages/workflows/OrgMembers";
 import OrgPicker from "./pages/workflows/OrgPicker";
 import Signup from "./pages/workflows/Signup";
+import Colors from "./pages/ui-elements/Colors";
+import Icons from "./pages/ui-elements/Icons";
+import Typography from "./pages/ui-elements/Typography";
 
 interface HealthResponse {
   status: string;
@@ -98,6 +101,38 @@ function App() {
           element={
             <ProtectedRoute>
               <OrgMembers />
+            </ProtectedRoute>
+          }
+        />
+        {/*
+          SHELL-8 (ADR-0019) "UI Elements" reference pages — template-parity
+          scaffolding only, no FR/NFR/story backs these three routes (see
+          `AppSidebar.tsx`'s and each page's own docstring). Org-scoped
+          (`/orgs/:orgId/ui-elements/*`) to match the sidebar nav group's own
+          `orgId`-gated visibility, same posture as the org-home/members
+          routes above.
+        */}
+        <Route
+          path="/orgs/:orgId/ui-elements/colors"
+          element={
+            <ProtectedRoute>
+              <Colors />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/orgs/:orgId/ui-elements/typography"
+          element={
+            <ProtectedRoute>
+              <Typography />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/orgs/:orgId/ui-elements/icons"
+          element={
+            <ProtectedRoute>
+              <Icons />
             </ProtectedRoute>
           }
         />

@@ -39,8 +39,16 @@
  * this SPA's `#root` div sits inside rather than substitutes for.
  *
  * Built with CoreUI (ADR-0012) — no bespoke nav/layout components.
+ *
+ * SHELL-2 (ADR-0019) adds `AppBreadcrumb` (route-derived `CBreadcrumb`) and
+ * `AppFooter` (`CFooter`), completing the free-template shell shape —
+ * breadcrumb sits between the header and page content, footer sits below
+ * it, both inside the same `flex-column` content column as the header so
+ * they scroll with the page rather than pin to the sidebar's own height.
  */
 import { ReactNode, useState } from "react";
+import AppBreadcrumb from "./AppBreadcrumb";
+import AppFooter from "./AppFooter";
 import AppHeader from "./AppHeader";
 import AppSidebar from "./AppSidebar";
 
@@ -60,7 +68,9 @@ function AppShell({ children }: AppShellProps) {
       <AppSidebar visible={sidebarVisible} onVisibleChange={setSidebarVisible} />
       <div className="d-flex flex-column flex-grow-1 min-vh-100">
         <AppHeader onToggleSidebar={toggleSidebar} />
-        {children}
+        <AppBreadcrumb />
+        <div className="flex-grow-1">{children}</div>
+        <AppFooter />
       </div>
     </div>
   );

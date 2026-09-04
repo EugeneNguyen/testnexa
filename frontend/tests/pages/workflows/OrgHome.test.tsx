@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -17,18 +18,36 @@ vi.mock("../../../src/lib/api/projects", async (importOriginal) => {
   };
 });
 
+// SHELL-3 (ADR-0019): `OrgHome` now also mounts the two dashboard stat
+// widgets, each its own `useQuery` against `lib/api/dashboard.ts`. Mocked
+// here to a resolved value for every test in *this* file, since none of them
+// are about the widgets themselves (that's `OrgHome.widgets.test.tsx`,
+// TC-SHELL-010/011) — an unmocked call would 404 in jsdom (no real backend)
+// and leave the widgets permanently in their loading/error state, which is
+// irrelevant noise for the New-Project-modal tests below.
+vi.mock("../../../src/lib/api/dashboard", () => ({
+  getProjectsTotal: vi.fn().mockResolvedValue(0),
+  getActiveMemberTotal: vi.fn().mockResolvedValue(0),
+}));
+
 const mockCreateProject = vi.mocked(createProject);
 const mockUpdateProject = vi.mocked(updateProject);
 
 const ORG_ID = "11111111-1111-1111-1111-111111111111";
 
 function renderOrgHome(orgId = ORG_ID) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+
   return render(
-    <MemoryRouter initialEntries={[`/orgs/${orgId}`]}>
-      <Routes>
-        <Route path="/orgs/:orgId" element={<OrgHome />} />
-      </Routes>
-    </MemoryRouter>,
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={[`/orgs/${orgId}`]}>
+        <Routes>
+          <Route path="/orgs/:orgId" element={<OrgHome />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 
