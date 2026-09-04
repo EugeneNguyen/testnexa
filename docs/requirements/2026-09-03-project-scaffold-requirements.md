@@ -47,6 +47,8 @@ FR-RBAC-1 ships as two routes, not one: `POST /auth/signup` (public, bootstrap-o
 | FR-PROJ-1 | Create a Project scoped to an Organization, with standards_profile | Must | Project |
 | FR-PROJ-2 | Create a Release; associate TestCycles with it | Must | Release, TestCycle |
 
+FR-PROJ-1 ships as `POST /orgs/{org_id}/projects` (bespoke, org-path-scoped — reuses `require_permission`/the 404-vs-403 boundary as-is, same shape as FR-AUTH-4/FR-RBAC-1's own bespoke routes) plus `GET`/`PATCH /projects/{id}` (org resolved from the fetched row, anticipating the eventual generic CRUD factory's item-route contract). The creator is unconditionally granted a project-scoped `test_manager` `RoleAssignment` — not dynamic role-mapping, since only `org_admin`'s seeded bundle currently reaches `project.create` at all. `standards_profile`, if omitted at creation, inherits `Organization.default_standards_profile`; an explicit value (including explicit `null`) always overrides. See [ADR-0017](../adr/0017-project-creation-flow.md).
+
 ### 2.4 Requirement & test case authoring — [requirement-testcase-authoring-stories.md](../user-stories/2026-09-03-requirement-testcase-authoring-stories.md)
 
 | ID | Title | Priority | Entities |
@@ -125,6 +127,8 @@ FR-RBAC-1 ships as two routes, not one: `POST /auth/signup` (public, bootstrap-o
 | NFR-19 | Org-scoped routes (first instance: `/orgs/{org_id}/agents*`) return 404 when the caller has no `OrgMembership` in the path's `org_id` at all, and 403 only when membership exists but the required permission is missing — generalizes NFR-1's cross-tenant-404 rule to the permission-check boundary, not just resource-fetch. | AUTH-4 scope decision 2026-09-03, [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md) |
 | NFR-20 | The RBAC-4 system-role seed migration is idempotent — re-running it inserts no duplicate `Role`/`Permission`/`RolePermission` rows, enforced by a partial unique index on `role.name WHERE org_id IS NULL` plus existence-checked inserts. | RBAC-4 scope decision 2026-09-03, [ADR-0004](../adr/0004-rbac-design.md) |
 | NFR-21 | `POST /auth/signup` is available only while zero `Organization` rows exist deployment-wide — self-registration closes after the first org is created. Concurrent bootstrap attempts are serialized via a `pg_advisory_xact_lock`, so at most one `Organization` is created even from simultaneous first-signup requests. `Organization.slug` uniqueness violations return `422` on both creation routes; `409` is reserved exclusively for the signup-closed case, the two are never conflated. | RBAC-1 scope decision 2026-09-03, [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md) |
+| NFR-22 | Every `Requirement`/`TestSuite`/`TestPlan` row carries a non-nullable `project_id` FK — no orphaned test asset can exist outside a `Project`, enforced at the schema level (not just application validation). Live execution coverage (attempt to create one of these entities without `project_id` → 422) is deferred until the first create route for any of the three exists — schema-level enforcement is verifiable today, the negative-test path is not yet. | PROJ-1 AC2, [ADR-0017](../adr/0017-project-creation-flow.md) |
+| NFR-23 | `Project.standards_profile`, when omitted at creation, inherits `Organization.default_standards_profile` (itself nullable); an explicit value in the create/update payload — including explicit `null` — always overrides the inherited default, never silently merged with it. | PROJ-1 AC3, [ADR-0017](../adr/0017-project-creation-flow.md) |
 
 ## 4. Traceability — requirements to architecture decisions
 
@@ -136,6 +140,7 @@ FR-RBAC-1 ships as two routes, not one: `POST /auth/signup` (public, bootstrap-o
 | FR-REQ-2, FR-REQ-3 | [ADR-0006](../adr/0006-test-condition-optional.md) TestCondition optional |
 | FR-RBAC-1, FR-RBAC-2 | [ADR-0007](../adr/0007-real-multi-tenancy.md) Real multi-tenancy |
 | FR-RBAC-1, NFR-21 | [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md) Organization bootstrap & creation flow |
+| FR-PROJ-1, NFR-22, NFR-23 | [ADR-0017](../adr/0017-project-creation-flow.md) Project creation flow |
 | FR-RBAC-4, NFR-20 | [ADR-0004](../adr/0004-rbac-design.md) (system-role seeding: global templates, full catalog, idempotent migration) |
 | NFR-3 (UUID PKs) | [ADR-0008](../adr/0008-uuid-primary-keys.md) UUID primary keys |
 | FR-AUTH-* | [ADR-0003](../adr/0003-auth-token-strategy.md) Auth & token strategy |

@@ -23,7 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.requests import Request
 from fastapi.responses import JSONResponse
 
-from app.api.routes import agents, auth, health, org_memberships, organizations
+from app.api.routes import agents, auth, health, org_memberships, organizations, projects
 
 app = FastAPI(title="TestNexa API", version="0.1.0")
 
@@ -79,3 +79,5 @@ app.include_router(agents.router, prefix="/api/v1", tags=["agents"])
 app.include_router(organizations.router, prefix="/api/v1", tags=["organizations"])
 # RBAC-2/ADR-0017: invite/list/accept/suspend/reactivate/revoke org members.
 app.include_router(org_memberships.router, prefix="/api/v1", tags=["org_memberships"])
+# PROJ-1/ADR-0017: Project create/read/update routes.
+app.include_router(projects.router, prefix="/api/v1", tags=["projects"])

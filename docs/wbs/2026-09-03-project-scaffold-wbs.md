@@ -42,9 +42,11 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 
 | # | Deliverable | Depends on | Size | Maps to |
 |---|---|---|---|---|
+| 3.0a | `app/schemas/projects.py` + `app/api/routes/projects.py` — `POST /orgs/{org_id}/projects` (bespoke, org-path-scoped, `require_permission`/404-vs-403 boundary reused as-is; `standards_profile` inherits `Organization.default_standards_profile` when omitted; creator auto-assigned project-scoped `test_manager` RoleAssignment) | 2.4, 1.2 | M | FR-PROJ-1, NFR-22, NFR-23, [ADR-0017](../adr/0017-project-creation-flow.md) |
+| 3.0b | `GET`/`PATCH /projects/{id}` — org resolved from the fetched row (no `org_id` path segment), anticipating the generic factory's eventual item-route shape | 3.0a | S | FR-PROJ-1, [ADR-0017](../adr/0017-project-creation-flow.md) |
 | 3.1 | Pydantic v2 schemas — 1:1 mirror of `app/models/` | 1.1 | M | [API Document](../api/2026-09-03-api-design.md) |
 | 3.2 | CRUD router factory (list/get/create/update/delete, pagination, exact-match filters, `require_permission` baked in) | 2.4, 3.1 | M | FR-ADMIN-2, NFR-6 |
-| 3.3 | Apply factory to all non-bespoke entities (~20 of 28) | 3.2 | M | FR-ADMIN-2 |
+| 3.3 | Apply factory to all non-bespoke entities (~20 of 28, `Project` excluded — already bespoke per 3.0a/3.0b) | 3.2 | M | FR-ADMIN-2 |
 
 ## 4. Bespoke API routes
 
@@ -90,6 +92,7 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 | # | Deliverable | Depends on | Size | Maps to |
 |---|---|---|---|---|
 | 8.1 | Login, OrgSwitcher/ProjectSwitcher | 6.3b | M | FR-AUTH-1, FR-RBAC-1 |
+| 8.1b | `OrgHome.tsx` project list + "New Project" CoreUI modal (name, optional standards_profile), inline standards_profile edit | 8.1, 3.0b | S | FR-PROJ-1, [ADR-0017](../adr/0017-project-creation-flow.md) |
 | 8.2 | RequirementDetail (Requirement → optional TestCondition → TestCase, both paths) | 7.1, 4.1 | M | FR-REQ-1..3 |
 | 8.3 | TestSuiteBuilder | 7.1, 4.1 | S | FR-REQ-4 |
 | 8.4 | TestExecutionRunner (pass/fail/blocked + notes, raises Defect) | 7.1, 4.3, 4.4 | M | FR-EXEC-1..3 |
@@ -118,7 +121,7 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 |---|---|---|
 | 11.1 | Requirement Document | Done |
 | 11.2 | WBS (this document) | Done |
-| 11.3 | ADRs (0001–0016 + index) | Done |
+| 11.3 | ADRs (0001–0017 + index) | Done |
 | 11.4 | Database Document | Done |
 | 11.5 | API Document | Done |
 | 11.6 | Master Test Plan | Done |
