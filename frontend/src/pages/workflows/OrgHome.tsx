@@ -219,7 +219,9 @@ function OrgHome() {
                     <CTableBody>
                       {projects.map((project) => (
                         <CTableRow key={project.id}>
-                          <CTableDataCell>{project.name}</CTableDataCell>
+                          <CTableDataCell>
+                            <Link to={`/projects/${project.id}`}>{project.name}</Link>
+                          </CTableDataCell>
                           <CTableDataCell>
                             {editingId === project.id ? (
                               <>

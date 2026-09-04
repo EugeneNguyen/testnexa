@@ -104,6 +104,22 @@ def test_auditor_bundle_is_read_only_on_every_resource() -> None:
     assert len(non_export_codes) == len(ALL_RESOURCES)
 
 
+def test_test_manager_bundle_includes_release_create_read_update_but_not_delete() -> None:
+    """PROJ-2/ADR-0019: `test_manager` gains `release.create`/`.read`/
+    `.update` (closing what ADR-0019 frames as an RBAC-4 oversight, given
+    `test_manager` already held full `test_cycle` CRUD) but NOT
+    `release.delete`, since no delete route exists to reach it.
+    """
+    all_codes = {code for code, _resource, _action in build_permission_catalog()}
+    bundles = build_role_bundles(all_codes)
+
+    test_manager = bundles["test_manager"]
+    assert "release.create" in test_manager
+    assert "release.read" in test_manager
+    assert "release.update" in test_manager
+    assert "release.delete" not in test_manager
+
+
 def test_tester_bundle_has_no_approval_or_role_permissions() -> None:
     all_codes = {code for code, _resource, _action in build_permission_catalog()}
     bundles = build_role_bundles(all_codes)
