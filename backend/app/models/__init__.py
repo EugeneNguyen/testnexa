@@ -40,7 +40,7 @@ from app.models.taxonomy import (
     TestLevel,
     TestType,
 )
-from app.models.tenancy import Organization, OrgMembership
+from app.models.tenancy import Invite, Organization, OrgMembership
 from app.models.trace import (
     RequirementTestCaseLink,
     RequirementTestConditionLink,
@@ -58,6 +58,7 @@ __all__ = [
     "Defect",
     "EntryExitCriteria",
     "Environment",
+    "Invite",
     "LoginAttempt",
     "OrgMembership",
     "Organization",

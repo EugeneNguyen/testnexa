@@ -6,8 +6,8 @@ See app/models/__init__.py for the documented deviation: the Database
 Document's own summary claims "36" physical tables (35 at scaffold time,
 +1 `login_attempt` added by AUTH-1/ADR-0011), but its detailed column-level
 per-cluster listing literally names 39 distinct tables. This test asserts
-against the actual, verified count (39) rather than the document's
-inconsistent summary number.
+against the actual, verified count (39, +1 `invite` added by RBAC-2/
+ADR-0017 = 40) rather than the document's inconsistent summary number.
 """
 
 import app.models
@@ -22,7 +22,7 @@ def test_import_does_not_raise() -> None:
 
 
 def test_metadata_has_expected_table_count() -> None:
-    assert len(Base.metadata.tables) == 39
+    assert len(Base.metadata.tables) == 40
 
 
 def test_expected_table_names_present() -> None:
@@ -67,6 +67,7 @@ def test_expected_table_names_present() -> None:
         "risk_item",
         "attachment",
         "login_attempt",
+        "invite",
     }
     assert expected <= table_names
-    assert len(expected) == 39
+    assert len(expected) == 40

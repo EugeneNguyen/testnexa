@@ -17,7 +17,9 @@ from app.core.security import (
     create_refresh_token,
     decode_token,
     generate_api_key,
+    generate_invite_token,
     hash_api_key,
+    hash_invite_token,
     hash_password,
     hash_refresh_token,
     verify_api_key,
@@ -230,3 +232,47 @@ def test_verify_api_key_prefix_matched_but_secret_corrupted_fails() -> None:
     crafted_key = f"tnx_agent_{key_prefix}_{other_secret}"
     assert crafted_key != raw_key
     assert verify_api_key(crafted_key, key_hash) is False
+
+
+# --- generate_invite_token / hash_invite_token (RBAC-2/ADR-0017) ---------------------------
+#
+# Same high-entropy-token + fast-hash pattern as create_refresh_token/
+# hash_refresh_token — Invite.token_hash is a hot lookup key
+# (POST /invites/{token}/accept), not a low-entropy human secret, so a
+# deliberately-slow argon2 KDF is unnecessary cost here (Database Document
+# §3.1, ADR-0017).
+
+
+def test_generate_invite_token_has_reasonable_length() -> None:
+    token = generate_invite_token()
+    assert isinstance(token, str)
+    assert len(token) > 20
+
+
+def test_generate_invite_token_two_calls_differ() -> None:
+    token_a = generate_invite_token()
+    token_b = generate_invite_token()
+    assert token_a != token_b
+
+
+def test_hash_invite_token_is_deterministic() -> None:
+    raw_token = "some-raw-invite-token-value"
+    assert hash_invite_token(raw_token) == hash_invite_token(raw_token)
+
+
+def test_hash_invite_token_different_inputs_differ() -> None:
+    assert hash_invite_token("token-a") != hash_invite_token("token-b")
+
+
+def test_hash_invite_token_looks_like_sha256_hex_digest() -> None:
+    digest = hash_invite_token("some-raw-invite-token-value")
+    assert len(digest) == 64
+    assert all(c in "0123456789abcdef" for c in digest)
+
+
+def test_hash_invite_token_matches_hash_refresh_token_algorithm() -> None:
+    # Same algorithm (SHA-256 hex digest) as hash_refresh_token, applied to
+    # the same input — proves this isn't a different/weaker digest scheme
+    # dressed up as "the same pattern".
+    raw_token = "some-raw-invite-token-value"
+    assert hash_invite_token(raw_token) == hash_refresh_token(raw_token)

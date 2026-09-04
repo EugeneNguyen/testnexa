@@ -176,6 +176,34 @@ def hash_api_key(raw_key: str) -> str:
     return _pwd_context.hash(raw_key)
 
 
+def generate_invite_token() -> str:
+    """Generate a raw, high-entropy invite token (RBAC-2, ADR-0017).
+
+    `secrets.token_urlsafe(32)` — the same entropy budget
+    `create_refresh_token`'s raw refresh token and `generate_api_key`'s
+    embedded secret segment use. Returned once, embedded in `POST
+    /orgs/{org_id}/members/invite`'s response `invite_link`, and never
+    persisted — only `hash_invite_token`'s digest is stored in
+    `Invite.token_hash` (Database Document §3.1).
+    """
+    return secrets.token_urlsafe(32)
+
+
+def hash_invite_token(raw_token: str) -> str:
+    """Hash a raw invite token for storage in `Invite.token_hash`.
+
+    SHA-256 hex digest — the exact same algorithm `hash_refresh_token` uses,
+    and for the identical reason (see that function's docstring):
+    `Invite.token_hash` is a hot lookup key (`POST /invites/{token}/accept`),
+    and the raw token is already high-entropy (`secrets.token_urlsafe`), not
+    a low-entropy human secret an attacker could brute-force from a leaked
+    hash — so the deliberately-slow argon2 KDF `hash_password`/`hash_api_key`
+    use would just be needless CPU cost here (Database Document §3.1,
+    ADR-0017).
+    """
+    return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+
+
 def verify_api_key(raw_key: str, key_hash: str) -> bool:
     """Verify a raw AIAgent API key against a stored argon2 hash.
 

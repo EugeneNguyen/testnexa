@@ -89,6 +89,7 @@ import {
   signup as signupRequest,
   SignupPayload,
 } from "../lib/api/auth";
+import { acceptInvite as acceptInviteRequest } from "../lib/api/members";
 import { requestRefresh } from "../lib/api/client";
 import { clearAccessToken, getAccessToken, setAccessToken as setStoredAccessToken, subscribe } from "../lib/auth/tokenStore";
 
@@ -99,6 +100,7 @@ interface AuthContextValue {
   isInitializing: boolean;
   login: (email: string, password: string) => Promise<void>;
   signup: (payload: SignupPayload) => Promise<void>;
+  acceptInvite: (token: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -171,6 +173,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setOrgs(response.orgs);
   }, []);
 
+  // RBAC-2 (ADR-0017) invite acceptance: `POST /invites/{token}/accept`'s
+  // response is `LoginResponse`-shaped too (access token in the body,
+  // refresh token as an httpOnly cookie, issued exactly like
+  // `POST /auth/login`'s success path) — same post-success state update as
+  // `login()`/`signup()` above, so the invitee lands authenticated instead
+  // of back at a login screen, per ADR-0017's decision.
+  const acceptInvite = useCallback(async (token: string, password: string) => {
+    const response = await acceptInviteRequest(token, { password });
+    setStoredAccessToken(response.access_token);
+    setOrgContext(response.org_context);
+    setOrgs(response.orgs);
+  }, []);
+
   const logout = useCallback(async () => {
     try {
       await logoutRequest();
@@ -186,8 +201,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ accessToken, orgContext, orgs, isInitializing, login, signup, logout }),
-    [accessToken, orgContext, orgs, isInitializing, login, signup, logout],
+    () => ({ accessToken, orgContext, orgs, isInitializing, login, signup, acceptInvite, logout }),
+    [accessToken, orgContext, orgs, isInitializing, login, signup, acceptInvite, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

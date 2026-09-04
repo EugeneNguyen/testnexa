@@ -46,7 +46,7 @@ describe("Signup page — real AuthProvider (success path updates auth state and
     // instance — a `Response` body can only be read (`.json()`) once, and
     // the boot-time refresh call consumes the first one before this test's
     // own signup submission ever runs.
-    const fetchMock = vi.fn(() =>
+    const fetchMock = vi.fn((_url: string | URL | Request, _init?: RequestInit) =>
       Promise.resolve(
         jsonResponse(
           {
@@ -93,9 +93,9 @@ describe("Signup page — real AuthProvider (success path updates auth state and
 
     expect(getAccessToken()).toBe("signup-issued-access-token");
 
-    const signupCall = fetchMock.mock.calls.find(([url]: [string]) => url.includes("/auth/signup"));
+    const signupCall = fetchMock.mock.calls.find(([url]) => String(url).includes("/auth/signup"));
     expect(signupCall).toBeDefined();
-    const [, init] = signupCall as [string, RequestInit];
+    const [, init] = signupCall as [string | URL | Request, RequestInit];
     expect(JSON.parse(init.body as string)).toEqual({
       name: "Ada Lovelace",
       email: "ada@example.com",
