@@ -14,14 +14,16 @@
  * 401-interceptor redirect, which uses a hard `window.location.assign`
  * (full page reload). Do not conflate the two mechanisms.
  *
- * AUTH-3: once authenticated, renders `<AppHeader />` above `children` so
- * every protected page gets the navbar (brand + "Log out" button) for free
- * without wiring its own (scope plan §1/§4.3).
+ * AUTH-3 originally rendered a bare `<AppHeader />` above `children`; SHELL-1
+ * (ADR-0018) replaces that with `<AppShell>{children}</AppShell>`, which
+ * wraps `children` in the persistent sidebar+navbar shell instead (still
+ * mounting `AppHeader`, now alongside `AppSidebar`) so every protected page
+ * gets a working way back to org home for free without wiring its own.
  */
 import { ReactNode } from "react";
 import { Navigate } from "react-router-dom";
 import { CSpinner } from "@coreui/react";
-import AppHeader from "../components/AppHeader";
+import AppShell from "../components/AppShell";
 import { useAuth } from "./AuthContext";
 
 interface ProtectedRouteProps {
@@ -43,12 +45,7 @@ function ProtectedRoute({ children }: ProtectedRouteProps) {
     return <Navigate to="/login" replace />;
   }
 
-  return (
-    <>
-      <AppHeader />
-      {children}
-    </>
-  );
+  return <AppShell>{children}</AppShell>;
 }
 
 export default ProtectedRoute;

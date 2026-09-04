@@ -78,6 +78,7 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 | 6.3b | `AuthContext` boot-time silent refresh (`isInitializing`), `ProtectedRoute` guard | 6.3a | S | FR-AUTH-2 |
 | 6.3c | Logout action (calls `/auth/logout`, unconditionally clears token store + org state and redirects to `/login` regardless of the call's success/failure) | 6.3a, 2.2c | S | FR-AUTH-3, NFR-14 |
 | 6.3d | `AppHeader` navbar (CoreUI `CHeader`, brand + "Log out" button wired to 6.3c) mounted inside `ProtectedRoute`, replacing the bare unwrapped `children` render | 6.3c, 6.3b | S | FR-AUTH-3, ADR-0012 |
+| 6.4 | `AppSidebar` (CoreUI `CSidebar`/`CSidebarNav`, single nav-item array — org-home + org-members, `NavLink`-driven active state) + `AppShell` (sidebar + header + content, owns toggle-visibility state per CoreUI's own template pattern) wraps `ProtectedRoute`'s children, replacing 6.3d's bare `<AppHeader/>` mount; `AppHeader` gains a `CHeaderToggler` wired to that state | 6.3d | M | FR-SHELL-1, NFR-24, [ADR-0018](../adr/0018-admin-shell-sidebar-layout.md) |
 
 ## 7. Generic CRUD UI
 
@@ -114,6 +115,7 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 | 10.2 | Backend integration tests — RBAC allow/deny matrix at HTTP layer, real Postgres; includes login throttle (429) and zero-active-org (403) cases | 9.3, all §2–5 | L | NFR-9, NFR-11, [Test Design](../test-design/2026-09-03-test-design.md) |
 | 10.3 | Frontend unit tests (Vitest + RTL) — generic CRUD components + bespoke screens | per-task | ongoing | [Test Plan](../test-plan/2026-09-03-master-test-plan.md) |
 | 10.4 | E2E tests (Playwright) — login→requirement→test case→execution; RBAC-denial flow | 9.1, all §6–8 | L | [Test Case doc](../test-cases/2026-09-03-test-cases.md) |
+| 10.4b | E2E test — members→org-home round trip via the sidebar's nav link (`shell-nav.spec.ts`), asserted by URL after a real click, not browser back | 6.4, 9.1 | S | FR-SHELL-1 AC3, TC-SHELL-003 |
 
 ## 11. Documentation (this batch)
 

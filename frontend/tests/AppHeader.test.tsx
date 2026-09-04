@@ -17,7 +17,10 @@ vi.mock("../src/auth/AuthContext", async (importOriginal) => {
 
 const mockUseAuth = vi.mocked(useAuth);
 
-function renderHeader(logout = vi.fn().mockResolvedValue(undefined)) {
+function renderHeader(
+  logout = vi.fn().mockResolvedValue(undefined),
+  onToggleSidebar = vi.fn(),
+) {
   mockUseAuth.mockReturnValue({
     accessToken: "token-abc",
     orgContext: "auto",
@@ -29,11 +32,15 @@ function renderHeader(logout = vi.fn().mockResolvedValue(undefined)) {
     logout,
   });
 
-  return { ...render(
-    <MemoryRouter>
-      <AppHeader />
-    </MemoryRouter>,
-  ), logout };
+  return {
+    ...render(
+      <MemoryRouter>
+        <AppHeader onToggleSidebar={onToggleSidebar} />
+      </MemoryRouter>,
+    ),
+    logout,
+    onToggleSidebar,
+  };
 }
 
 describe("AppHeader", () => {
@@ -56,5 +63,15 @@ describe("AppHeader", () => {
     fireEvent.click(screen.getByTestId("logout-button"));
 
     expect(logout).toHaveBeenCalledTimes(1);
+  });
+
+  it("calls the onToggleSidebar prop when the sidebar toggler is clicked", () => {
+    const onToggleSidebar = vi.fn();
+    renderHeader(undefined, onToggleSidebar);
+
+    expect(screen.getByTestId("sidebar-toggler")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("sidebar-toggler"));
+
+    expect(onToggleSidebar).toHaveBeenCalledTimes(1);
   });
 });

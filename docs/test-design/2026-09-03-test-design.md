@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-03
 **Owner:** xuanbinh91@gmail.com (CTO)
-**Sources:** [Master Test Plan](../test-plan/2026-09-03-master-test-plan.md), [Requirements Document](../requirements/2026-09-03-project-scaffold-requirements.md), [Database Document](../database/2026-09-03-database-design.md), [ADR-0011](../adr/0011-login-rate-limiting.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md), [ADR-0014](../adr/0014-logout-session-revocation-policy.md), [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md), [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md), [ADR-0017](../adr/0017-project-creation-flow.md)
+**Sources:** [Master Test Plan](../test-plan/2026-09-03-master-test-plan.md), [Requirements Document](../requirements/2026-09-03-project-scaffold-requirements.md), [Database Document](../database/2026-09-03-database-design.md), [ADR-0011](../adr/0011-login-rate-limiting.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md), [ADR-0014](../adr/0014-logout-session-revocation-policy.md), [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md), [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md), [ADR-0017](../adr/0017-project-creation-flow.md), [ADR-0018](../adr/0018-admin-shell-sidebar-layout.md)
 
 Applies ISTQB CTFL v4.0.1 design techniques deliberately — the same vocabulary this product's `TestDesignTechnique` entity asks its own users to declare (ADMIN-1) is used to design the tests below.
 
@@ -22,6 +22,7 @@ Applies ISTQB CTFL v4.0.1 design techniques deliberately — the same vocabulary
 | Pagination / filtering | Boundary value analysis (page_size at 0, 1, 25, 26; empty result set; last-page boundary) | Classic BVA target |
 | Attachment size/type limits | Boundary value analysis (at limit, one byte over, disallowed mime type) | NFR-7 |
 | TestLog immutability | Negative testing (attempt update/delete, expect route not to exist / 405 or 404) | Verifying an absence, not a behavior |
+| Admin shell (sidebar + navbar) | Equivalence partitioning (org-context-present vs. absent, current-route-active vs. not) + state coverage (sidebar visible/collapsed) | Layout is a small, enumerable set of UI states, not a combinatorial one |
 
 ## 2. Auth — equivalence classes
 
@@ -144,3 +145,17 @@ Every MCP tool test asserts **contract parity** with its backing REST route (MCP
 **`GET`/`PATCH /projects/{id}` classes:** same Class B/C reuse as §4 — missing row or non-member of the row's org → 404; member without `project.read`/`.update` → 403; member with the right permission → 200, current field values (`PATCH`: post-update values). Rename via `PATCH` colliding with another Project's `name` in the same org → 422, same shape as create's collision.
 
 **Schema-level-only class (NFR-22, deferred execution path):** `Requirement`/`TestSuite`/`TestPlan`'s `project_id` FK is asserted non-nullable directly against the migrated schema (introspect the column, not an API call) — the corresponding "attempt to create one via the API without `project_id` → 422" case has no route to exercise yet and is explicitly not attempted here; recorded as a known gap, not silently skipped.
+
+## 15. SHELL-1 admin shell layout — equivalence classes + state coverage ([ADR-0018](../adr/0018-admin-shell-sidebar-layout.md))
+
+**Shell-presence class:** every `ProtectedRoute` screen (`/orgs/pick`, `/orgs/:orgId`, `/orgs/:orgId/members`) renders `CSidebar`/`CSidebarNav` + `CHeader` — tested once per route, not just the two org-scoped ones, since AC1's claim is "any `ProtectedRoute` route," including the org-less picker.
+
+**Org-context classes (the `/orgs/pick` edge case, [ADR-0018](../adr/0018-admin-shell-sidebar-layout.md)):** `orgId` present (on `/orgs/:orgId`, `/orgs/:orgId/members`) → org-home and org-members nav items both render, pointing at that `orgId`. `orgId` absent (`/orgs/pick`, no org selected yet) → sidebar still mounts (brand only), nav-item list is empty — not disabled/greyed items, an absent list. Tested as a distinct case from a rendering bug, since an empty list and a crashed nav-item lookup both "show nothing" but only one is correct.
+
+**Active-route class:** on `/orgs/:orgId`, the org-home nav item shows active styling, org-members does not. On `/orgs/:orgId/members`, the reverse — and critically, org-home must **not** show active styling here too (its path is a prefix of the members path; the `NavLink` `end` match is the mechanism under test, a regression here would show both items "active" simultaneously).
+
+**Navigation class (AC3, the FACT-level defect fix):** from `/orgs/:orgId/members`, clicking the sidebar's org-home nav link (a real Playwright click, not `page.goBack()`) lands on `/orgs/:orgId` and renders `OrgHome`. This is the one case in this section that must run as an E2E test against a live app, not a component-level unit test — the defect it fixes (`OrgMembers.tsx`'s missing link) is itself a routing/integration-level absence, not a unit-testable one.
+
+**Responsive class (AC4, NFR-24):** narrow viewport (e.g. Playwright's mobile viewport preset) → sidebar starts collapsed/overlaid, `CHeaderToggler` click shows it, per `CSidebar`'s own `visible` prop contract — tested as an observed behavior (does the sidebar become visible/hidden), not by asserting internal CSS breakpoint values CoreUI itself owns.
+
+**Extension-point class (AC5, P3/structural — not machine-verifiable as a negative test, see Master Test Plan §14 risk log):** the nav-item list is a single array in `AppSidebar.tsx`; adding a future route's entry there (and nowhere else) is verified by code review at the time that route ships, not by an automated test today (there is no future route yet to assert against).
