@@ -203,10 +203,10 @@ async def test_org_admin_has_every_permission() -> None:  # TC-RBAC-018
     assert org_admin_permission_count == total_permissions
 
 
-# --- TC-RBAC-019: `alembic downgrade -1` removes the 5 system Role rows (+ cascaded ----------
-# --- RolePermission rows), Permission catalog rows remain; re-`upgrade head` after -----------
-# --- to leave the DB seeded for anyone else. Runs last (file order = execution order, no ----
-# --- randomization plugin installed) since it destructively mutates seed state. -------------
+# --- TC-RBAC-019: downgrading past `34053c46f9fc` removes the 5 system Role rows -------------
+# --- (+ cascaded RolePermission rows), Permission catalog rows remain; re-`upgrade head` -----
+# --- after to leave the DB seeded for anyone else. Runs last (file order = execution order, --
+# --- no randomization plugin installed) since it destructively mutates seed state. -----------
 
 
 @pytest.mark.asyncio
@@ -221,9 +221,20 @@ async def test_migration_downgrade_removes_only_the_five_system_roles() -> None:
         ).scalar_one()
 
     try:
-        downgrade_result = _run_alembic("downgrade", "-1")
+        # Target the seed migration's own parent revision explicitly rather
+        # than a relative `downgrade -1`: PROJ-2's `c7479d1b7cf6` migration
+        # now sits on top of `34053c46f9fc` in the chain, so "-1" from head
+        # would only undo *that* later migration (3 `release.*`
+        # `RolePermission` rows) and leave all 5 system Roles in place,
+        # failing this test for a reason unrelated to what it actually
+        # checks. Downgrading to the fixed parent revision id
+        # (`d33d66f4b3c3`, `34053c46f9fc`'s own `down_revision`) undoes
+        # `34053c46f9fc` and everything stacked after it, however many
+        # migrations that ends up being, so this stays correct as the chain
+        # grows further.
+        downgrade_result = _run_alembic("downgrade", "d33d66f4b3c3")
         assert downgrade_result.returncode == 0, (
-            f"alembic downgrade -1 failed:\n{downgrade_result.stdout}\n{downgrade_result.stderr}"
+            f"alembic downgrade d33d66f4b3c3 failed:\n{downgrade_result.stdout}\n{downgrade_result.stderr}"
         )
 
         async with AsyncSessionLocal() as session:

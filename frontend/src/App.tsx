@@ -7,6 +7,7 @@ import { apiFetch } from "./lib/api/client";
 import Login from "./pages/workflows/Login";
 import OrgHome from "./pages/workflows/OrgHome";
 import OrgPicker from "./pages/workflows/OrgPicker";
+import ProjectDetail from "./pages/workflows/ProjectDetail";
 import Signup from "./pages/workflows/Signup";
 
 interface HealthResponse {
@@ -73,6 +74,14 @@ function App() {
           element={
             <ProtectedRoute>
               <OrgHome />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/projects/:projectId"
+          element={
+            <ProtectedRoute>
+              <ProjectDetail />
             </ProtectedRoute>
           }
         />

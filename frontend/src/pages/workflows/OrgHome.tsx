@@ -27,7 +27,7 @@
  * Built with CoreUI (ADR-0012).
  */
 import { useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -200,7 +200,9 @@ function OrgHome() {
                     <CTableBody>
                       {projects.map((project) => (
                         <CTableRow key={project.id}>
-                          <CTableDataCell>{project.name}</CTableDataCell>
+                          <CTableDataCell>
+                            <Link to={`/projects/${project.id}`}>{project.name}</Link>
+                          </CTableDataCell>
                           <CTableDataCell>
                             {editingId === project.id ? (
                               <>
