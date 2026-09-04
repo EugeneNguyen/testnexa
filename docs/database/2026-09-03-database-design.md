@@ -8,6 +8,8 @@ This document is the implementation-level schema, refined from the [07 ERD](../p
 
 **SHELL-1** ([ADR-0018](../adr/0018-admin-shell-sidebar-layout.md), FR-SHELL-1) — reviewed, no schema impact. The admin shell (sidebar + navbar) is frontend-only: no new table, column, or index. Noted here explicitly so the gap isn't mistaken for an oversight.
 
+**SHELL-2/3/4** ([ADR-0019](../adr/0019-admin-shell-full-template-parity.md), FR-SHELL-2/3/4) — reviewed, no schema impact. Breadcrumb/footer are frontend-only; dashboard stat widgets read existing `Project`/`OrgMembership` rows via already-built generic-CRUD list queries (no new table/column); dark/light mode preference is `localStorage`-only (NFR-26) — deliberately not a new `User`/`Actor` column, since it's presentation state, not account data worth persisting server-side in this scaffold.
+
 ---
 
 ## 1. Entity count reconciliation

@@ -81,7 +81,11 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 | 6.3b | `AuthContext` boot-time silent refresh (`isInitializing`), `ProtectedRoute` guard | 6.3a | S | FR-AUTH-2 |
 | 6.3c | Logout action (calls `/auth/logout`, unconditionally clears token store + org state and redirects to `/login` regardless of the call's success/failure) | 6.3a, 2.2c | S | FR-AUTH-3, NFR-14 |
 | 6.3d | `AppHeader` navbar (CoreUI `CHeader`, brand + "Log out" button wired to 6.3c) mounted inside `ProtectedRoute`, replacing the bare unwrapped `children` render | 6.3c, 6.3b | S | FR-AUTH-3, ADR-0012 |
-| 6.4 | `AppSidebar` (CoreUI `CSidebar`/`CSidebarNav`, single nav-item array — org-home + org-members, `NavLink`-driven active state) + `AppShell` (sidebar + header + content, owns toggle-visibility state per CoreUI's own template pattern) wraps `ProtectedRoute`'s children, replacing 6.3d's bare `<AppHeader/>` mount; `AppHeader` gains a `CHeaderToggler` wired to that state | 6.3d | M | FR-SHELL-1, NFR-25, [ADR-0018](../adr/0018-admin-shell-sidebar-layout.md) |
+| 6.4 | `AppSidebar` (CoreUI `CSidebar`/`CSidebarNav`, single nav-item array — org-home + org-members, `NavLink`-driven active state) + `AppShell` (sidebar + header + content, owns toggle-visibility state per CoreUI's own template pattern) wraps `ProtectedRoute`'s children, replacing 6.3d's bare `<AppHeader/>` mount; `AppHeader` gains a `CHeaderToggler` wired to that state | 6.3d | M | FR-SHELL-1, NFR-24, [ADR-0018](../adr/0018-admin-shell-sidebar-layout.md) |
+| 6.5 | `AppBreadcrumb` (route-derived `CBreadcrumb`) + `AppFooter` (`CFooter`) added to `AppShell`, completing the free-template shell shape | 6.4 | S | FR-SHELL-2, [ADR-0020](../adr/0020-admin-shell-full-template-parity.md) |
+| 6.6 | `OrgHome` dashboard stat widgets (`CWidgetStatsA`/`B` × 2 — Project count, active Org Member count), read via existing `GET /projects`/`GET /org-memberships` list `total`, no new API/query hook beyond 6.2's existing list hooks | 6.4, 6.2 | S | FR-SHELL-3, NFR-27, [ADR-0020](../adr/0020-admin-shell-full-template-parity.md) |
+| 6.7 | Dark/light color-mode toggle — CoreUI `useColorModes` hook + header dropdown, `localStorage`-persisted | 6.3d | S | FR-SHELL-4, NFR-28, [ADR-0020](../adr/0020-admin-shell-full-template-parity.md) |
+| 6.8 | UI-element reference pages (Colors, Typography, Icons) + "UI Elements" sidebar nav group — template-parity scaffolding, no FR/story backing (flagged explicitly, not to be mistaken for product scope) | 6.4 | S | [ADR-0020](../adr/0020-admin-shell-full-template-parity.md) |
 
 ## 7. Generic CRUD UI
 
@@ -120,6 +124,7 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 | 10.3 | Frontend unit tests (Vitest + RTL) — generic CRUD components + bespoke screens | per-task | ongoing | [Test Plan](../test-plan/2026-09-03-master-test-plan.md) |
 | 10.4 | E2E tests (Playwright) — login→requirement→test case→execution; RBAC-denial flow | 9.1, all §6–8 | L | [Test Case doc](../test-cases/2026-09-03-test-cases.md) |
 | 10.4b | E2E test — members→org-home round trip via the sidebar's nav link (`shell-nav.spec.ts`), asserted by URL after a real click, not browser back | 6.4, 9.1 | S | FR-SHELL-1 AC3, TC-SHELL-003 |
+| 10.4c | E2E test — dark/light toggle flips theme + persists across reload; frontend/integration tests for stat widget counts (seeded fixture, not mocked) and breadcrumb path-derivation | 6.5, 6.6, 6.7, 9.1 | S | FR-SHELL-2..4, TC-SHELL-007..013 |
 
 ## 11. Documentation (this batch)
 
@@ -127,7 +132,7 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 |---|---|---|
 | 11.1 | Requirement Document | Done |
 | 11.2 | WBS (this document) | Done |
-| 11.3 | ADRs (0001–0018 + index) | Done |
+| 11.3 | ADRs (0001–0020 + index) | Done |
 | 11.4 | Database Document | Done |
 | 11.5 | API Document | Done |
 | 11.6 | Master Test Plan | Done |

@@ -8,6 +8,8 @@ REST over HTTPS, JSON bodies, base path `/api/v1`. FastAPI auto-generates the Op
 
 **SHELL-1** ([ADR-0018](../adr/0018-admin-shell-sidebar-layout.md), FR-SHELL-1) — reviewed, no API impact. The admin shell (sidebar + navbar) is frontend-only: no new route, no changed request/response shape. Noted here explicitly so the gap isn't mistaken for an oversight.
 
+**SHELL-2/3/4** ([ADR-0019](../adr/0019-admin-shell-full-template-parity.md), FR-SHELL-2/3/4) — reviewed, no API impact. Breadcrumb/footer/dark-mode-toggle are frontend-only. Dashboard stat widgets (FR-SHELL-3) reuse §3's existing generic-CRUD list routes' `total` field (`GET /projects?page=1&page_size=1`, `GET /org-memberships?org_id=<id>&status=active&page=1&page_size=1`) — no new route, no new query param. The template's trend-chart widget is deferred (no real time-series source yet, ADR-0019) — not stubbed with a placeholder route.
+
 ---
 
 ## 1. Conventions

@@ -111,8 +111,15 @@ FR-PROJ-2 ships as `POST`/`GET /projects/{project_id}/releases` (bespoke, projec
 | ID | Title | Priority | Entities |
 |---|---|---|---|
 | FR-SHELL-1 | Persistent CoreUI sidebar (`CSidebar`/`CSidebarNav`) + navbar (`CHeader`) shell wraps every `ProtectedRoute` screen; nav lists org-home + org-members with current route visually active; a future route's nav-item entry is the only step needed to make it reachable | Must | — (frontend-only, no entities) |
+| FR-SHELL-2 | Route-derived breadcrumb (`CBreadcrumb`) + footer (`CFooter`) complete the persistent shell, matching the CoreUI free-template layout shape | Should | — (frontend-only, no entities) |
+| FR-SHELL-3 | Dashboard summary widgets on org home: Project count, active Org Member count — sourced from existing generic-CRUD list endpoints' `total` field, no new API route | Should | Project, OrgMembership |
+| FR-SHELL-4 | Dark/light color-mode toggle (CoreUI `useColorModes`), `localStorage`-persisted, no server-side preference storage | Should | — (frontend-only, no entities) |
 
-FR-SHELL-1 is frontend-only — no new/changed entity, no new API route. It closes a directly-observed defect: `OrgMembers.tsx` had zero link back to `OrgHome.tsx` (confirmed by inspection, [journey](../user-journeys/2026-09-04-admin-shell-navigation-journeys.md) Journey 1 step 4). Deliberately narrow scope, per the [business case](../business-case/2026-09-04-coreui-admin-shell-sidebar-business-case.md)'s GO finding: wraps the 3 routes that exist today; nav items for unbuilt FR-ADMIN-2 entity screens and any cross-entity traceability view are explicitly out of scope. See [ADR-0018](../adr/0018-admin-shell-sidebar-layout.md).
+FR-SHELL-1 is frontend-only — no new/changed entity, no new API route. It closes a directly-observed defect: `OrgMembers.tsx` had zero link back to `OrgHome.tsx` (confirmed by inspection, [journey](../user-journeys/2026-09-04-admin-shell-navigation-journeys.md) Journey 1 step 4). See [ADR-0018](../adr/0018-admin-shell-sidebar-layout.md).
+
+FR-SHELL-2/3/4 extend the shell to full parity with [CoreUI's free Bootstrap admin template](https://coreui.io/product/free-bootstrap-admin-template/), per [ADR-0020](../adr/0020-admin-shell-full-template-parity.md) — this lifts ADR-0018/FR-SHELL-1's original "shell-only, wrap the 3 existing routes, no extras" scope boundary; the "no pre-built nav for unbuilt FR-ADMIN-2 entity screens" and "no cross-entity traceability view" boundaries are unchanged. FR-SHELL-3's widgets deliberately stop at 2 real, honestly-sourced counts — the base template's trend-chart widget is explicitly deferred, not built with fabricated data, until `TestExecution`/`Defect` data exists to back it (FR-EXEC-*/FR-ADMIN-2, not yet built).
+
+**Not an FR** (explicitly, per ADR-0020): the CoreUI free-template's UI-element reference pages (Colors, Typography, Icons), added as a "UI Elements" nav group for template-parity only. No business case, story, or acceptance criteria backs them — they are not product scope, and carry no FR ID.
 
 ## 3. Non-functional requirements
 
@@ -142,6 +149,8 @@ FR-SHELL-1 is frontend-only — no new/changed entity, no new API route. It clos
 | NFR-24 | The sidebar's narrow-viewport collapse/toggle uses `CSidebar`'s own `visible`/`onVisibleChange` prop and a `CHeaderToggler`, CoreUI's documented template pattern — no hand-built media-query/breakpoint logic. | SHELL-1 AC4, [ADR-0018](../adr/0018-admin-shell-sidebar-layout.md) |
 | NFR-25 | `GET /projects/{project_id}/releases` sorts by `target_date` with `NULLS LAST` pinned explicitly for both `asc` and `desc` — a Release without a `target_date` always sorts to the end, never flipping to the front on a descending sort via the query engine's untouched default. | PROJ-2 AC3, [ADR-0019](../adr/0019-release-creation-flow.md) |
 | NFR-26 | `GET /releases/{id}/test-cycles` requires all three of `release.read`, `test_cycle.read`, and `test_execution.read` — the one route in this scaffold exposing `TestExecution` data without a `test_cycle_id` in the request path, so a single-permission gate (`release.read` alone) would let a Release-only viewer see execution data outside their own granted permissions. | PROJ-2 AC2, [ADR-0019](../adr/0019-release-creation-flow.md) |
+| NFR-27 | Dashboard summary widgets (FR-SHELL-3) display only counts backed by a real, currently-queryable data source (existing generic-CRUD `total`); no widget displays a placeholder, mocked, or fabricated value. | ADR-0020 |
+| NFR-28 | Color-mode preference (FR-SHELL-4) is stored client-side (`localStorage`) only — no server round-trip, no new `User`/`Actor` column, consistent with this being presentation state, not account data. | ADR-0020 |
 
 ## 4. Traceability — requirements to architecture decisions
 
@@ -164,5 +173,6 @@ FR-SHELL-1 is frontend-only — no new/changed entity, no new API route. It clos
 | FR-AUTH-4, NFR-17, NFR-18, NFR-19 | [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md) AI agent credential mechanics & minimal-RBAC-now decision |
 | FR-MCP-* | [ADR-0002](../adr/0002-backend-framework-orm-migrations.md) (async backend), [ADR-0003](../adr/0003-auth-token-strategy.md) (AIAgent credential) |
 | FR-SHELL-1, NFR-24 | [ADR-0018](../adr/0018-admin-shell-sidebar-layout.md) Admin shell layout (extends [ADR-0012](../adr/0012-coreui-design-system.md)) |
+| FR-SHELL-2, FR-SHELL-3, FR-SHELL-4, NFR-27, NFR-28 | [ADR-0020](../adr/0020-admin-shell-full-template-parity.md) Full CoreUI free-admin-template parity (partially supersedes ADR-0018's shell-only scope boundary) |
 
 Full field-level traceability (Requirement → design technique → test case → execution → defect) is itself FR-TRACE-1/2 — this document is the requirements layer that feeds the [WBS](../wbs/2026-09-03-project-scaffold-wbs.md), [Database Document](../database/2026-09-03-database-design.md), [API Document](../api/2026-09-03-api-design.md), and [Test Plan](../test-plan/2026-09-03-master-test-plan.md).

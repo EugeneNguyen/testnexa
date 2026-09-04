@@ -33,9 +33,24 @@
  * sidebar's rendered height grow to match a taller content column, which
  * breaks `CSidebar`'s own internal `isInViewport` geometry check (see
  * `AppShell.tsx`'s docstring).
+ *
+ * SHELL-8 (ADR-0020) adds a "UI Elements" `CNavGroup` (Colors/Typography/
+ * Icons) below the flat org nav-item list — template-parity scaffolding
+ * only, **not backed by any FR/NFR or user story** (see that ADR and the
+ * three reference pages' own docstrings). Gated on `orgId` the same way the
+ * flat list above is (absent entirely on `/orgs/pick`, not disabled
+ * controls) for the same reasoning: there is no org context to link into.
  */
 import { NavLink, useParams } from "react-router-dom";
-import { CNavItem, CNavLink, CSidebar, CSidebarBrand, CSidebarHeader, CSidebarNav } from "@coreui/react";
+import {
+  CNavGroup,
+  CNavItem,
+  CNavLink,
+  CSidebar,
+  CSidebarBrand,
+  CSidebarHeader,
+  CSidebarNav,
+} from "@coreui/react";
 
 interface AppSidebarProps {
   visible: boolean;
@@ -87,6 +102,29 @@ function AppSidebar({ visible, onVisibleChange }: AppSidebarProps) {
             </CNavLink>
           </CNavItem>
         ))}
+        {orgId && (
+          <CNavGroup toggler="UI Elements" data-testid="sidebar-nav-group-ui-elements">
+            <CNavItem>
+              <CNavLink as={NavLink} to={`/orgs/${orgId}/ui-elements/colors`} data-testid="sidebar-nav-ui-colors">
+                Colors
+              </CNavLink>
+            </CNavItem>
+            <CNavItem>
+              <CNavLink
+                as={NavLink}
+                to={`/orgs/${orgId}/ui-elements/typography`}
+                data-testid="sidebar-nav-ui-typography"
+              >
+                Typography
+              </CNavLink>
+            </CNavItem>
+            <CNavItem>
+              <CNavLink as={NavLink} to={`/orgs/${orgId}/ui-elements/icons`} data-testid="sidebar-nav-ui-icons">
+                Icons
+              </CNavLink>
+            </CNavItem>
+          </CNavGroup>
+        )}
       </CSidebarNav>
     </CSidebar>
   );
