@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-03
 **Owner:** xuanbinh91@gmail.com (CTO)
-**Sources:** [Test Design](../test-design/2026-09-03-test-design.md), [Master Test Plan](../test-plan/2026-09-03-master-test-plan.md), [docs/user-stories/*](../user-stories/), [AUTH-1 scope plan](../superpowers/plans/2026-09-03-auth-1-local-password-login-plan.md), [AUTH-2 scope plan](../superpowers/plans/2026-09-03-auth-2-session-persistence-plan.md), [AUTH-3 scope plan](../superpowers/plans/2026-09-03-auth-3-logout-plan.md), [AUTH-4 scope plan](../superpowers/plans/2026-09-03-auth-4-agent-bearer-auth-plan.md), [RBAC-1 scope plan](../superpowers/plans/2026-09-03-rbac-1-create-org-plan.md), [PROJ-1 scope plan](../superpowers/plans/2026-09-03-proj-1-create-project-plan.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md), [ADR-0014](../adr/0014-logout-session-revocation-policy.md), [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md), [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md), [ADR-0017](../adr/0017-project-creation-flow.md)
+**Sources:** [Test Design](../test-design/2026-09-03-test-design.md), [Master Test Plan](../test-plan/2026-09-03-master-test-plan.md), [docs/user-stories/*](../user-stories/), [AUTH-1 scope plan](../superpowers/plans/2026-09-03-auth-1-local-password-login-plan.md), [AUTH-2 scope plan](../superpowers/plans/2026-09-03-auth-2-session-persistence-plan.md), [AUTH-3 scope plan](../superpowers/plans/2026-09-03-auth-3-logout-plan.md), [AUTH-4 scope plan](../superpowers/plans/2026-09-03-auth-4-agent-bearer-auth-plan.md), [RBAC-1 scope plan](../superpowers/plans/2026-09-03-rbac-1-create-org-plan.md), [PROJ-1 scope plan](../superpowers/plans/2026-09-03-proj-1-create-project-plan.md), [PROJ-2 scope plan](../superpowers/plans/2026-09-03-proj-2-create-release-plan.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md), [ADR-0014](../adr/0014-logout-session-revocation-policy.md), [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md), [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md), [ADR-0017](../adr/0017-project-creation-flow.md), [ADR-0018](../adr/0018-release-creation-flow.md)
 
 Concrete test cases derived from each user story's acceptance criteria. IDs group by feature area; **Story** column links back to the source acceptance criterion. Priority: **P1** = release-blocking, **P2** = should-have, **P3** = exploratory/structural-only (per FR priority in the Requirements Document).
 
@@ -52,7 +52,7 @@ Concrete test cases derived from each user story's acceptance criteria. IDs grou
 | ID | Title | Preconditions | Steps | Expected result | Priority | Story |
 |---|---|---|---|---|---|---|
 | TC-RBAC-001 | First-ever signup bootstraps org | Fresh instance, zero orgs | POST `/auth/signup` | 200; Organization+User+OrgMembership(active)+org-wide org_admin RoleAssignment created; tokens issued (`org_context: "auto"`) | P1 | RBAC-1 |
-| TC-RBAC-002 | Cross-org data isolation | 2 orgs exist, each with a Project/Requirement/TestCase | org_admin of Org A requests a resource id belonging to Org B | 404 (not 403, not data) | P1 | RBAC-1 / NFR-1 — **partially covered as of PROJ-1** (see TC-PROJ-012 for the `Project` case, reusing the `/orgs/{org_id}/agents*` 404-vs-403 pattern per ADR-0015/[ADR-0017](../adr/0017-project-creation-flow.md)); Requirement/TestCase remain blocked until their own CRUD routes exist |
+| TC-RBAC-002 | Cross-org data isolation | 2 orgs exist, each with a Project/Release/Requirement/TestCase | org_admin of Org A requests a resource id belonging to Org B | 404 (not 403, not data) | P1 | RBAC-1 / NFR-1 — **partially covered as of PROJ-2** (see TC-PROJ-012 for the `Project` case and TC-PROJ-016 for the `Release` case, both reusing the `/orgs/{org_id}/agents*` 404-vs-403 pattern per ADR-0015/[ADR-0017](../adr/0017-project-creation-flow.md)/[ADR-0018](../adr/0018-release-creation-flow.md)); Requirement/TestCase remain blocked until their own CRUD routes exist |
 | TC-RBAC-003 | Org slug uniqueness | Org "acme" exists | Authenticated org_admin: POST `/orgs` with slug "acme" | Rejected, 422 (not 409 — reserved for signup-closed, ADR-0016) | P2 | RBAC-1 |
 | TC-RBAC-020 | Concurrent first-signup race is serialized | Fresh instance, zero orgs | Fire 2 concurrent `POST /auth/signup` requests | Exactly one `Organization` row exists afterward — `pg_advisory_xact_lock` prevents both succeeding | P2 | RBAC-1 |
 | TC-RBAC-021 | Signup closes after bootstrap | 1 org already exists | POST `/auth/signup` | 409 `signup_closed`; no new User/Organization rows created | P1 | RBAC-1 |
@@ -82,8 +82,8 @@ Concrete test cases derived from each user story's acceptance criteria. IDs grou
 | TC-PROJ-001 | Create project | User has `project.create` in `org_id` | POST `/orgs/{org_id}/projects` with name | 201; Project created, scoped to `org_id` | P1 | PROJ-1 |
 | TC-PROJ-002 | No orphaned assets outside a project | — | Attempt to create Requirement/TestSuite/TestPlan without `project_id` | Schema-enforced (non-nullable `project_id` FK, asserted by introspection) — **execution-deferred**: no create route exists yet for any of the three entities; owned by whichever story adds the first one ([ADR-0017](../adr/0017-project-creation-flow.md)) | P1 | PROJ-1 |
 | TC-PROJ-003 | Set standards_profile explicitly at creation | Org exists | POST with `standards_profile: "ISTQB-CTFL-v4.0.1 + ISO29119-3"` | Project created with that exact value, org default not consulted | P2 | PROJ-1 |
-| TC-PROJ-004 | Create release | Project exists, `release.create` held | POST `/releases` with version_label/target_date | Release created, scoped to project | P1 | PROJ-2 |
-| TC-PROJ-005 | Query cycles for a release | Release has 2 linked TestCycles, each with executions | Query "cycles for release X" | Returns both cycles and, transitively, all their TestExecutions | P1 | PROJ-2 |
+| TC-PROJ-004 | Create release | Project exists, `release.create` held | POST `/projects/{project_id}/releases` with version_label/target_date | 201; Release created, scoped to `project_id` | P1 | PROJ-2 |
+| TC-PROJ-005 | Query cycles for a release | Release has 2 linked TestCycles, each with executions | GET `/releases/{id}/test-cycles` | 200; returns both cycles, each with its own `TestExecution`s nested (not a flat merged list) — one call answers "what was tested for release X" | P1 | PROJ-2 |
 | TC-PROJ-006 | Inherit standards_profile from org default | `Organization.default_standards_profile` set; create payload omits `standards_profile` | POST without the field | New Project's `standards_profile` equals the org's default | P2 | PROJ-1 |
 | TC-PROJ-007 | Explicit null overrides org default | `Organization.default_standards_profile` set (non-null) | POST with `standards_profile: null` explicitly | New Project's `standards_profile` is `null`, not the inherited default — proves omitted vs. explicit-null are distinguished | P2 | PROJ-1 |
 | TC-PROJ-008 | Update standards_profile via PATCH | Project exists, actor has `project.update` | PATCH `/projects/{id}` with a new `standards_profile` | New value persists; omitting the field on a later PATCH leaves it unchanged (no org-default fallback on update) | P2 | PROJ-1 |
@@ -92,6 +92,10 @@ Concrete test cases derived from each user story's acceptance criteria. IDs grou
 | TC-PROJ-011 | 404-vs-403 boundary on project creation | (a) actor with zero `OrgMembership` in `org_id`; (b) actor with membership but no `project.create` | POST `/orgs/{org_id}/projects` as (a), then as (b) | (a) 404; (b) 403 — never conflated (NFR-19 pattern reused) | P1 | PROJ-1 |
 | TC-PROJ-012 | Cross-org GET/PATCH rejected | Project P belongs to Org A; actor is a member of Org B only | GET `/projects/{P.id}` and PATCH same, authenticated as the Org B member | Both 404 — first concrete proof of TC-RBAC-002/NFR-1 against a real tenant-scoped resource | P1 | PROJ-1 / RBAC-1 (TC-RBAC-002) |
 | TC-PROJ-013 | GET/PATCH membership-without-permission → 403 | Actor is a member of the Project's org but lacks `project.read`/`.update` | GET, then PATCH, the Project | Both 403 — distinct from TC-PROJ-012's 404 (member vs. non-member) | P2 | PROJ-1 |
+| TC-PROJ-014 | Releases sortable by target_date, NULLS LAST both directions | 4 Releases in a Project: 3 with distinct `target_date`s, 1 with `null` | GET `/projects/{id}/releases?sort=target_date&order=asc`, then `...&order=desc` | `asc`: dated releases ascending, `null` row last. `desc`: dated releases descending, `null` row **still last** (not first — proves the pin isn't relying on the query engine's per-direction default) | P2 | PROJ-2 |
+| TC-PROJ-015 | test-cycles query triple-permission gate | Actor is a member of the Release's org; holds exactly 2 of {`release.read`, `test_cycle.read`, `test_execution.read`} at a time (3 sub-cases, each missing a different one) | GET `/releases/{id}/test-cycles` under each sub-case | 403 in all 3 sub-cases, never a partial/degraded 200 — proves the gate requires all three, not any one or two | P1 | PROJ-2 |
+| TC-PROJ-016 | Cross-org 404 on Release routes | Release R belongs to a Project in Org A; actor is a member of Org B only | GET `/releases/{R.id}` and GET `/releases/{R.id}/test-cycles`, authenticated as the Org B member | Both 404 — extends TC-RBAC-002/NFR-1 to `Release`, same pattern TC-PROJ-012 established for `Project` | P1 | PROJ-2 / RBAC-1 (TC-RBAC-002) |
+| TC-PROJ-017 | test_manager can create/list Releases without org_admin | Actor holds only a `test_manager` `RoleAssignment` (no `org_admin` anywhere); RBAC bundle-extension migration applied | POST `/projects/{id}/releases`, then GET `/projects/{id}/releases` | Both succeed (201, 200) — proves the `test_manager` bundle extension ([ADR-0018](../adr/0018-release-creation-flow.md)) actually applied, not just that `org_admin` can reach these routes | P2 | PROJ-2 |
 
 ## Requirement & Test Case Authoring
 
@@ -187,7 +191,7 @@ Concrete test cases derived from each user story's acceptance criteria. IDs grou
 |---|---|---|
 | Auth | 34 | 22 |
 | RBAC & Multi-Tenancy | 19 | 13 |
-| Project & Release | 13 | 7 |
+| Project & Release | 17 | 9 |
 | Requirement & Test Case Authoring | 9 | 7 |
 | Test Planning | 8 | 6 |
 | Test Execution & Defects | 9 | 6 |
@@ -195,6 +199,6 @@ Concrete test cases derived from each user story's acceptance criteria. IDs grou
 | Taxonomy & Generic Admin CRUD | 5 | 2 |
 | Traceability Matrix | 5 | 4 |
 | AI Agent / MCP | 7 | 0 |
-| **Total** | **117** | **71** |
+| **Total** | **121** | **73** |
 
 MCP's P3-only weighting matches its exploratory, no-validated-WTP status per the personas doc — structural coverage exists, but nothing here blocks a release.

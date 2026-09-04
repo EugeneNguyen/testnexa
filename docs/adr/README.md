@@ -21,6 +21,7 @@ Index of ADRs for the Project Scaffold. Format: [MADR](https://adr.github.io/mad
 | [0015](0015-ai-agent-credential-mechanics.md) | AI agent credential mechanics: key format, key_prefix lookup, minimal-RBAC-now, 404-vs-403 org-scoped precedent | Accepted |
 | [0016](0016-organization-bootstrap-creation-flow.md) | Organization bootstrap & creation flow: signup vs. `POST /orgs` split, bootstrap-closes-after-first-org, advisory-lock concurrency guard, any-org permission gate | Accepted |
 | [0017](0017-project-creation-flow.md) | Project creation flow: bespoke org-path-scoped create vs. row-resolved read/update, unconditional creator `test_manager` role auto-assignment, `standards_profile` inheritance from `Organization.default_standards_profile` | Accepted |
+| [0018](0018-release-creation-flow.md) | Release creation flow: project-path-scoped bespoke create/list vs. row-resolved single-fetch/audit-query, `test_manager` RBAC bundle extension, triple-permission gate + nested-executions shape for the release→cycles audit query, pinned `NULLS LAST` sort | Accepted |
 
 **Deciders on all ADRs below:** xuanbinh91@gmail.com (CTO), unless noted otherwise.
 **Date:** 2026-09-03

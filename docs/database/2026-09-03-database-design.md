@@ -113,12 +113,14 @@ Partial unique index: `name` **WHERE `org_id IS NULL`** — prevents duplicate s
 | Role | Bundle |
 |---|---|
 | `org_admin` | Every seeded `Permission` (superuser within its org) |
-| `test_manager` | `test_plan.*` + `.approve`, `entry_exit_criteria.*`, `test_cycle.*`, `test_suite.*`, `approval.create`/`.read`, `requirement.read`/`.export_rtm`, `defect.read`, `risk_item.*`, `test_case.read`, `test_step.read`, `test_condition.read` |
+| `test_manager` | `test_plan.*` + `.approve`, `entry_exit_criteria.*`, `test_cycle.*`, `test_suite.*`, `release.create`/`.read`/`.update`, `approval.create`/`.read`, `requirement.read`/`.export_rtm`, `defect.read`, `risk_item.*`, `test_case.read`, `test_step.read`, `test_condition.read` |
 | `tester` | `test_case.*`, `test_step.*`, `test_condition.*`, `test_execution.*`, `test_log.read`, `defect.create`/`.read`/`.update`, `test_plan.read`, `test_suite.read`, `requirement.read` — no `approval.*`, no `test_plan.approve` |
 | `auditor` | `.read` on all 29 resources + `requirement.export_rtm` — nothing else, no writes anywhere |
 | `ai_agent_scoped` | `test_case.create`/`.read`/`.update`, `test_step.create`/`.read`/`.update`, `test_execution.create`/`.read`/`.update`, `test_log.read` — no delete, no `approval.*`, no `role`/`role_assignment`/`org_membership` anything, and per [ADR-0004](../adr/0004-rbac-design.md)/RBAC-5, `test_plan.approve` is never seeded into this bundle |
 
 Downgrading the seed migration removes only the 5 `Role` rows (`RolePermission` rows cascade via the FK below); the `Permission` catalog rows are left in place.
+
+`test_manager`'s `release.create`/`.read`/`.update` grants above were added by a second, later data migration (PROJ-2, [ADR-0018](../adr/0018-release-creation-flow.md)) — not part of RBAC-4's original seed. Same existence-checked-insert idempotency posture, but a reader auditing `test_manager`'s full permission set must know to check both migrations, not RBAC-4's alone.
 
 **Permission** *(global catalog, no org scoping)*
 | Column | Type | Constraints |
@@ -217,6 +219,12 @@ Unique: `(org_id, name)`.
 | version_label | varchar | not null |
 | target_date | date | nullable |
 | created_at, updated_at | timestamptz | not null |
+
+No uniqueness constraint on `version_label` — AC doesn't require it, and unlike `Project.name` (unique per org), two Releases in the same Project may share a `version_label` (e.g. a re-cut build under the same version).
+
+**Creation flow** (PROJ-2, [ADR-0018](../adr/0018-release-creation-flow.md)): `POST /projects/{project_id}/releases` — bespoke, project-path-scoped. No `org_id` path segment exists at this depth, so unlike `POST /orgs/{org_id}/projects` this route fetches the `Project` row first to resolve `org_id` for the 404-vs-403 boundary, then calls `has_permission` directly (`release.create`) — same posture as `GET`/`PATCH /projects/{id}`, one level down. `GET /projects/{project_id}/releases` (list) sorts by `target_date`, `NULLS LAST` pinned explicitly for both `asc`/`desc` (NFR-24) — not the query engine's untouched per-direction default. `GET /releases/{id}` and `GET /releases/{id}/test-cycles` are row-resolved (no path `project_id`), same one-level-deeper extension of `Project`'s own row-resolved read pattern.
+
+`GET /releases/{id}/test-cycles` (AC2's query — "what was tested for release X") returns every `TestCycle` with `release_id` matching the path `id`, each with its `TestExecution` rows nested in the response (not a cycles-only list) — proven queryable via `TestCycle.release_id`/`TestExecution.test_cycle_id`, both already non-nullable FKs. `TestCycle` itself has no create route in this codebase (FR-PLAN-3's scope); this query works against however a `TestCycle` row came to exist. The route requires all three of `release.read`, `test_cycle.read`, `test_execution.read` (NFR-25) — the one route in this scaffold exposing `TestExecution` data without a `test_cycle_id` in the request path, so a single-permission gate would let a Release-only viewer see execution data outside their own granted permissions.
 
 ### 3.6 `assets.py` — Requirement, TestCondition, TestCase, TestStep, TestSuite (+ junction)
 
