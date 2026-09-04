@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-03
 **Owner:** xuanbinh91@gmail.com (CTO)
-**Sources:** [Master Test Plan](../test-plan/2026-09-03-master-test-plan.md), [Requirements Document](../requirements/2026-09-03-project-scaffold-requirements.md), [Database Document](../database/2026-09-03-database-design.md), [ADR-0011](../adr/0011-login-rate-limiting.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md), [ADR-0014](../adr/0014-logout-session-revocation-policy.md), [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md), [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md), [ADR-0017](../adr/0017-project-creation-flow.md), [ADR-0018](../adr/0018-admin-shell-sidebar-layout.md)
+**Sources:** [Master Test Plan](../test-plan/2026-09-03-master-test-plan.md), [Requirements Document](../requirements/2026-09-03-project-scaffold-requirements.md), [Database Document](../database/2026-09-03-database-design.md), [ADR-0011](../adr/0011-login-rate-limiting.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md), [ADR-0014](../adr/0014-logout-session-revocation-policy.md), [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md), [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md), [ADR-0017](../adr/0017-project-creation-flow.md), [ADR-0018](../adr/0018-admin-shell-sidebar-layout.md), [ADR-0019](../adr/0019-admin-shell-full-template-parity.md)
 
 Applies ISTQB CTFL v4.0.1 design techniques deliberately — the same vocabulary this product's `TestDesignTechnique` entity asks its own users to declare (ADMIN-1) is used to design the tests below.
 
@@ -23,6 +23,7 @@ Applies ISTQB CTFL v4.0.1 design techniques deliberately — the same vocabulary
 | Attachment size/type limits | Boundary value analysis (at limit, one byte over, disallowed mime type) | NFR-7 |
 | TestLog immutability | Negative testing (attempt update/delete, expect route not to exist / 405 or 404) | Verifying an absence, not a behavior |
 | Admin shell (sidebar + navbar) | Equivalence partitioning (org-context-present vs. absent, current-route-active vs. not) + state coverage (sidebar visible/collapsed) | Layout is a small, enumerable set of UI states, not a combinatorial one |
+| Admin shell extras (breadcrumb, footer, dashboard widgets, dark/light toggle) | Equivalence partitioning (route-with-known-breadcrumb-segment vs. root; theme=light vs. dark vs. unset-defaults-to-system) + state coverage (toggle on/off, persisted vs. fresh session) | Same small-enumerable-state shape as the base shell; widget counts additionally verified against seeded fixture data, not just "renders a number" |
 
 ## 2. Auth — equivalence classes
 
@@ -159,3 +160,15 @@ Every MCP tool test asserts **contract parity** with its backing REST route (MCP
 **Responsive class (AC4, NFR-24):** narrow viewport (e.g. Playwright's mobile viewport preset) → sidebar starts collapsed/overlaid, `CHeaderToggler` click shows it, per `CSidebar`'s own `visible` prop contract — tested as an observed behavior (does the sidebar become visible/hidden), not by asserting internal CSS breakpoint values CoreUI itself owns.
 
 **Extension-point class (AC5, P3/structural — not machine-verifiable as a negative test, see Master Test Plan §14 risk log):** the nav-item list is a single array in `AppSidebar.tsx`; adding a future route's entry there (and nowhere else) is verified by code review at the time that route ships, not by an automated test today (there is no future route yet to assert against).
+
+## 16. SHELL-2/3/4 full template parity — equivalence classes + state coverage ([ADR-0019](../adr/0019-admin-shell-full-template-parity.md))
+
+**Breadcrumb class (FR-SHELL-2):** route with a known static label (`/orgs/:orgId` → "Org Home", `/orgs/:orgId/members` → "Org Home / Members") vs. an unmapped/root route (`/orgs/pick`) → breadcrumb renders only the segments it can resolve, never a raw route param or `undefined` fragment. Tested as unit-level path-to-label mapping, not E2E.
+
+**Footer class (FR-SHELL-2):** renders once, identically, on every `ProtectedRoute` screen — smoke-level presence check only, no dynamic content to partition.
+
+**Dashboard widget class (FR-SHELL-3, NFR-25):** widget count reflects a seeded fixture's actual `total` (integration/E2E against real rows: 0 projects, 1 project, N projects; same for active org-member count) — **not** asserted against a hardcoded expected value that happens to match whatever the DB currently contains. Zero-state (`total = 0`) is its own tested class, distinct from "widget failed to load," since both can render "0" — a failed fetch must show an explicit error/loading state, not a false zero.
+
+**Dark/light toggle class (FR-SHELL-4, NFR-26):** unset (first visit, no `localStorage` key, defaults to system preference or CoreUI's own default) vs. explicitly set light vs. explicitly set dark — each is a distinct equivalence class. **State coverage:** toggle click flips the active theme; page reload after a toggle preserves the last-set theme (the `localStorage`-persistence claim, tested E2E — a unit test can't prove survival across a reload).
+
+**UI-element reference pages class (Colors/Typography/Icons, no FR/NFR):** smoke-level only — page renders, sidebar link reaches it, no content-correctness assertions (no acceptance criteria exist to test against, per ADR-0019's explicit "not product scope" framing).

@@ -191,6 +191,14 @@ Concrete test cases derived from each user story's acceptance criteria. IDs grou
 | TC-SHELL-004 | Sidebar collapses/toggles on narrow viewport | Narrow viewport (mobile width) | Load a protected route, click the header's `CHeaderToggler` | Sidebar hides/shows per `CSidebar`'s own `visible` prop behavior — no custom breakpoint logic | P2 | SHELL-1 |
 | TC-SHELL-005 | Org-scoped nav items absent with no org selected | On `/orgs/pick` (no `orgId` route param) | Inspect sidebar | Brand renders; org-home/org-members nav items are absent (empty list, not disabled controls) | P2 | SHELL-1 |
 | TC-SHELL-006 | New protected route reachable via single nav-item addition | A future story adds a new `ProtectedRoute` route | Add one entry to `AppSidebar`'s nav-item array, no other file touched | New route appears in the sidebar, reachable | P3 | SHELL-1 (structural/code-review criterion, not machine-verifiable against a route that doesn't exist yet) |
+| TC-SHELL-007 | Breadcrumb resolves known route segments | On `/orgs/:orgId/members` | Inspect breadcrumb | Renders "Org Home / Members", no raw route param or `undefined` fragment | P2 | ADR-0019 (FR-SHELL-2) |
+| TC-SHELL-008 | Breadcrumb on unmapped/root route degrades gracefully | On `/orgs/pick` | Inspect breadcrumb | Renders only resolvable segments (no crash, no blank/garbled fragment) | P3 | ADR-0019 (FR-SHELL-2) |
+| TC-SHELL-009 | Footer renders on every protected screen | Authenticated user | Visit `/orgs/pick`, `/orgs/:orgId`, `/orgs/:orgId/members` | `CFooter` renders identically on all three | P3 | ADR-0019 (FR-SHELL-2) |
+| TC-SHELL-010 | Dashboard widgets show real, seeded counts | Org with N projects, M active members (seeded fixture) | Load `/orgs/:orgId` | Project widget shows N, Org Member widget shows M — matches fixture, not a hardcoded value | P1 | ADR-0019 (FR-SHELL-3, NFR-25) — **interim status:** `GET /projects`/`GET /org-memberships` (ADMIN-2 generic-CRUD factory) haven't shipped yet, so this exact scenario isn't achievable today; unit-tested against a mocked resolved count (`OrgHome.widgets.test.tsx`), and E2E currently asserts the honest-error-state fallback instead (`shell-full-template.spec.ts`) — rewrite to real seeded counts once ADMIN-2 ships |
+| TC-SHELL-011 | Dashboard widget zero-state distinct from failed fetch | Org with 0 projects vs. list endpoint returning an error | Load `/orgs/:orgId` in each case | 0-projects case shows widget "0"; error case shows explicit error/loading state, never a false "0" | P2 | ADR-0019 (FR-SHELL-3, NFR-25) |
+| TC-SHELL-012 | Dark/light toggle flips active theme | Authenticated user, any protected screen | Click the color-mode toggle | Theme switches (light↔dark), verified by the applied CoreUI color-mode attribute/class | P1 | ADR-0019 (FR-SHELL-4) |
+| TC-SHELL-013 | Theme choice persists across reload | Theme toggled to dark | Reload the page | Theme remains dark after reload (`localStorage`-read on boot, not reset to default) | P1 | ADR-0019 (FR-SHELL-4, NFR-26) |
+| TC-SHELL-014 | UI-element reference pages reachable, render without error | Authenticated user | Click each of Colors/Typography/Icons in the "UI Elements" nav group | Each page renders (smoke-level only — no FR/story backs their content, per ADR-0019) | P3 | ADR-0019 (no FR — scaffolding) |
 
 ## Coverage summary
 
@@ -206,7 +214,7 @@ Concrete test cases derived from each user story's acceptance criteria. IDs grou
 | Taxonomy & Generic Admin CRUD | 5 | 2 |
 | Traceability Matrix | 5 | 4 |
 | AI Agent / MCP | 7 | 0 |
-| Layout & Navigation | 6 | 3 |
-| **Total** | **123** | **74** |
+| Layout & Navigation | 14 | 6 |
+| **Total** | **131** | **77** |
 
 MCP's P3-only weighting matches its exploratory, no-validated-WTP status per the personas doc — structural coverage exists, but nothing here blocks a release.
