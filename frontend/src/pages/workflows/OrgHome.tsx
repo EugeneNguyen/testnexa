@@ -128,6 +128,12 @@ function ProjectCountWidget() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ["dashboard", "projects-total"],
     queryFn: getProjectsTotal,
+    // A 404 (today's reality until ADMIN-2 ships, see `lib/api/dashboard.ts`)
+    // won't start succeeding on retry — TanStack Query's default `retry: 3`
+    // would otherwise hold the widget in its loading state for ~7s
+    // (exponential backoff) before surfacing the error, discovered live
+    // against a real backend, not just in a unit test's synchronous mock.
+    retry: false,
   });
 
   return (
@@ -149,6 +155,7 @@ function ActiveMemberCountWidget({ orgId }: { orgId: string }) {
   const { data, isLoading, isError } = useQuery({
     queryKey: ["dashboard", "active-members-total", orgId],
     queryFn: () => getActiveMemberTotal(orgId),
+    retry: false, // see ProjectCountWidget's own comment above
   });
 
   return (
