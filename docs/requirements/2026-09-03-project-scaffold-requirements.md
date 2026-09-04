@@ -104,6 +104,14 @@ FR-PROJ-1 ships as `POST /orgs/{org_id}/projects` (bespoke, org-path-scoped — 
 | FR-MCP-2 | Agent updates a TestCase via MCP | Could | TestCase |
 | FR-MCP-3 | Agent creates a TestExecution and reads a Requirement via MCP (read-only on Requirement) | Could | TestExecution, Requirement |
 
+### 2.11 Layout & Navigation — [admin-shell-sidebar-stories.md](../user-stories/2026-09-04-admin-shell-sidebar-stories.md)
+
+| ID | Title | Priority | Entities |
+|---|---|---|---|
+| FR-SHELL-1 | Persistent CoreUI sidebar (`CSidebar`/`CSidebarNav`) + navbar (`CHeader`) shell wraps every `ProtectedRoute` screen; nav lists org-home + org-members with current route visually active; a future route's nav-item entry is the only step needed to make it reachable | Must | — (frontend-only, no entities) |
+
+FR-SHELL-1 is frontend-only — no new/changed entity, no new API route. It closes a directly-observed defect: `OrgMembers.tsx` had zero link back to `OrgHome.tsx` (confirmed by inspection, [journey](../user-journeys/2026-09-04-admin-shell-navigation-journeys.md) Journey 1 step 4). Deliberately narrow scope, per the [business case](../business-case/2026-09-04-coreui-admin-shell-sidebar-business-case.md)'s GO finding: wraps the 3 routes that exist today; nav items for unbuilt FR-ADMIN-2 entity screens and any cross-entity traceability view are explicitly out of scope. See [ADR-0018](../adr/0018-admin-shell-sidebar-layout.md).
+
 ## 3. Non-functional requirements
 
 | ID | Requirement | Rationale / source |
@@ -129,6 +137,7 @@ FR-PROJ-1 ships as `POST /orgs/{org_id}/projects` (bespoke, org-path-scoped — 
 | NFR-21 | `POST /auth/signup` is available only while zero `Organization` rows exist deployment-wide — self-registration closes after the first org is created. Concurrent bootstrap attempts are serialized via a `pg_advisory_xact_lock`, so at most one `Organization` is created even from simultaneous first-signup requests. `Organization.slug` uniqueness violations return `422` on both creation routes; `409` is reserved exclusively for the signup-closed case, the two are never conflated. | RBAC-1 scope decision 2026-09-03, [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md) |
 | NFR-22 | Every `Requirement`/`TestSuite`/`TestPlan` row carries a non-nullable `project_id` FK — no orphaned test asset can exist outside a `Project`, enforced at the schema level (not just application validation). Live execution coverage (attempt to create one of these entities without `project_id` → 422) is deferred until the first create route for any of the three exists — schema-level enforcement is verifiable today, the negative-test path is not yet. | PROJ-1 AC2, [ADR-0017](../adr/0017-project-creation-flow.md) |
 | NFR-23 | `Project.standards_profile`, when omitted at creation, inherits `Organization.default_standards_profile` (itself nullable); an explicit value in the create/update payload — including explicit `null` — always overrides the inherited default, never silently merged with it. | PROJ-1 AC3, [ADR-0017](../adr/0017-project-creation-flow.md) |
+| NFR-24 | The sidebar's narrow-viewport collapse/toggle uses `CSidebar`'s own `visible`/`onVisibleChange` prop and a `CHeaderToggler`, CoreUI's documented template pattern — no hand-built media-query/breakpoint logic. | SHELL-1 AC4, [ADR-0018](../adr/0018-admin-shell-sidebar-layout.md) |
 
 ## 4. Traceability — requirements to architecture decisions
 
@@ -149,5 +158,6 @@ FR-PROJ-1 ships as `POST /orgs/{org_id}/projects` (bespoke, org-path-scoped — 
 | FR-AUTH-3, NFR-14 | [ADR-0014](../adr/0014-logout-session-revocation-policy.md) Logout: idempotent single-session revocation |
 | FR-AUTH-4, NFR-17, NFR-18, NFR-19 | [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md) AI agent credential mechanics & minimal-RBAC-now decision |
 | FR-MCP-* | [ADR-0002](../adr/0002-backend-framework-orm-migrations.md) (async backend), [ADR-0003](../adr/0003-auth-token-strategy.md) (AIAgent credential) |
+| FR-SHELL-1, NFR-24 | [ADR-0018](../adr/0018-admin-shell-sidebar-layout.md) Admin shell layout (extends [ADR-0012](../adr/0012-coreui-design-system.md)) |
 
 Full field-level traceability (Requirement → design technique → test case → execution → defect) is itself FR-TRACE-1/2 — this document is the requirements layer that feeds the [WBS](../wbs/2026-09-03-project-scaffold-wbs.md), [Database Document](../database/2026-09-03-database-design.md), [API Document](../api/2026-09-03-api-design.md), and [Test Plan](../test-plan/2026-09-03-master-test-plan.md).

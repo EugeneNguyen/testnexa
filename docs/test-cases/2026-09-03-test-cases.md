@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-03
 **Owner:** xuanbinh91@gmail.com (CTO)
-**Sources:** [Test Design](../test-design/2026-09-03-test-design.md), [Master Test Plan](../test-plan/2026-09-03-master-test-plan.md), [docs/user-stories/*](../user-stories/), [AUTH-1 scope plan](../superpowers/plans/2026-09-03-auth-1-local-password-login-plan.md), [AUTH-2 scope plan](../superpowers/plans/2026-09-03-auth-2-session-persistence-plan.md), [AUTH-3 scope plan](../superpowers/plans/2026-09-03-auth-3-logout-plan.md), [AUTH-4 scope plan](../superpowers/plans/2026-09-03-auth-4-agent-bearer-auth-plan.md), [RBAC-1 scope plan](../superpowers/plans/2026-09-03-rbac-1-create-org-plan.md), [PROJ-1 scope plan](../superpowers/plans/2026-09-03-proj-1-create-project-plan.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md), [ADR-0014](../adr/0014-logout-session-revocation-policy.md), [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md), [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md), [ADR-0017](../adr/0017-project-creation-flow.md)
+**Sources:** [Test Design](../test-design/2026-09-03-test-design.md), [Master Test Plan](../test-plan/2026-09-03-master-test-plan.md), [docs/user-stories/*](../user-stories/), [AUTH-1 scope plan](../superpowers/plans/2026-09-03-auth-1-local-password-login-plan.md), [AUTH-2 scope plan](../superpowers/plans/2026-09-03-auth-2-session-persistence-plan.md), [AUTH-3 scope plan](../superpowers/plans/2026-09-03-auth-3-logout-plan.md), [AUTH-4 scope plan](../superpowers/plans/2026-09-03-auth-4-agent-bearer-auth-plan.md), [RBAC-1 scope plan](../superpowers/plans/2026-09-03-rbac-1-create-org-plan.md), [PROJ-1 scope plan](../superpowers/plans/2026-09-03-proj-1-create-project-plan.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md), [ADR-0014](../adr/0014-logout-session-revocation-policy.md), [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md), [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md), [ADR-0017](../adr/0017-project-creation-flow.md), [ADR-0018](../adr/0018-admin-shell-sidebar-layout.md)
 
 Concrete test cases derived from each user story's acceptance criteria. IDs group by feature area; **Story** column links back to the source acceptance criterion. Priority: **P1** = release-blocking, **P2** = should-have, **P3** = exploratory/structural-only (per FR priority in the Requirements Document).
 
@@ -181,6 +181,17 @@ Concrete test cases derived from each user story's acceptance criteria. IDs grou
 
 ---
 
+## Layout & Navigation
+
+| ID | Title | Preconditions | Steps | Expected result | Priority | Story |
+|---|---|---|---|---|---|---|
+| TC-SHELL-001 | Shell wraps every ProtectedRoute screen | Authenticated user | Visit `/orgs/pick`, `/orgs/:orgId`, `/orgs/:orgId/members` | `CSidebar`/`CSidebarNav` + `CHeader` render on all three, not a bespoke nav | P1 | SHELL-1 |
+| TC-SHELL-002 | Sidebar lists org-home + org-members, current route active | On `/orgs/:orgId/members` | Inspect sidebar nav items | Both links present; "Members" shows active/current-route styling, "Org home" does not (prefix-match regression check) | P1 | SHELL-1 |
+| TC-SHELL-003 | Sidebar org-home link fixes the members dead-end | On `/orgs/:orgId/members` | Click the sidebar's org-home nav link (Playwright, real click — not `page.goBack()`) | URL becomes `/orgs/:orgId`; `OrgHome` renders | P1 | SHELL-1 |
+| TC-SHELL-004 | Sidebar collapses/toggles on narrow viewport | Narrow viewport (mobile width) | Load a protected route, click the header's `CHeaderToggler` | Sidebar hides/shows per `CSidebar`'s own `visible` prop behavior — no custom breakpoint logic | P2 | SHELL-1 |
+| TC-SHELL-005 | Org-scoped nav items absent with no org selected | On `/orgs/pick` (no `orgId` route param) | Inspect sidebar | Brand renders; org-home/org-members nav items are absent (empty list, not disabled controls) | P2 | SHELL-1 |
+| TC-SHELL-006 | New protected route reachable via single nav-item addition | A future story adds a new `ProtectedRoute` route | Add one entry to `AppSidebar`'s nav-item array, no other file touched | New route appears in the sidebar, reachable | P3 | SHELL-1 (structural/code-review criterion, not machine-verifiable against a route that doesn't exist yet) |
+
 ## Coverage summary
 
 | Feature area | Test case count | P1 count |
@@ -195,6 +206,7 @@ Concrete test cases derived from each user story's acceptance criteria. IDs grou
 | Taxonomy & Generic Admin CRUD | 5 | 2 |
 | Traceability Matrix | 5 | 4 |
 | AI Agent / MCP | 7 | 0 |
-| **Total** | **117** | **71** |
+| Layout & Navigation | 6 | 3 |
+| **Total** | **123** | **74** |
 
 MCP's P3-only weighting matches its exploratory, no-validated-WTP status per the personas doc — structural coverage exists, but nothing here blocks a release.

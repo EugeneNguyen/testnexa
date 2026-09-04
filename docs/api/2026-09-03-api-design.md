@@ -6,6 +6,8 @@
 
 REST over HTTPS, JSON bodies, base path `/api/v1`. FastAPI auto-generates the OpenAPI schema from the implementation — this document is the design-level contract new routes must match, not a substitute for the generated spec once code exists.
 
+**SHELL-1** ([ADR-0018](../adr/0018-admin-shell-sidebar-layout.md), FR-SHELL-1) — reviewed, no API impact. The admin shell (sidebar + navbar) is frontend-only: no new route, no changed request/response shape. Noted here explicitly so the gap isn't mistaken for an oversight.
+
 ---
 
 ## 1. Conventions
