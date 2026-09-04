@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import AppFooter from "../src/components/AppFooter";
 
 /**
- * SHELL-2 (ADR-0019) footer unit test, TC-SHELL-009. Static content,
+ * SHELL-2 (ADR-0020) footer unit test, TC-SHELL-009. Static content,
  * no per-route branching to partition — a single smoke-level render check
  * is the full coverage this component needs.
  */

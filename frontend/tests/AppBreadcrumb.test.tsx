@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import AppBreadcrumb from "../src/components/AppBreadcrumb";
 
 /**
- * SHELL-2 (ADR-0019) breadcrumb unit tests, TC-SHELL-007/008.
+ * SHELL-2 (ADR-0020) breadcrumb unit tests, TC-SHELL-007/008.
  *
  * Same per-route-pattern render approach as `AppSidebar.test.tsx`: mount
  * `AppBreadcrumb` as a `Route`'s element so `useLocation()`/`matchPath`

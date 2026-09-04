@@ -121,6 +121,12 @@ def build_role_bundles(all_permission_codes: set[str]) -> dict[str, set[str]]:
         | _crud_codes("entry_exit_criteria")
         | _crud_codes("test_cycle")
         | _crud_codes("test_suite")
+        # PROJ-2/ADR-0018: create/read/update only, deliberately NOT
+        # `.delete` — no delete route exists to reach it. `test_manager`
+        # already held full `test_cycle` CRUD; withholding `release.*` was
+        # an oversight in the original RBAC-4 seed (ADR-0018's Alternatives
+        # section), closed here rather than left as a considered boundary.
+        | _crud_codes("release", ("create", "read", "update"))
         | {_code("approval", "create"), _code("approval", "read")}
         | {_code("requirement", "read"), _code("requirement", "export_rtm")}
         | {_code("defect", "read")}

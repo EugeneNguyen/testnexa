@@ -40,7 +40,7 @@
  *
  * Built with CoreUI (ADR-0012) — no bespoke nav/layout components.
  *
- * SHELL-2 (ADR-0019) adds `AppBreadcrumb` (route-derived `CBreadcrumb`) and
+ * SHELL-2 (ADR-0020) adds `AppBreadcrumb` (route-derived `CBreadcrumb`) and
  * `AppFooter` (`CFooter`), completing the free-template shell shape —
  * breadcrumb sits between the header and page content, footer sits below
  * it, both inside the same `flex-column` content column as the header so

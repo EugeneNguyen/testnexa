@@ -32,7 +32,7 @@
  * for why — there is no client-side permission signal anywhere in this
  * codebase yet to gate a nav link on instead).
  *
- * SHELL-3 (ADR-0019, FR-SHELL-3/NFR-25) adds two dashboard stat widgets —
+ * SHELL-3 (ADR-0020, FR-SHELL-3/NFR-27) adds two dashboard stat widgets —
  * Project count (`CWidgetStatsA`) and active Org Member count
  * (`CWidgetStatsB`) — above the project list, sourced from
  * `lib/api/dashboard.ts`'s `getProjectsTotal`/`getActiveMemberTotal` (see
@@ -43,7 +43,7 @@
  * list-hook (`useEntityList` etc. is WBS task 6.2 scope, not built yet).
  * Loading/error/success are three distinct rendered states — a failed or
  * still-in-flight fetch never renders "0", only a real `total: 0` response
- * does (NFR-25, TC-SHELL-011).
+ * does (NFR-27, TC-SHELL-011).
  *
  * Built with CoreUI (ADR-0012).
  */
@@ -105,7 +105,7 @@ function fieldError(error: ApiError, field: string): string | undefined {
 
 /**
  * Renders a `useQuery` count result as a widget's `value` node — the one
- * place loading/error/success are told apart (NFR-25, TC-SHELL-011): a
+ * place loading/error/success are told apart (NFR-27, TC-SHELL-011): a
  * still-in-flight or failed fetch never renders "0", only a real
  * `total: 0` response does.
  */
@@ -314,7 +314,9 @@ function OrgHome() {
                     <CTableBody>
                       {projects.map((project) => (
                         <CTableRow key={project.id}>
-                          <CTableDataCell>{project.name}</CTableDataCell>
+                          <CTableDataCell>
+                            <Link to={`/projects/${project.id}`}>{project.name}</Link>
+                          </CTableDataCell>
                           <CTableDataCell>
                             {editingId === project.id ? (
                               <>

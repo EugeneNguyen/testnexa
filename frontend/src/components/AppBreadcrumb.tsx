@@ -1,5 +1,5 @@
 /**
- * SHELL-2 (ADR-0019) route-derived breadcrumb, mounted once inside
+ * SHELL-2 (ADR-0020) route-derived breadcrumb, mounted once inside
  * `AppShell` alongside `AppFooter` so both join `AppSidebar`/`AppHeader` in
  * completing the free-template shell shape (FR-SHELL-2).
  *

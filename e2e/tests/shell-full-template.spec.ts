@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { expect, test } from "@playwright/test";
 
 /**
- * SHELL-2/3/4 E2E (ADR-0019): dark/light mode toggle (FR-SHELL-4) and the
+ * SHELL-2/3/4 E2E (ADR-0020): dark/light mode toggle (FR-SHELL-4) and the
  * dashboard stat widgets (FR-SHELL-3). Covers TC-SHELL-012/013 from
  * `docs/test-cases/2026-09-03-test-cases.md`, plus a documented interim
  * assertion for TC-SHELL-010 (see that test below for why it isn't the
@@ -178,7 +178,7 @@ test.describe("SHELL-3 dashboard stat widgets", () => {
     // docstring): the generic-CRUD factory routes FR-SHELL-3 is written
     // against (API Document §3) haven't shipped in this codebase yet — only
     // PROJ-1/RBAC-2's bespoke routes exist. Both widget calls 404 today.
-    // NFR-25's actual, currently-testable claim is therefore "the widgets
+    // NFR-27's actual, currently-testable claim is therefore "the widgets
     // surface that failure honestly, not as a false '0'" — TC-SHELL-010's
     // own "real seeded counts" scenario is not achievable until the
     // ADMIN-2 generic-CRUD factory ships `GET /projects`/
@@ -192,7 +192,7 @@ test.describe("SHELL-3 dashboard stat widgets", () => {
 
       await expect(page.getByTestId("widget-project-count")).toContainText(/unable to load/i);
       await expect(page.getByTestId("widget-active-member-count")).toContainText(/unable to load/i);
-      // Never a false zero (NFR-25) — the one invariant that IS fully
+      // Never a false zero (NFR-27) — the one invariant that IS fully
       // testable against today's backend.
       await expect(page.getByTestId("widget-project-count")).not.toHaveText("0");
       await expect(page.getByTestId("widget-active-member-count")).not.toHaveText("0");

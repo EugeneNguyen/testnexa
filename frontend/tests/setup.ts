@@ -4,7 +4,7 @@ import "@testing-library/jest-dom/vitest";
 // as an object with none of the `Storage` interface's methods present
 // (verified directly: `typeof localStorage.getItem === "undefined"`, not a
 // missing-global or `this`-binding issue) — a real browser's `localStorage`
-// always has them. CoreUI's `useColorModes` hook (SHELL-4, ADR-0019) calls
+// always has them. CoreUI's `useColorModes` hook (SHELL-4, ADR-0020) calls
 // `localStorage.getItem`/`.setItem` directly, which otherwise throws
 // "localStorage.getItem is not a function" in every test that mounts
 // `AppHeader` (i.e. most of the authenticated-shell test suite, not just

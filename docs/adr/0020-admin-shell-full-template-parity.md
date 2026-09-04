@@ -1,4 +1,4 @@
-# ADR-0019: Full CoreUI free-admin-template parity for the authenticated shell
+# ADR-0020: Full CoreUI free-admin-template parity for the authenticated shell
 
 **Date:** 2026-09-04
 **Status:** Accepted

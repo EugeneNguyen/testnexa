@@ -18,7 +18,7 @@ vi.mock("../../../src/lib/api/projects", async (importOriginal) => {
   };
 });
 
-// SHELL-3 (ADR-0019): `OrgHome` now also mounts the two dashboard stat
+// SHELL-3 (ADR-0020): `OrgHome` now also mounts the two dashboard stat
 // widgets, each its own `useQuery` against `lib/api/dashboard.ts`. Mocked
 // here to a resolved value for every test in *this* file, since none of them
 // are about the widgets themselves (that's `OrgHome.widgets.test.tsx`,

@@ -1,7 +1,7 @@
 /**
- * SHELL-8 (ADR-0019) "UI Elements" reference page: CoreUI's themed colors.
+ * SHELL-8 (ADR-0020) "UI Elements" reference page: CoreUI's themed colors.
  * Template-parity scaffolding ONLY — **not backed by any FR/NFR or user
- * story** (ADR-0019, TC-SHELL-014's own note), same status as the base
+ * story** (ADR-0020, TC-SHELL-014's own note), same status as the base
  * template's own demo content. Smoke-level content only: a swatch per
  * CoreUI themed color, no content-correctness assertions expected.
  *

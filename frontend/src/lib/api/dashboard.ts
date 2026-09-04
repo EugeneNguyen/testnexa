@@ -1,5 +1,5 @@
 /**
- * SHELL-3 (ADR-0019, FR-SHELL-3/NFR-25) dashboard stat-widget counts.
+ * SHELL-3 (ADR-0020, FR-SHELL-3/NFR-27) dashboard stat-widget counts.
  *
  * Thin wrappers over the generic-CRUD list endpoints' pagination envelope
  * (API Document §1's `{items, total, page, page_size}` shape — the same
@@ -7,7 +7,7 @@
  * bespoke `GET /orgs/{org_id}/members` route). `page_size=1` on both calls:
  * only `total` is read, `items` is discarded — requesting the smallest
  * legal page keeps the response cheap without a dedicated count-only
- * endpoint (no new API route, per ADR-0019).
+ * endpoint (no new API route, per ADR-0020).
  *
  * Deviation flagged explicitly: `GET /projects` and
  * `GET /org-memberships` are the generic-CRUD factory routes documented in
@@ -17,7 +17,7 @@
  * `POST /orgs/{org_id}/projects` / `GET|PATCH /projects/{id}` (no list) and
  * RBAC-2's bespoke `GET /orgs/{org_id}/members` (no `status` filter) exist.
  * Calling either function below today gets a `404` from the backend, which
- * `OrgHome`'s widgets surface as their explicit error state (NFR-25: never
+ * `OrgHome`'s widgets surface as their explicit error state (NFR-27: never
  * a false zero) rather than a crash. This module is written against the
  * documented target contract, not today's partial backend — once the
  * ADMIN-2 generic-CRUD factory ships these two routes, both widgets start

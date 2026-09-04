@@ -8,7 +8,7 @@ import Typography from "../src/pages/ui-elements/Typography";
 
 /**
  * TC-SHELL-014: "UI Elements" reference pages (Colors/Typography/Icons) —
- * smoke-level only, per ADR-0019's explicit "template-parity scaffolding,
+ * smoke-level only, per ADR-0020's explicit "template-parity scaffolding,
  * not product scope" framing. No content-correctness assertions: each page
  * renders without throwing, and the sidebar's "UI Elements" nav group
  * actually reaches all three routes.

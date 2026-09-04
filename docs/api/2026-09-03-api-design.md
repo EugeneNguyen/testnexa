@@ -18,6 +18,7 @@ REST over HTTPS, JSON bodies, base path `/api/v1`. FastAPI auto-generates the Op
 - **Auth header:** `Authorization: Bearer <access_token>` on every route except `POST /auth/login` and `POST /auth/refresh`.
 - **Pagination:** offset-based, `?page=1&page_size=25` (default/max page_size = 25 per NFR-6). List responses shape: `{items: [...], total: int, page: int, page_size: int}`.
 - **Filtering:** exact-match query params on indexed/enum/FK fields only for v1 (e.g. `?status=draft&project_id=<uuid>`), no free-text `contains` operator in this scaffold.
+- **Sorting:** `?sort=<field>&order=asc|desc` on the routes that document it explicitly (first instance: `GET /projects/{project_id}/releases`, `target_date` — [ADR-0019](../adr/0019-release-creation-flow.md)); not a blanket convention across every list route in this scaffold. `NULL` field values sort last regardless of `order` — pinned explicitly, not left to the underlying query engine's per-direction default.
 - **Error shape** (NFR-8), on every non-2xx response:
   ```
   {"code": "string", "message": "human-readable string", "field_errors": {"field_name": ["msg"]} | null}
@@ -41,6 +42,10 @@ REST over HTTPS, JSON bodies, base path `/api/v1`. FastAPI auto-generates the Op
 | POST | `/orgs/{org_id}/projects` | `project.create` | FR-PROJ-1 — creates Project, auto-assigns creator a project-scoped `test_manager` `RoleAssignment` |
 | GET | `/projects/{id}` | `project.read` | FR-PROJ-1 — 404 if cross-tenant, org resolved from the row |
 | PATCH | `/projects/{id}` | `project.update` | FR-PROJ-1 — partial update (`name`, `standards_profile`) |
+| POST | `/projects/{project_id}/releases` | `release.create` | FR-PROJ-2 — creates Release scoped to `project_id` |
+| GET | `/projects/{project_id}/releases` | `release.read` | FR-PROJ-2 — paginated, sortable by `target_date` (`NULLS LAST` pinned) |
+| GET | `/releases/{id}` | `release.read` | FR-PROJ-2 — 404 if cross-tenant, org resolved from the row via its Project |
+| GET | `/releases/{id}/test-cycles` | `release.read` AND `test_cycle.read` AND `test_execution.read` | FR-PROJ-2 — every TestCycle targeting the release, each with its TestExecutions nested |
 
 `POST /auth/login` request: `{email, password}`. Response: `{access_token, org_context: "auto" | "picker", orgs: [...] }` per AUTH-1's single-org-vs-multi-org branch; refresh token is set as an httpOnly cookie, never in the JSON body.
 
@@ -71,6 +76,14 @@ REST over HTTPS, JSON bodies, base path `/api/v1`. FastAPI auto-generates the Op
 
 `GET /projects/{id}` / `PATCH /projects/{id}` (PROJ-1): no `org_id` in the path — the row is fetched first and its own `org_id` used for the 404-vs-403 boundary (missing row or caller has no `OrgMembership` in the row's org → `404`; membership present but missing `project.read`/`.update` → `403`). `PATCH` body is partial (`name?`, `standards_profile?`); an explicit `null` for `standards_profile` clears it, an omitted field leaves it unchanged. Rename collision on `(org_id, name)` → `422`.
 
+`POST /projects/{project_id}/releases` (PROJ-2, [ADR-0019](../adr/0019-release-creation-flow.md)) request: `{version_label, target_date?}`. Bespoke, project-path-scoped — no `org_id` path segment exists at this depth, so the route fetches the `Project` row first (missing project or caller has no `OrgMembership` in its `org_id` → `404`), then calls `has_permission("release.create")` directly rather than the path-param-reading `require_permission` (membership present but missing → `403`). Response: `{id, project_id, version_label, target_date}`. No uniqueness constraint on `version_label`.
+
+`GET /projects/{project_id}/releases` (PROJ-2): same 404-vs-403 boundary as create, gated `release.read`. Paginated (§1 convention) and sorted by `target_date` via `?sort=target_date&order=asc|desc` (default `asc`); a `NULL` `target_date` always sorts last, both directions (NFR-25).
+
+`GET /releases/{id}` (PROJ-2): row-resolved, no path `project_id` — same pattern as `GET /projects/{id}`, one level deeper (`org_id` resolved via the fetched `Release`'s `Project`). Gated `release.read`.
+
+`GET /releases/{id}/test-cycles` (PROJ-2, AC2's audit query): row-resolved same as the single-fetch route above. Returns every `TestCycle` with `release_id` matching the path `id`, each with its `TestExecution` rows nested — one call answers "what was tested for release X," matching the story's own queryable-unit framing. Gated on **all three** of `release.read`, `test_cycle.read`, `test_execution.read` (NFR-26) — a departure from every other bespoke route's single-permission-per-route posture, justified because this is the only route in the scaffold exposing `TestExecution` data without a `test_cycle_id` in the request path. A Release with zero linked TestCycles returns `200` with an empty list, not `404`.
+
 `POST /auth/logout` request: no body, `Authorization: Bearer <access_token>` required — the only input beyond that is the `refresh_token` httpOnly cookie, if present (never a request field). Response: `204 No Content`, no body — every other auth route returns a schema because it carries data; logout carries none. Per [ADR-0014](../adr/0014-logout-session-revocation-policy.md):
 - Revokes only the **current session's** refresh token (`revoked_reason="logout"`), scoped to the authenticated caller's `user_id` — never every session for the user ("log out everywhere" is out of scope).
 - **Idempotent**: missing cookie, hash not found, already-revoked/rotated-out, or a cookie belonging to a different user all return the same `204`, nothing revoked — logout never errors on the conditions it exists to make harmless. The only non-2xx outcome is a missing/invalid **access** token, rejected by the same `get_current_actor` dependency `GET /auth/me` uses (generic 401, `code: "invalid_token"`).
@@ -89,11 +102,15 @@ One factory, parametrized per entity+schema, producing 5 routes. Example shown f
 | PATCH | `/requirements/{id}` | `requirement.update` | partial update |
 | DELETE | `/requirements/{id}` | `requirement.delete` | hard delete for lookups; RESTRICT-blocked (409) if referenced, for core assets |
 
-Entities served by the generic factory: `Organization`\*, `Project`\*\*\*, `Release`, `Requirement`, `TestCondition`, `TestCase`, `TestStep`, `TestSuite`, `TestPlan`, `EntryExitCriteria`, `TestCycle`, `Environment`, `Defect`, `RiskItem`, `Attachment`, `Role`, `Permission`\*\*, `TestDesignTechnique`, `TestLevel`, `TestType`, `OrgMembership`, `RoleAssignment`.
+Entities served by the generic factory: `Organization`\*, `Project`\*\*\*, `Requirement`, `TestCondition`, `TestCase`, `TestStep`, `TestSuite`, `TestPlan`, `EntryExitCriteria`, `TestCycle`, `Environment`, `Defect`, `RiskItem`, `Attachment`, `Role`, `Permission`\*\*, `TestDesignTechnique`, `TestLevel`, `TestType`, `OrgMembership`, `RoleAssignment`.
 
 \* `Organization` create is only reachable via `POST /auth/signup` or `POST /orgs` (§2, RBAC-1/[ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md)), never a bare `POST /organizations` — the generic factory still serves `GET`/`PATCH`/`DELETE /organizations/{id}` for this entity, only `create` is bespoke.
 \*\* `Permission` is read-only via the generic factory — the catalog is seeded, not user-editable, so only `GET` routes are registered for it.
 \*\*\* `Project` create is bespoke and org-path-scoped (`POST /orgs/{org_id}/projects`, §2, PROJ-1/[ADR-0017](../adr/0017-project-creation-flow.md)), same posture as `Organization`\*. Unlike `Organization`, `GET`/`PATCH /projects/{id}` are *also* already built bespoke (row-resolved `org_id`, no path segment) rather than deferred to the factory — their contract already matches what the eventual factory item-route would produce, so they're expected to be absorbed unchanged rather than rebuilt when §3 lands. `DELETE /projects/{id}` remains factory-deferred (no story has asked for Project deletion yet).
+
+`Release`\*\*\*\* is fully bespoke (§2, PROJ-2/[ADR-0019](../adr/0019-release-creation-flow.md)) and removed from this factory-served list — not deferred like `Project`'s `DELETE`, since no `PATCH`/`DELETE /releases/{id}` exists or is planned in this scaffold's current scope (no AC asks for Release edit/delete). `TestCycle` remains listed above only for its eventual factory-served `GET`/`PATCH`/`DELETE`; its own `create` is FR-PLAN-3's scope, not built by this pass — `GET /releases/{id}/test-cycles` (§2) is a read-only bespoke query against existing `TestCycle` rows, not a substitute for `TestCycle`'s own eventual factory routes.
+
+\*\*\*\* Unlike `Project`\*\*\*, none of `Release`'s four routes are expected to be "absorbed unchanged" by the eventual factory — `POST`/`GET /projects/{project_id}/releases` are project-path-scoped (the factory's documented shape has no path-nesting precedent), and `GET /releases/{id}/test-cycles`'s triple-permission gate and nested-executions shape are bespoke-only concerns a generic item-route wouldn't produce.
 
 ## 4. Bespoke routes
 

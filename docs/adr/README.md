@@ -21,8 +21,9 @@ Index of ADRs for the Project Scaffold. Format: [MADR](https://adr.github.io/mad
 | [0015](0015-ai-agent-credential-mechanics.md) | AI agent credential mechanics: key format, key_prefix lookup, minimal-RBAC-now, 404-vs-403 org-scoped precedent | Accepted |
 | [0016](0016-organization-bootstrap-creation-flow.md) | Organization bootstrap & creation flow: signup vs. `POST /orgs` split, bootstrap-closes-after-first-org, advisory-lock concurrency guard, any-org permission gate | Accepted |
 | [0017](0017-project-creation-flow.md) | Project creation flow: bespoke org-path-scoped create vs. row-resolved read/update, unconditional creator `test_manager` role auto-assignment, `standards_profile` inheritance from `Organization.default_standards_profile` | Accepted |
-| [0018](0018-admin-shell-sidebar-layout.md) | Admin shell layout: CoreUI `CSidebar`/`CSidebarNav` + `CHeader` persistent shell, single nav-item list, CoreUI's own responsive collapse (no custom logic) | Partially superseded by 0019 |
-| [0019](0019-admin-shell-full-template-parity.md) | Full CoreUI free-admin-template parity: breadcrumb, footer, dashboard widgets, dark/light mode toggle, UI-element reference pages (template scaffolding, no FR/NFR backing) | Accepted |
+| [0018](0018-admin-shell-sidebar-layout.md) | Admin shell layout: CoreUI `CSidebar`/`CSidebarNav` + `CHeader` persistent shell, single nav-item list, CoreUI's own responsive collapse (no custom logic) | Partially superseded by 0020 |
+| [0019](0019-release-creation-flow.md) | Release creation flow: project-path-scoped bespoke create/list vs. row-resolved single-fetch/audit-query, `test_manager` RBAC bundle extension, triple-permission gate + nested-executions shape for the release→cycles audit query, pinned `NULLS LAST` sort | Accepted |
+| [0020](0020-admin-shell-full-template-parity.md) | Full CoreUI free-admin-template parity: breadcrumb, footer, dashboard widgets, dark/light mode toggle, UI-element reference pages (template scaffolding, no FR/NFR backing) | Accepted |
 
 **Deciders on all ADRs below:** xuanbinh91@gmail.com (CTO), unless noted otherwise.
-**Date:** 2026-09-03 (0001–0017), 2026-09-04 (0018–0019)
+**Date:** 2026-09-03 (0001–0017), 2026-09-04 (0018–0020)

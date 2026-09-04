@@ -210,11 +210,12 @@ async def test_org_admin_has_every_permission() -> None:  # TC-RBAC-018
 #
 # Targets the seed migration's own `down_revision` ('d33d66f4b3c3') rather than
 # a relative `alembic downgrade -1`: a relative offset only means "undo the
-# seed migration" while the seed migration is still the alembic head. RBAC-2
-# stacked `53ddeb6e4066_add_invite_table` on top of it, so `-1` from head now
-# undoes that unrelated, non-seed migration instead and leaves all 5 system
-# roles in place — an absolute target keeps this test correct no matter how
-# many further migrations land after the seed one.
+# seed migration" while the seed migration is still the alembic head. RBAC-2's
+# `53ddeb6e4066_add_invite_table` and PROJ-2's `c7479d1b7cf6` (release
+# permission grants) have both since stacked on top of it, so `-1` from head
+# now undoes whichever of those is most recent instead and leaves all 5
+# system roles in place — an absolute target keeps this test correct no
+# matter how many further migrations land after the seed one.
 
 
 @pytest.mark.asyncio

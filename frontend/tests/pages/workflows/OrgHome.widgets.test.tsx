@@ -6,7 +6,7 @@ import OrgHome from "../../../src/pages/workflows/OrgHome";
 import { getActiveMemberTotal, getProjectsTotal } from "../../../src/lib/api/dashboard";
 
 /**
- * SHELL-3 (ADR-0019, FR-SHELL-3/NFR-25) dashboard stat-widget unit tests,
+ * SHELL-3 (ADR-0020, FR-SHELL-3/NFR-27) dashboard stat-widget unit tests,
  * TC-SHELL-010 (real count)/TC-SHELL-011 (zero-state vs. error-state).
  *
  * `lib/api/dashboard.ts`'s two count functions are mocked directly (same

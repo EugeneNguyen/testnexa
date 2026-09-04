@@ -34,7 +34,7 @@
  * breaks `CSidebar`'s own internal `isInViewport` geometry check (see
  * `AppShell.tsx`'s docstring).
  *
- * SHELL-8 (ADR-0019) adds a "UI Elements" `CNavGroup` (Colors/Typography/
+ * SHELL-8 (ADR-0020) adds a "UI Elements" `CNavGroup` (Colors/Typography/
  * Icons) below the flat org nav-item list — template-parity scaffolding
  * only, **not backed by any FR/NFR or user story** (see that ADR and the
  * three reference pages' own docstrings). Gated on `orgId` the same way the

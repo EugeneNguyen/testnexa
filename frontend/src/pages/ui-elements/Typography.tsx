@@ -1,7 +1,7 @@
 /**
- * SHELL-8 (ADR-0019) "UI Elements" reference page: typography scale.
+ * SHELL-8 (ADR-0020) "UI Elements" reference page: typography scale.
  * Template-parity scaffolding ONLY — **not backed by any FR/NFR or user
- * story** (ADR-0019, TC-SHELL-014's own note), same status as the base
+ * story** (ADR-0020, TC-SHELL-014's own note), same status as the base
  * template's own demo content. Smoke-level content only: headings, body
  * text, and a couple of common inline/list elements, no content-correctness
  * assertions expected.

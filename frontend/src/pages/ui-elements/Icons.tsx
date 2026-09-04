@@ -1,10 +1,10 @@
 /**
- * SHELL-8 (ADR-0019) "UI Elements" reference page: `@coreui/icons-react`
+ * SHELL-8 (ADR-0020) "UI Elements" reference page: `@coreui/icons-react`
  * icon gallery. Template-parity scaffolding ONLY — **not backed by any
- * FR/NFR or user story** (ADR-0019, TC-SHELL-014's own note), same status
+ * FR/NFR or user story** (ADR-0020, TC-SHELL-014's own note), same status
  * as the base template's own demo content. Smoke-level content only: a
  * fixed sample of icons already installed in this codebase's `@coreui/icons`
- * dependency — no new icon package, per ADR-0019's explicit no-new-
+ * dependency — no new icon package, per ADR-0020's explicit no-new-
  * dependency scope.
  *
  * Built with CoreUI (ADR-0012) — `CCard`/`CCol`/`CRow` + `CIcon` only.

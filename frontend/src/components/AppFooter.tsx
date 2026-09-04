@@ -1,5 +1,5 @@
 /**
- * SHELL-2 (ADR-0019) app footer, mounted once inside `AppShell` alongside
+ * SHELL-2 (ADR-0020) app footer, mounted once inside `AppShell` alongside
  * `AppBreadcrumb` so both join `AppSidebar`/`AppHeader` in completing the
  * free-template shell shape (FR-SHELL-2). Renders identically on every
  * `ProtectedRoute` screen (TC-SHELL-009) — smoke-level, static content only,

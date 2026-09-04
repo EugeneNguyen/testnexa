@@ -20,7 +20,7 @@
  * Router, matching `ProtectedRoute`'s client-side `<Navigate>` style rather
  * than `apiFetch`'s hard `window.location.assign` redirect (scope plan §1).
  *
- * SHELL-4 (ADR-0019, FR-SHELL-4/NFR-26) adds the dark/light color-mode
+ * SHELL-4 (ADR-0020, FR-SHELL-4/NFR-28) adds the dark/light color-mode
  * toggle: CoreUI's own `useColorModes` hook, no custom theme engine. The
  * hook itself owns `localStorage` persistence (default key
  * `coreui-react-color-scheme`) and applies the resolved mode as
