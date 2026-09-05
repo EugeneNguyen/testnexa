@@ -62,6 +62,8 @@ FR-PROJ-2 ships as `POST`/`GET /projects/{project_id}/releases` (bespoke, projec
 | FR-REQ-3 | Author a TestCase via optional TestCondition (rigor path) | Must | TestCondition, RequirementTestConditionLink, TestConditionTestCaseLink |
 | FR-REQ-4 | Organize TestCases into TestSuites (many-to-many) | Must | TestSuite |
 
+FR-REQ-1 ships almost entirely via API-1/ADMIN-2's generic CRUD factory — `Requirement` was already one of the 20 factory-served entities before this story, so `POST`/`GET /requirements` (create, list/search, project-scoping, permission gating, 404-vs-403 boundary) required no new route code. The one real gap this story closes: `Requirement.title`, specified by this FR and by TC-REQ-001/002 since 2026-09-03, was never actually added to the schema — a plain oversight caught during this story's own planning, not a prior decision being revisited. See [ADR-0024](../adr/0024-requirement-title-field.md).
+
 ### 2.5 Test planning — [test-planning-stories.md](../user-stories/2026-09-03-test-planning-stories.md)
 
 | ID | Title | Priority | Entities |
