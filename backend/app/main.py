@@ -49,6 +49,7 @@ from app.api.routes import (
     role_assignments,
     roles,
     taxonomy,
+    trace,
 )
 
 app = FastAPI(title="TestNexa API", version="0.1.0")
@@ -153,3 +154,5 @@ app.include_router(taxonomy.router, prefix="/api/v1", tags=["taxonomy"])
 app.include_router(governance.router, prefix="/api/v1", tags=["governance"])
 app.include_router(rbac_routes.router, prefix="/api/v1", tags=["rbac"])
 app.include_router(execution.router, prefix="/api/v1", tags=["execution"])
+# ADR-0025: generic-CRUD factory routes for the 4 traceability link tables.
+app.include_router(trace.router, prefix="/api/v1", tags=["trace"])

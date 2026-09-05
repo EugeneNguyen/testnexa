@@ -32,12 +32,22 @@ a non-null `org_id` in the body — enforced by `Role`'s own `scope_field`
 (`app/schemas/rbac.py`'s `CreateRoleRequest` docstring).
 """
 
-from fastapi import APIRouter
+from uuid import UUID
+
+from fastapi import APIRouter, Depends
+from fastapi.responses import JSONResponse
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.crud_factory import CrudEntityConfig, NoSchema, chain_resolver, make_crud_router
-from app.models.rbac import Permission, Role, RoleAssignment
+from app.api.deps import get_current_actor, get_db
+from app.models.actor import AIAgent, User
+from app.models.rbac import Permission, Role, RoleAssignment, RolePermission
+from app.models.tenancy import OrgMembership
 from app.schemas.rbac import (
     CreateRoleRequest,
+    MyPermissionCode,
+    MyPermissionsResponse,
     PermissionSummary,
     RoleAssignmentSummary,
     RoleSummary,
@@ -46,6 +56,60 @@ from app.schemas.rbac import (
 )
 
 router = APIRouter()
+
+
+def _error(status_code: int, code: str, message: str) -> JSONResponse:
+    """Mirrors every other route module's `_error()` verbatim (see `roles.py`)."""
+    return JSONResponse(status_code=status_code, content={"code": code, "message": message, "field_errors": None})
+
+
+async def _org_membership_exists(db: AsyncSession, org_id: UUID, user_id: UUID) -> bool:
+    """Mirrors `roles.py`'s/`role_assignments.py`'s any-status check verbatim."""
+    result = await db.scalar(
+        select(OrgMembership.id).where(OrgMembership.org_id == org_id, OrgMembership.user_id == user_id).limit(1)
+    )
+    return result is not None
+
+
+@router.get("/orgs/{org_id}/permissions/mine", response_model=MyPermissionsResponse)
+async def get_my_permissions(
+    org_id: UUID,
+    actor: User | AIAgent = Depends(get_current_actor),
+    db: AsyncSession = Depends(get_db),
+) -> MyPermissionsResponse | JSONResponse:
+    """ADR-0025: the calling actor's own resolved permission codes in `org_id`.
+
+    Same any-status-`OrgMembership` 404-vs-403 boundary as every other
+    org-scoped route (`roles.py`'s `list_roles`) — no membership in `org_id`
+    at all -> `404`. Unlike every other org-scoped route, **no specific
+    permission is required beyond membership itself**: this route only ever
+    reports the caller's own grants, so an actor with zero grants still gets
+    `200` with an empty `codes` list, never a `403` (there is nothing further
+    to gate — see ADR-0025's own Decision section).
+
+    One query, `RoleAssignment` -> `Role` -> `RolePermission` ->
+    `Permission.code`, reusing `has_permission`'s own join shape (`app/core/
+    rbac.py`) as a bulk `SELECT` rather than N single-code checks. Both
+    org-wide (`RoleAssignment.project_id IS NULL`) and project-scoped grants
+    are included — `project_id` is carried through on each row so the caller
+    can distinguish the two (`MyPermissionCode`'s own docstring).
+    """
+    if not await _org_membership_exists(db, org_id, actor.actor_id):
+        return _error(404, "not_found", "Organization not found.")
+
+    result = await db.execute(
+        select(Permission.code, RoleAssignment.project_id)
+        .join(RolePermission, RolePermission.permission_id == Permission.id)
+        .join(Role, Role.id == RolePermission.role_id)
+        .join(RoleAssignment, RoleAssignment.role_id == Role.id)
+        .where(RoleAssignment.actor_id == actor.actor_id, RoleAssignment.org_id == org_id)
+        .distinct()
+    )
+    rows = result.all()
+
+    return MyPermissionsResponse(
+        codes=[MyPermissionCode(code=code, project_id=project_id) for code, project_id in rows]
+    )
 
 _ROLE_CONFIG = CrudEntityConfig(
     model=Role,
