@@ -27,6 +27,7 @@ Index of ADRs for the Project Scaffold. Format: [MADR](https://adr.github.io/mad
 | [0021](0021-role-assignment-creation-flow.md) | RoleAssignment creation flow: 422-not-404 for cross-org body fields, OrgMembership precondition for User grantees, list endpoint scope, `has_permission` project_id enforcement fix | Accepted |
 | [0022](0022-generic-crud-router-factory.md) | Generic CRUD router factory: per-entity org-resolution chains, row-resolved item routes over `require_permission`, scoped-list required filter, global-catalog `has_permission_in_any_org` fallback | Accepted |
 | [0023](0023-frontend-shared-component-location.md) | Frontend shared-component location (`components/shared/` vs. `components/crud/` vs. page-local) & `FormField`'s `CFormFeedback`+`invalid` error-display convention | Accepted |
+| [0024](0024-public-landing-page.md) | Public landing page replaces root scaffold-verification page: bare-bones content, delete-not-relocate the old health-check route, authenticated-visitor redirect reuses Login's own logic | Accepted |
 
 **Deciders on all ADRs below:** xuanbinh91@gmail.com (CTO), unless noted otherwise.
-**Date:** 2026-09-03 (0001–0017, 0021), 2026-09-04 (0018–0020), 2026-09-05 (0022–0023)
+**Date:** 2026-09-03 (0001–0017, 0021), 2026-09-04 (0018–0020), 2026-09-05 (0022–0024)

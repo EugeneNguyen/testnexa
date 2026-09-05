@@ -12,6 +12,8 @@ REST over HTTPS, JSON bodies, base path `/api/v1`. FastAPI auto-generates the Op
 
 **DS-1** ([ADR-0023](../adr/0023-frontend-shared-component-location.md), FR-DS-1) — reviewed, no API impact. `FormField` is frontend-only; `Login.tsx`/`Signup.tsx`'s existing `POST /auth/login`/`POST /auth/signup` calls, request bodies, and response handling are unchanged — only client-side validation timing/UI moves onto React Hook Form + Zod.
 
+**LANDING-1** ([ADR-0024](../adr/0024-public-landing-page.md), FR-LANDING-1) — reviewed, no API impact. The landing page is a static, unauthenticated frontend route with no backing call of its own; its redirect-when-already-authenticated behavior reads `AuthContext`'s existing client-side `orgContext`/`orgs` state (populated by `POST /auth/login`'s already-existing response shape), not a new endpoint. Deleting `ScaffoldVerificationPage` doesn't remove `GET /api/health` itself (an unversioned scaffold-only endpoint, outside this document's `/api/v1` scope) — only its one UI caller.
+
 ---
 
 ## 1. Conventions

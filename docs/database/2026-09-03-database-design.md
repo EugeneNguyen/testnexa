@@ -14,6 +14,8 @@ This document is the implementation-level schema, refined from the [07 ERD](../p
 
 **DS-1** ([ADR-0023](../adr/0023-frontend-shared-component-location.md), FR-DS-1) — reviewed, no schema impact. `FormField` is a pure presentational component; `Login.tsx`/`Signup.tsx`'s migration onto React Hook Form + Zod changes client-side validation only, not the request payload shape either route already accepts.
 
+**LANDING-1** ([ADR-0024](../adr/0024-public-landing-page.md), FR-LANDING-1) — reviewed, no schema impact. The public landing page is frontend-only: no new table, column, or index, and it makes no API call at all (authenticated or otherwise). Deleting `ScaffoldVerificationPage` likewise has no schema impact — it never wrote to or read from any table itself, only `GET /api/health`.
+
 ---
 
 ## 1. Entity count reconciliation
