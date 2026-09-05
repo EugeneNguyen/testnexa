@@ -29,6 +29,16 @@ applicable — see that module's own docstring):
   identity-gated (caller must be the `User` the membership targets), no
   `Permission` code — the invitee is acting on their own pending membership,
   not exercising an org_admin privilege (ADR-0017).
+
+API-1/ADR-0021 adds the generic-CRUD factory's `GET /org-memberships` (list)
+and `GET`/`PATCH`/`DELETE /org-memberships/{id}` at the bottom of this
+module — a distinct, additive path prefix from the bespoke
+`/orgs/{org_id}/members*` routes above (verified no collision before wiring,
+per the plan's flagged edge case). No factory `create` — `POST
+/org-memberships` would duplicate/bypass `invite_member`'s own
+User/`Invite`-creation mechanics, which a raw factory insert can't
+replicate; the plan's own task list only asks for list/get/patch/delete
+here, not create.
 """
 
 import secrets
@@ -40,6 +50,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.crud_factory import CrudEntityConfig, chain_resolver, make_crud_router
 from app.api.deps import get_current_actor, get_db, require_permission
 from app.core.config import settings
 from app.core.security import (
@@ -60,7 +71,9 @@ from app.schemas.org_memberships import (
     InviteMemberResponse,
     MemberListResponse,
     MemberSummary,
+    OrgMembershipSummary,
     PatchMembershipRequest,
+    UpdateOrgMembershipRequest,
 )
 
 router = APIRouter()
@@ -509,3 +522,20 @@ async def revoke_pending_invite(
     await db.commit()
 
     return Response(status_code=204)
+
+
+# --- API-1 generic-CRUD factory additions (ADR-0021) --------------------------------------------
+
+_ORG_MEMBERSHIP_CONFIG = CrudEntityConfig(
+    model=OrgMembership,
+    resource="org_membership",
+    create_schema=None,
+    update_schema=UpdateOrgMembershipRequest,
+    summary_schema=OrgMembershipSummary,
+    scope_field="org_id",
+    resolve_org_id=chain_resolver([]),
+    filter_fields=("status",),
+    methods=frozenset({"list", "get", "update", "delete"}),
+)
+
+router.include_router(make_crud_router(_ORG_MEMBERSHIP_CONFIG))

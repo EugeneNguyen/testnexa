@@ -103,7 +103,7 @@ ScopeField = str | tuple[str, str] | None
 ResolveOrgId = Callable[[AsyncSession, Any], Awaitable[uuid.UUID | None]]
 
 
-class _NoSchema(BaseModel):
+class NoSchema(BaseModel):
     """Placeholder `update_schema` for an entity that never registers `update`.
 
     `CrudEntityConfig.update_schema` has no default (ADR-0021's dataclass
@@ -722,6 +722,7 @@ def make_crud_router(config: CrudEntityConfig) -> APIRouter:
 
 __all__ = [
     "CrudEntityConfig",
+    "NoSchema",
     "apply_filters_and_search",
     "chain_resolver",
     "clamp_pagination",

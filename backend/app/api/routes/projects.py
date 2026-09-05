@@ -29,6 +29,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.crud_factory import CrudEntityConfig, chain_resolver, make_crud_router
 from app.api.deps import get_current_actor, get_db, require_permission
 from app.core.rbac import has_permission
 from app.models.actor import AIAgent, User
@@ -150,6 +151,29 @@ async def create_project(
         name=project.name,
         standards_profile=project.standards_profile,
     )
+
+
+# --- API-1 generic-CRUD factory addition (ADR-0021) --------------------------------------------
+#
+# Registers ONLY `DELETE /projects/{id}` — `create`/`read`/`update` above
+# stay this module's own bespoke routes, untouched (API Document §3
+# footnote ***: "the factory only registers the one method Project is still
+# missing"). `update_schema`/`create_schema` still need a real value to
+# satisfy `CrudEntityConfig`'s dataclass shape even though neither method is
+# registered — reusing this module's own existing schemas rather than a
+# placeholder, since they're already imported here.
+_PROJECT_DELETE_ONLY_CONFIG = CrudEntityConfig(
+    model=Project,
+    resource="project",
+    create_schema=None,
+    update_schema=UpdateProjectRequest,
+    summary_schema=ProjectSummary,
+    scope_field=None,
+    resolve_org_id=chain_resolver([]),
+    methods=frozenset({"delete"}),
+)
+
+router.include_router(make_crud_router(_PROJECT_DELETE_ONLY_CONFIG))
 
 
 @router.get("/projects/{id}", response_model=ProjectSummary)

@@ -12,6 +12,12 @@ applies here: there is no target org's existence to hide. The gate is the
 bespoke `has_permission_in_any_org` (`app/core/rbac.py`): does the caller
 hold `organization.create` org-wide (`project_id IS NULL`) in *any* org they
 already belong to. `403 permission_denied` if not — no 404 path at all.
+
+API-1/ADR-0021 adds the generic-CRUD factory's `GET`/`PATCH`/
+`DELETE /organizations/{id}` at the bottom of this module — `create` stays
+this module's own bespoke `POST /orgs` above (and `POST /auth/signup`'s
+bootstrap case), never a bare `POST /organizations` (API Document §3
+footnote *).
 """
 
 from fastapi import APIRouter, Depends
@@ -20,12 +26,13 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.crud_factory import CrudEntityConfig, make_crud_router, resolve_organization_org_id
 from app.api.deps import get_current_actor, get_db
 from app.core.rbac import has_permission_in_any_org
 from app.models.actor import AIAgent, User
 from app.models.rbac import Role, RoleAssignment
 from app.models.tenancy import Organization, OrgMembership, OrgMembershipStatus
-from app.schemas.organizations import CreateOrgRequest, OrgSummary
+from app.schemas.organizations import CreateOrgRequest, OrganizationDetail, OrgSummary, UpdateOrganizationRequest
 
 router = APIRouter()
 
@@ -135,3 +142,24 @@ async def create_org(
     await db.refresh(org)
 
     return OrgSummary(id=org.id, name=org.name, slug=org.slug)
+
+
+# --- API-1 generic-CRUD factory additions (ADR-0021) ------------------------------------------
+#
+# `Organization`'s own resolver: the row IS the tenant, `id` IS `org_id`
+# (`resolve_organization_org_id`) — no `create` (bespoke above/`auth.py`),
+# `list` isn't registered either (no FK-based "immediate parent" scope makes
+# sense for the tenant root itself; "orgs I belong to" is an identity-based
+# filter, not this factory's exact-match-scope shape).
+_ORGANIZATION_CONFIG = CrudEntityConfig(
+    model=Organization,
+    resource="organization",
+    create_schema=None,
+    update_schema=UpdateOrganizationRequest,
+    summary_schema=OrganizationDetail,
+    scope_field=None,
+    resolve_org_id=resolve_organization_org_id,
+    methods=frozenset({"get", "update", "delete"}),
+)
+
+router.include_router(make_crud_router(_ORGANIZATION_CONFIG))
