@@ -5,4 +5,6 @@
 # feature worktree can stand up a second, isolated compose project without
 # colliding with the main `testnexa` stack's ports).
 docker-compose.override.test.yml
+docker-compose.override.ds1-test.yml
+.env.ds1-test
 .mcp.json
