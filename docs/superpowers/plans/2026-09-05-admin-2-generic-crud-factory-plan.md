@@ -91,8 +91,8 @@
 4. `org_memberships.py` route-path collision check (listed above) — must verify before wiring, not assumed.
 5. `RiskItem` create with **both** `requirement_id` and `test_plan_id` set, or **neither** — the DB `CHECK` constraint catches "neither," but "both" is legal per the constraint (`OR`, not `XOR`); decide whether the factory's `create_schema` should reject "both" at the Pydantic/validation layer (422) before it reaches the DB, since the resolver's "branch on whichever is non-null" logic is ambiguous if both are set.
 
-## Open items to resolve before/during implementation (not blocking this plan's approval, but flagged)
+## Follow-up questions — resolved (confirmed with user, 2026-09-05; see ADR-0021)
 
-- Edge case 2 above (Role GET on system rows) — proposed default stated, not yet explicitly confirmed.
-- Edge case 3 (Attachment create scope) — proposed default (metadata-only, no upload) stated, not yet explicitly confirmed.
-- Edge case 5 (RiskItem both-FKs-set) — proposed default (422 reject "both") stated, not yet explicitly confirmed.
+- Edge case 2 (Role `GET` on system rows, `org_id IS NULL`): `has_permission_in_any_org` fallback, readable. Only `PATCH`/`DELETE` 404.
+- Edge case 3 (Attachment create scope): metadata-only (no multipart upload handling in this factory).
+- Edge case 5 (RiskItem both-FKs-set): rejected at the schema-validation layer, `422`.
