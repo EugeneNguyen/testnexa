@@ -133,7 +133,7 @@ One factory (`make_crud_router()`), called once per entity with a small config o
 | `TestCase` | n/a, no `create` via factory | `test_condition_id` (if set) → `Requirement.project_id`; else any `TestSuiteTestCase` link → `TestSuite.project_id`; else unresolvable → `404` |
 | `TestStep`, `Attachment` | `test_case_id` | delegates to `TestCase`'s resolver |
 | `Defect` | n/a, no `create` via factory | `TestExecution.test_cycle_id` → `TestCycle.test_plan_id` → `TestPlan.project_id` → `Project.org_id` |
-| `TestExecution` | `test_cycle_id` | `TestCycle.project_id` → `Project.org_id` |
+| `TestExecution` | `test_cycle_id` | `TestCycle.test_plan_id` → `TestPlan.project_id` → `Project.org_id` (2-hop — corrected from this table's first draft during implementation; `TestCycle` has no direct `project_id`/`org_id` column, same shape `Defect`'s own resolver already used) |
 | `TestLog` | n/a, no `create`/`update`/`delete` via factory (immutable) | delegates one further hop through `TestExecution`'s own resolver |
 | `RequirementTestCaseLink`, `RequirementTestConditionLink` | n/a, list/get only | `Requirement.project_id` → `Project.org_id` |
 | `TestConditionTestCaseLink` | n/a, list/get only | `TestCondition.requirement_id` → `Requirement.project_id` → `Project.org_id` |
