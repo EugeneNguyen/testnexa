@@ -2,13 +2,15 @@
 
 **Date:** 2026-09-03
 **Owner:** xuanbinh91@gmail.com (CTO)
-**Sources:** [07 ERD](../product-discovery/07-erd-draft.md), [Scaffold design spec](../superpowers/specs/2026-09-03-project-scaffold-design.md), [ADR-0005](../adr/0005-traceability-link-dedicated-join-tables.md), [ADR-0006](../adr/0006-test-condition-optional.md), [ADR-0007](../adr/0007-real-multi-tenancy.md), [ADR-0008](../adr/0008-uuid-primary-keys.md), [ADR-0011](../adr/0011-login-rate-limiting.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md), [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md), [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md)
+**Sources:** [07 ERD](../product-discovery/07-erd-draft.md), [Scaffold design spec](../superpowers/specs/2026-09-03-project-scaffold-design.md), [ADR-0005](../adr/0005-traceability-link-dedicated-join-tables.md), [ADR-0006](../adr/0006-test-condition-optional.md), [ADR-0007](../adr/0007-real-multi-tenancy.md), [ADR-0008](../adr/0008-uuid-primary-keys.md), [ADR-0011](../adr/0011-login-rate-limiting.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md), [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md), [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md), [ADR-0022](../adr/0022-generic-crud-router-factory.md)
 
 This document is the implementation-level schema, refined from the [07 ERD](../product-discovery/07-erd-draft.md) draft per the ADRs above. No code — this is the reference for the Alembic migration that will be written when implementation is authorized.
 
 **SHELL-1** ([ADR-0018](../adr/0018-admin-shell-sidebar-layout.md), FR-SHELL-1) — reviewed, no schema impact. The admin shell (sidebar + navbar) is frontend-only: no new table, column, or index. Noted here explicitly so the gap isn't mistaken for an oversight.
 
 **SHELL-2/3/4** ([ADR-0019](../adr/0019-admin-shell-full-template-parity.md), FR-SHELL-2/3/4) — reviewed, no schema impact. Breadcrumb/footer are frontend-only; dashboard stat widgets read existing `Project`/`OrgMembership` rows via already-built generic-CRUD list queries (no new table/column); dark/light mode preference is `localStorage`-only (NFR-26) — deliberately not a new `User`/`Actor` column, since it's presentation state, not account data worth persisting server-side in this scaffold.
+
+**ADMIN-2** ([ADR-0022](../adr/0022-generic-crud-router-factory.md), FR-ADMIN-2) — reviewed, no schema impact: the generic CRUD router factory adds no table/column/index, only application-layer routing and permission-check logic over tables already defined below. Annotated inline where a table's existing shape drives factory behavior: `Role.org_id`'s nullability (§3.3), `TestCase.test_condition_id`'s nullability (§3.6), `RiskItem`'s branching FK pair (§3.11), `Attachment`'s create scope (§3.11).
 
 ---
 
@@ -109,6 +111,8 @@ Composite index: `(email, client_ip, attempted_at)` — the throttle query is "c
 | name | varchar | not null |
 | is_system_role | boolean | not null, default false |
 | created_at, updated_at | timestamptz | not null |
+
+**Generic CRUD factory posture** ([ADR-0022](../adr/0022-generic-crud-router-factory.md)): `org_id` is `Role`'s own direct scope column. When `org_id IS NULL` (a system-role template), `GET /roles/{id}` falls back to `has_permission_in_any_org` (readable — needed for role-assignment UI to list the catalog), but `PATCH`/`DELETE /roles/{id}` return `404` — a client can never mutate or delete a system-role template via this route. `POST /roles` always requires a non-null `org_id` in the body.
 
 Partial unique index: `name` **WHERE `org_id IS NULL`** — prevents duplicate system-role templates (a plain `UNIQUE(org_id, name)` wouldn't catch this, since standard SQL treats `NULL <> NULL`, so two `(NULL, 'org_admin')` rows would not collide under a composite constraint). Org-scoped custom roles (`org_id` non-null) are unaffected by this index — nothing stops two different orgs each naming a custom role "QA Lead".
 
@@ -278,6 +282,8 @@ No uniqueness constraint on `version_label` — AC doesn't require it, and unlik
 | created_at, updated_at | timestamptz | not null |
 
 Unique: `(test_case_id, sequence)`.
+
+**Generic CRUD factory posture on `TestCase`** ([ADR-0022](../adr/0022-generic-crud-router-factory.md)): no `POST /test-cases` via the factory — creation stays bespoke (API Document §4, atomic create+link, not yet built). `GET`/`PATCH`/`DELETE /test-cases/{id}` resolve `org_id` by walking `test_condition_id` → `TestCondition.requirement_id` → `Requirement.project_id` when set; if `test_condition_id IS NULL` (ADR-0006), the resolver falls back to any linked `TestSuiteTestCase` → `TestSuite.project_id`; a row satisfying neither (orphaned — schema-legal, but no create path in this codebase produces it) resolves to `404`, same as a genuinely missing row. `TestStep`/`Attachment` (both scoped by `test_case_id`) delegate to this same resolver.
 
 **TestSuite**
 | Column | Type | Constraints |
@@ -464,7 +470,7 @@ Unique: `(test_case_id, test_design_technique_id)`.
 | mitigation | text | nullable |
 | created_at, updated_at | timestamptz | not null |
 
-Check constraint: `requirement_id IS NOT NULL OR test_plan_id IS NOT NULL`.
+Check constraint: `requirement_id IS NOT NULL OR test_plan_id IS NOT NULL` — `OR`, not `XOR`; both non-null is schema-legal. **Generic CRUD factory posture** ([ADR-0022](../adr/0022-generic-crud-router-factory.md)): `POST /risk-items` rejects both-set at the Pydantic validation layer (`422`) — exactly one, never both, since a resolver has no defined precedence rule between them. `resolve_org_id` branches on whichever one is non-null, one hop to `Requirement.project_id` or `TestPlan.project_id`.
 
 **Attachment**
 | Column | Type | Constraints |
@@ -476,7 +482,7 @@ Check constraint: `requirement_id IS NOT NULL OR test_plan_id IS NOT NULL`.
 | size_bytes | bigint | not null |
 | created_at, updated_at | timestamptz | not null |
 
-Storage backend (local filesystem vs. S3-compatible) is an application-config concern (`ATTACHMENT_STORAGE` env var), not a schema concern — `url_or_path` is opaque to the DB either way.
+Storage backend (local filesystem vs. S3-compatible) is an application-config concern (`ATTACHMENT_STORAGE` env var), not a schema concern — `url_or_path` is opaque to the DB either way. **Generic CRUD factory posture** ([ADR-0022](../adr/0022-generic-crud-router-factory.md)): `POST /attachments` via the factory is metadata-only — the request body supplies `url_or_path`/`mime_type`/`size_bytes` directly, already-uploaded; the factory adds no multipart file-upload handling, that mechanic is GOV-3's own separate, not-yet-built concern.
 
 ## 4. Indexing summary
 

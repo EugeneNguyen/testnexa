@@ -123,17 +123,18 @@ function widgetValue(isLoading: boolean, isError: boolean, total: number | undef
 /**
  * FR-SHELL-3 Project-count widget. Its own `useQuery` (not a shared list
  * hook — see this file's own docstring for why) against
- * `lib/api/dashboard.ts`'s `getProjectsTotal`.
+ * `lib/api/dashboard.ts`'s `getProjectsTotal`, scoped to the current
+ * `orgId` (ADMIN-2/ADR-0022: `Project`'s factory-served list route
+ * requires `org_id` explicitly, same as `ActiveMemberCountWidget` already
+ * does for `org-memberships`).
  */
-function ProjectCountWidget() {
+function ProjectCountWidget({ orgId }: { orgId: string }) {
   const { data, isLoading, isError } = useQuery({
-    queryKey: ["dashboard", "projects-total"],
-    queryFn: getProjectsTotal,
-    // A 404 (today's reality until ADMIN-2 ships, see `lib/api/dashboard.ts`)
-    // won't start succeeding on retry — TanStack Query's default `retry: 3`
-    // would otherwise hold the widget in its loading state for ~7s
-    // (exponential backoff) before surfacing the error, discovered live
-    // against a real backend, not just in a unit test's synchronous mock.
+    queryKey: ["dashboard", "projects-total", orgId],
+    queryFn: () => getProjectsTotal(orgId),
+    // A backend error won't start succeeding on retry — TanStack Query's
+    // default `retry: 3` would otherwise hold the widget in its loading
+    // state for ~7s (exponential backoff) before surfacing the error.
     retry: false,
   });
 
@@ -271,7 +272,7 @@ function OrgHome() {
           <CCol md={10} lg={8}>
             <CRow>
               <CCol sm={6}>
-                <ProjectCountWidget />
+                <ProjectCountWidget orgId={orgId} />
               </CCol>
               <CCol sm={6}>
                 <ActiveMemberCountWidget orgId={orgId} />

@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-03
 **Owner:** xuanbinh91@gmail.com (CTO)
-**Sources:** [Scaffold design spec](../superpowers/specs/2026-09-03-project-scaffold-design.md), [Database Document](../database/2026-09-03-database-design.md), [Requirements Document](../requirements/2026-09-03-project-scaffold-requirements.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md) (refresh rotation policy), [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md) (AI agent credential mechanics), [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md) (organization bootstrap & creation flow), [ADR-0017](../adr/0017-project-creation-flow.md) (project creation flow), [ADR-0021](../adr/0021-role-assignment-creation-flow.md) (role assignment creation flow)
+**Sources:** [Scaffold design spec](../superpowers/specs/2026-09-03-project-scaffold-design.md), [Database Document](../database/2026-09-03-database-design.md), [Requirements Document](../requirements/2026-09-03-project-scaffold-requirements.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md) (refresh rotation policy), [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md) (AI agent credential mechanics), [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md) (organization bootstrap & creation flow), [ADR-0017](../adr/0017-project-creation-flow.md) (project creation flow), [ADR-0021](../adr/0021-role-assignment-creation-flow.md) (role assignment creation flow), [ADR-0022](../adr/0022-generic-crud-router-factory.md) (generic CRUD router factory)
 
 REST over HTTPS, JSON bodies, base path `/api/v1`. FastAPI auto-generates the OpenAPI schema from the implementation — this document is the design-level contract new routes must match, not a substitute for the generated spec once code exists.
 
@@ -17,14 +17,14 @@ REST over HTTPS, JSON bodies, base path `/api/v1`. FastAPI auto-generates the Op
 - **Base path:** `/api/v1`.
 - **Auth header:** `Authorization: Bearer <access_token>` on every route except `POST /auth/login` and `POST /auth/refresh`.
 - **Pagination:** offset-based, `?page=1&page_size=25` (default/max page_size = 25 per NFR-6). List responses shape: `{items: [...], total: int, page: int, page_size: int}`.
-- **Filtering:** exact-match query params on indexed/enum/FK fields only for v1 (e.g. `?status=draft&project_id=<uuid>`), no free-text `contains` operator in this scaffold.
+- **Filtering:** exact-match query params on indexed/enum/FK fields (e.g. `?status=draft&project_id=<uuid>`), plus opt-in free-text search — `?q=<term>` — for entities with a configured `search_fields` set ([ADR-0022](../adr/0022-generic-crud-router-factory.md)), compiled to `OR`-joined `ILIKE '%term%'` across those columns; an entity with no `search_fields` configured silently ignores `?q=` rather than erroring. This revises the original "no free-text operator" line — `?q=` is that operator, scoped per-entity, not blanket.
 - **Sorting:** `?sort=<field>&order=asc|desc` on the routes that document it explicitly (first instance: `GET /projects/{project_id}/releases`, `target_date` — [ADR-0019](../adr/0019-release-creation-flow.md)); not a blanket convention across every list route in this scaffold. `NULL` field values sort last regardless of `order` — pinned explicitly, not left to the underlying query engine's per-direction default.
 - **Error shape** (NFR-8), on every non-2xx response:
   ```
   {"code": "string", "message": "human-readable string", "field_errors": {"field_name": ["msg"]} | null}
   ```
-- **Status codes:** `401` = unauthenticated (missing/expired/invalid token, or bad login credentials); `403` = authenticated-or-would-be-authenticated but permission-denied or blocked for a non-credentials reason (includes `POST /auth/login` with valid credentials but zero active org memberships — see §2); `404` = not found **or** cross-tenant (NFR-1 — never distinguishes the two); `422` = validation error (`field_errors` populated); `429` = rate-limited (currently only `POST /auth/login`'s throttle, ADR-0011/NFR-11).
-- **404-vs-403 on org-scoped routes** (NFR-19, [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md)): the caller having zero `OrgMembership` in the path's `org_id` (including a nonexistent `org_id`) is a 404, same NFR-1 existence-hiding rule as a resource fetch; membership present but the route's `require_permission` check fails is a 403. First established for `/orgs/{org_id}/agents*` (§2), applies to every org-scoped route after it.
+- **Status codes:** `401` = unauthenticated (missing/expired/invalid token, or bad login credentials); `403` = authenticated-or-would-be-authenticated but permission-denied or blocked for a non-credentials reason (includes `POST /auth/login` with valid credentials but zero active org memberships — see §2); `404` = not found, cross-tenant, **or unresolvable-tenant** (NFR-1/NFR-31 — a tenant-owned row whose FK chain to `org_id` can't be walked, or a `Role` template with `org_id IS NULL`, on `PATCH`/`DELETE`; never distinguished from a genuinely missing row); `409` = RESTRICT-blocked delete (generic CRUD factory, NFR-29, [ADR-0022](../adr/0022-generic-crud-router-factory.md)) **or** signup-already-bootstrapped (§2) — two distinct meanings, each scoped to its own route family, never conflated; `422` = validation error (`field_errors` populated); `429` = rate-limited (currently only `POST /auth/login`'s throttle, ADR-0011/NFR-11).
+- **404-vs-403 on org-scoped routes** (NFR-19, [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md)): the caller having zero `OrgMembership` in the path's `org_id` (including a nonexistent `org_id`) is a 404, same NFR-1 existence-hiding rule as a resource fetch; membership present but the route's `require_permission` check fails is a 403. First established for `/orgs/{org_id}/agents*` (§2), applies to every org-scoped route after it. §3's generic CRUD item routes (flat, no `org_id` path segment) apply the same rule row-resolved instead of path-resolved — see §3.
 - **Permission codes:** `<resource>.<action>`. Resource = snake_case entity name. Default actions `create/read/update/delete` for writable entities; `read`-only for `TestLog` and the 4 traceability link tables (system-appended, no direct write API). Special verbs beyond CRUD: `test_plan.approve`, `requirement.export_rtm`. The full code list (~100 codes across 29 resources, plus AUTH-4's own `ai_agent.create`/`.update` pair seeded ahead of RBAC-4) is seeded by Alembic data migrations against explicit, hand-authored resource lists — not generated from the model registry at app startup (that mechanical-generation idea is deferred; ADMIN-2 extends this same seeded catalog for any entity added later rather than regenerating it). See [Database Document](../database/2026-09-03-database-design.md) §3.3 for the full resource list and the per-role bundle table.
 
 ## 2. Auth routes (bespoke)
@@ -99,29 +99,49 @@ REST over HTTPS, JSON bodies, base path `/api/v1`. FastAPI auto-generates the Op
 - Clears the `refresh_token` cookie on the response (same `httponly`/`samesite`/`secure` attributes it was set with).
 - The access token itself is **not** server-side-invalidated — it remains usable until its own `JWT_ACCESS_TTL_MINUTES` (15) TTL lapses naturally (AUTH-3 AC2). The frontend clears its copy from `lib/auth/tokenStore` immediately and unconditionally on logout, independent of whether this call succeeds (ADR-0014) — the client no longer *presenting* the token is what protects a shared/public machine, since the server can't force it to expire early without a deny-list this scaffold doesn't have.
 
-## 3. Generic CRUD routes (router factory, applied to ~24 of 36 tables)
+## 3. Generic CRUD routes (router factory, [ADR-0022](../adr/0022-generic-crud-router-factory.md))
 
-One factory, parametrized per entity+schema, producing 5 routes. Example shown for `requirement`; the same shape applies to every entity listed in the [Database Document](../database/2026-09-03-database-design.md) except the bespoke ones in §4 and the read-only ones in §5.
+One factory (`make_crud_router()`), called once per entity with a small config object (`resource` name, schemas, `scope_field`, `resolve_org_id`, `filter_fields`, `search_fields`) — composition, not a base-class hierarchy. Example shown for `requirement`; the same shape applies to every entity in the table below except the bespoke ones in §4 and the read-only ones in §5.
 
 | Method | Path | Permission | Notes |
 |---|---|---|---|
-| GET | `/requirements` | `requirement.read` | paginated, filterable |
-| GET | `/requirements/{id}` | `requirement.read` | 404 if cross-tenant |
-| POST | `/requirements` | `requirement.create` | 422 on validation error |
+| GET | `/requirements?project_id=<uuid>` | `requirement.read` | paginated, filterable, `?q=` search; `project_id` (the scope field) required |
+| GET | `/requirements/{id}` | `requirement.read` | row-resolved (no `org_id`/`project_id` path segment); 404 if cross-tenant, `has_permission` called directly, not `require_permission` |
+| POST | `/requirements` | `requirement.create` | `project_id` required in body; 422 on validation error |
 | PATCH | `/requirements/{id}` | `requirement.update` | partial update |
-| DELETE | `/requirements/{id}` | `requirement.delete` | hard delete for lookups; RESTRICT-blocked (409) if referenced, for core assets |
+| DELETE | `/requirements/{id}` | `requirement.delete` | hard delete for lookups; RESTRICT-blocked → `409`, distinct from `422` |
 
-Entities served by the generic factory: `Organization`\*, `Project`\*\*\*, `Requirement`, `TestCondition`, `TestCase`, `TestStep`, `TestSuite`, `TestPlan`, `EntryExitCriteria`, `TestCycle`, `Environment`, `Defect`, `RiskItem`, `Attachment`, `Role`, `Permission`\*\*, `TestDesignTechnique`, `TestLevel`, `TestType`, `OrgMembership`, `RoleAssignment`\*\*\*\*\*.
+**Item routes are flat and row-resolved**, not path-scoped: `GET`/`PATCH`/`DELETE /{resource}/{id}` carry no `org_id`/`project_id` path segment, so they fetch the row first, resolve its `org_id` via the entity's own resolver chain, then call `has_permission` directly — `require_permission`'s path-param read doesn't fit this shape (ADR-0022). **List/create routes require the entity's immediate scope FK explicitly** — a query param on `list` (e.g. `?project_id=`), a body field on `create` — never inferred; missing it on a scoped entity → `422`.
+
+**Per-entity scope field and resolver depth:**
+
+| Entities | List/create scope param | `org_id` resolved via |
+|---|---|---|
+| `Requirement`, `TestSuite`, `Environment`, `TestPlan` | `project_id` | direct: `Project.org_id` |
+| `TestCondition` | `requirement_id` | `Requirement.project_id` → `Project.org_id` |
+| `EntryExitCriteria`, `TestCycle` | `test_plan_id` | `TestPlan.project_id` → `Project.org_id` |
+| `RiskItem` | `requirement_id` **or** `test_plan_id` (exactly one — both set → `422`) | whichever is set, one hop to `project_id` |
+| `TestCase` | n/a, no `create` via factory | `test_condition_id` (if set) → `Requirement.project_id`; else any `TestSuiteTestCase` link → `TestSuite.project_id`; else unresolvable → `404` |
+| `TestStep`, `Attachment` | `test_case_id` | delegates to `TestCase`'s resolver |
+| `Defect` | n/a, no `create` via factory | `TestExecution.test_cycle_id` → `TestCycle.test_plan_id` → `TestPlan.project_id` → `Project.org_id` |
+| `RoleAssignment` | n/a, no `create`/`list` via factory | direct `org_id` column |
+| `OrgMembership`, `Role` | `org_id` | direct column (`Role`: `org_id IS NULL` → `404` on `PATCH`/`DELETE`, `has_permission_in_any_org` fallback on `GET`) |
+| `Organization`, `Project` | n/a — see footnotes | `id` is `org_id` / direct `org_id` column |
+| `TestDesignTechnique`, `TestLevel`, `TestType`, `Permission` | none — global catalog | none; gated via `has_permission_in_any_org` instead of the `OrgMembership` 404-vs-403 boundary |
+
+Entities served by the generic factory (20 total): `Organization`\*, `Project`\*\*\*, `Requirement`, `TestCondition`, `TestCase`\*\*\*\*\*, `TestStep`, `TestSuite`, `TestPlan`, `EntryExitCriteria`, `TestCycle`\*\*\*\*\*\*, `Environment`, `Defect`\*\*\*\*\*, `RiskItem`, `Attachment`\*\*\*\*\*\*\*, `Role`\*\*\*\*\*\*\*\*, `Permission`\*\*, `TestDesignTechnique`, `TestLevel`, `TestType`, `OrgMembership`, `RoleAssignment`\*\*\*\*\*\*\*\*\*.
 
 \* `Organization` create is only reachable via `POST /auth/signup` or `POST /orgs` (§2, RBAC-1/[ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md)), never a bare `POST /organizations` — the generic factory still serves `GET`/`PATCH`/`DELETE /organizations/{id}` for this entity, only `create` is bespoke.
 \*\* `Permission` is read-only via the generic factory — the catalog is seeded, not user-editable, so only `GET` routes are registered for it.
-\*\*\* `Project` create is bespoke and org-path-scoped (`POST /orgs/{org_id}/projects`, §2, PROJ-1/[ADR-0017](../adr/0017-project-creation-flow.md)), same posture as `Organization`\*. Unlike `Organization`, `GET`/`PATCH /projects/{id}` are *also* already built bespoke (row-resolved `org_id`, no path segment) rather than deferred to the factory — their contract already matches what the eventual factory item-route would produce, so they're expected to be absorbed unchanged rather than rebuilt when §3 lands. `DELETE /projects/{id}` remains factory-deferred (no story has asked for Project deletion yet).
+\*\*\* `Project` create/read/update stay the existing bespoke routes (§2, PROJ-1/[ADR-0017](../adr/0017-project-creation-flow.md)) — the factory only registers the one method `Project` is still missing, `DELETE /projects/{id}` (no story has asked for Project deletion until now; ADR-0022 doesn't change this, it just fills the gap).
+\*\*\*\* *(reserved — see `Release` below)*
+\*\*\*\*\* `TestCase` and `Defect` register only `GET`/`PATCH`/`DELETE` via the factory — `create` stays reserved for each entity's own future bespoke atomic-create route (§4: `POST /requirements/{id}/test-cases` etc. for `TestCase`; `POST /executions/{id}/defects` for `Defect`), neither built yet. `TestCase`'s orphaned-row edge case (unresolvable `org_id`) is documented in the resolver table above and the [Database Document](../database/2026-09-03-database-design.md) §3.6.
+\*\*\*\*\*\* `TestCycle` registers only `GET`/`PATCH`/`DELETE` — its own `create` is FR-PLAN-3's scope, not built by this pass (unchanged from the original factory listing).
+\*\*\*\*\*\*\* `Attachment`'s factory `POST` is metadata-only (`url_or_path`/`mime_type`/`size_bytes` supplied directly) — no multipart file-upload handling in this factory; actual upload/storage-backend wiring is GOV-3's own separate concern.
+\*\*\*\*\*\*\*\* `Role`'s `org_id IS NULL` (system-role template) rows: readable (`GET`, `has_permission_in_any_org` fallback), but `PATCH`/`DELETE` → `404`; `POST /roles` always requires a non-null `org_id` in the body.
+\*\*\*\*\*\*\*\*\* `RoleAssignment` create and list stay bespoke and org-path-scoped (`POST`/`GET /orgs/{org_id}/role-assignments`, §2, RBAC-3/[ADR-0021](../adr/0021-role-assignment-creation-flow.md)), same posture as `Project`\*\*\*. **Merge note (RBAC-3 x ADMIN-2):** RBAC-3's own footnote originally called `PATCH`/`DELETE /role-assignments/{id}` "factory-deferred, no story has asked yet" — ADR-0022's factory is that story: it now registers `GET`/`PATCH`/`DELETE /role-assignments/{id}`, deliberately still no `create`/`list` (RBAC-3's bespoke validation — membership gate, role/project org-scope checks — isn't replicated generically).
 
-`Release`\*\*\*\* is fully bespoke (§2, PROJ-2/[ADR-0019](../adr/0019-release-creation-flow.md)) and removed from this factory-served list — not deferred like `Project`'s `DELETE`, since no `PATCH`/`DELETE /releases/{id}` exists or is planned in this scaffold's current scope (no AC asks for Release edit/delete). `TestCycle` remains listed above only for its eventual factory-served `GET`/`PATCH`/`DELETE`; its own `create` is FR-PLAN-3's scope, not built by this pass — `GET /releases/{id}/test-cycles` (§2) is a read-only bespoke query against existing `TestCycle` rows, not a substitute for `TestCycle`'s own eventual factory routes.
-
-\*\*\*\* Unlike `Project`\*\*\*, none of `Release`'s four routes are expected to be "absorbed unchanged" by the eventual factory — `POST`/`GET /projects/{project_id}/releases` are project-path-scoped (the factory's documented shape has no path-nesting precedent), and `GET /releases/{id}/test-cycles`'s triple-permission gate and nested-executions shape are bespoke-only concerns a generic item-route wouldn't produce.
-
-\*\*\*\*\* `RoleAssignment` create and list are bespoke and org-path-scoped (`POST`/`GET /orgs/{org_id}/role-assignments`, §2, RBAC-3/[ADR-0021](../adr/0021-role-assignment-creation-flow.md)), same posture as `Project`\*\*\*. `PATCH`/`DELETE /role-assignments/{id}` remain factory-deferred — no story has asked for updating or revoking a grant yet (revoke is explicitly out of RBAC-3's scope).
+`Release` is fully bespoke (§2, PROJ-2/[ADR-0019](../adr/0019-release-creation-flow.md)) and excluded from this factory-served list entirely — unlike `Project`'s single-missing-method gap, none of `Release`'s four routes match the factory's shape: `POST`/`GET /projects/{project_id}/releases` are project-path-scoped (the factory's documented shape has no path-nesting precedent), and `GET /releases/{id}/test-cycles`'s triple-permission gate and nested-executions shape are bespoke-only concerns a generic item-route wouldn't produce.
 
 ## 4. Bespoke routes
 
@@ -211,4 +231,15 @@ Distinct from the `422` slug-uniqueness rejection either creation route also ret
 **422, TestCase create with bad `test_level_id`:**
 ```
 {"code": "validation_error", "message": "Request failed validation.", "field_errors": {"test_level_id": ["must reference an existing TestLevel"]}}
+```
+
+**409, generic CRUD `DELETE` blocked by a RESTRICT-constrained FK ([ADR-0022](../adr/0022-generic-crud-router-factory.md)):**
+```
+{"code": "restrict_blocked", "message": "This item cannot be deleted while other records still reference it.", "field_errors": null}
+```
+Distinct from `422` (a malformed/colliding request) and from `409 signup_closed` (§2, a different route family) — the only two other meanings `409` carries in this API.
+
+**422, RiskItem create with both `requirement_id` and `test_plan_id` set ([ADR-0022](../adr/0022-generic-crud-router-factory.md)):**
+```
+{"code": "validation_error", "message": "Request failed validation.", "field_errors": {"requirement_id": ["exactly one of requirement_id or test_plan_id must be set, not both"]}}
 ```

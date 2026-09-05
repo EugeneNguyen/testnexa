@@ -94,6 +94,55 @@ class PatchMembershipRequest(BaseModel):
     status: MembershipStatus
 
 
+# --- API-1 generic-CRUD factory additions (ADR-0022) --------------------------------------------
+#
+# `OrgMembershipSummary`/`OrgMembershipListResponse`/`UpdateOrgMembershipRequest`
+# back the factory's `GET /org-memberships` (list), `GET`/`PATCH`/
+# `DELETE /org-memberships/{id}` routes — a distinct, additive path prefix
+# from this module's existing bespoke `/orgs/{org_id}/members*` routes above
+# (verified no collision before wiring, per the plan's flagged edge case).
+#
+# `OrgMembershipSummary` is deliberately NOT `MemberSummary`: `MemberSummary`
+# joins in `User.email` (a bespoke-route convenience with no equivalent in
+# the factory's generic, attribute-only `_to_summary` mapping,
+# `app/api/crud_factory.py`) which the SHELL-3 dashboard-widget caller this
+# story unblocks doesn't need anyway (it only reads the list envelope's
+# `total`, per `frontend/src/lib/api/dashboard.ts`).
+class OrgMembershipSummary(BaseModel):
+    id: UUID
+    org_id: UUID
+    user_id: UUID
+    status: MembershipStatus
+    joined_at: datetime | None = None
+
+
+class OrgMembershipListResponse(BaseModel):
+    items: list[OrgMembershipSummary]
+    total: int
+    page: int
+    page_size: int
+
+
+class UpdateOrgMembershipRequest(BaseModel):
+    """Body of the factory's `PATCH /org-memberships/{id}`.
+
+    **Known overlap, flagged explicitly (see this story's final report):**
+    unlike `PatchMembershipRequest` above (the bespoke
+    `/orgs/{org_id}/members/{membership_id}` route), this generic route has
+    no equivalent to `_is_legal_patch_transition`'s guard — any caller
+    holding `org_membership.update` can set `status` to any of the 3 values
+    directly through this route, including jumping straight to `active`
+    without ever going through the invite/accept flow. The plan explicitly
+    asks for this route to be added (`docs/superpowers/plans/
+    2026-09-05-admin-2-generic-crud-factory-plan.md`); the factory has no
+    per-entity business-rule hook to reuse the bespoke route's transition
+    guard, so this is implemented as asked rather than silently dropped, with
+    the gap named here for a follow-up decision.
+    """
+
+    status: MembershipStatus | None = None
+
+
 __all__ = [
     "AcceptInviteRequest",
     "InviteMemberRequest",
@@ -101,5 +150,8 @@ __all__ = [
     "MemberListResponse",
     "MemberSummary",
     "MembershipStatus",
+    "OrgMembershipListResponse",
+    "OrgMembershipSummary",
     "PatchMembershipRequest",
+    "UpdateOrgMembershipRequest",
 ]

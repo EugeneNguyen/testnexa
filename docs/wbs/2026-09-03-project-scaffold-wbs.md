@@ -48,9 +48,9 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 | 3.0b | `GET`/`PATCH /projects/{id}` — org resolved from the fetched row (no `org_id` path segment), anticipating the generic factory's eventual item-route shape | 3.0a | S | FR-PROJ-1, [ADR-0017](../adr/0017-project-creation-flow.md) |
 | 3.0c | `app/schemas/releases.py` + `app/api/routes/releases.py` — `POST`/`GET /projects/{project_id}/releases` (bespoke, project-path-scoped, `has_permission`-called-directly + 404-vs-403 boundary, same posture as 3.0b); list sorted by `target_date`, `NULLS LAST` pinned both directions | 3.0b, 2.9 | M | FR-PROJ-2, NFR-25, [ADR-0019](../adr/0019-release-creation-flow.md) |
 | 3.0d | `GET /releases/{id}` + `GET /releases/{id}/test-cycles` — row-resolved, no path `project_id`; the cycles query nests each cycle's `TestExecution`s, gated on `release.read` AND `test_cycle.read` AND `test_execution.read` | 3.0c | M | FR-PROJ-2, NFR-26, [ADR-0019](../adr/0019-release-creation-flow.md) |
-| 3.1 | Pydantic v2 schemas — 1:1 mirror of `app/models/` | 1.1 | M | [API Document](../api/2026-09-03-api-design.md) |
-| 3.2 | CRUD router factory (list/get/create/update/delete, pagination, exact-match filters, `require_permission` baked in) | 2.4, 3.1 | M | FR-ADMIN-2, NFR-6 |
-| 3.3 | Apply factory to all non-bespoke entities (~18 of 28, `Project`/`Release` excluded — already bespoke per 3.0a–3.0d) | 3.2 | M | FR-ADMIN-2 |
+| 3.1 | Pydantic v2 schemas — 1:1 mirror of `app/models/`, one file per model cluster (`assets`, `planning`, `taxonomy`, `governance`, `rbac`) | 1.1 | M | [API Document](../api/2026-09-03-api-design.md) |
+| 3.2 | `app/api/crud_factory.py` — `CrudEntityConfig` dataclass + `chain_resolver()` (per-entity `org_id`-resolution, direct/one-hop/branching/multi-hop) + `make_crud_router()` (list/get/create/update/delete, pagination, exact-match `filter_fields` + opt-in `?q=` `search_fields`, item routes gated via row-resolved `has_permission` not `require_permission`, global-catalog routes via `has_permission_in_any_org`, `DELETE`'s `IntegrityError` → `409`) | 2.4, 2.5a, 3.1 | L | FR-ADMIN-2, NFR-6, NFR-29, NFR-30, [ADR-0022](../adr/0022-generic-crud-router-factory.md) |
+| 3.3 | Apply factory to all 20 entities the API Document §3 lists, across 6 route modules (`assets`, `planning`, `taxonomy`, `governance`, `execution` (Defect only), `rbac_routes`) + extend `organizations.py`/`projects.py`/`org_memberships.py` with the factory-served methods each is still missing (`Project`: `DELETE` only; `Organization`: `GET`/`PATCH`/`DELETE`; `OrgMembership`: full 5) | 3.2 | L | FR-ADMIN-2, [ADR-0022](../adr/0022-generic-crud-router-factory.md), [ADMIN-2 plan](../superpowers/plans/2026-09-05-admin-2-generic-crud-factory-plan.md) |
 
 ## 4. Bespoke API routes
 
@@ -139,6 +139,7 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 | 11.6 | Master Test Plan | Done |
 | 11.7 | Test Design | Done |
 | 11.8 | Test Cases | Done |
+| 11.9 | ADR-0022 (generic CRUD router factory) + propagation across Requirements/WBS/Database/API/Test Plan/Test Design/Test Cases (this revision, 2026-09-05) | Done |
 
 ## Critical path
 
