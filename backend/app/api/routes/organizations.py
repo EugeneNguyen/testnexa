@@ -13,7 +13,7 @@ bespoke `has_permission_in_any_org` (`app/core/rbac.py`): does the caller
 hold `organization.create` org-wide (`project_id IS NULL`) in *any* org they
 already belong to. `403 permission_denied` if not — no 404 path at all.
 
-API-1/ADR-0021 adds the generic-CRUD factory's `GET`/`PATCH`/
+API-1/ADR-0022 adds the generic-CRUD factory's `GET`/`PATCH`/
 `DELETE /organizations/{id}` at the bottom of this module — `create` stays
 this module's own bespoke `POST /orgs` above (and `POST /auth/signup`'s
 bootstrap case), never a bare `POST /organizations` (API Document §3
@@ -144,7 +144,7 @@ async def create_org(
     return OrgSummary(id=org.id, name=org.name, slug=org.slug)
 
 
-# --- API-1 generic-CRUD factory additions (ADR-0021) ------------------------------------------
+# --- API-1 generic-CRUD factory additions (ADR-0022) ------------------------------------------
 #
 # `Organization`'s own resolver: the row IS the tenant, `id` IS `org_id`
 # (`resolve_organization_org_id`) — no `create` (bespoke above/`auth.py`),

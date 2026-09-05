@@ -1,4 +1,4 @@
-"""API-1: generic-CRUD factory routes for the planning cluster (ADR-0021).
+"""API-1: generic-CRUD factory routes for the planning cluster (ADR-0022).
 
 `TestPlan`/`EntryExitCriteria`/`Environment` get all 5 methods. `TestCycle`
 gets `GET`/`PATCH`/`DELETE` only — its own `create` is FR-PLAN-3's scope, not

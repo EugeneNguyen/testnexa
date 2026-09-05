@@ -1,4 +1,4 @@
-# ADR-0021: Generic CRUD router factory — org-resolution chains, scoped-list required filter, global-catalog fallback
+# ADR-0022: Generic CRUD router factory — org-resolution chains, scoped-list required filter, global-catalog fallback
 
 **Date:** 2026-09-05
 **Status:** Accepted

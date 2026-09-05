@@ -1,4 +1,4 @@
-"""API-1: generic-CRUD factory routes for the taxonomy cluster (ADR-0021).
+"""API-1: generic-CRUD factory routes for the taxonomy cluster (ADR-0022).
 
 `TestDesignTechnique`/`TestLevel`/`TestType` are global catalogs (no tenant
 at all) — `scope_field=None`, `is_global_catalog=True`, `resolve_org_id` a

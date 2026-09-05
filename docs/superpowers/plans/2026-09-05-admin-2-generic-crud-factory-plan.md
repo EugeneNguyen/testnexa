@@ -1,7 +1,7 @@
 # API-1: Generic CRUD Router Factory — Plan
 
 **Date:** 2026-09-05
-**Related:** [ADR-0021](../../adr/0021-generic-crud-router-factory.md) (decisions/rationale), [API Doc §3](../../api/2026-09-03-api-design.md#3-generic-crud-routes-router-factory-applied-to-24-of-36-tables), [ADR-0017](../../adr/0017-project-creation-flow.md)/[ADR-0019](../../adr/0019-release-creation-flow.md) (bespoke-route precedent this factory generalizes)
+**Related:** [ADR-0022](../../adr/0022-generic-crud-router-factory.md) (decisions/rationale), [API Doc §3](../../api/2026-09-03-api-design.md#3-generic-crud-routes-router-factory-applied-to-24-of-36-tables), [ADR-0017](../../adr/0017-project-creation-flow.md)/[ADR-0019](../../adr/0019-release-creation-flow.md) (bespoke-route precedent this factory generalizes)
 
 ## Decisions (confirmed with user, 2026-09-05)
 
@@ -9,7 +9,7 @@
 - Q2 (scope): all 20 entities in one pass, one factory.
 - Q3 (Role mutation on `org_id IS NULL` system-role rows): **404**.
 - Q4 (list filtering): exact-match by column **and** free-text search (`?q=`) across configured columns.
-- Q5 (ADR): yes — [ADR-0021](../../adr/0021-generic-crud-router-factory.md).
+- Q5 (ADR): yes — [ADR-0022](../../adr/0022-generic-crud-router-factory.md).
 
 ## What already exists (do not rebuild)
 
@@ -24,7 +24,7 @@
 ### Backend
 
 1. **`app/api/crud_factory.py`** (new) — the factory itself:
-   - `CrudEntityConfig` dataclass (see ADR-0021 for the exact field list).
+   - `CrudEntityConfig` dataclass (see ADR-0022 for the exact field list).
    - `chain_resolver(hops: list[tuple[type[Base], str]]) -> Callable` — builds a `resolve_org_id(db, row)` that walks parent FKs via `db.get`, terminating at a model with a direct `org_id` or `project_id` column (further resolving `project_id` → `Project.org_id` internally so every resolver ultimately returns an `org_id`, never a `project_id`).
    - `make_crud_router(config: CrudEntityConfig) -> APIRouter` — registers whichever of `list`/`get`/`create`/`update`/`delete` are in `config.methods`:
      - `list`: requires `?<scope_field>=` if `scope_field` is set (else `422`), applies `filter_fields`/`?q=` search, paginates, resolves org from the scope row, 404-vs-403, `has_permission(..., f"{resource}.read")`.
@@ -53,7 +53,7 @@
 
 4. **`app/main.py`** — register all new/extended routers.
 
-### Resolver map (per entity, ADR-0021's chain-resolver composition)
+### Resolver map (per entity, ADR-0022's chain-resolver composition)
 
 | Entity | `scope_field` (list/create) | `resolve_org_id` chain |
 |---|---|---|
@@ -75,7 +75,7 @@
 - `TestCase`: filter `status`, `test_level_id`, `test_type_id`; search `title`, `preconditions`, `expected_result`.
 - `Defect`: filter `severity`, `status`; search `external_ref`.
 - `RiskItem`: filter `likelihood`, `impact`.
-- Everything else: no `search_fields` initially (silently ignores `?q=`, per ADR-0021); `filter_fields` limited to obvious FK/enum columns per table, expand on demand rather than front-loading every column now.
+- Everything else: no `search_fields` initially (silently ignores `?q=`, per ADR-0022); `filter_fields` limited to obvious FK/enum columns per table, expand on demand rather than front-loading every column now.
 
 ### Tests
 
@@ -83,7 +83,7 @@
 - **Integration** (`backend/tests/integration/test_<cluster>_crud.py`, one per new route module): full CRUD happy path + 404-vs-403 boundary + `422` on bad scope/validation + `409` on RESTRICT-blocked delete, for at least one representative entity per resolver depth (direct, one-hop, branching, multi-hop, global-catalog) — not all 20 exhaustively in this pass; the factory itself is what's under test, not each entity's business rules.
 - Confirm `docs/test-cases/` coverage for whichever FR/NFR this closes (API-1 itself has no story file yet — check whether one needs writing per `CLAUDE.md`'s "every FR/NFR traces to a test case" rule before calling this done).
 
-## Edge cases (carried from ADR-0021, restated for implementation)
+## Edge cases (carried from ADR-0022, restated for implementation)
 
 1. `TestCase` orphaned row (`test_condition_id IS NULL`, no `TestSuiteTestCase` link) → `resolve_org_id` returns `None` → factory treats as global-catalog-style (`has_permission_in_any_org`)? **No** — this is wrong for a genuinely tenant-owned row with no *resolvable* tenant; correct behavior is `404` (can't prove membership, same as a missing row) — factory must distinguish "config says global" (`resolve_org_id` statically `None`) from "this particular row's chain resolved to `None`" (still tenant-owned, just unreachable) and 404 the latter, not fall back to any-org.
 2. `Role.org_id IS NULL` on `GET` (not just write) — decision needed at implementation time even though Q3 only asked about writes: leaning `has_permission_in_any_org` fallback for `GET` (system-role catalog needs to be readable for role-assignment UI) while `PATCH`/`DELETE` 404 — flag explicitly in the PR description since it's a read/write split Q3 didn't literally spell out.
@@ -91,7 +91,7 @@
 4. `org_memberships.py` route-path collision check (listed above) — must verify before wiring, not assumed.
 5. `RiskItem` create with **both** `requirement_id` and `test_plan_id` set, or **neither** — the DB `CHECK` constraint catches "neither," but "both" is legal per the constraint (`OR`, not `XOR`); decide whether the factory's `create_schema` should reject "both" at the Pydantic/validation layer (422) before it reaches the DB, since the resolver's "branch on whichever is non-null" logic is ambiguous if both are set.
 
-## Follow-up questions — resolved (confirmed with user, 2026-09-05; see ADR-0021)
+## Follow-up questions — resolved (confirmed with user, 2026-09-05; see ADR-0022)
 
 - Edge case 2 (Role `GET` on system rows, `org_id IS NULL`): `has_permission_in_any_org` fallback, readable. Only `PATCH`/`DELETE` 404.
 - Edge case 3 (Attachment create scope): metadata-only (no multipart upload handling in this factory).

@@ -16,6 +16,17 @@ create route; out of reach for this story, same posture ADR-0016/RBAC-1
 took for TC-RBAC-002 before this story made the `Project` half of it
 achievable (now covered by TC-PROJ-012 below).
 
+RBAC-3/ADR-0021 additions: TC-RBAC-008, 009, 010, 011, 035 (below the
+original PROJ-1 tests) — the real HTTP-level proof, via the now-`project_id`-
+aware `GET`/`PATCH /projects/{id}`, that an org-wide `RoleAssignment` grants
+access across every Project in the org (008), a project-scoped grant is
+confined to its own Project (009), `OrgMembership` alone confers nothing
+without a `RoleAssignment` (010), an `AIAgent` grantee resolves identically
+to a human `User` grantee (011), and — the concrete regression this story
+fixes — a Project's own creator, holding only the auto-assigned
+project-scoped `test_manager` grant, can now `GET`/`PATCH` the project they
+created (035).
+
 Each test seeds its own `User`/`Organization`/`OrgMembership`/
 `RoleAssignment` rows directly via `AsyncSessionLocal` — the same
 fixture-seeding precedent `test_organizations.py`/`test_agents.py`
@@ -34,12 +45,12 @@ import httpx
 import pytest
 from sqlalchemy import delete, select
 
-from app.core.security import create_access_token, hash_password
+from app.core.security import create_access_token, generate_api_key, hash_api_key, hash_password
 from app.db.session import AsyncSessionLocal
-from app.models.actor import Actor, User
+from app.models.actor import Actor, AIAgent, User
 from app.models.auth import AuthIdentity, AuthProvider
 from app.models.project import Project
-from app.models.rbac import Permission, Role, RoleAssignment, RolePermission
+from app.models.rbac import Permission, Role, RoleAssignment
 from app.models.tenancy import Organization, OrgMembership, OrgMembershipStatus
 
 TEST_API_BASE_URL = os.environ.get("TEST_API_BASE_URL", "http://localhost:8000")
@@ -133,6 +144,30 @@ async def _create_org_admin(session, tag: str, default_standards_profile: str | 
     return user, org
 
 
+async def _create_agent(session, *, acting_on_behalf_of_user_id, agent_name: str = "PROJ-1 Test Agent") -> tuple[AIAgent, str]:
+    """Seed an `AIAgent` row directly, returning `(row, raw_key)`.
+
+    Mirrors `test_agents.py`'s `_create_agent` — needed for TC-RBAC-011:
+    the raw key is the only credential that resolves to an `AIAgent` via
+    `get_current_actor` (a JWT `sub`, per that dependency's own logic, only
+    ever resolves against the `User` table).
+    """
+    raw_key, key_prefix = generate_api_key()
+    agent = AIAgent(
+        agent_name=agent_name,
+        model_or_provider="test-provider/test-model",
+        acting_on_behalf_of_user_id=acting_on_behalf_of_user_id,
+        key_hash=hash_api_key(raw_key),
+        key_prefix=key_prefix,
+        issued_at=datetime.now(UTC),
+        revoked_at=None,
+        last_used_at=None,
+    )
+    session.add(agent)
+    await session.flush()
+    return agent, raw_key
+
+
 async def _create_member_with_role(session, tag: str, org: Organization, role_name: str) -> User:
     """Seed a human User with an active OrgMembership in `org` and the named
     seeded system Role assigned org-wide (no `project.create`/`.read`/
@@ -155,6 +190,7 @@ async def _cleanup(
     *,
     emails: list[str] | None = None,
     user_ids: list | None = None,
+    agent_ids: list | None = None,
     org_ids: list | None = None,
     role_ids: list | None = None,
     project_ids: list | None = None,
@@ -163,13 +199,15 @@ async def _cleanup(
 
     Mirrors `test_organizations.py`'s `_cleanup` verbatim (including its
     project_ids param, previously unused there since no create-Project route
-    existed yet — this file is the first to actually populate it). Never
-    deletes RBAC-4's seeded catalog `Role`/`Permission` rows (e.g.
-    `org_admin`, `test_manager`, `tester`) — only `Role` rows this file
-    created itself via `role_ids` (none, currently; kept for symmetry).
+    existed yet — this file is the first to actually populate it), plus
+    `agent_ids` (RBAC-3/TC-RBAC-011, mirroring `test_agents.py`'s own
+    `_cleanup`). Never deletes RBAC-4's seeded catalog `Role`/`Permission`
+    rows (e.g. `org_admin`, `test_manager`, `tester`) — only `Role` rows this
+    file created itself via `role_ids` (none, currently; kept for symmetry).
     """
     emails = emails or []
     user_ids = list(user_ids or [])
+    agent_ids = agent_ids or []
     org_ids = org_ids or []
     role_ids = role_ids or []
     project_ids = project_ids or []
@@ -179,8 +217,11 @@ async def _cleanup(
             result = await session.execute(select(User.actor_id).where(User.email.in_(emails)))
             user_ids.extend(row[0] for row in result.all() if row[0] not in user_ids)
 
-        if user_ids:
-            await session.execute(delete(RoleAssignment).where(RoleAssignment.actor_id.in_(user_ids)))
+        actor_ids_for_role_assignment_cleanup = [*user_ids, *agent_ids]
+        if actor_ids_for_role_assignment_cleanup:
+            await session.execute(
+                delete(RoleAssignment).where(RoleAssignment.actor_id.in_(actor_ids_for_role_assignment_cleanup))
+            )
         if org_ids:
             await session.execute(delete(RoleAssignment).where(RoleAssignment.org_id.in_(org_ids)))
         if role_ids:
@@ -188,6 +229,9 @@ async def _cleanup(
             await session.execute(delete(Role).where(Role.id.in_(role_ids)))
         if project_ids:
             await session.execute(delete(Project).where(Project.id.in_(project_ids)))
+        if agent_ids:
+            await session.execute(delete(AIAgent).where(AIAgent.actor_id.in_(agent_ids)))
+            await session.execute(delete(Actor).where(Actor.id.in_(agent_ids)))
         if user_ids:
             await session.execute(delete(OrgMembership).where(OrgMembership.user_id.in_(user_ids)))
             await session.execute(delete(AuthIdentity).where(AuthIdentity.user_id.in_(user_ids)))
@@ -671,5 +715,344 @@ async def test_get_and_patch_403_for_member_without_permission() -> None:  # TC-
             )
             assert patch_response.status_code == 403
             assert patch_response.json()["code"] == "permission_denied"
+    finally:
+        await _cleanup(user_ids=user_ids, org_ids=org_ids, project_ids=project_ids)
+
+
+# --- TC-RBAC-008: org-wide role grant works across every Project in the org ------------------
+
+
+@pytest.mark.asyncio
+async def test_org_wide_grant_works_across_multiple_projects() -> None:  # TC-RBAC-008
+    user_ids: list = []
+    org_ids: list = []
+    project_ids: list = []
+    try:
+        async with AsyncSessionLocal() as session:
+            admin, org = await _create_org_admin(session, "tc008rbac")
+            # Grantee: org-wide org_admin RoleAssignment ONLY (no
+            # project-scoped rows at all) — isolates that org-wide access
+            # alone is what's granting every project, not a per-project
+            # creator grant.
+            grantee = await _create_user(session, _unique_email("tc008rbac-grantee"))
+            await _create_membership(session, grantee, org, OrgMembershipStatus.active)
+            org_admin_role = await _get_role_by_name(session, "org_admin")
+            await _assign_role(session, actor_id=grantee.actor_id, org=org, role=org_admin_role)
+            await session.commit()
+            user_ids = [admin.actor_id, grantee.actor_id]
+            org_ids = [org.id]
+            admin_id, org_id, grantee_id = admin.actor_id, org.id, grantee.actor_id
+
+        admin_token = _access_token_for(admin_id)
+        grantee_token = _access_token_for(grantee_id)
+
+        async with httpx.AsyncClient(base_url=TEST_API_BASE_URL) as client:
+            project_a_response = await client.post(
+                _projects_path(org_id),
+                json={"name": "TC-RBAC-008 Project A"},
+                headers={"Authorization": f"Bearer {admin_token}"},
+            )
+            assert project_a_response.status_code == 201
+            project_a_id = project_a_response.json()["id"]
+
+            project_b_response = await client.post(
+                _projects_path(org_id),
+                json={"name": "TC-RBAC-008 Project B"},
+                headers={"Authorization": f"Bearer {admin_token}"},
+            )
+            assert project_b_response.status_code == 201
+            project_b_id = project_b_response.json()["id"]
+            project_ids = [project_a_id, project_b_id]
+
+            # Proven against BOTH projects, not just the first one tried.
+            for project_id in (project_a_id, project_b_id):
+                get_response = await client.get(
+                    _project_path(project_id),
+                    headers={"Authorization": f"Bearer {grantee_token}"},
+                )
+                assert get_response.status_code == 200
+
+                patch_response = await client.patch(
+                    _project_path(project_id),
+                    json={"name": f"TC-RBAC-008 Renamed {project_id}"},
+                    headers={"Authorization": f"Bearer {grantee_token}"},
+                )
+                assert patch_response.status_code == 200
+    finally:
+        await _cleanup(user_ids=user_ids, org_ids=org_ids, project_ids=project_ids)
+
+
+# --- TC-RBAC-009: project-scoped role grant confined to its own Project ----------------------
+
+
+@pytest.mark.asyncio
+async def test_project_scoped_grant_confined_to_its_own_project() -> None:  # TC-RBAC-009
+    user_ids: list = []
+    org_ids: list = []
+    project_ids: list = []
+    try:
+        async with AsyncSessionLocal() as session:
+            admin, org = await _create_org_admin(session, "tc009rbac")
+            grantee = await _create_user(session, _unique_email("tc009rbac-grantee"))
+            await _create_membership(session, grantee, org, OrgMembershipStatus.active)
+            test_manager_role = await _get_role_by_name(session, "test_manager")
+            await session.commit()
+            user_ids = [admin.actor_id, grantee.actor_id]
+            org_ids = [org.id]
+            admin_id, org_id, grantee_id, role_id = admin.actor_id, org.id, grantee.actor_id, test_manager_role.id
+
+        admin_token = _access_token_for(admin_id)
+        grantee_token = _access_token_for(grantee_id)
+
+        async with httpx.AsyncClient(base_url=TEST_API_BASE_URL) as client:
+            project_a_response = await client.post(
+                _projects_path(org_id),
+                json={"name": "TC-RBAC-009 Project A"},
+                headers={"Authorization": f"Bearer {admin_token}"},
+            )
+            assert project_a_response.status_code == 201
+            project_a_id = project_a_response.json()["id"]
+
+            project_b_response = await client.post(
+                _projects_path(org_id),
+                json={"name": "TC-RBAC-009 Project B"},
+                headers={"Authorization": f"Bearer {admin_token}"},
+            )
+            assert project_b_response.status_code == 201
+            project_b_id = project_b_response.json()["id"]
+            project_ids = [project_a_id, project_b_id]
+
+        # Grantee's ONLY RoleAssignment: test_manager, scoped to Project A.
+        async with AsyncSessionLocal() as session:
+            session.add(RoleAssignment(actor_id=grantee_id, org_id=org_id, project_id=project_a_id, role_id=role_id))
+            await session.commit()
+
+        async with httpx.AsyncClient(base_url=TEST_API_BASE_URL) as client:
+            get_a_response = await client.get(
+                _project_path(project_a_id),
+                headers={"Authorization": f"Bearer {grantee_token}"},
+            )
+            assert get_a_response.status_code == 200
+
+            patch_a_response = await client.patch(
+                _project_path(project_a_id),
+                json={"name": "TC-RBAC-009 Project A Renamed"},
+                headers={"Authorization": f"Bearer {grantee_token}"},
+            )
+            assert patch_a_response.status_code == 200
+
+            # Same actor, same permission code, no separate grant on B -> 403.
+            get_b_response = await client.get(
+                _project_path(project_b_id),
+                headers={"Authorization": f"Bearer {grantee_token}"},
+            )
+            assert get_b_response.status_code == 403
+            assert get_b_response.json()["code"] == "permission_denied"
+
+            patch_b_response = await client.patch(
+                _project_path(project_b_id),
+                json={"name": "Should Never Apply"},
+                headers={"Authorization": f"Bearer {grantee_token}"},
+            )
+            assert patch_b_response.status_code == 403
+            assert patch_b_response.json()["code"] == "permission_denied"
+    finally:
+        await _cleanup(user_ids=user_ids, org_ids=org_ids, project_ids=project_ids)
+
+
+# --- TC-RBAC-010: OrgMembership alone, zero RoleAssignment -> no implicit access ---------------
+
+
+@pytest.mark.asyncio
+async def test_membership_without_role_assignment_grants_no_implicit_access() -> None:  # TC-RBAC-010
+    user_ids: list = []
+    org_ids: list = []
+    project_ids: list = []
+    try:
+        async with AsyncSessionLocal() as session:
+            admin, org = await _create_org_admin(session, "tc010rbac")
+            # Active OrgMembership, but deliberately zero RoleAssignment rows.
+            member = await _create_user(session, _unique_email("tc010rbac-member"))
+            await _create_membership(session, member, org, OrgMembershipStatus.active)
+            await session.commit()
+            user_ids = [admin.actor_id, member.actor_id]
+            org_ids = [org.id]
+            admin_id, org_id, member_id = admin.actor_id, org.id, member.actor_id
+
+        admin_token = _access_token_for(admin_id)
+        member_token = _access_token_for(member_id)
+
+        async with httpx.AsyncClient(base_url=TEST_API_BASE_URL) as client:
+            create_response = await client.post(
+                _projects_path(org_id),
+                json={"name": "TC-RBAC-010 Project"},
+                headers={"Authorization": f"Bearer {admin_token}"},
+            )
+            assert create_response.status_code == 201
+            project_id = create_response.json()["id"]
+            project_ids = [project_id]
+
+            get_response = await client.get(
+                _project_path(project_id),
+                headers={"Authorization": f"Bearer {member_token}"},
+            )
+            assert get_response.status_code == 403
+            assert get_response.json()["code"] == "permission_denied"
+    finally:
+        await _cleanup(user_ids=user_ids, org_ids=org_ids, project_ids=project_ids)
+
+
+# --- TC-RBAC-011: AIAgent grantee resolves identically to a human User grantee -----------------
+
+
+@pytest.mark.asyncio
+async def test_aiagent_grantee_resolves_identically_to_human_grantee() -> None:  # TC-RBAC-011
+    user_ids: list = []
+    agent_ids: list = []
+    org_ids: list = []
+    project_ids: list = []
+    try:
+        async with AsyncSessionLocal() as session:
+            admin, org = await _create_org_admin(session, "tc011rbac")
+            agent, raw_key = await _create_agent(session, acting_on_behalf_of_user_id=admin.actor_id)
+            org_admin_role = await _get_role_by_name(session, "org_admin")
+            test_manager_role = await _get_role_by_name(session, "test_manager")
+            await session.commit()
+            user_ids = [admin.actor_id]
+            agent_ids = [agent.actor_id]
+            org_ids = [org.id]
+            admin_id, org_id, agent_id = admin.actor_id, org.id, agent.actor_id
+            org_admin_role_id, test_manager_role_id = org_admin_role.id, test_manager_role.id
+
+        admin_token = _access_token_for(admin_id)
+        agent_headers = {"Authorization": f"Bearer {raw_key}"}
+
+        async with httpx.AsyncClient(base_url=TEST_API_BASE_URL) as client:
+            project_a_response = await client.post(
+                _projects_path(org_id),
+                json={"name": "TC-RBAC-011 Project A"},
+                headers={"Authorization": f"Bearer {admin_token}"},
+            )
+            assert project_a_response.status_code == 201
+            project_a_id = project_a_response.json()["id"]
+
+            project_b_response = await client.post(
+                _projects_path(org_id),
+                json={"name": "TC-RBAC-011 Project B"},
+                headers={"Authorization": f"Bearer {admin_token}"},
+            )
+            assert project_b_response.status_code == 201
+            project_b_id = project_b_response.json()["id"]
+            project_ids = [project_a_id, project_b_id]
+
+        # Org-wide grant (org_admin) -> the agent reads/updates every
+        # project in the org, same outcome as TC-RBAC-008's human case.
+        async with AsyncSessionLocal() as session:
+            session.add(RoleAssignment(actor_id=agent_id, org_id=org_id, project_id=None, role_id=org_admin_role_id))
+            await session.commit()
+
+        async with httpx.AsyncClient(base_url=TEST_API_BASE_URL) as client:
+            for project_id in (project_a_id, project_b_id):
+                get_response = await client.get(_project_path(project_id), headers=agent_headers)
+                assert get_response.status_code == 200
+
+                patch_response = await client.patch(
+                    _project_path(project_id),
+                    json={"name": f"TC-RBAC-011 Renamed {project_id}"},
+                    headers=agent_headers,
+                )
+                assert patch_response.status_code == 200
+
+        # Swap to a project-scoped-only grant on Project A -> Project A
+        # succeeds, Project B 403s, same outcome as TC-RBAC-009's human case
+        # (has_permission's join chain treats Actor.id uniformly regardless
+        # of actor_type, 07 principle #6).
+        async with AsyncSessionLocal() as session:
+            await session.execute(
+                delete(RoleAssignment).where(
+                    RoleAssignment.actor_id == agent_id, RoleAssignment.project_id.is_(None)
+                )
+            )
+            session.add(
+                RoleAssignment(
+                    actor_id=agent_id, org_id=org_id, project_id=project_a_id, role_id=test_manager_role_id
+                )
+            )
+            await session.commit()
+
+        async with httpx.AsyncClient(base_url=TEST_API_BASE_URL) as client:
+            get_a_response = await client.get(_project_path(project_a_id), headers=agent_headers)
+            assert get_a_response.status_code == 200
+
+            get_b_response = await client.get(_project_path(project_b_id), headers=agent_headers)
+            assert get_b_response.status_code == 403
+            assert get_b_response.json()["code"] == "permission_denied"
+    finally:
+        await _cleanup(user_ids=user_ids, agent_ids=agent_ids, org_ids=org_ids, project_ids=project_ids)
+
+
+# --- TC-RBAC-035: regression — project creator's own project-scoped role now works ------------
+
+
+@pytest.mark.asyncio
+async def test_project_creator_own_project_scoped_role_now_works() -> None:  # TC-RBAC-035
+    user_ids: list = []
+    org_ids: list = []
+    project_ids: list = []
+    try:
+        async with AsyncSessionLocal() as session:
+            creator, org = await _create_org_admin(session, "tc035")
+            await session.commit()
+            user_ids = [creator.actor_id]
+            org_ids = [org.id]
+            creator_id, org_id = creator.actor_id, org.id
+
+        access_token = _access_token_for(creator_id)
+
+        async with httpx.AsyncClient(base_url=TEST_API_BASE_URL) as client:
+            create_response = await client.post(
+                _projects_path(org_id),
+                json={"name": "TC-RBAC-035 Project"},
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            assert create_response.status_code == 201
+            project_id = create_response.json()["id"]
+            project_ids = [project_id]
+
+        # Strip the creator down to EXACTLY the auto-assigned project-scoped
+        # test_manager grant — delete their own org-wide org_admin
+        # RoleAssignment, so a pass below can only be explained by the
+        # project-scoped grant, not by the usual org-wide org_admin creator
+        # fixture masking the regression (test-design §15's own caution).
+        async with AsyncSessionLocal() as session:
+            await session.execute(
+                delete(RoleAssignment).where(
+                    RoleAssignment.actor_id == creator_id, RoleAssignment.project_id.is_(None)
+                )
+            )
+            await session.commit()
+
+            remaining = (
+                (await session.execute(select(RoleAssignment).where(RoleAssignment.actor_id == creator_id)))
+                .scalars()
+                .all()
+            )
+            assert len(remaining) == 1
+            assert str(remaining[0].project_id) == project_id
+
+        async with httpx.AsyncClient(base_url=TEST_API_BASE_URL) as client:
+            get_response = await client.get(
+                _project_path(project_id),
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            assert get_response.status_code == 200  # would have 403'd before the ADR-0021 fix
+
+            patch_response = await client.patch(
+                _project_path(project_id),
+                json={"name": "TC-RBAC-035 Project Renamed"},
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            assert patch_response.status_code == 200
+            assert patch_response.json()["name"] == "TC-RBAC-035 Project Renamed"
     finally:
         await _cleanup(user_ids=user_ids, org_ids=org_ids, project_ids=project_ids)

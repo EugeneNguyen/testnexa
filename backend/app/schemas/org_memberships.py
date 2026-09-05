@@ -94,7 +94,7 @@ class PatchMembershipRequest(BaseModel):
     status: MembershipStatus
 
 
-# --- API-1 generic-CRUD factory additions (ADR-0021) --------------------------------------------
+# --- API-1 generic-CRUD factory additions (ADR-0022) --------------------------------------------
 #
 # `OrgMembershipSummary`/`OrgMembershipListResponse`/`UpdateOrgMembershipRequest`
 # back the factory's `GET /org-memberships` (list), `GET`/`PATCH`/

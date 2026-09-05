@@ -1,4 +1,4 @@
-"""Integration tests for the generic CRUD router factory (ADR-0021).
+"""Integration tests for the generic CRUD router factory (ADR-0022).
 
 Real HTTP requests via `httpx.AsyncClient` against a live server
 (`TEST_API_BASE_URL`), matching `test_projects.py`/`test_releases.py`'s
@@ -11,7 +11,7 @@ Covers TC-ADMIN-006 through TC-ADMIN-013 from
 Test Design §18 adds on top of TC-ADMIN-003/004/005's generic field-type/
 permission-parity coverage (those three are frontend-level, `entityConfigs`-
 driven, not this file's concern). One representative entity per resolver
-depth (direct/one-hop/branching/multi-hop/global-catalog), per ADR-0021's
+depth (direct/one-hop/branching/multi-hop/global-catalog), per ADR-0022's
 own framing that a pass on one depth doesn't generalize to another.
 
 Each test seeds its own `User`/`Organization`/`OrgMembership`/
@@ -505,7 +505,7 @@ async def test_global_catalog_create_gated_by_any_org_permission() -> None:  # T
                 headers={"Authorization": f"Bearer {tester_token}"},
             )
             # Permission-denied, never 404 -- there's no tenant existence to hide
-            # for a global catalog (ADR-0021).
+            # for a global catalog (ADR-0022).
             assert denied_response.status_code == 403
             assert denied_response.json()["code"] == "permission_denied"
     finally:
@@ -587,7 +587,7 @@ async def test_scope_required_on_list_and_create_returns_422() -> None:  # TC-AD
         # has no default in `CreateRequirementRequest`), flattened by the
         # global RequestValidationError handler -> same {code,message,
         # field_errors} shape as the list-side scope check, different
-        # enforcement layer (ADR-0021's plan doesn't mandate one specific
+        # enforcement layer (ADR-0022's plan doesn't mandate one specific
         # layer, only the 422 outcome).
         assert create_response.json()["code"] == "validation_error"
     finally:

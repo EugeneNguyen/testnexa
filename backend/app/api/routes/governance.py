@@ -1,4 +1,4 @@
-"""API-1: generic-CRUD factory routes for the governance cluster (ADR-0021).
+"""API-1: generic-CRUD factory routes for the governance cluster (ADR-0022).
 
 `RiskItem`/`Attachment` get all 5 methods. `Approval` is excluded entirely
 (`app/schemas/governance.py`'s module docstring).
@@ -6,7 +6,7 @@
 `RiskItem`'s `scope_field` is a 2-tuple (`requirement_id`, `test_plan_id`) —
 `app/api/crud_factory.py`'s scope-resolution machinery requires exactly one
 present on both `list` and `create`, matching its `CHECK` constraint's `OR`
-narrowed to an API-level `XOR` (ADR-0021 edge case #5; see
+narrowed to an API-level `XOR` (ADR-0022 edge case #5; see
 `app/schemas/governance.py`'s module docstring for the enforcement-layer
 deviation this implements it at). `Attachment` delegates to `TestCase`'s
 resolver one hop up, same as `TestStep`.

@@ -1,4 +1,4 @@
-"""API-1: generic-CRUD factory routes for `Defect` (ADR-0021).
+"""API-1: generic-CRUD factory routes for `Defect` (ADR-0022).
 
 New module, mirroring `app/models/execution.py`'s own cluster naming (per
 the plan) — `TestExecution`/`TestLog` have no generic-CRUD routes at all
@@ -7,10 +7,10 @@ query; `TestLog` is append-only, read-only, no route in this pass).
 
 `Defect` registers `GET`/`PATCH`/`DELETE` only — `create` stays reserved for
 a future bespoke `POST /executions/{id}/defects` atomic-create route
-(ADR-0021, API Document §4).
+(ADR-0022, API Document §4).
 
 **`list`'s `scope_field`, a deviation from the plan flagged here:** the
-ADR-0021 plan's resolver-map table marks `Defect`'s scope as "n/a, no create
+ADR-0022 plan's resolver-map table marks `Defect`'s scope as "n/a, no create
 via factory" — true for `create`, but `list` still needs *some* scope to
 avoid enumerating every `Defect` across every tenant in one query
 (CLAUDE.md's multi-tenancy rule: never skip the `org_id` filter, generic or

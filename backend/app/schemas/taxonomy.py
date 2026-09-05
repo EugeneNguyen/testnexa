@@ -1,6 +1,6 @@
 """Pydantic v2 schemas for the API-1 generic-CRUD factory's taxonomy cluster.
 
-Source: API Document §3 (generic CRUD routes, ADR-0021), Database Document
+Source: API Document §3 (generic CRUD routes, ADR-0022), Database Document
 §3.10 (`TestDesignTechnique`/`TestLevel`/`TestType`). All three are global
 catalogs (`resolve_org_id` constant `None`, `is_global_catalog=True`,
 gated by `has_permission_in_any_org`, never the `OrgMembership` 404-vs-403

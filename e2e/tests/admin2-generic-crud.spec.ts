@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { expect, test } from "@playwright/test";
 
 /**
- * ADMIN-2 E2E (ADR-0021): full-stack smoke test of the generic CRUD router
+ * ADMIN-2 E2E (ADR-0022): full-stack smoke test of the generic CRUD router
  * factory through the real deployed stack (nginx -> backend -> Postgres),
  * proving it end to end the way `scaffold-smoke.spec.ts` proves the base
  * stack wires together — not a re-run of every case
@@ -167,7 +167,7 @@ test.describe("ADMIN-2: generic CRUD router factory, full stack via nginx", () =
     const testConditionIds: string[] = [];
 
     try {
-      // --- Org A: log in, create a Project (bespoke route, untouched by ADR-0021) -------
+      // --- Org A: log in, create a Project (bespoke route, untouched by ADR-0022) -------
       const loginA = await request.post("/api/v1/auth/login", {
         data: { email: adminA.email, password: adminA.password },
       });

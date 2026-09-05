@@ -71,6 +71,30 @@ async def _org_membership_exists(db: AsyncSession, org_id: UUID, user_id: UUID) 
     return result is not None
 
 
+async def _actor_has_org_standing(db: AsyncSession, org_id: UUID, actor: User | AIAgent) -> bool:
+    """Actor-type-aware 404-vs-403 boundary check for `get_project`/`update_project`.
+
+    `User` actors: unchanged any-status `OrgMembership` check
+    (`_org_membership_exists`). `AIAgent` actors never have an
+    `OrgMembership` row at all (ADR-0021/`agents.py`/`role_assignments.py`
+    precedent — an agent's org relationship is never represented that way),
+    so `_org_membership_exists` would always return `False` for one and
+    these two routes would 404 every AIAgent caller regardless of any
+    `RoleAssignment` they hold (TC-RBAC-011 gap). Substituting "does this
+    agent hold ANY RoleAssignment row in this org" (org-wide or
+    project-scoped) is the AIAgent-shaped equivalent of "has standing in
+    this org" that `OrgMembership` represents for a `User`.
+    """
+    if isinstance(actor, AIAgent):
+        result = await db.scalar(
+            select(RoleAssignment.id)
+            .where(RoleAssignment.org_id == org_id, RoleAssignment.actor_id == actor.actor_id)
+            .limit(1)
+        )
+        return result is not None
+    return await _org_membership_exists(db, org_id, actor.actor_id)
+
+
 @router.post("/orgs/{org_id}/projects", response_model=ProjectSummary, status_code=201)
 async def create_project(
     org_id: UUID,
@@ -153,27 +177,29 @@ async def create_project(
     )
 
 
-# --- API-1 generic-CRUD factory addition (ADR-0021) --------------------------------------------
+# --- API-1 generic-CRUD factory addition (ADR-0022) --------------------------------------------
 #
-# Registers ONLY `DELETE /projects/{id}` — `create`/`read`/`update` above
-# stay this module's own bespoke routes, untouched (API Document §3
-# footnote ***: "the factory only registers the one method Project is still
-# missing"). `update_schema`/`create_schema` still need a real value to
-# satisfy `CrudEntityConfig`'s dataclass shape even though neither method is
-# registered — reusing this module's own existing schemas rather than a
-# placeholder, since they're already imported here.
-_PROJECT_DELETE_ONLY_CONFIG = CrudEntityConfig(
+# Registers `GET /projects?org_id=<uuid>` (list) and `DELETE /projects/{id}`
+# — `create`/`read`(single)/`update` above stay this module's own bespoke
+# routes, untouched (API Document §3 footnote ***: "the factory only
+# registers the methods Project is still missing"). `list` was originally
+# left out of this config entirely (an oversight, not a considered
+# exclusion — no bespoke list route exists for `Project` anywhere in this
+# codebase to defer to, unlike `create`/`get`/`update`) — caught by
+# SHELL-3's dashboard widget (`GET /projects`, `lib/api/dashboard.ts`)
+# actually 404ing against this exact gap at merge-verification time.
+_PROJECT_FACTORY_CONFIG = CrudEntityConfig(
     model=Project,
     resource="project",
     create_schema=None,
     update_schema=UpdateProjectRequest,
     summary_schema=ProjectSummary,
-    scope_field=None,
+    scope_field="org_id",
     resolve_org_id=chain_resolver([]),
-    methods=frozenset({"delete"}),
+    methods=frozenset({"list", "delete"}),
 )
 
-router.include_router(make_crud_router(_PROJECT_DELETE_ONLY_CONFIG))
+router.include_router(make_crud_router(_PROJECT_FACTORY_CONFIG))
 
 
 @router.get("/projects/{id}", response_model=ProjectSummary)
@@ -193,10 +219,12 @@ async def get_project(
     (there's no path `org_id` for `require_permission`'s dependency to read).
     """
     project = await db.get(Project, id)
-    if project is None or not await _org_membership_exists(db, project.org_id, actor.actor_id):
+    if project is None or not await _actor_has_org_standing(db, project.org_id, actor):
         return _error(404, "not_found", "Project not found.")
 
-    if not await has_permission(str(actor.actor_id), str(project.org_id), "project.read"):
+    if not await has_permission(
+        str(actor.actor_id), str(project.org_id), "project.read", project_id=str(project.id)
+    ):
         return _error(403, "permission_denied", "You do not have permission to perform this action.")
 
     return ProjectSummary(
@@ -224,10 +252,12 @@ async def update_project(
     shape/posture as `create_project`'s own collision handling.
     """
     project = await db.get(Project, id)
-    if project is None or not await _org_membership_exists(db, project.org_id, actor.actor_id):
+    if project is None or not await _actor_has_org_standing(db, project.org_id, actor):
         return _error(404, "not_found", "Project not found.")
 
-    if not await has_permission(str(actor.actor_id), str(project.org_id), "project.update"):
+    if not await has_permission(
+        str(actor.actor_id), str(project.org_id), "project.update", project_id=str(project.id)
+    ):
         return _error(403, "permission_denied", "You do not have permission to perform this action.")
 
     updates = payload.model_dump(exclude_unset=True)

@@ -30,7 +30,7 @@ applicable — see that module's own docstring):
   `Permission` code — the invitee is acting on their own pending membership,
   not exercising an org_admin privilege (ADR-0017).
 
-API-1/ADR-0021 adds the generic-CRUD factory's `GET /org-memberships` (list)
+API-1/ADR-0022 adds the generic-CRUD factory's `GET /org-memberships` (list)
 and `GET`/`PATCH`/`DELETE /org-memberships/{id}` at the bottom of this
 module — a distinct, additive path prefix from the bespoke
 `/orgs/{org_id}/members*` routes above (verified no collision before wiring,
@@ -524,7 +524,7 @@ async def revoke_pending_invite(
     return Response(status_code=204)
 
 
-# --- API-1 generic-CRUD factory additions (ADR-0021) --------------------------------------------
+# --- API-1 generic-CRUD factory additions (ADR-0022) --------------------------------------------
 
 _ORG_MEMBERSHIP_CONFIG = CrudEntityConfig(
     model=OrgMembership,

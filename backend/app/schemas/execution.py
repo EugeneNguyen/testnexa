@@ -1,7 +1,7 @@
 """Pydantic v2 schemas for the API-1 generic-CRUD factory's `Defect` route.
 
-Source: API Document §3 (generic CRUD routes, ADR-0021), Database Document
-§3.8 (`Defect`). Not explicitly named in the ADR-0021 plan's schema-file list
+Source: API Document §3 (generic CRUD routes, ADR-0022), Database Document
+§3.8 (`Defect`). Not explicitly named in the ADR-0022 plan's schema-file list
 (only `assets.py`/`planning.py`/`taxonomy.py`/`governance.py`/`rbac.py` are
 listed there) — added here mirroring `app/models/execution.py`'s own cluster
 naming, matching the plan's own stated "one file per model-file cluster"
@@ -9,7 +9,7 @@ convention, since `Defect`'s route module (`app/api/routes/execution.py`) is
 explicitly named in the plan and needs schemas to import.
 
 No `Create*Request` — `Defect.create` stays reserved for a future bespoke
-`POST /executions/{id}/defects` atomic-create route (ADR-0021, API Document
+`POST /executions/{id}/defects` atomic-create route (ADR-0022, API Document
 §4), never registered via the factory.
 """
 

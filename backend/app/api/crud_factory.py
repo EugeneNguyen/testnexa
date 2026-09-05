@@ -1,4 +1,4 @@
-"""API-1: generic CRUD router factory (ADR-0021).
+"""API-1: generic CRUD router factory (ADR-0022).
 
 `make_crud_router(config)` registers whichever of `list`/`get`/`create`/
 `update`/`delete` are named in `config.methods` as flat, row-resolved routes
@@ -8,7 +8,7 @@ entity from each cluster route module (`app/api/routes/assets.py`,
 `execution.py`, plus a handful of routes bolted onto the existing
 `organizations.py`/`projects.py`/`org_memberships.py` modules), never
 subclassed — composition over inheritance, matching FastAPI's own
-function/dependency-based idiom (ADR-0021's Alternatives section).
+function/dependency-based idiom (ADR-0022's Alternatives section).
 
 **Item routes** (`GET`/`PATCH`/`DELETE /{resource}/{id}`) are flat — no
 `org_id`/`project_id` path segment — so they fetch the row first, resolve its
@@ -16,7 +16,7 @@ function/dependency-based idiom (ADR-0021's Alternatives section).
 404-vs-403 boundary (`projects.py`/`releases.py`'s established pattern), then
 call `has_permission` directly. `require_permission` (`app/core/rbac.py`)
 reads `org_id`/`project_id` off *path* params and doesn't fit this flat shape
-(ADR-0021 Context #2) — every route built here calls `has_permission`
+(ADR-0022 Context #2) — every route built here calls `has_permission`
 directly instead, same posture `projects.py`'s own row-resolved routes
 already established.
 
@@ -30,7 +30,7 @@ resolution failure).
 
 **Distinguishing "statically global" from "this particular row's chain
 resolved to `None`"** is the whole point of the `is_global_catalog`/
-`global_read_fallback` flags (ADR-0021 edge case #1): a tenant-owned row
+`global_read_fallback` flags (ADR-0022 edge case #1): a tenant-owned row
 whose FK chain can't be walked (e.g. an orphaned `TestCase`, or a multi-hop
 `Defect` chain missing an intermediate row) must `404`, exactly like a
 missing/cross-tenant row — it must NOT silently fall back to the
@@ -47,7 +47,7 @@ never inferred; missing it is `422`, not an empty/degraded result.
 `requirement_id` **or** `test_plan_id` shape (exactly one, per its own `CHECK`
 constraint) doesn't fit a single string — `scope_field` additionally accepts
 a 2-tuple of alternative field names for exactly this case (a typing
-generalization of ADR-0021's dataclass sketch, not a new behavior: the ADR's
+generalization of ADR-0022's dataclass sketch, not a new behavior: the ADR's
 own prose and the API Document's §3 resolver table both already specify
 "exactly one, both set -> 422" for `RiskItem` specifically).
 
@@ -91,7 +91,7 @@ _PERMISSION_DENIED_MESSAGE = "You do not have permission to perform this action.
 # `create`, never accepted from the request body — currently only
 # `TestPlan.created_by_actor_id` is create-registered and carries one of
 # these (`TestCase`/`Defect` also have an equivalent column but neither
-# registers `create` via this factory, ADR-0021).
+# registers `create` via this factory, ADR-0022).
 _ACTOR_STAMPED_FIELDS: tuple[str, ...] = ("created_by_actor_id",)
 
 # `entry_exit_criteria` is already grammatically plural ("criteria") — the
@@ -106,7 +106,7 @@ ResolveOrgId = Callable[[AsyncSession, Any], Awaitable[uuid.UUID | None]]
 class NoSchema(BaseModel):
     """Placeholder `update_schema` for an entity that never registers `update`.
 
-    `CrudEntityConfig.update_schema` has no default (ADR-0021's dataclass
+    `CrudEntityConfig.update_schema` has no default (ADR-0022's dataclass
     sketch lists it as a required field) — entities like `Permission` (`list`/
     `get` only) still need to satisfy the type, so they pass this rather than
     a real per-entity schema that would never be bound to a route.
@@ -115,7 +115,7 @@ class NoSchema(BaseModel):
 
 @dataclass
 class CrudEntityConfig:
-    """Per-entity configuration consumed by `make_crud_router` (ADR-0021).
+    """Per-entity configuration consumed by `make_crud_router` (ADR-0022).
 
     Field list matches the ADR's own sketch verbatim, plus two additions the
     ADR's prose requires but its dataclass sketch didn't literally spell out
@@ -173,7 +173,7 @@ async def _org_membership_exists(db: AsyncSession, org_id: uuid.UUID, user_id: u
     return result is not None
 
 
-# --- resolve_org_id building blocks (ADR-0021's resolver map) --------------------------------
+# --- resolve_org_id building blocks (ADR-0022's resolver map) --------------------------------
 
 
 async def resolve_terminal_org_id(db: AsyncSession, row: Any) -> uuid.UUID | None:
@@ -226,7 +226,7 @@ def chain_resolver(hops: Sequence[tuple[type, str]]) -> ResolveOrgId:
 
 
 async def resolve_test_case_org_id(db: AsyncSession, row: Any) -> uuid.UUID | None:
-    """Bespoke `TestCase` resolver (ADR-0021): nullable-hop with a link-table fallback.
+    """Bespoke `TestCase` resolver (ADR-0022): nullable-hop with a link-table fallback.
 
     `test_condition_id` (if set) -> `TestCondition.requirement_id` ->
     `Requirement.project_id` -> `Project.org_id`. If `test_condition_id` is
@@ -235,7 +235,7 @@ async def resolve_test_case_org_id(db: AsyncSession, row: Any) -> uuid.UUID | No
     neither path resolves `None` — genuinely orphaned (schema-legal, no
     create path in this codebase produces it) — the caller must treat this as
     "unresolvable tenant", i.e. `404`, never the any-org global-catalog
-    fallback (ADR-0021 edge case #1; `is_global_catalog=False` on `TestCase`'s
+    fallback (ADR-0022 edge case #1; `is_global_catalog=False` on `TestCase`'s
     own config makes that distinction automatically).
     """
     test_condition_id = getattr(row, "test_condition_id", None)
@@ -278,7 +278,7 @@ async def resolve_via_test_case(db: AsyncSession, row: Any) -> uuid.UUID | None:
 
 
 async def resolve_risk_item_org_id(db: AsyncSession, row: Any) -> uuid.UUID | None:
-    """Bespoke `RiskItem` resolver (ADR-0021): branch on whichever FK is set.
+    """Bespoke `RiskItem` resolver (ADR-0022): branch on whichever FK is set.
 
     `RiskItem`'s own `CHECK` constraint only requires "at least one of
     `requirement_id`/`test_plan_id`" (an `OR`, not `XOR`) — the factory's
@@ -346,7 +346,7 @@ def extract_scope_value(config: CrudEntityConfig, source: Mapping[str, Any]) -> 
     fields is present: for a plain single-field `scope_field` that's simply
     "missing"; for `RiskItem`'s 2-tuple shape, "more than one present"
     collapses the DB `CHECK` constraint's `OR` down to the API's own
-    "exactly one" rule (ADR-0021 edge case #5), applied identically on `list`
+    "exactly one" rule (ADR-0022 edge case #5), applied identically on `list`
     and `create` (API Document §3's resolver table states the "exactly one"
     rule for the scope param generally, not create-only).
     """
@@ -391,7 +391,7 @@ def apply_filters_and_search(
     actually present); `search_fields`, if configured, back a single `?q=`
     param compiled to `OR`-joined `ILIKE '%term%'` across those columns. An
     entity with no `search_fields` configured silently ignores `?q=` rather
-    than erroring (ADR-0021) — `q` is only ever consulted when `search_fields`
+    than erroring (ADR-0022) — `q` is only ever consulted when `search_fields`
     is non-empty. Pure query-building: never executes anything, so this is
     testable without a DB (`tests/unit/test_crud_factory.py`).
     """
@@ -447,7 +447,7 @@ def _build_list_response_schema(summary_schema: type[BaseModel]) -> type[BaseMod
 
     Built dynamically via `pydantic.create_model` rather than requiring a
     `list_response_schema` field on `CrudEntityConfig` — keeps the config
-    dataclass exactly matching ADR-0021's own field list (schema files still
+    dataclass exactly matching ADR-0022's own field list (schema files still
     define an explicit `<Entity>ListResponse` per the plan, for OpenAPI/type-
     generation consumers, but this factory doesn't need to be handed one to
     wire the route: same JSON shape either way).

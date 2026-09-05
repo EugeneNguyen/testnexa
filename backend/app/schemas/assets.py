@@ -1,13 +1,13 @@
 """Pydantic v2 schemas for the API-1 generic-CRUD factory's assets cluster.
 
-Source: API Document §3 (generic CRUD routes, ADR-0021), Database Document
+Source: API Document §3 (generic CRUD routes, ADR-0022), Database Document
 §3.6 (`Requirement`/`TestCondition`/`TestCase`/`TestStep`/`TestSuite`).
 
 Field names mirror each ORM model's own column names exactly — the factory's
 `_to_summary`/`create`/`update` machinery (`app/api/crud_factory.py`) maps
 request/response bodies to model attributes purely by name, no per-entity
 mapping function. `TestCase` has no `Create*Request` — its `create` stays
-reserved for a future bespoke atomic-create route (ADR-0021, API Document
+reserved for a future bespoke atomic-create route (ADR-0022, API Document
 §4), never registered via the factory.
 """
 
@@ -92,7 +92,7 @@ class TestConditionListResponse(BaseModel):
 # --- TestCase ------------------------------------------------------------------------------------
 #
 # No `Create*Request`/`*ListResponse` — `create` is reserved for a future
-# bespoke atomic-create route (ADR-0021), and `list` is deliberately not
+# bespoke atomic-create route (ADR-0022), and `list` is deliberately not
 # registered via the factory either: unlike every other scoped entity,
 # `TestCase` has no single non-nullable FK the factory's `scope_field`
 # mechanism could require as a list-scope query param (`test_condition_id` is

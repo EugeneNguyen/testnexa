@@ -17,7 +17,7 @@ to return — it can only raise. This handler is what makes the API Document
 dependencies (and any future route that raises `HTTPException` directly
 instead of using `auth.py`'s `_error()`/`JSONResponse` pattern).
 
-API-1/ADR-0021 adds a second global handler, `validation_exception_handler`,
+ADMIN-2/ADR-0022 adds a second global handler, `validation_exception_handler`,
 for the same reason but a different FastAPI-owned error path:
 `RequestValidationError` (raised by FastAPI's own request-body/query-param
 parsing, including a Pydantic `model_validator` failure inside a body
@@ -46,6 +46,8 @@ from app.api.routes import (
     projects,
     rbac_routes,
     releases,
+    role_assignments,
+    roles,
     taxonomy,
 )
 
@@ -136,7 +138,15 @@ app.include_router(org_memberships.router, prefix="/api/v1", tags=["org_membersh
 app.include_router(projects.router, prefix="/api/v1", tags=["projects"])
 # PROJ-2/ADR-0019: Release create/read/list + audit-query routes.
 app.include_router(releases.router, prefix="/api/v1", tags=["releases"])
-# API-1/ADR-0021: generic CRUD router factory, applied per cluster.
+# RBAC-3/ADR-0021: RoleAssignment create/list routes.
+app.include_router(role_assignments.router, prefix="/api/v1", tags=["role-assignments"])
+# RBAC-3 UI slice: role dropdown data source for the role-assignment form.
+app.include_router(roles.router, prefix="/api/v1", tags=["roles"])
+# ADMIN-2/ADR-0022: generic CRUD router factory, applied per cluster. Registered
+# after RBAC-3's bespoke role-assignment/role routes above — rbac_routes.py's
+# own `RoleAssignment`/`Role` configs are deliberately narrowed (no `create`/
+# `list` for `RoleAssignment`, no path overlap for `Role`) to defer to those,
+# not duplicate them (see rbac_routes.py's module docstring).
 app.include_router(assets.router, prefix="/api/v1", tags=["assets"])
 app.include_router(planning.router, prefix="/api/v1", tags=["planning"])
 app.include_router(taxonomy.router, prefix="/api/v1", tags=["taxonomy"])

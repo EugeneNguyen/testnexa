@@ -1,10 +1,10 @@
 """Pydantic v2 schemas for the API-1 generic-CRUD factory's planning cluster.
 
-Source: API Document §3 (generic CRUD routes, ADR-0021), Database Document
+Source: API Document §3 (generic CRUD routes, ADR-0022), Database Document
 §3.7 (`TestPlan`/`EntryExitCriteria`/`Environment`/`TestCycle`).
 
 `TestCycle` has no `Create*Request` — its `create` is FR-PLAN-3's own scope,
-not built by this pass (ADR-0021), never registered via the factory.
+not built by this pass (ADR-0022), never registered via the factory.
 `created_by_actor_id` is never a client-supplied field on `TestPlan` — the
 factory auto-stamps it from the authenticated actor
 (`app/api/crud_factory.py`'s `_ACTOR_STAMPED_FIELDS`).

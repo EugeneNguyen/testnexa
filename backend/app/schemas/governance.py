@@ -1,12 +1,12 @@
 """Pydantic v2 schemas for the API-1 generic-CRUD factory's governance cluster.
 
-Source: API Document §3 (generic CRUD routes, ADR-0021), Database Document
+Source: API Document §3 (generic CRUD routes, ADR-0022), Database Document
 §3.11 (`RiskItem`/`Attachment`). `Approval` is deliberately excluded — no
 `create`/`update`/`delete` beyond FR-GOV-1's bespoke `/test-plans/{id}/approve`
 exists in `CRUD_RESOURCES`'s API surface, no AC asks for generic `Approval`
-CRUD (ADR-0021/plan).
+CRUD (ADR-0022/plan).
 
-**Deviation from ADR-0021's literal text, flagged here and in the story's
+**Deviation from ADR-0022's literal text, flagged here and in the story's
 final report:** the ADR says `RiskItem`'s "both `requirement_id` and
 `test_plan_id` set" case is "rejected at the schema-validation layer" via "a
 Pydantic validator". `CreateRiskItemRequest` below has no such validator —
@@ -55,7 +55,7 @@ class CreateRiskItemRequest(BaseModel):
 
 class UpdateRiskItemRequest(BaseModel):
     """`requirement_id`/`test_plan_id` are not reassignable through this route
-    (no defined resolver behavior for reassignment, ADR-0021).
+    (no defined resolver behavior for reassignment, ADR-0022).
     """
 
     description: str | None = None
@@ -87,7 +87,7 @@ class RiskItemListResponse(BaseModel):
 class CreateAttachmentRequest(BaseModel):
     """Body of `POST /attachments` — `test_case_id` is the required scope field.
 
-    Metadata-only (ADR-0021 edge case #2): `url_or_path`/`mime_type`/
+    Metadata-only (ADR-0022 edge case #2): `url_or_path`/`mime_type`/
     `size_bytes` are supplied directly by the caller for an already-uploaded
     file — no multipart file-upload handling in this factory (`ATTACHMENT_STORAGE`
     upload/storage-backend wiring is GOV-3's own separate, not-yet-built

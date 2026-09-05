@@ -1,8 +1,8 @@
-"""API-1: generic-CRUD factory routes for the assets cluster (ADR-0021).
+"""API-1: generic-CRUD factory routes for the assets cluster (ADR-0022).
 
 `Requirement`, `TestCondition`, `TestStep`, `TestSuite` get all 5 methods.
 `TestCase` gets `GET`/`PATCH`/`DELETE` only — `create` stays reserved for a
-future bespoke atomic-create route (ADR-0021, API Document §4), and `list` is
+future bespoke atomic-create route (ADR-0022, API Document §4), and `list` is
 deliberately not registered at all (see `app/schemas/assets.py`'s module
 docstring for why: no single non-nullable FK exists to use as a safe,
 tenant-isolating `scope_field`).

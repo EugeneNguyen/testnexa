@@ -1,4 +1,4 @@
-"""Unit tests for `app/api/crud_factory.py` (API-1, ADR-0021).
+"""Unit tests for `app/api/crud_factory.py` (API-1, ADR-0022).
 
 Pure in-process tests: no DB, no live server, no network — mirrors
 `tests/unit/test_rbac.py`'s "hand-rolled fake session" convention (that
@@ -266,7 +266,7 @@ class TestResolveTestCaseOrgId:
         assert await resolve_test_case_org_id(db, row) == org_id
 
     async def test_orphaned_row_resolves_to_none(self) -> None:
-        """No `test_condition_id`, no `TestSuiteTestCase` link -> unresolvable (ADR-0021 edge case #1)."""
+        """No `test_condition_id`, no `TestSuiteTestCase` link -> unresolvable (ADR-0022 edge case #1)."""
         row = _row(id=uuid.uuid4(), test_condition_id=None)
         db = _FakeSession(scalar_result=None)
         assert await resolve_test_case_org_id(db, row) is None
@@ -404,7 +404,7 @@ class TestApplyFiltersAndSearch:
         assert "WHERE" not in str(result)
 
     def test_search_ignored_when_search_fields_not_configured(self) -> None:
-        """`?q=` silently ignored for an entity with no `search_fields` configured (ADR-0021)."""
+        """`?q=` silently ignored for an entity with no `search_fields` configured (ADR-0022)."""
         query = select(Requirement)
         result = apply_filters_and_search(query, Requirement, (), (), {"q": "widget"})
         assert "WHERE" not in str(result)
