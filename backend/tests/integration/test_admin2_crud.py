@@ -129,7 +129,9 @@ async def _create_project(session, org: Organization, tag: str) -> Project:
 
 
 async def _create_requirement(session, project: Project, tag: str) -> Requirement:
-    req = Requirement(project_id=project.id, description=f"ADMIN-2 requirement {tag}")
+    req = Requirement(
+        project_id=project.id, title=f"ADMIN-2 requirement {tag}", description=f"ADMIN-2 requirement {tag}"
+    )
     session.add(req)
     await session.flush()
     return req
@@ -739,8 +741,16 @@ async def test_search_matches_configured_fields_only() -> None:  # TC-ADMIN-013
             admin, org = await _create_org_admin(session, "013")
             project = await _create_project(session, org, "013")
             needle = f"UNIQUE-NEEDLE-{uuid4().hex[:8]}"
-            matching = Requirement(project_id=project.id, description=f"contains {needle} inside it")
-            other = Requirement(project_id=project.id, description="does not contain the search term")
+            matching = Requirement(
+                project_id=project.id,
+                title=f"ADMIN-2 TC-013 matching {uuid4().hex[:8]}",
+                description=f"contains {needle} inside it",
+            )
+            other = Requirement(
+                project_id=project.id,
+                title=f"ADMIN-2 TC-013 other {uuid4().hex[:8]}",
+                description="does not contain the search term",
+            )
             session.add_all([matching, other])
             await session.flush()
             await session.commit()
