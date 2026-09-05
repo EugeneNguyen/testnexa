@@ -89,6 +89,7 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 | 6.7 | Dark/light color-mode toggle — CoreUI `useColorModes` hook + header dropdown, `localStorage`-persisted | 6.3d | S | FR-SHELL-4, NFR-28, [ADR-0020](../adr/0020-admin-shell-full-template-parity.md) |
 | 6.8 | UI-element reference pages (Colors, Typography, Icons) + "UI Elements" sidebar nav group — template-parity scaffolding, no FR/story backing (flagged explicitly, not to be mistaken for product scope) | 6.4 | S | [ADR-0020](../adr/0020-admin-shell-full-template-parity.md) |
 | 6.9 | `FormField` shared component (`components/shared/`, CoreUI `CFormLabel`+`CFormInput`+`CFormFeedback`, RHF `register()`-bound); `Login.tsx`'s 2 and `Signup.tsx`'s 5 hand-authored label+input blocks migrated onto it, both screens brought onto React Hook Form + Zod for the first time in the process | 6.1 | M | FR-DS-1, NFR-34, [ADR-0023](../adr/0023-frontend-shared-component-location.md) |
+| 6.10 | `AppSidebar`'s `<CSidebar>` gains `colorScheme="dark"` — matches CoreUI free-template demo look, static (not wired to 6.7's toggle) | 6.4 | XS | FR-SHELL-5, NFR-36, [ADR-0026](../adr/0026-sidebar-dark-color-scheme.md) |
 
 ## 7. Generic CRUD UI
 
@@ -129,6 +130,7 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 | 10.4 | E2E tests (Playwright) — login→requirement→test case→execution; RBAC-denial flow | 9.1, all §6–8 | L | [Test Case doc](../test-cases/2026-09-03-test-cases.md) |
 | 10.4b | E2E test — members→org-home round trip via the sidebar's nav link (`shell-nav.spec.ts`), asserted by URL after a real click, not browser back | 6.4, 9.1 | S | FR-SHELL-1 AC3, TC-SHELL-003 |
 | 10.4c | E2E test — dark/light toggle flips theme + persists across reload; frontend/integration tests for stat widget counts (seeded fixture, not mocked) and breadcrumb path-derivation | 6.5, 6.6, 6.7, 9.1 | S | FR-SHELL-2..4, TC-SHELL-007..013 |
+| 10.4d | Frontend test — sidebar keeps dark `colorScheme` across all three app-wide mode states (light/dark/auto), proving 6.10 is not wired to 6.7's toggle | 6.10, 6.7 | XS | FR-SHELL-5, TC-SHELL-015 |
 
 ## 11. Documentation (this batch)
 

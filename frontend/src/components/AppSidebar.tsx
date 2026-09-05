@@ -23,6 +23,11 @@
  * Built with CoreUI (ADR-0012) — `CSidebar`/`CSidebarHeader`/
  * `CSidebarBrand`/`CSidebarNav`/`CNavItem`/`CNavLink` only.
  *
+ * `colorScheme="dark"` is `CSidebar`'s own built-in prop (renders its
+ * documented `sidebar-dark` class, shipped in the already-imported
+ * `coreui.min.css`) — matches the CoreUI free-demo look with zero bespoke
+ * CSS, per this story's ask.
+ *
  * `visible`/`onVisibleChange` round-trip to `AppShell`'s state (CoreUI's own
  * documented two-way template pattern — see that file's docstring for why
  * this is safe here specifically because of the `vh-100` class below).
@@ -90,7 +95,7 @@ function AppSidebar({ visible, onVisibleChange }: AppSidebarProps) {
     : [];
 
   return (
-    <CSidebar visible={visible} onVisibleChange={onVisibleChange} className="vh-100">
+    <CSidebar visible={visible} onVisibleChange={onVisibleChange} className="vh-100" colorScheme="dark">
       <CSidebarHeader>
         <CSidebarBrand>TestNexa</CSidebarBrand>
       </CSidebarHeader>

@@ -29,6 +29,7 @@ Index of ADRs for the Project Scaffold. Format: [MADR](https://adr.github.io/mad
 | [0023](0023-frontend-shared-component-location.md) | Frontend shared-component location (`components/shared/` vs. `components/crud/` vs. page-local) & `FormField`'s `CFormFeedback`+`invalid` error-display convention | Accepted |
 | [0024](0024-public-landing-page.md) | Public landing page replaces root scaffold-verification page: bare-bones content, delete-not-relocate the old health-check route, authenticated-visitor redirect reuses Login's own logic | Accepted |
 | [0025](0025-requirement-title-field.md) | `Requirement.title` schema gap-fill & inclusion in generic-CRUD `search_fields` (no new mechanism, reuses ADR-0022's `?q=`) | Accepted |
+| [0026](0026-sidebar-dark-color-scheme.md) | Sidebar dark color scheme (`CSidebar colorScheme="dark"`) matching the CoreUI free-template demo, static and independent of the FR-SHELL-4 app-wide light/dark toggle | Accepted |
 
 **Deciders on all ADRs below:** xuanbinh91@gmail.com (CTO), unless noted otherwise.
-**Date:** 2026-09-03 (0001–0017, 0021), 2026-09-04 (0018–0020), 2026-09-05 (0022–0025)
+**Date:** 2026-09-03 (0001–0017, 0021), 2026-09-04 (0018–0020), 2026-09-05 (0022–0026)
