@@ -1,8 +1,12 @@
-"""Pydantic v2 schemas for the RBAC-1 `POST /orgs` route.
+"""Pydantic v2 schemas for the RBAC-1 `POST /orgs` route and the API-1
+generic-CRUD factory's `Organization` `GET`/`PATCH`/`DELETE /organizations/{id}`
+routes (ADR-0021).
 
-Source: API Document §2 (`POST /orgs` contract), ADR-0016 (organization
-bootstrap & creation flow).
+Source: API Document §2 (`POST /orgs` contract), §3 (generic CRUD routes),
+ADR-0016 (organization bootstrap & creation flow).
 """
+
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -22,4 +26,30 @@ class CreateOrgRequest(BaseModel):
     slug: str = Field(pattern=_SLUG_PATTERN)
 
 
-__all__ = ["CreateOrgRequest", "OrgSummary"]
+class UpdateOrganizationRequest(BaseModel):
+    """Body of `PATCH /organizations/{id}` (ADR-0021) — partial update,
+    `exclude_unset` semantics. `slug` is not reassignable through this route
+    (no ADR/story asks for renaming an org's slug post-creation).
+    """
+
+    name: str | None = None
+    default_standards_profile: str | None = None
+
+
+class OrganizationDetail(BaseModel):
+    """Response shape for `GET`/`PATCH /organizations/{id}` (ADR-0021).
+
+    A separate schema from `OrgSummary` (`app/schemas/auth.py`) — that one is
+    deliberately lightweight (`id`/`name`/`slug` only, for `LoginResponse.orgs`/
+    `POST /orgs`'s response); this one additionally exposes
+    `default_standards_profile`, needed for the factory's `GET`/`PATCH` item
+    routes but not the lighter-weight login/creation responses.
+    """
+
+    id: UUID
+    name: str
+    slug: str
+    default_standards_profile: str | None = None
+
+
+__all__ = ["CreateOrgRequest", "OrgSummary", "OrganizationDetail", "UpdateOrganizationRequest"]
