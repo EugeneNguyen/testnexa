@@ -125,6 +125,14 @@ FR-SHELL-2/3/4 extend the shell to full parity with [CoreUI's free Bootstrap adm
 
 **Not an FR** (explicitly, per ADR-0020): the CoreUI free-template's UI-element reference pages (Colors, Typography, Icons), added as a "UI Elements" nav group for template-parity only. No business case, story, or acceptance criteria backs them — they are not product scope, and carry no FR ID.
 
+### 2.12 Design system / shared components — [design-system-component-stories.md](../user-stories/2026-09-04-design-system-component-stories.md)
+
+| ID | Title | Priority | Entities |
+|---|---|---|---|
+| FR-DS-1 | Reusable `FormField` component (CoreUI `CFormLabel`+`CFormInput`+`CFormFeedback`, RHF-bound) closing the evidenced 7× hand-authored label+input duplication across `Login.tsx`/`Signup.tsx` | Should | — (frontend-only, no entities) |
+
+FR-DS-1 is frontend-only — no new/changed entity, no new API route. It is the sole implementation output of the narrow, evidenced opportunity found by the business case's discovery pass (interviews: `CFormLabel`+`CFormInput` hand-authored 7× across `Login.tsx` and `Signup.tsx` alone). `Login.tsx`'s 2 and `Signup.tsx`'s 5 hand-authored instances migrate onto `FormField` as part of this story, which also brings both screens onto React Hook Form + Zod (ADR-0009) for the first time — they were plain-`useState` forms before this story, with no client-side schema validation. See [ADR-0023](../adr/0023-frontend-shared-component-location.md).
+
 ## 3. Non-functional requirements
 
 | ID | Requirement | Rationale / source |
@@ -160,6 +168,7 @@ FR-SHELL-2/3/4 extend the shell to full parity with [CoreUI's free Bootstrap adm
 | NFR-31 | The generic CRUD factory's `DELETE` returns `409` when a RESTRICT-constrained FK blocks the delete, distinct from `422` (validation/collision) and never an unhandled `500` — the second, distinct meaning `409` carries in this API alongside `POST /auth/signup`'s bootstrap-closed case. | FR-ADMIN-2, [ADR-0022](../adr/0022-generic-crud-router-factory.md) |
 | NFR-32 | The generic CRUD factory's list routes support free-text search (`?q=`) only for entities with an explicitly configured `search_fields` set (`ILIKE` across those columns); an entity with none configured silently ignores `?q=` rather than erroring. This revises §1's original "no free-text operator" API Document line. | FR-ADMIN-2, [ADR-0022](../adr/0022-generic-crud-router-factory.md) |
 | NFR-33 | NFR-1's existence-hiding posture extends to two cases beyond wrong-tenant: (a) a tenant-owned row whose FK chain to `org_id` cannot be resolved at all (e.g. an orphaned `TestCase` with `test_condition_id IS NULL` and no `TestSuiteTestCase` link) → `404`, same as a genuinely missing row; (b) a `Role` row with `org_id IS NULL` (system-role template) on `PATCH`/`DELETE` → `404` — `GET` is exempted (readable via `has_permission_in_any_org`, needed for role-assignment UI). | FR-ADMIN-2, [ADR-0022](../adr/0022-generic-crud-router-factory.md) |
+| NFR-34 | Every React Hook Form + Zod-bound text/email/password field added after DS-1 uses `FormField`'s `CFormFeedback`+`invalid` error-display convention, not a bespoke per-field pattern — resolves the pre-existing inconsistency between `OrgHome.tsx`'s `CFormFeedback` usage and `AcceptInvite.tsx`/`OrgMembers.tsx`'s page-level-`CAlert`-only usage, going forward. | DS-1 AC2, [ADR-0023](../adr/0023-frontend-shared-component-location.md) |
 
 ## 4. Traceability — requirements to architecture decisions
 
@@ -185,5 +194,6 @@ FR-SHELL-2/3/4 extend the shell to full parity with [CoreUI's free Bootstrap adm
 | FR-SHELL-1, NFR-24 | [ADR-0018](../adr/0018-admin-shell-sidebar-layout.md) Admin shell layout (extends [ADR-0012](../adr/0012-coreui-design-system.md)) |
 | FR-SHELL-2, FR-SHELL-3, FR-SHELL-4, NFR-27, NFR-28 | [ADR-0020](../adr/0020-admin-shell-full-template-parity.md) Full CoreUI free-admin-template parity (partially supersedes ADR-0018's shell-only scope boundary) |
 | FR-ADMIN-2, NFR-6, NFR-10, NFR-31, NFR-32, NFR-33 | [ADR-0022](../adr/0022-generic-crud-router-factory.md) Generic CRUD router factory |
+| FR-DS-1, NFR-34 | [ADR-0023](../adr/0023-frontend-shared-component-location.md) Frontend shared-component location & FormField error-display convention |
 
 Full field-level traceability (Requirement → design technique → test case → execution → defect) is itself FR-TRACE-1/2 — this document is the requirements layer that feeds the [WBS](../wbs/2026-09-03-project-scaffold-wbs.md), [Database Document](../database/2026-09-03-database-design.md), [API Document](../api/2026-09-03-api-design.md), and [Test Plan](../test-plan/2026-09-03-master-test-plan.md).

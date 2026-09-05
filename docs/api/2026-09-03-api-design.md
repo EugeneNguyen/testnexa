@@ -10,6 +10,8 @@ REST over HTTPS, JSON bodies, base path `/api/v1`. FastAPI auto-generates the Op
 
 **SHELL-2/3/4** ([ADR-0019](../adr/0019-admin-shell-full-template-parity.md), FR-SHELL-2/3/4) — reviewed, no API impact. Breadcrumb/footer/dark-mode-toggle are frontend-only. Dashboard stat widgets (FR-SHELL-3) reuse §3's existing generic-CRUD list routes' `total` field (`GET /projects?page=1&page_size=1`, `GET /org-memberships?org_id=<id>&status=active&page=1&page_size=1`) — no new route, no new query param. The template's trend-chart widget is deferred (no real time-series source yet, ADR-0019) — not stubbed with a placeholder route.
 
+**DS-1** ([ADR-0023](../adr/0023-frontend-shared-component-location.md), FR-DS-1) — reviewed, no API impact. `FormField` is frontend-only; `Login.tsx`/`Signup.tsx`'s existing `POST /auth/login`/`POST /auth/signup` calls, request bodies, and response handling are unchanged — only client-side validation timing/UI moves onto React Hook Form + Zod.
+
 ---
 
 ## 1. Conventions

@@ -12,6 +12,8 @@ This document is the implementation-level schema, refined from the [07 ERD](../p
 
 **ADMIN-2** ([ADR-0022](../adr/0022-generic-crud-router-factory.md), FR-ADMIN-2) — reviewed, no schema impact: the generic CRUD router factory adds no table/column/index, only application-layer routing and permission-check logic over tables already defined below. Annotated inline where a table's existing shape drives factory behavior: `Role.org_id`'s nullability (§3.3), `TestCase.test_condition_id`'s nullability (§3.6), `RiskItem`'s branching FK pair (§3.11), `Attachment`'s create scope (§3.11).
 
+**DS-1** ([ADR-0023](../adr/0023-frontend-shared-component-location.md), FR-DS-1) — reviewed, no schema impact. `FormField` is a pure presentational component; `Login.tsx`/`Signup.tsx`'s migration onto React Hook Form + Zod changes client-side validation only, not the request payload shape either route already accepts.
+
 ---
 
 ## 1. Entity count reconciliation
