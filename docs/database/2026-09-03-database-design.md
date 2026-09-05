@@ -153,6 +153,8 @@ Unique: `(role_id, permission_id)`.
 
 Unique: `(actor_id, org_id, project_id, role_id)`.
 
+**Creation flow (RBAC-3, [ADR-0021](../adr/0021-role-assignment-creation-flow.md))** is application logic, not a schema change — no dedicated migration. `POST /orgs/{org_id}/role-assignments` inserts one row directly; the unique constraint above is what turns a duplicate-grant attempt into `422` (caught `IntegrityError`) rather than a silent second row. `project_id NULL` (org-wide) vs. non-null (project-scoped) was already schema-supported since the initial migration — RBAC-3 is the first story to expose creating either shape through a real route, and the first to prove `has_permission`'s `project_id`-aware resolution branch against a real HTTP call (`GET`/`PATCH /projects/{id}`, fixed by the same story to pass `project_id` through — see ADR-0021).
+
 ### 3.4 `actor.py` — Actor, User, AIAgent (joined-table inheritance)
 
 **Actor** *(supertype)*

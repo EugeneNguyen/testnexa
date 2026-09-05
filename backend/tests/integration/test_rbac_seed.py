@@ -221,9 +221,16 @@ async def test_migration_downgrade_removes_only_the_five_system_roles() -> None:
         ).scalar_one()
 
     try:
-        downgrade_result = _run_alembic("downgrade", "-1")
+        # Target the seed migration's own `down_revision` explicitly, not a
+        # relative `-1` step: RBAC-3 added two migrations on top of the seed
+        # migration (`34053c46f9fc`) as the Alembic chain grew, so `-1` from
+        # head no longer lands on the seed migration's own revert — it only
+        # undoes whatever the newest migration happens to be. `d33d66f4b3c3`
+        # is `34053c46f9fc`'s `down_revision`, i.e. "downgrade past the seed
+        # migration itself, however many migrations now sit on top of it."
+        downgrade_result = _run_alembic("downgrade", "d33d66f4b3c3")
         assert downgrade_result.returncode == 0, (
-            f"alembic downgrade -1 failed:\n{downgrade_result.stdout}\n{downgrade_result.stderr}"
+            f"alembic downgrade to d33d66f4b3c3 failed:\n{downgrade_result.stdout}\n{downgrade_result.stderr}"
         )
 
         async with AsyncSessionLocal() as session:

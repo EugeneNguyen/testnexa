@@ -23,7 +23,7 @@ from typing import Any
 import jwt
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import decode_token, verify_api_key
@@ -197,10 +197,18 @@ async def has_permission(actor_id: str, org_id: str, code: str, project_id: str 
 
     `project_id=None` (the default, and the only path AUTH-4's own routes
     exercise) resolves org-wide grants only: `RoleAssignment.project_id IS
-    NULL`. Passing a `project_id` additionally matches project-scoped
-    grants (`RoleAssignment.project_id == project_id`) — implemented per
-    ADR-0015/RBAC-3's documented design even though no route in this story
-    exercises it yet; RBAC-3 owns that coverage when it lands.
+    NULL`. Passing a `project_id` ADDITIONALLY matches project-scoped
+    grants for that exact `project_id` — i.e. either an org-wide grant OR a
+    grant scoped to this specific project satisfies the check, per
+    ADR-0021 ("an actor holding the permission org-wide still passes,
+    exactly as before, but so does an actor holding it only project-scoped
+    to this specific project_id"). Implemented as an `OR`, not a replace: a
+    plain `project_id == given` filter (excluding `NULL` rows) would make a
+    project-scoped check *narrower* than the org-wide-only default instead
+    of a superset of it, silently breaking every existing org-wide grant
+    the moment a caller passes `project_id` — RBAC-3/ADR-0021 is the first
+    story to actually pass one through from a real route
+    (`GET`/`PATCH /projects/{id}`).
     """
     actor_uuid = uuid.UUID(str(actor_id))
     org_uuid = uuid.UUID(str(org_id))
@@ -213,7 +221,9 @@ async def has_permission(actor_id: str, org_id: str, code: str, project_id: str 
     if project_id is None:
         conditions.append(RoleAssignment.project_id.is_(None))
     else:
-        conditions.append(RoleAssignment.project_id == uuid.UUID(str(project_id)))
+        conditions.append(
+            or_(RoleAssignment.project_id.is_(None), RoleAssignment.project_id == uuid.UUID(str(project_id)))
+        )
 
     query = (
         select(Permission.id)

@@ -58,6 +58,7 @@ import {
 } from "@coreui/react";
 import { ApiError } from "../../lib/api/client";
 import { createProject, ProjectSummary, updateProject } from "../../lib/api/projects";
+import RoleAssignmentsPanel from "../../components/RoleAssignmentsPanel";
 
 const newProjectSchema = z.object({
   name: z.string().trim().min(1, "Name is required"),
@@ -245,6 +246,8 @@ function OrgHome() {
                 )}
               </CCardBody>
             </CCard>
+
+            <RoleAssignmentsPanel orgId={orgId} />
           </CCol>
         </CRow>
       </CContainer>

@@ -126,6 +126,18 @@ def build_role_bundles(all_permission_codes: set[str]) -> dict[str, set[str]]:
         | {_code("defect", "read")}
         | _crud_codes("risk_item")
         | {_code("test_case", "read"), _code("test_step", "read"), _code("test_condition", "read")}
+        # RBAC-3/ADR-0021: a project's own creator is auto-granted this Role,
+        # project-scoped, unconditionally (PROJ-1/ADR-0017's `create_project`)
+        # specifically so they can subsequently GET/PATCH the project they
+        # just created without also needing org-wide `org_admin` — that only
+        # holds if the bundle actually grants `project.read`/`.update`
+        # (pre-existing RBAC-4 gap surfaced by TC-RBAC-035; a "test manager"
+        # role that can manage everything *inside* a project but can't view
+        # or rename the project itself was never a deliberate restriction —
+        # no story text asks for `test_manager` to be blocked from its own
+        # project's read/update, and ADR-0021's own regression case is only
+        # provable if these two codes are present).
+        | {_code("project", "read"), _code("project", "update")}
     )
 
     tester = (
