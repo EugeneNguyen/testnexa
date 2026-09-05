@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-05
 **Owner:** xuanbinh91@gmail.com (CTO)
-**Sources:** `frontend/src/App.tsx` (route source of truth — this document tracks it, not the reverse), [UI Design Document](../ui-design/2026-09-05-generic-admin-crud-ui-design.md), [ADR-0025](../adr/0025-generic-admin-crud-ui-and-backend-completion.md)
+**Sources:** `frontend/src/App.tsx` (route source of truth — this document tracks it, not the reverse), [UI Design Document](../ui-design/2026-09-05-generic-admin-crud-ui-design.md), [ADR-0026](../adr/0026-generic-admin-crud-ui-and-backend-completion.md)
 
 First sitemap for this repo — no prior one existed; routes accreted story-by-story directly into `App.tsx`. Written now because the generic admin surface adds routes generated from a registry rather than one literal `<Route>` per entity, which is worth documenting as a pattern rather than 28 individual rows would otherwise obscure.
 
@@ -27,7 +27,7 @@ First sitemap for this repo — no prior one existed; routes accreted story-by-s
 
 **Not yet built** (scoped by other, not-yet-implemented stories — listed here as reserved paths so a future generic-admin config never collides with them): `RequirementDetail` (FR-REQ-1..3), `TestSuiteBuilder` (FR-REQ-4), `TestExecutionRunner` (FR-EXEC-1..3), `TraceabilityMatrix` (FR-TRACE-1..2).
 
-## Protected — generic admin CRUD surface (ADR-0025)
+## Protected — generic admin CRUD surface (ADR-0026)
 
 Two page components (`EntityListPage`, `EntityFormPage`), routed generically off an entity registry — the rows below are the registry's contents, not 28 separate `<Route>` declarations in `App.tsx`.
 
@@ -69,7 +69,7 @@ Two page components (`EntityListPage`, `EntityFormPage`), routed generically off
 | `projects` | `Project` | coexists with `ProjectDetail` itself |
 | `releases` | `Release` | coexists with `ProjectDetail`'s own Release list |
 
-28 entities total across both tables. **Deliberately absent from this surface, anywhere:** `Approval`, `User`, `AIAgent`, `AuthIdentity` — see [ADR-0025](../adr/0025-generic-admin-crud-ui-and-backend-completion.md) for why (no plain-field CRUD path exists for any of the four).
+28 entities total across both tables. **Deliberately absent from this surface, anywhere:** `Approval`, `User`, `AIAgent`, `AuthIdentity` — see [ADR-0026](../adr/0026-generic-admin-crud-ui-and-backend-completion.md) for why (no plain-field CRUD path exists for any of the four).
 
 ## Route tree (visual)
 

@@ -1,4 +1,4 @@
-# ADR-0025: Generic admin CRUD UI (frontend) + execution/traceability backend completion
+# ADR-0026: Generic admin CRUD UI (frontend) + execution/traceability backend completion
 
 **Status:** Accepted
 **Date:** 2026-09-05

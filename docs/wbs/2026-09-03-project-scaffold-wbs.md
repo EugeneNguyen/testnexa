@@ -51,8 +51,8 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 | 3.1 | Pydantic v2 schemas — 1:1 mirror of `app/models/`, one file per model cluster (`assets`, `planning`, `taxonomy`, `governance`, `rbac`) | 1.1 | M | [API Document](../api/2026-09-03-api-design.md) |
 | 3.2 | `app/api/crud_factory.py` — `CrudEntityConfig` dataclass + `chain_resolver()` (per-entity `org_id`-resolution, direct/one-hop/branching/multi-hop) + `make_crud_router()` (list/get/create/update/delete, pagination, exact-match `filter_fields` + opt-in `?q=` `search_fields`, item routes gated via row-resolved `has_permission` not `require_permission`, global-catalog routes via `has_permission_in_any_org`, `DELETE`'s `IntegrityError` → `409`) | 2.4, 2.5a, 3.1 | L | FR-ADMIN-2, NFR-6, NFR-29, NFR-30, [ADR-0022](../adr/0022-generic-crud-router-factory.md) |
 | 3.3 | Apply factory to all 20 entities the API Document §3 lists, across 6 route modules (`assets`, `planning`, `taxonomy`, `governance`, `execution` (Defect only), `rbac_routes`) + extend `organizations.py`/`projects.py`/`org_memberships.py` with the factory-served methods each is still missing (`Project`: `DELETE` only; `Organization`: `GET`/`PATCH`/`DELETE`; `OrgMembership`: full 5) | 3.2 | L | FR-ADMIN-2, [ADR-0022](../adr/0022-generic-crud-router-factory.md), [ADMIN-2 plan](../superpowers/plans/2026-09-05-admin-2-generic-crud-factory-plan.md) |
-| 3.4 | Wire the 3 entities the factory never registered a route for: `TestExecution` (full CRUD, `execution.py`, resolver via `TestCycle`), `TestLog` (list/get only, same file, resolver delegates one further hop through `TestExecution`'s), new `app/api/routes/trace.py` + `schemas/trace.py` for the 4 link tables (list/get only, resolvers compose existing `chain_resolver`/`resolve_via_test_case` helpers, no new resolver logic) | 3.3 | M | FR-ADMIN-2, [ADR-0025](../adr/0025-generic-admin-crud-ui-and-backend-completion.md) |
-| 3.5 | `GET /orgs/{org_id}/permissions/mine` — bulk-resolves the caller's own permission codes in `org_id` (`RoleAssignment`→`Role`→`RolePermission`→`Permission.code`, one query, reusing `has_permission`'s join shape) | 2.5a | S | FR-ADMIN-2, NFR-36, [ADR-0025](../adr/0025-generic-admin-crud-ui-and-backend-completion.md) |
+| 3.4 | Wire the 3 entities the factory never registered a route for: `TestExecution` (full CRUD, `execution.py`, resolver via `TestCycle`), `TestLog` (list/get only, same file, resolver delegates one further hop through `TestExecution`'s), new `app/api/routes/trace.py` + `schemas/trace.py` for the 4 link tables (list/get only, resolvers compose existing `chain_resolver`/`resolve_via_test_case` helpers, no new resolver logic) | 3.3 | M | FR-ADMIN-2, [ADR-0026](../adr/0026-generic-admin-crud-ui-and-backend-completion.md) |
+| 3.5 | `GET /orgs/{org_id}/permissions/mine` — bulk-resolves the caller's own permission codes in `org_id` (`RoleAssignment`→`Role`→`RolePermission`→`Permission.code`, one query, reusing `has_permission`'s join shape) | 2.5a | S | FR-ADMIN-2, NFR-36, [ADR-0026](../adr/0026-generic-admin-crud-ui-and-backend-completion.md) |
 
 ## 4. Bespoke API routes
 
@@ -96,9 +96,9 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 | # | Deliverable | Depends on | Size | Maps to |
 |---|---|---|---|---|
 | 7.1 | `<EntityTable>`, `<EntityForm>` (react-hook-form + zod), `<FkAutocomplete>` — generic `components/crud/` components ([ADR-0023](../adr/0023-frontend-shared-component-location.md) location) | 6.2 | M | FR-ADMIN-2 |
-| 7.2 | `entityConfigs/` — one field-config object per entity (28 — every ERD entity except `Approval`/`User`/`AIAgent`/`AuthIdentity`, structurally excluded per [ADR-0025](../adr/0025-generic-admin-crud-ui-and-backend-completion.md)) | 7.1 | L | FR-ADMIN-2, [ADR-0025](../adr/0025-generic-admin-crud-ui-and-backend-completion.md) |
+| 7.2 | `entityConfigs/` — one field-config object per entity (28 — every ERD entity except `Approval`/`User`/`AIAgent`/`AuthIdentity`, structurally excluded per [ADR-0026](../adr/0026-generic-admin-crud-ui-and-backend-completion.md)) | 7.1 | L | FR-ADMIN-2, [ADR-0026](../adr/0026-generic-admin-crud-ui-and-backend-completion.md) |
 | 7.3 | Admin pages routed from an entity registry (`pages/admin/`), permission-gated action buttons via a new `usePermissions` hook | 7.2, 6.3b, 3.5 | M | FR-ADMIN-2, NFR-10, NFR-36 |
-| 7.4 | Scope-selector step (`FkAutocomplete` against the ref entity before the list query fires) for `RiskItem`/`Attachment`'s branching/deep-chain scope; nav wiring — org/global entities in `AppSidebar`'s new "Admin" `CNavGroup`, project-scoped entities linked from `ProjectDetail.tsx` | 7.3 | M | FR-ADMIN-2, [ADR-0025](../adr/0025-generic-admin-crud-ui-and-backend-completion.md) |
+| 7.4 | Scope-selector step (`FkAutocomplete` against the ref entity before the list query fires) for `RiskItem`/`Attachment`'s branching/deep-chain scope; nav wiring — org/global entities in `AppSidebar`'s new "Admin" `CNavGroup`, project-scoped entities linked from `ProjectDetail.tsx` | 7.3 | M | FR-ADMIN-2, [ADR-0026](../adr/0026-generic-admin-crud-ui-and-backend-completion.md) |
 
 ## 8. Bespoke workflow screens
 
@@ -146,7 +146,7 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 | 11.8 | Test Cases | Done |
 | 11.9 | ADR-0022 (generic CRUD router factory) + propagation across Requirements/WBS/Database/API/Test Plan/Test Design/Test Cases (this revision, 2026-09-05) | Done |
 | 11.10 | ADR-0024 (public landing page) + LANDING-1 user story + propagation across Requirements/WBS/Database/API/Test Plan/Test Design/Test Cases (this revision, 2026-09-05) | Done |
-| 11.11 | ADR-0025 (generic admin CRUD UI + execution/traceability backend completion) + new UI Design Document + new Sitemap Document + propagation across Requirements/WBS/Database/API/Test Plan/Test Design/Test Cases (this revision, 2026-09-05) | Done |
+| 11.11 | ADR-0026 (generic admin CRUD UI + execution/traceability backend completion) + new UI Design Document + new Sitemap Document + propagation across Requirements/WBS/Database/API/Test Plan/Test Design/Test Cases (this revision, 2026-09-05) | Done |
 
 ## Critical path
 

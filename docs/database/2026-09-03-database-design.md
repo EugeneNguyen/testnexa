@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-03
 **Owner:** xuanbinh91@gmail.com (CTO)
-**Sources:** [07 ERD](../product-discovery/07-erd-draft.md), [Scaffold design spec](../superpowers/specs/2026-09-03-project-scaffold-design.md), [ADR-0005](../adr/0005-traceability-link-dedicated-join-tables.md), [ADR-0006](../adr/0006-test-condition-optional.md), [ADR-0007](../adr/0007-real-multi-tenancy.md), [ADR-0008](../adr/0008-uuid-primary-keys.md), [ADR-0011](../adr/0011-login-rate-limiting.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md), [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md), [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md), [ADR-0022](../adr/0022-generic-crud-router-factory.md), [ADR-0025](../adr/0025-generic-admin-crud-ui-and-backend-completion.md)
+**Sources:** [07 ERD](../product-discovery/07-erd-draft.md), [Scaffold design spec](../superpowers/specs/2026-09-03-project-scaffold-design.md), [ADR-0005](../adr/0005-traceability-link-dedicated-join-tables.md), [ADR-0006](../adr/0006-test-condition-optional.md), [ADR-0007](../adr/0007-real-multi-tenancy.md), [ADR-0008](../adr/0008-uuid-primary-keys.md), [ADR-0011](../adr/0011-login-rate-limiting.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md), [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md), [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md), [ADR-0022](../adr/0022-generic-crud-router-factory.md), [ADR-0026](../adr/0026-generic-admin-crud-ui-and-backend-completion.md)
 
 This document is the implementation-level schema, refined from the [07 ERD](../product-discovery/07-erd-draft.md) draft per the ADRs above. No code — this is the reference for the Alembic migration that will be written when implementation is authorized.
 
@@ -16,7 +16,7 @@ This document is the implementation-level schema, refined from the [07 ERD](../p
 
 **LANDING-1** ([ADR-0024](../adr/0024-public-landing-page.md), FR-LANDING-1) — reviewed, no schema impact. The public landing page is frontend-only: no new table, column, or index, and it makes no API call at all (authenticated or otherwise). Deleting `ScaffoldVerificationPage` likewise has no schema impact — it never wrote to or read from any table itself, only `GET /api/health`.
 
-**ADR-0025** (generic admin CRUD UI + execution/traceability backend completion, FR-ADMIN-2 completion) — reviewed, no schema impact. `TestExecution`/`TestLog` (§3.8) and the 4 link tables (§3.9) were already fully specified below — this pass only adds application-layer routes/permission-check wiring over tables already defined, same posture ADR-0022's own note above already established for the other 20 entities. `GET /orgs/{org_id}/permissions/mine` reads existing `RoleAssignment`/`Role`/`RolePermission`/`Permission` rows (§3.3) — no new table/column/index.
+**ADR-0026** (generic admin CRUD UI + execution/traceability backend completion, FR-ADMIN-2 completion) — reviewed, no schema impact. `TestExecution`/`TestLog` (§3.8) and the 4 link tables (§3.9) were already fully specified below — this pass only adds application-layer routes/permission-check wiring over tables already defined, same posture ADR-0022's own note above already established for the other 20 entities. `GET /orgs/{org_id}/permissions/mine` reads existing `RoleAssignment`/`Role`/`RolePermission`/`Permission` rows (§3.3) — no new table/column/index.
 
 ---
 
@@ -382,7 +382,7 @@ Unique: `(test_plan_id, test_suite_id)`.
 
 Composite index: `(test_cycle_id, test_case_id)` — dashboard aggregation (EXEC-1) and execution-scope-check (PLAN-3) both filter on this pair.
 
-**TestLog** — *append-only, no `updated_at`, no update/delete API path (list/get only, [ADR-0025](../adr/0025-generic-admin-crud-ui-and-backend-completion.md))*
+**TestLog** — *append-only, no `updated_at`, no update/delete API path (list/get only, [ADR-0026](../adr/0026-generic-admin-crud-ui-and-backend-completion.md))*
 | Column | Type | Constraints |
 |---|---|---|
 | id | uuid | PK |
@@ -407,7 +407,7 @@ Index: `(test_execution_id, logged_at)` — ordered timeline reads (EXEC-2).
 
 ### 3.9 `trace.py` — the 4 dedicated link tables ([ADR-0005](../adr/0005-traceability-link-dedicated-join-tables.md))
 
-All four share the same shape: surrogate `uuid` PK, two FK columns, unique constraint on the pair, `created_at` only (links are immutable — delete-and-recreate, never edited). List/get routes only ([ADR-0025](../adr/0025-generic-admin-crud-ui-and-backend-completion.md)) — a row is still only ever written as a side effect of the bespoke routes in API Document §4, never via a direct `POST`/`PATCH`/`DELETE` on the link table itself.
+All four share the same shape: surrogate `uuid` PK, two FK columns, unique constraint on the pair, `created_at` only (links are immutable — delete-and-recreate, never edited). List/get routes only ([ADR-0026](../adr/0026-generic-admin-crud-ui-and-backend-completion.md)) — a row is still only ever written as a side effect of the bespoke routes in API Document §4, never via a direct `POST`/`PATCH`/`DELETE` on the link table itself.
 
 | Table | FK 1 | FK 2 |
 |---|---|---|

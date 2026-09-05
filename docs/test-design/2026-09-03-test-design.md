@@ -245,7 +245,7 @@ Every MCP tool test asserts **contract parity** with its backing REST route (MCP
 
 **Non-goal boundary:** no marketing-depth content (features grid, testimonials, persona-targeted copy) is exercised by this section's tests — bare-bones scope is this story's explicit boundary (ADR-0024), not an oversight.
 
-## 22. ADMIN-2 completion — generic admin CRUD UI + execution/traceability backend ([ADR-0025](../adr/0025-generic-admin-crud-ui-and-backend-completion.md))
+## 22. ADMIN-2 completion — generic admin CRUD UI + execution/traceability backend ([ADR-0026](../adr/0026-generic-admin-crud-ui-and-backend-completion.md))
 
 **Field-type rendering class (AC2):** for one representative entity per `type`, the create/edit form renders the matching input — `string` → text `FormField`, `enum` → `CFormSelect` populated from `values[]`, `fk` → `FkAutocomplete` (typing filters via `?q=` against the ref entity), `date` → a native date input, `boolean` → `CFormSwitch`. Tested per type once against a real config, not per entity — the dispatch logic is shared, so a per-entity repeat would only be re-testing the same `switch` statement.
 
