@@ -8,6 +8,8 @@ This document is the implementation-level schema, refined from the [07 ERD](../p
 
 **SHELL-1** ([ADR-0018](../adr/0018-admin-shell-sidebar-layout.md), FR-SHELL-1) — reviewed, no schema impact. The admin shell (sidebar + navbar) is frontend-only: no new table, column, or index. Noted here explicitly so the gap isn't mistaken for an oversight.
 
+**Sidebar dark color scheme** ([ADR-0026](../adr/0026-sidebar-dark-color-scheme.md), FR-SHELL-5) — reviewed, no schema impact. A `CSidebar` prop value; no table, column, or index change.
+
 **SHELL-2/3/4** ([ADR-0019](../adr/0019-admin-shell-full-template-parity.md), FR-SHELL-2/3/4) — reviewed, no schema impact. Breadcrumb/footer are frontend-only; dashboard stat widgets read existing `Project`/`OrgMembership` rows via already-built generic-CRUD list queries (no new table/column); dark/light mode preference is `localStorage`-only (NFR-26) — deliberately not a new `User`/`Actor` column, since it's presentation state, not account data worth persisting server-side in this scaffold.
 
 **ADMIN-2** ([ADR-0022](../adr/0022-generic-crud-router-factory.md), FR-ADMIN-2) — reviewed, no schema impact: the generic CRUD router factory adds no table/column/index, only application-layer routing and permission-check logic over tables already defined below. Annotated inline where a table's existing shape drives factory behavior: `Role.org_id`'s nullability (§3.3), `TestCase.test_condition_id`'s nullability (§3.6), `RiskItem`'s branching FK pair (§3.11), `Attachment`'s create scope (§3.11).

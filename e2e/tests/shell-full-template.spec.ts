@@ -280,6 +280,40 @@ test.describe("SHELL-4 dark/light color-mode toggle", () => {
       cleanup(admin);
     }
   });
+
+  test("TC-SHELL-015: sidebar keeps its dark color scheme across every light/dark/auto toggle state", async ({
+    page,
+  }) => {
+    const admin = seedOrgAdmin();
+
+    try {
+      await loginToOrgHome(page, admin);
+
+      // FR-SHELL-5 (ADR-0026): `AppSidebar`'s `CSidebar` carries a static
+      // `colorScheme="dark"` prop, independent of this describe block's
+      // app-wide light/dark/auto toggle — the sidebar's own `sidebar-dark`
+      // class must never move regardless of `<html data-coreui-theme>`.
+      const sidebar = page.locator(".sidebar");
+      const html = page.locator("html");
+      await expect(sidebar).toHaveClass(/\bsidebar-dark\b/);
+
+      await page.getByTestId("color-mode-toggle").click();
+      await page.getByTestId("color-mode-light").click();
+      await expect(html).toHaveAttribute("data-coreui-theme", "light");
+      await expect(sidebar).toHaveClass(/\bsidebar-dark\b/);
+
+      await page.getByTestId("color-mode-toggle").click();
+      await page.getByTestId("color-mode-auto").click();
+      await expect(sidebar).toHaveClass(/\bsidebar-dark\b/);
+
+      await page.getByTestId("color-mode-toggle").click();
+      await page.getByTestId("color-mode-dark").click();
+      await expect(html).toHaveAttribute("data-coreui-theme", "dark");
+      await expect(sidebar).toHaveClass(/\bsidebar-dark\b/);
+    } finally {
+      cleanup(admin);
+    }
+  });
 });
 
 test.describe("SHELL-3 dashboard stat widgets", () => {
