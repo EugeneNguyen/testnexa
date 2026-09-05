@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-03
 **Owner:** xuanbinh91@gmail.com (CTO)
-**Sources:** [Test Design](../test-design/2026-09-03-test-design.md), [Master Test Plan](../test-plan/2026-09-03-master-test-plan.md), [docs/user-stories/*](../user-stories/), [AUTH-1 scope plan](../superpowers/plans/2026-09-03-auth-1-local-password-login-plan.md), [AUTH-2 scope plan](../superpowers/plans/2026-09-03-auth-2-session-persistence-plan.md), [AUTH-3 scope plan](../superpowers/plans/2026-09-03-auth-3-logout-plan.md), [AUTH-4 scope plan](../superpowers/plans/2026-09-03-auth-4-agent-bearer-auth-plan.md), [RBAC-1 scope plan](../superpowers/plans/2026-09-03-rbac-1-create-org-plan.md), [PROJ-1 scope plan](../superpowers/plans/2026-09-03-proj-1-create-project-plan.md), [PROJ-2 scope plan](../superpowers/plans/2026-09-03-proj-2-create-release-plan.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md), [ADR-0014](../adr/0014-logout-session-revocation-policy.md), [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md), [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md), [ADR-0017](../adr/0017-project-creation-flow.md), [ADR-0018](../adr/0018-admin-shell-sidebar-layout.md), [ADR-0019](../adr/0019-release-creation-flow.md)
+**Sources:** [Test Design](../test-design/2026-09-03-test-design.md), [Master Test Plan](../test-plan/2026-09-03-master-test-plan.md), [docs/user-stories/*](../user-stories/), [AUTH-1 scope plan](../superpowers/plans/2026-09-03-auth-1-local-password-login-plan.md), [AUTH-2 scope plan](../superpowers/plans/2026-09-03-auth-2-session-persistence-plan.md), [AUTH-3 scope plan](../superpowers/plans/2026-09-03-auth-3-logout-plan.md), [AUTH-4 scope plan](../superpowers/plans/2026-09-03-auth-4-agent-bearer-auth-plan.md), [RBAC-1 scope plan](../superpowers/plans/2026-09-03-rbac-1-create-org-plan.md), [PROJ-1 scope plan](../superpowers/plans/2026-09-03-proj-1-create-project-plan.md), [PROJ-2 scope plan](../superpowers/plans/2026-09-03-proj-2-create-release-plan.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md), [ADR-0014](../adr/0014-logout-session-revocation-policy.md), [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md), [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md), [ADR-0017](../adr/0017-project-creation-flow.md), [ADR-0018](../adr/0018-admin-shell-sidebar-layout.md), [ADR-0019](../adr/0019-release-creation-flow.md), [ADR-0021](../adr/0021-frontend-shared-component-location.md), [DS-1 scope plan](../superpowers/plans/2026-09-04-ds-1-form-field-plan.md)
 
 Concrete test cases derived from each user story's acceptance criteria. IDs group by feature area; **Story** column links back to the source acceptance criterion. Priority: **P1** = release-blocking, **P2** = should-have, **P3** = exploratory/structural-only (per FR priority in the Requirements Document).
 
@@ -204,6 +204,19 @@ Concrete test cases derived from each user story's acceptance criteria. IDs grou
 | TC-SHELL-013 | Theme choice persists across reload | Theme toggled to dark | Reload the page | Theme remains dark after reload (`localStorage`-read on boot, not reset to default) | P1 | ADR-0020 (FR-SHELL-4, NFR-28) |
 | TC-SHELL-014 | UI-element reference pages reachable, render without error | Authenticated user | Click each of Colors/Typography/Icons in the "UI Elements" nav group | Each page renders (smoke-level only — no FR/story backs their content, per ADR-0020) | P3 | ADR-0020 (no FR — scaffolding) |
 
+## Design System / Shared Components
+
+| ID | Title | Preconditions | Steps | Expected result | Priority | Story |
+|---|---|---|---|---|---|---|
+| TC-DS-001 | FormField pairs label to input via htmlFor/id | — | Render `<FormField id="email" label="Email" />` | `getByLabelText("Email")` resolves an input with `id="email"` — same accessibility contract as the hand-authored instances | P1 | DS-1 |
+| TC-DS-002 | FormField defaults to type=text | — | Render `<FormField id="name" label="Name" />` with no `type` prop | Rendered input has `type="text"` | P3 | DS-1 |
+| TC-DS-003 | FormField surfaces an error via CFormFeedback + invalid | — | Render `<FormField id="email" label="Email" error="Email is required." />` | Input has `invalid`/`is-invalid` styling; `CFormFeedback` renders the exact message text | P1 | DS-1 |
+| TC-DS-004 | FormField renders no error state when error prop is absent | — | Render `<FormField id="email" label="Email" />` | Input is not marked invalid; no `CFormFeedback`/alert role present | P2 | DS-1 |
+| TC-DS-005 | FormField forwards ref for RHF register() compatibility | — | Render `<FormField id="email" label="Email" ref={ref} />` | `ref.current` is the underlying `<input>` DOM node | P1 | DS-1 |
+| TC-DS-006 | FormField spreads RHF register() rest props | — | Render `<FormField id="email" label="Email" name="email" onChange={fn} onBlur={fn} />` | `name`/`onChange`/`onBlur` land on the underlying input unchanged | P1 | DS-1 |
+| TC-DS-007 | Login.tsx migration is behavior-preserving | `Login.tsx` migrated onto FormField + RHF + Zod | Run `auth-login.spec.ts` unmodified | All existing assertions (redirect on success, `/invalid email or password/i` on failure) pass with zero assertion changes | P1 | DS-1 |
+| TC-DS-008 | Signup.tsx migration is behavior-preserving | `Signup.tsx` migrated onto FormField + RHF + Zod (5 fields) | Run `Signup.test.tsx`, `Signup.authFlow.test.tsx`, `auth-signup.spec.ts` unmodified | All existing assertions (labels, slug-format rejection alert, exact `signup()` payload, disabled/loading button text, `/login` link) pass with zero assertion changes | P1 | DS-1 |
+
 ## Coverage summary
 
 | Feature area | Test case count | P1 count |
@@ -219,6 +232,7 @@ Concrete test cases derived from each user story's acceptance criteria. IDs grou
 | Traceability Matrix | 5 | 4 |
 | AI Agent / MCP | 7 | 0 |
 | Layout & Navigation | 14 | 6 |
-| **Total** | **135** | **79** |
+| Design System / Shared Components | 8 | 6 |
+| **Total** | **143** | **85** |
 
 MCP's P3-only weighting matches its exploratory, no-validated-WTP status per the personas doc — structural coverage exists, but nothing here blocks a release.

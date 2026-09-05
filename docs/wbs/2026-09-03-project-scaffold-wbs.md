@@ -86,6 +86,7 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 | 6.6 | `OrgHome` dashboard stat widgets (`CWidgetStatsA`/`B` × 2 — Project count, active Org Member count), read via existing `GET /projects`/`GET /org-memberships` list `total`, no new API/query hook beyond 6.2's existing list hooks | 6.4, 6.2 | S | FR-SHELL-3, NFR-27, [ADR-0020](../adr/0020-admin-shell-full-template-parity.md) |
 | 6.7 | Dark/light color-mode toggle — CoreUI `useColorModes` hook + header dropdown, `localStorage`-persisted | 6.3d | S | FR-SHELL-4, NFR-28, [ADR-0020](../adr/0020-admin-shell-full-template-parity.md) |
 | 6.8 | UI-element reference pages (Colors, Typography, Icons) + "UI Elements" sidebar nav group — template-parity scaffolding, no FR/story backing (flagged explicitly, not to be mistaken for product scope) | 6.4 | S | [ADR-0020](../adr/0020-admin-shell-full-template-parity.md) |
+| 6.9 | `FormField` shared component (`components/shared/`, CoreUI `CFormLabel`+`CFormInput`+`CFormFeedback`, RHF `register()`-bound); `Login.tsx`'s 2 and `Signup.tsx`'s 5 hand-authored label+input blocks migrated onto it, both screens brought onto React Hook Form + Zod for the first time in the process | 6.1 | M | FR-DS-1, NFR-29, [ADR-0021](../adr/0021-frontend-shared-component-location.md) |
 
 ## 7. Generic CRUD UI
 
@@ -132,7 +133,7 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 |---|---|---|
 | 11.1 | Requirement Document | Done |
 | 11.2 | WBS (this document) | Done |
-| 11.3 | ADRs (0001–0020 + index) | Done |
+| 11.3 | ADRs (0001–0021 + index) | Done |
 | 11.4 | Database Document | Done |
 | 11.5 | API Document | Done |
 | 11.6 | Master Test Plan | Done |
