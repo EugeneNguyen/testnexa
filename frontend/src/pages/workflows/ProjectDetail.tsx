@@ -21,7 +21,7 @@
  * Built with CoreUI (ADR-0012).
  */
 import { Fragment, useCallback, useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -37,6 +37,8 @@ import {
   CFormFeedback,
   CFormLabel,
   CFormText,
+  CListGroup,
+  CListGroupItem,
   CModal,
   CModalBody,
   CModalFooter,
@@ -59,6 +61,7 @@ import {
   ReleaseSummary,
   TestCycleSummary,
 } from "../../lib/api/releases";
+import { projectScopedEntities } from "../admin/registry";
 
 const newReleaseSchema = z.object({
   versionLabel: z.string().trim().min(1, "Version label is required"),
@@ -293,6 +296,35 @@ function ProjectDetail() {
                     </CTableBody>
                   </CTable>
                 )}
+              </CCardBody>
+            </CCard>
+
+            {/*
+              ADR-0025 / UI Design Document §7: the 20 project-scoped
+              generic-admin entities, linked from this bespoke screen's own
+              body (the sidebar has no project-context nav today) —
+              generated from the registry (`pages/admin/registry.ts`), never
+              a hardcoded literal per entity. No link points back from here
+              into `projects`/`releases`' own generic admin pages beyond
+              what's already in this list — §6's "no cross-link from a
+              bespoke screen into its own entity's generic page" is about
+              *this* project/release, not about the other 18 entities.
+            */}
+            <CCard className="mt-4">
+              <CCardBody className="p-4">
+                <h2 className="fs-5 mb-3">Admin</h2>
+                <CListGroup>
+                  {projectScopedEntities.map((item) => (
+                    <CListGroupItem
+                      key={item.key}
+                      as={Link}
+                      to={`/projects/${projectId}/admin/${item.key}`}
+                      data-testid={`project-admin-link-${item.key}`}
+                    >
+                      {item.label}
+                    </CListGroupItem>
+                  ))}
+                </CListGroup>
               </CCardBody>
             </CCard>
           </CCol>

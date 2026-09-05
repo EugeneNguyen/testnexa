@@ -51,6 +51,7 @@ import {
   CSidebarHeader,
   CSidebarNav,
 } from "@coreui/react";
+import { orgScopedEntities } from "../pages/admin/registry";
 
 interface AppSidebarProps {
   visible: boolean;
@@ -123,6 +124,29 @@ function AppSidebar({ visible, onVisibleChange }: AppSidebarProps) {
                 Icons
               </CNavLink>
             </CNavItem>
+          </CNavGroup>
+        )}
+        {/*
+          ADR-0025 generic admin CRUD surface: the 8 org/global-scoped
+          entities (Sitemap's own table), generated from the registry
+          (`pages/admin/registry.ts`) — one `CNavItem` per registry entry,
+          never a hardcoded literal per entity (per this component's own
+          AC5 extension point and ADR-0025's own "adding entity #28 means
+          adding a config file, never touching a nav component" goal).
+        */}
+        {orgId && (
+          <CNavGroup toggler="Admin" data-testid="sidebar-nav-group-admin">
+            {orgScopedEntities.map((item) => (
+              <CNavItem key={item.key}>
+                <CNavLink
+                  as={NavLink}
+                  to={`/orgs/${orgId}/admin/${item.key}`}
+                  data-testid={`sidebar-nav-admin-${item.key}`}
+                >
+                  {item.label}
+                </CNavLink>
+              </CNavItem>
+            ))}
           </CNavGroup>
         )}
       </CSidebarNav>
