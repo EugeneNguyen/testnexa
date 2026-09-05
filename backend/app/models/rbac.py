@@ -72,8 +72,25 @@ class RolePermission(Base):
 class RoleAssignment(Base):
     __tablename__ = "role_assignment"
     __table_args__ = (
+        # Catches duplicate PROJECT-SCOPED grants (project_id IS NOT NULL):
+        # two rows with equal, non-null project_id values collide as normal.
         UniqueConstraint(
             "actor_id", "org_id", "project_id", "role_id", name="uq_role_assignment_actor_org_project_role"
+        ),
+        # Separate partial unique index for ORG-WIDE grants (project_id IS
+        # NULL): Postgres treats NULL <> NULL, so the composite
+        # UniqueConstraint above does NOT stop two (actor_id, org_id, NULL,
+        # role_id) rows from coexisting (RBAC-3/TC-RBAC-029 — the first story
+        # to actually insert `RoleAssignment` rows through a real create
+        # route and hit this). Same `Role.uq_role_name_system_role` pattern
+        # already used in this module for the identical NULL-uniqueness gap.
+        Index(
+            "uq_role_assignment_actor_org_role_when_org_wide",
+            "actor_id",
+            "org_id",
+            "role_id",
+            unique=True,
+            postgresql_where=text("project_id IS NULL"),
         ),
     )
 

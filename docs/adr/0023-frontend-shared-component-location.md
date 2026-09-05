@@ -1,4 +1,4 @@
-# ADR-0021: Frontend shared-component location & FormField error-display convention
+# ADR-0023: Frontend shared-component location & FormField error-display convention
 
 **Date:** 2026-09-05
 **Status:** Accepted

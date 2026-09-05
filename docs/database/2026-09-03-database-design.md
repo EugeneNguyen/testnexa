@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-03
 **Owner:** xuanbinh91@gmail.com (CTO)
-**Sources:** [07 ERD](../product-discovery/07-erd-draft.md), [Scaffold design spec](../superpowers/specs/2026-09-03-project-scaffold-design.md), [ADR-0005](../adr/0005-traceability-link-dedicated-join-tables.md), [ADR-0006](../adr/0006-test-condition-optional.md), [ADR-0007](../adr/0007-real-multi-tenancy.md), [ADR-0008](../adr/0008-uuid-primary-keys.md), [ADR-0011](../adr/0011-login-rate-limiting.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md), [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md), [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md)
+**Sources:** [07 ERD](../product-discovery/07-erd-draft.md), [Scaffold design spec](../superpowers/specs/2026-09-03-project-scaffold-design.md), [ADR-0005](../adr/0005-traceability-link-dedicated-join-tables.md), [ADR-0006](../adr/0006-test-condition-optional.md), [ADR-0007](../adr/0007-real-multi-tenancy.md), [ADR-0008](../adr/0008-uuid-primary-keys.md), [ADR-0011](../adr/0011-login-rate-limiting.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md), [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md), [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md), [ADR-0022](../adr/0022-generic-crud-router-factory.md)
 
 This document is the implementation-level schema, refined from the [07 ERD](../product-discovery/07-erd-draft.md) draft per the ADRs above. No code — this is the reference for the Alembic migration that will be written when implementation is authorized.
 
@@ -10,7 +10,9 @@ This document is the implementation-level schema, refined from the [07 ERD](../p
 
 **SHELL-2/3/4** ([ADR-0019](../adr/0019-admin-shell-full-template-parity.md), FR-SHELL-2/3/4) — reviewed, no schema impact. Breadcrumb/footer are frontend-only; dashboard stat widgets read existing `Project`/`OrgMembership` rows via already-built generic-CRUD list queries (no new table/column); dark/light mode preference is `localStorage`-only (NFR-26) — deliberately not a new `User`/`Actor` column, since it's presentation state, not account data worth persisting server-side in this scaffold.
 
-**DS-1** ([ADR-0021](../adr/0021-frontend-shared-component-location.md), FR-DS-1) — reviewed, no schema impact. `FormField` is a pure presentational component; `Login.tsx`/`Signup.tsx`'s migration onto React Hook Form + Zod changes client-side validation only, not the request payload shape either route already accepts.
+**ADMIN-2** ([ADR-0022](../adr/0022-generic-crud-router-factory.md), FR-ADMIN-2) — reviewed, no schema impact: the generic CRUD router factory adds no table/column/index, only application-layer routing and permission-check logic over tables already defined below. Annotated inline where a table's existing shape drives factory behavior: `Role.org_id`'s nullability (§3.3), `TestCase.test_condition_id`'s nullability (§3.6), `RiskItem`'s branching FK pair (§3.11), `Attachment`'s create scope (§3.11).
+
+**DS-1** ([ADR-0023](../adr/0023-frontend-shared-component-location.md), FR-DS-1) — reviewed, no schema impact. `FormField` is a pure presentational component; `Login.tsx`/`Signup.tsx`'s migration onto React Hook Form + Zod changes client-side validation only, not the request payload shape either route already accepts.
 
 ---
 
@@ -112,6 +114,8 @@ Composite index: `(email, client_ip, attempted_at)` — the throttle query is "c
 | is_system_role | boolean | not null, default false |
 | created_at, updated_at | timestamptz | not null |
 
+**Generic CRUD factory posture** ([ADR-0022](../adr/0022-generic-crud-router-factory.md)): `org_id` is `Role`'s own direct scope column. When `org_id IS NULL` (a system-role template), `GET /roles/{id}` falls back to `has_permission_in_any_org` (readable — needed for role-assignment UI to list the catalog), but `PATCH`/`DELETE /roles/{id}` return `404` — a client can never mutate or delete a system-role template via this route. `POST /roles` always requires a non-null `org_id` in the body.
+
 Partial unique index: `name` **WHERE `org_id IS NULL`** — prevents duplicate system-role templates (a plain `UNIQUE(org_id, name)` wouldn't catch this, since standard SQL treats `NULL <> NULL`, so two `(NULL, 'org_admin')` rows would not collide under a composite constraint). Org-scoped custom roles (`org_id` non-null) are unaffected by this index — nothing stops two different orgs each naming a custom role "QA Lead".
 
 **System roles (seeded by an Alembic data migration, RBAC-4 — not created through the UI, not per-org runtime logic):** 5 rows, all `org_id = NULL`, `is_system_role = true`: `org_admin`, `test_manager`, `tester`, `auditor`, `ai_agent_scoped`. Being global templates (not org-scoped rows), they're available for `RoleAssignment` in every org — the per-org scoping happens on `RoleAssignment.org_id`, not on `Role.org_id`. Bundles (against the full `Permission` catalog below):
@@ -119,7 +123,7 @@ Partial unique index: `name` **WHERE `org_id IS NULL`** — prevents duplicate s
 | Role | Bundle |
 |---|---|
 | `org_admin` | Every seeded `Permission` (superuser within its org) |
-| `test_manager` | `test_plan.*` + `.approve`, `entry_exit_criteria.*`, `test_cycle.*`, `test_suite.*`, `release.create`/`.read`/`.update`, `approval.create`/`.read`, `requirement.read`/`.export_rtm`, `defect.read`, `risk_item.*`, `test_case.read`, `test_step.read`, `test_condition.read` |
+| `test_manager` | `test_plan.*` + `.approve`, `entry_exit_criteria.*`, `test_cycle.*`, `test_suite.*`, `release.create`/`.read`/`.update`, `project.read`/`.update` (RBAC-3/[ADR-0021](../adr/0021-role-assignment-creation-flow.md) — closes a gap that made TC-RBAC-035's regression case unprovable: a project's own creator, auto-granted this Role project-scoped by PROJ-1, couldn't otherwise view or rename the project itself), `approval.create`/`.read`, `requirement.read`/`.export_rtm`, `defect.read`, `risk_item.*`, `test_case.read`, `test_step.read`, `test_condition.read` |
 | `tester` | `test_case.*`, `test_step.*`, `test_condition.*`, `test_execution.*`, `test_log.read`, `defect.create`/`.read`/`.update`, `test_plan.read`, `test_suite.read`, `requirement.read` — no `approval.*`, no `test_plan.approve` |
 | `auditor` | `.read` on all 29 resources + `requirement.export_rtm` — nothing else, no writes anywhere |
 | `ai_agent_scoped` | `test_case.create`/`.read`/`.update`, `test_step.create`/`.read`/`.update`, `test_execution.create`/`.read`/`.update`, `test_log.read` — no delete, no `approval.*`, no `role`/`role_assignment`/`org_membership` anything, and per [ADR-0004](../adr/0004-rbac-design.md)/RBAC-5, `test_plan.approve` is never seeded into this bundle |
@@ -159,7 +163,9 @@ Unique: `(role_id, permission_id)`.
 | role_id | uuid | FK → role.id, not null |
 | created_at, updated_at | timestamptz | not null |
 
-Unique: `(actor_id, org_id, project_id, role_id)`.
+Unique: `(actor_id, org_id, project_id, role_id)`, **plus a partial unique index `(actor_id, org_id, role_id) WHERE project_id IS NULL`** (RBAC-3 migration, added when this story's own duplicate-grant test exposed a real pre-existing gap — same `NULL <> NULL` reasoning as `Role.uq_role_name_system_role`: a plain composite `UNIQUE` including a nullable `project_id` column never catches two org-wide (`project_id = NULL`) rows for the same `actor_id`/`org_id`/`role_id`, since Postgres treats every `NULL` as distinct from every other `NULL`; the partial index is what actually enforces "no duplicate org-wide grant," the base composite constraint alone only ever covered the project-scoped case).
+
+**Creation flow (RBAC-3, [ADR-0021](../adr/0021-role-assignment-creation-flow.md))** is application logic — `POST /orgs/{org_id}/role-assignments` inserts one row directly; the two constraints above are what turn a duplicate-grant attempt (org-wide or project-scoped) into `422` (caught `IntegrityError`) rather than a silent second row. `project_id NULL` (org-wide) vs. non-null (project-scoped) was already schema-supported since the initial migration — RBAC-3 is the first story to expose creating either shape through a real route, and the first to prove `has_permission`'s `project_id`-aware resolution branch against a real HTTP call (`GET`/`PATCH /projects/{id}`, fixed by the same story to pass `project_id` through — see ADR-0021).
 
 ### 3.4 `actor.py` — Actor, User, AIAgent (joined-table inheritance)
 
@@ -278,6 +284,8 @@ No uniqueness constraint on `version_label` — AC doesn't require it, and unlik
 | created_at, updated_at | timestamptz | not null |
 
 Unique: `(test_case_id, sequence)`.
+
+**Generic CRUD factory posture on `TestCase`** ([ADR-0022](../adr/0022-generic-crud-router-factory.md)): no `POST /test-cases` via the factory — creation stays bespoke (API Document §4, atomic create+link, not yet built). `GET`/`PATCH`/`DELETE /test-cases/{id}` resolve `org_id` by walking `test_condition_id` → `TestCondition.requirement_id` → `Requirement.project_id` when set; if `test_condition_id IS NULL` (ADR-0006), the resolver falls back to any linked `TestSuiteTestCase` → `TestSuite.project_id`; a row satisfying neither (orphaned — schema-legal, but no create path in this codebase produces it) resolves to `404`, same as a genuinely missing row. `TestStep`/`Attachment` (both scoped by `test_case_id`) delegate to this same resolver.
 
 **TestSuite**
 | Column | Type | Constraints |
@@ -464,7 +472,7 @@ Unique: `(test_case_id, test_design_technique_id)`.
 | mitigation | text | nullable |
 | created_at, updated_at | timestamptz | not null |
 
-Check constraint: `requirement_id IS NOT NULL OR test_plan_id IS NOT NULL`.
+Check constraint: `requirement_id IS NOT NULL OR test_plan_id IS NOT NULL` — `OR`, not `XOR`; both non-null is schema-legal. **Generic CRUD factory posture** ([ADR-0022](../adr/0022-generic-crud-router-factory.md)): `POST /risk-items` rejects both-set at the Pydantic validation layer (`422`) — exactly one, never both, since a resolver has no defined precedence rule between them. `resolve_org_id` branches on whichever one is non-null, one hop to `Requirement.project_id` or `TestPlan.project_id`.
 
 **Attachment**
 | Column | Type | Constraints |
@@ -476,7 +484,7 @@ Check constraint: `requirement_id IS NOT NULL OR test_plan_id IS NOT NULL`.
 | size_bytes | bigint | not null |
 | created_at, updated_at | timestamptz | not null |
 
-Storage backend (local filesystem vs. S3-compatible) is an application-config concern (`ATTACHMENT_STORAGE` env var), not a schema concern — `url_or_path` is opaque to the DB either way.
+Storage backend (local filesystem vs. S3-compatible) is an application-config concern (`ATTACHMENT_STORAGE` env var), not a schema concern — `url_or_path` is opaque to the DB either way. **Generic CRUD factory posture** ([ADR-0022](../adr/0022-generic-crud-router-factory.md)): `POST /attachments` via the factory is metadata-only — the request body supplies `url_or_path`/`mime_type`/`size_bytes` directly, already-uploaded; the factory adds no multipart file-upload handling, that mechanic is GOV-3's own separate, not-yet-built concern.
 
 ## 4. Indexing summary
 
