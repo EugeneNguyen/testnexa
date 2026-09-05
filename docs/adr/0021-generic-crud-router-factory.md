@@ -1,0 +1,61 @@
+# ADR-0021: Generic CRUD router factory — org-resolution chains, scoped-list required filter, global-catalog fallback
+
+**Date:** 2026-09-05
+**Status:** Accepted
+**Deciders:** xuanbinh91@gmail.com (CTO)
+**Related:** [ADR-0007](0007-real-multi-tenancy.md) (404-vs-403 boundary), [ADR-0016](0016-organization-bootstrap-creation-flow.md) (`has_permission_in_any_org`, reused here), [ADR-0017](0017-project-creation-flow.md) / [ADR-0019](0019-release-creation-flow.md) (both explicitly deferred building this factory, YAGNI-at-2-entities), [API Document §3](../api/2026-09-03-api-design.md#3-generic-crud-routes-router-factory-applied-to-24-of-36-tables), [plan](../superpowers/plans/2026-09-05-api-1-generic-crud-factory-plan.md)
+
+## Context
+
+API Document §3 named a "generic CRUD router factory" for ~20 tables back on 2026-09-03, but every story that touched a factory-listed entity since (`Project`/PROJ-1, `Release`/PROJ-2) built bespoke routes instead and explicitly deferred the factory as not-yet-justified (2 entities isn't enough duplication to earn the build). This story is the one that builds it — 18 more entities need CRUD, past the point hand-rolling each is cheaper. It also closes a live gap: `frontend/src/lib/api/dashboard.ts`'s SHELL-3 widgets already call `GET /projects` and `GET /org-memberships` list routes that don't exist yet (retry disabled on them since f4047ef, "404 won't self-heal").
+
+Three design problems fall out of the entity list that ADR-0017/0019 didn't have to solve for one or two bespoke resources each:
+
+1. **Tenant-resolution depth varies per entity.** Some tables carry `org_id`/`project_id` directly (`Requirement`, `TestSuite`, `Environment`, `TestPlan`, `OrgMembership`, `RoleAssignment`); some resolve one hop up a parent FK (`TestCondition`→`Requirement`, `TestCycle`/`EntryExitCriteria`→`TestPlan`); `RiskItem` branches (`requirement_id` OR `test_plan_id`, exactly one non-null per its `CHECK` constraint); `TestCase` chains two hops through a **nullable** FK (`test_condition_id`, ADR-0006) with no `project_id` column of its own; `Defect` chains three hops (`test_execution_id`→`TestExecution.test_cycle_id`→`TestCycle.test_plan_id`→`TestPlan.project_id`); `TestDesignTechnique`/`TestLevel`/`TestType`/`Permission` have no tenant at all (global catalogs); `Role.org_id` is itself nullable (system-role templates).
+2. **`require_permission`'s existing path-param read doesn't fit this route shape.** Its own docstring already says "every route produced by the generic CRUD router factory" depends on it — but factory item routes are flat (`/requirements/{id}`, no `org_id`/`project_id` path segment, per the API Document's own table), so `request.path_params.get("org_id")` would always resolve `None` and crash `has_permission`'s `uuid.UUID(str(None))`. `require_permission` cannot gate factory item routes as-is.
+3. **List/create routes have no row to resolve tenant from yet.** `GET`/`POST /requirements` never carries a path segment to fetch a row from — unlike `GET`/`PATCH /requirements/{id}}`, there's no row until after creation.
+
+## Decision
+
+**Router-factory function, not a base-class hierarchy** (`make_crud_router()` in `backend/app/api/crud_factory.py`, called once per entity, called-not-subclassed by each cluster route module) — matches FastAPI's function-based idiom; "inherit" is satisfied by composition (call the factory, then `router.add_api_route(...)` extra bespoke routes on the returned `APIRouter`, same shape `agents.py`/`projects.py` already bolt bespoke routes onto a plain `APIRouter()`).
+
+**Per-entity config, not one universal resolver:**
+
+```python
+@dataclass
+class CrudEntityConfig:
+    model: type[Base]
+    resource: str                      # permission-code prefix, e.g. "requirement"
+    create_schema: type[BaseModel] | None   # None => POST not registered (bespoke elsewhere)
+    update_schema: type[BaseModel]
+    summary_schema: type[BaseModel]
+    scope_field: str | None            # FK column name required as list/create scope, e.g. "project_id"; None = global catalog
+    resolve_org_id: Callable[[AsyncSession, Base], Awaitable[uuid.UUID | None]]  # row -> org_id, None = global
+    search_fields: tuple[str, ...] = ()   # columns ILIKE-matched by `?q=`
+    filter_fields: tuple[str, ...] = ()   # columns exact-matched by `?<field>=`
+    methods: frozenset[str] = frozenset({"list", "get", "create", "update", "delete"})
+```
+
+`resolve_org_id` composes from a small `chain_resolver(hops: list[tuple[type, str]])` helper for the common straight-line case (each hop: `(ParentModel, fk_column_name)`, walked via `db.get`) — e.g. `TestCondition` = `chain_resolver([(Requirement, "requirement_id")])` → `Requirement.project_id` → (further resolved to `org_id` via `Project`). `RiskItem` and `TestCase` get small bespoke resolver functions (branching / nullable-hop logic isn't worth forcing into the generic chain shape). `TestCase`'s resolver additionally falls back to any linked `TestSuite` (via `TestSuiteTestCase`) when `test_condition_id IS NULL`; a `TestCase` reachable by neither path resolves `None` (genuinely orphaned — schema allows it per ADR-0006, but no create route in this codebase produces it, since `TestCase.create` stays bespoke, §4, atomic create+link). Global catalogs (`TestDesignTechnique`/`TestLevel`/`TestType`/`Permission`) set `resolve_org_id` to a constant `None`.
+
+**Item routes (`GET`/`PATCH`/`DELETE /{resource}/{id}`) call `has_permission` directly**, never `require_permission` — same row-resolved posture ADR-0017/0019 already established for `Project`'s and `Release`'s own bespoke item routes: fetch the row, resolve `org_id` via the entity's `resolve_org_id`, any-status-`OrgMembership` 404-vs-403 boundary, then `has_permission(actor_id, org_id, f"{resource}.{action}")`. **Global-catalog item routes use `has_permission_in_any_org` instead** (reusing the exact primitive ADR-0016 built for "no target `org_id` to scope by yet") — no `OrgMembership` boundary applies since there's no tenant to be a member of.
+
+**List/create routes require the scope FK as an explicit parameter**, not inferred: `scope_field` names a query param on `list` (e.g. `?project_id=`) and a required body field on `create`. Missing/absent scope param on a scoped entity → `422 validation_error` (a scoped list/create with no scope is a client error, not an empty result). The scope value's own org is resolved the same `resolve_org_id`-chain way (one fewer hop, since the scope row itself is already fetched) for the 404-vs-403 boundary before the query runs. Global-catalog list/create skip this — `has_permission_in_any_org` gates them instead.
+
+**`Role`'s nullable `org_id`:** `resolve_org_id` returns the row's own `org_id` directly (`Role` is scope-direct). When it's `None` (system-role template), `GET`/`PATCH`/`DELETE /roles/{id}` **404** (this ADR's decision, confirmed with user 2026-09-05) rather than 403 — consistent with NFR-1's existence-hiding posture, extended here to "no resolvable tenant" the same way it already covers "wrong tenant." `POST /roles` always requires a non-null `org_id` in the body (a client can never mint a new system-role template via this route) — enforced as a plain 422 if `org_id` is omitted, same as any other required-field violation, not a special code.
+
+**Filtering:** `filter_fields` are exact-match query params (`?status=open&severity=high`, `WHERE column = value` for each param present). `search_fields`, if non-empty, back a single `?q=` param compiled to `OR`-joined `ILIKE '%term%'` across those columns; entities with no `search_fields` configured silently ignore `?q=` rather than erroring (keeps the factory's per-entity config additive, never a required field to fill in). Pagination is the existing convention verbatim (`page`/`page_size`, default/max 25, `{items, total, page, page_size}` envelope, NFR-6) — no new envelope shape.
+
+**Entities served, and which methods are registered** (full list + exclusions in the [plan](../superpowers/plans/2026-09-05-api-1-generic-crud-factory-plan.md)): `Organization` (no `create` — bespoke via `/auth/signup`/`POST /orgs`, unchanged), `Project` (only `delete` — `create`/`read`/`update` stay the existing bespoke routes untouched, factory only fills the missing method, never re-registers a path FastAPI already has), `Permission` (`list`/`get` only, seeded catalog), `TestCase`/`Defect`/`TestCycle` (no `create` — all three keep their eventual/planned bespoke atomic-create routes per API Doc §4, none of which are built yet; the factory doesn't build them either, it just doesn't block them later), everything else (`Requirement`, `TestCondition`, `TestStep`, `TestSuite`, `TestPlan`, `EntryExitCriteria`, `Environment`, `RiskItem`, `Attachment`, `Role`, `TestDesignTechnique`, `TestLevel`, `TestType`, `OrgMembership`, `RoleAssignment`) gets all 5 methods. `Release` stays fully excluded (ADR-0019 already established none of its 4 routes match the factory's shape).
+
+## Consequences
+
+**Positive:** One factory closes 18 entities' worth of route duplication in one pass instead of one bespoke module per story going forward (the exact debt ADR-0017/0019 both flagged and deferred). Reuses every existing primitive as-is — `has_permission`, `has_permission_in_any_org`, the any-status-`OrgMembership` 404-vs-403 check, flush-then-catch-`IntegrityError`-for-422, the `{items, total, page, page_size}` envelope — no RBAC/tenancy plumbing changes. Unblocks the already-shipped SHELL-3 dashboard widgets that call `GET /projects`/`GET /org-memberships` today and 404. `Project`/`Release`'s existing bespoke routes are untouched, not rewritten — the factory only adds what's missing.
+
+**Negative / Trade-offs:** `resolve_org_id` chains are per-entity hand-written config, not derived from the FK graph automatically — a new entity added later still needs a resolver written and reviewed, this factory only removes the *route*-boilerplate, not the tenancy-topology thinking. `TestCase`'s orphaned-row case (`test_condition_id IS NULL` and no `TestSuiteTestCase` link) is a real, if narrow, unreachable-via-API state — documented here rather than closed, since no create path in this codebase produces it today. The scope-required-on-list design means a caller must already know the immediate parent id to list children (e.g. `project_id` to list `Requirement`s) — matches how every bespoke route in this codebase already works (no cross-project list exists anywhere), so not a new restriction, just made explicit per-entity.
+
+## Alternatives considered
+
+- **Base-class `BaseCRUDView` + per-entity subclass method overrides** (Django-REST-Framework shape) — rejected: fights FastAPI's function/dependency-based routing (subclass → router wiring is extra indirection for no behavior FastAPI's own composition doesn't already give via a factory function), while "inherit from a base" is satisfied either way per the request's own framing.
+- **Single dynamic `/objects/{resource}/...` route for all 20 entities** — rejected: no per-entity Pydantic request/response validation, degrades the OpenAPI schema to `resource: str` + `dict` bodies, and turns one endpoint into the security review's single point of failure for 20 tables' worth of access control.
+- **Infer `resolve_org_id` automatically by walking SQLAlchemy FK metadata at registration time** — rejected: `RiskItem`'s branching two-nullable-FK shape and `TestCase`'s nullable-hop-with-fallback aren't expressible as a single generic FK-walk; a "mostly automatic, except these two special cases" implementation is more moving parts than "every entity gets an explicit, reviewable resolver," for a codebase this size (20 entities, not 200).

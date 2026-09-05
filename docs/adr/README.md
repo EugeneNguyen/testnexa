@@ -24,6 +24,7 @@ Index of ADRs for the Project Scaffold. Format: [MADR](https://adr.github.io/mad
 | [0018](0018-admin-shell-sidebar-layout.md) | Admin shell layout: CoreUI `CSidebar`/`CSidebarNav` + `CHeader` persistent shell, single nav-item list, CoreUI's own responsive collapse (no custom logic) | Partially superseded by 0020 |
 | [0019](0019-release-creation-flow.md) | Release creation flow: project-path-scoped bespoke create/list vs. row-resolved single-fetch/audit-query, `test_manager` RBAC bundle extension, triple-permission gate + nested-executions shape for the release→cycles audit query, pinned `NULLS LAST` sort | Accepted |
 | [0020](0020-admin-shell-full-template-parity.md) | Full CoreUI free-admin-template parity: breadcrumb, footer, dashboard widgets, dark/light mode toggle, UI-element reference pages (template scaffolding, no FR/NFR backing) | Accepted |
+| [0021](0021-generic-crud-router-factory.md) | Generic CRUD router factory: per-entity org-resolution chains, row-resolved item routes over `require_permission`, scoped-list required filter, global-catalog `has_permission_in_any_org` fallback | Accepted |
 
 **Deciders on all ADRs below:** xuanbinh91@gmail.com (CTO), unless noted otherwise.
-**Date:** 2026-09-03 (0001–0017), 2026-09-04 (0018–0020)
+**Date:** 2026-09-03 (0001–0017), 2026-09-04 (0018–0020), 2026-09-05 (0021)
