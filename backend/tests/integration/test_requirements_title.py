@@ -1,4 +1,4 @@
-"""Integration tests for `Requirement.title` (REQ-1, ADR-0024).
+"""Integration tests for `Requirement.title` (REQ-1, ADR-0025).
 
 Real HTTP requests via `httpx.AsyncClient` against a live server
 (`TEST_API_BASE_URL`), matching `test_admin2_crud.py`/`test_projects.py`'s
@@ -8,7 +8,7 @@ to this module too.
 
 Covers TC-REQ-001 and TC-REQ-002 from
 `docs/test-cases/2026-09-03-test-cases.md` — the `title` field itself
-(ADR-0024). `POST`/`GET /requirements`'s scoping, permission gate, and
+(ADR-0025). `POST`/`GET /requirements`'s scoping, permission gate, and
 404-vs-403 boundary were already delivered (and are already covered) by
 ADMIN-2's `test_admin2_crud.py`; this file only exercises the parts that
 changed: `title` round-tripping on create, `title` becoming a required field

@@ -1,6 +1,6 @@
 /**
  * REQ-1 Requirement create/list calls (ADR-0022 generic CRUD factory,
- * ADR-0024 `title` field).
+ * ADR-0025 `title` field).
  *
  * Source: `app/api/routes/assets.py` / `app/schemas/assets.py` (exact
  * request/response contracts) — mirrors `releases.ts`'s pattern: `project_id`
@@ -36,7 +36,7 @@ export interface RequirementListResponse {
 export interface ListRequirementsParams {
   page?: number;
   page_size?: number;
-  /** Substring search across `title`/`description`/`external_ref`/`source` (ADR-0022/ADR-0024 `?q=`). */
+  /** Substring search across `title`/`description`/`external_ref`/`source` (ADR-0022/ADR-0025 `?q=`). */
   q?: string;
   /** Exact-match filter (ADR-0022 `filter_fields`). */
   external_ref?: string;

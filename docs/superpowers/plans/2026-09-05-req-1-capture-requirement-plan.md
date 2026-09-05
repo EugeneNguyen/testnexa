@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-05
 **Story:** [REQ-1](../../user-stories/2026-09-03-requirement-testcase-authoring-stories.md#story-req-1-capture-a-requirement)
-**Related:** [ADR-0022](../../adr/0022-generic-crud-router-factory.md) (generic CRUD factory — delivers almost all of this story already), [ADR-0024](../../adr/0024-requirement-title-field.md) (the one real gap this story closes), [Database Doc §3.6](../../database/2026-09-03-database-design.md), [API Doc §3](../../api/2026-09-03-api-design.md)
+**Related:** [ADR-0022](../../adr/0022-generic-crud-router-factory.md) (generic CRUD factory — delivers almost all of this story already), [ADR-0025](../../adr/0025-requirement-title-field.md) (the one real gap this story closes), [Database Doc §3.6](../../database/2026-09-03-database-design.md), [API Doc §3](../../api/2026-09-03-api-design.md)
 
 ## Decisions (confirmed with user, 2026-09-05)
 
@@ -11,7 +11,7 @@ All Q1–Q5 below confirmed as proposed — assumptions/suggestions in each are 
 ## Open questions (resolved, kept for rationale)
 
 **Q1 — `title` column doesn't exist.** AC, FR-REQ-1, and TC-REQ-001/002 all require a `title` field and title search, but `Requirement`'s schema had no such column (only `description`/`source`/`external_ref`).
-- **Assumption/suggestion:** add `title: varchar, not null` via a new Alembic migration + update the `Requirement` model, `CreateRequirementRequest`/`UpdateRequirementRequest`/`RequirementSummary`, Database Doc §3.6. Confirmed real schema gap, not a doc typo. See [ADR-0024](../../adr/0024-requirement-title-field.md).
+- **Assumption/suggestion:** add `title: varchar, not null` via a new Alembic migration + update the `Requirement` model, `CreateRequirementRequest`/`UpdateRequirementRequest`/`RequirementSummary`, Database Doc §3.6. Confirmed real schema gap, not a doc typo. See [ADR-0025](../../adr/0025-requirement-title-field.md).
 
 **Q2 — Title search vs. API conventions.** API Doc §1 originally said v1 filtering is exact-match only, no `contains`; AC/TC-REQ-002 explicitly want title *substring* search.
 - **Assumption/suggestion:** by the time this story reached implementation, ADR-0022 had already generalized `?q=` into a per-entity opt-in substring-search mechanism (`search_fields`, `ILIKE '%term%'`, OR'd across configured columns) — API Doc §1 already carries that revision. `title` simply joins `Requirement`'s existing `search_fields` set (`description`, `external_ref`, `source`) as a fourth column; no new mechanism, no per-field-scoped exception needed.
@@ -35,22 +35,22 @@ All Q1–Q5 below confirmed as proposed — assumptions/suggestions in each are 
 
 ## Scope (this story's actual remaining work)
 
-1. **Migration** — add `title: varchar, not null` to `requirement` table ([ADR-0024](../../adr/0024-requirement-title-field.md)).
+1. **Migration** — add `title: varchar, not null` to `requirement` table ([ADR-0025](../../adr/0025-requirement-title-field.md)).
 2. **`backend/app/models/assets.py`** — add `title: Mapped[str]` to `Requirement`.
 3. **`backend/app/schemas/assets.py`** — add `title: str` to `CreateRequirementRequest`, `title: str | None = None` to `UpdateRequirementRequest`, `title: str` to `RequirementSummary`.
 4. **`backend/app/api/routes/assets.py`** — `_REQUIREMENT_CONFIG.search_fields` → add `"title"`.
-5. **Docs** (this pass) — Requirements Document, WBS, ADR-0024 + index, Database Document §3.6, API Document §3, Test Cases (stale cross-references), all updated 2026-09-05.
+5. **Docs** (this pass) — Requirements Document, WBS, ADR-0025 + index, Database Document §3.6, API Document §3, Test Cases (stale cross-references), all updated 2026-09-05.
 6. **Tests** — unit: `title` required-on-create/optional-on-update schema validation; integration: extend `test_admin2_crud.py`'s Requirement coverage (or a new `test_requirements.py`) for TC-REQ-001 (create with title/description/source/external_ref) and TC-REQ-002 (search by title substring, by external_ref).
 7. **Frontend** — none required by AC; skipped (YAGNI), no UI story attached to REQ-1.
 
 ## Edge cases
 
 - Empty/whitespace `title` → `422` (plain Pydantic `str`, same non-empty-by-convention posture every other required string field in this codebase already uses — not a stricter `min_length` rule singling this field out).
-- `?q=` search matches `title` OR `description` OR `external_ref` OR `source` (existing OR-across-`search_fields` behavior, ADR-0022) — AC only names title/external_ref, but the factory can't scope `?q=` to a subset; accepted per ADR-0024's Alternatives.
+- `?q=` search matches `title` OR `description` OR `external_ref` OR `source` (existing OR-across-`search_fields` behavior, ADR-0022) — AC only names title/external_ref, but the factory can't scope `?q=` to a subset; accepted per ADR-0025's Alternatives.
 - Cross-tenant `project_id`, missing `requirement.create`, non-member org — all already handled generically by the factory, no new code path.
 
 ## Out of scope
 
 - RBAC bundle changes (Q5).
-- Scoping `?q=` to a subset of `search_fields` (ADR-0022's own accepted limitation, not re-opened by ADR-0024).
+- Scoping `?q=` to a subset of `search_fields` (ADR-0022's own accepted limitation, not re-opened by ADR-0025).
 - Frontend UI.

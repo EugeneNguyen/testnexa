@@ -1,4 +1,4 @@
-# ADR-0024: `Requirement.title` schema gap-fill + inclusion in generic-CRUD search
+# ADR-0025: `Requirement.title` schema gap-fill + inclusion in generic-CRUD search
 
 **Date:** 2026-09-05
 **Status:** Accepted

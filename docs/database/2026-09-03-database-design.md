@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-03
 **Owner:** xuanbinh91@gmail.com (CTO)
-**Sources:** [07 ERD](../product-discovery/07-erd-draft.md), [Scaffold design spec](../superpowers/specs/2026-09-03-project-scaffold-design.md), [ADR-0005](../adr/0005-traceability-link-dedicated-join-tables.md), [ADR-0006](../adr/0006-test-condition-optional.md), [ADR-0007](../adr/0007-real-multi-tenancy.md), [ADR-0008](../adr/0008-uuid-primary-keys.md), [ADR-0011](../adr/0011-login-rate-limiting.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md), [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md), [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md), [ADR-0022](../adr/0022-generic-crud-router-factory.md), [ADR-0024](../adr/0024-requirement-title-field.md)
+**Sources:** [07 ERD](../product-discovery/07-erd-draft.md), [Scaffold design spec](../superpowers/specs/2026-09-03-project-scaffold-design.md), [ADR-0005](../adr/0005-traceability-link-dedicated-join-tables.md), [ADR-0006](../adr/0006-test-condition-optional.md), [ADR-0007](../adr/0007-real-multi-tenancy.md), [ADR-0008](../adr/0008-uuid-primary-keys.md), [ADR-0011](../adr/0011-login-rate-limiting.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md), [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md), [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md), [ADR-0022](../adr/0022-generic-crud-router-factory.md), [ADR-0025](../adr/0025-requirement-title-field.md)
 
 This document is the implementation-level schema, refined from the [07 ERD](../product-discovery/07-erd-draft.md) draft per the ADRs above. No code — this is the reference for the Alembic migration that will be written when implementation is authorized.
 
@@ -14,7 +14,9 @@ This document is the implementation-level schema, refined from the [07 ERD](../p
 
 **DS-1** ([ADR-0023](../adr/0023-frontend-shared-component-location.md), FR-DS-1) — reviewed, no schema impact. `FormField` is a pure presentational component; `Login.tsx`/`Signup.tsx`'s migration onto React Hook Form + Zod changes client-side validation only, not the request payload shape either route already accepts.
 
-**REQ-1** ([ADR-0024](../adr/0024-requirement-title-field.md), FR-REQ-1) — one column added: `Requirement.title` (§3.6), closing a gap between the schema and FR-REQ-1/TC-REQ-001's always-specified `title` field. No other schema impact — `Requirement`'s create/read/update/delete/list routes, permission gating, and tenant-scoping were already fully delivered by ADMIN-2's generic CRUD factory before this story.
+**LANDING-1** ([ADR-0024](../adr/0024-public-landing-page.md), FR-LANDING-1) — reviewed, no schema impact. The public landing page is frontend-only: no new table, column, or index, and it makes no API call at all (authenticated or otherwise). Deleting `ScaffoldVerificationPage` likewise has no schema impact — it never wrote to or read from any table itself, only `GET /api/health`.
+
+**REQ-1** ([ADR-0025](../adr/0025-requirement-title-field.md), FR-REQ-1) — one column added: `Requirement.title` (§3.6), closing a gap between the schema and FR-REQ-1/TC-REQ-001's always-specified `title` field. No other schema impact — `Requirement`'s create/read/update/delete/list routes, permission gating, and tenant-scoping were already fully delivered by ADMIN-2's generic CRUD factory before this story.
 
 ---
 
@@ -247,7 +249,7 @@ No uniqueness constraint on `version_label` — AC doesn't require it, and unlik
 |---|---|---|
 | id | uuid | PK |
 | project_id | uuid | FK → project.id, not null, indexed |
-| title | varchar | not null — [ADR-0024](../adr/0024-requirement-title-field.md), added 2026-09-05 (gap-fill; FR-REQ-1/TC-REQ-001 always specified this field) |
+| title | varchar | not null — [ADR-0025](../adr/0025-requirement-title-field.md), added 2026-09-05 (gap-fill; FR-REQ-1/TC-REQ-001 always specified this field) |
 | external_ref | varchar | nullable |
 | description | text | not null |
 | source | varchar | nullable |

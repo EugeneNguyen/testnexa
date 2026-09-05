@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-03
 **Owner:** xuanbinh91@gmail.com (CTO)
-**Sources:** [Scaffold design spec](../superpowers/specs/2026-09-03-project-scaffold-design.md), [Database Document](../database/2026-09-03-database-design.md), [Requirements Document](../requirements/2026-09-03-project-scaffold-requirements.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md) (refresh rotation policy), [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md) (AI agent credential mechanics), [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md) (organization bootstrap & creation flow), [ADR-0017](../adr/0017-project-creation-flow.md) (project creation flow), [ADR-0021](../adr/0021-role-assignment-creation-flow.md) (role assignment creation flow), [ADR-0022](../adr/0022-generic-crud-router-factory.md) (generic CRUD router factory), [ADR-0024](../adr/0024-requirement-title-field.md) (`Requirement.title` gap-fill)
+**Sources:** [Scaffold design spec](../superpowers/specs/2026-09-03-project-scaffold-design.md), [Database Document](../database/2026-09-03-database-design.md), [Requirements Document](../requirements/2026-09-03-project-scaffold-requirements.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md) (refresh rotation policy), [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md) (AI agent credential mechanics), [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md) (organization bootstrap & creation flow), [ADR-0017](../adr/0017-project-creation-flow.md) (project creation flow), [ADR-0021](../adr/0021-role-assignment-creation-flow.md) (role assignment creation flow), [ADR-0022](../adr/0022-generic-crud-router-factory.md) (generic CRUD router factory), [ADR-0025](../adr/0025-requirement-title-field.md) (`Requirement.title` gap-fill)
 
 REST over HTTPS, JSON bodies, base path `/api/v1`. FastAPI auto-generates the OpenAPI schema from the implementation — this document is the design-level contract new routes must match, not a substitute for the generated spec once code exists.
 
@@ -11,6 +11,8 @@ REST over HTTPS, JSON bodies, base path `/api/v1`. FastAPI auto-generates the Op
 **SHELL-2/3/4** ([ADR-0019](../adr/0019-admin-shell-full-template-parity.md), FR-SHELL-2/3/4) — reviewed, no API impact. Breadcrumb/footer/dark-mode-toggle are frontend-only. Dashboard stat widgets (FR-SHELL-3) reuse §3's existing generic-CRUD list routes' `total` field (`GET /projects?page=1&page_size=1`, `GET /org-memberships?org_id=<id>&status=active&page=1&page_size=1`) — no new route, no new query param. The template's trend-chart widget is deferred (no real time-series source yet, ADR-0019) — not stubbed with a placeholder route.
 
 **DS-1** ([ADR-0023](../adr/0023-frontend-shared-component-location.md), FR-DS-1) — reviewed, no API impact. `FormField` is frontend-only; `Login.tsx`/`Signup.tsx`'s existing `POST /auth/login`/`POST /auth/signup` calls, request bodies, and response handling are unchanged — only client-side validation timing/UI moves onto React Hook Form + Zod.
+
+**LANDING-1** ([ADR-0024](../adr/0024-public-landing-page.md), FR-LANDING-1) — reviewed, no API impact. The landing page is a static, unauthenticated frontend route with no backing call of its own; its redirect-when-already-authenticated behavior reads `AuthContext`'s existing client-side `orgContext`/`orgs` state (populated by `POST /auth/login`'s already-existing response shape), not a new endpoint. Deleting `ScaffoldVerificationPage` doesn't remove `GET /api/health` itself (an unversioned scaffold-only endpoint, outside this document's `/api/v1` scope) — only its one UI caller.
 
 ---
 
@@ -105,7 +107,7 @@ REST over HTTPS, JSON bodies, base path `/api/v1`. FastAPI auto-generates the Op
 
 One factory (`make_crud_router()`), called once per entity with a small config object (`resource` name, schemas, `scope_field`, `resolve_org_id`, `filter_fields`, `search_fields`) — composition, not a base-class hierarchy. Example shown for `requirement`; the same shape applies to every entity in the table below except the bespoke ones in §4 and the read-only ones in §5.
 
-`Requirement` fields: `project_id` (scope), `title` (required, [ADR-0024](../adr/0024-requirement-title-field.md)), `description` (required), `external_ref`/`source` (optional). `title`/`description`/`external_ref`/`source` are all `search_fields` (`?q=` substring match); `external_ref` is additionally a `filter_fields` exact-match param.
+`Requirement` fields: `project_id` (scope), `title` (required, [ADR-0025](../adr/0025-requirement-title-field.md)), `description` (required), `external_ref`/`source` (optional). `title`/`description`/`external_ref`/`source` are all `search_fields` (`?q=` substring match); `external_ref` is additionally a `filter_fields` exact-match param.
 
 | Method | Path | Permission | Notes |
 |---|---|---|---|

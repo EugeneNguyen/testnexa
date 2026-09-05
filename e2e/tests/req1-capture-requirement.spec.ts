@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { expect, test } from "@playwright/test";
 
 /**
- * REQ-1 E2E (`Requirement.title`, ADR-0024): full-stack smoke test of
+ * REQ-1 E2E (`Requirement.title`, ADR-0025): full-stack smoke test of
  * TC-REQ-001 (capture a requirement, `title` required and round-tripped)
  * and TC-REQ-002 (search by `title` substring via `?q=`, vs. exact-match
  * `?external_ref=`) through the real deployed stack (nginx -> backend ->

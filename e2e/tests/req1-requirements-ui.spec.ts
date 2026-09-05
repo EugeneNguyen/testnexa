@@ -2,10 +2,10 @@ import { execFileSync } from "node:child_process";
 import { expect, test } from "@playwright/test";
 
 /**
- * REQ-1 E2E, browser UI (ADR-0024's frontend slice): real browser, full
+ * REQ-1 E2E, browser UI (ADR-0025's frontend slice): real browser, full
  * stack, exercising `ProjectDetail.tsx`'s "Requirements" section — the
  * Requirement list + search box + "New Requirement" modal added on top of
- * the already-shipped `POST`/`GET /requirements` API (ADMIN-2/ADR-0024).
+ * the already-shipped `POST`/`GET /requirements` API (ADMIN-2/ADR-0025).
  *
  * Complements (does not replace) `req1-capture-requirement.spec.ts`, which
  * stays as the API-level (no-`page`) proof that the full stack round-trips

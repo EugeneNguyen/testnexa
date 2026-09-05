@@ -62,7 +62,7 @@ FR-PROJ-2 ships as `POST`/`GET /projects/{project_id}/releases` (bespoke, projec
 | FR-REQ-3 | Author a TestCase via optional TestCondition (rigor path) | Must | TestCondition, RequirementTestConditionLink, TestConditionTestCaseLink |
 | FR-REQ-4 | Organize TestCases into TestSuites (many-to-many) | Must | TestSuite |
 
-FR-REQ-1 ships almost entirely via API-1/ADMIN-2's generic CRUD factory — `Requirement` was already one of the 20 factory-served entities before this story, so `POST`/`GET /requirements` (create, list/search, project-scoping, permission gating, 404-vs-403 boundary) required no new route code. The one real gap this story closes: `Requirement.title`, specified by this FR and by TC-REQ-001/002 since 2026-09-03, was never actually added to the schema — a plain oversight caught during this story's own planning, not a prior decision being revisited. See [ADR-0024](../adr/0024-requirement-title-field.md).
+FR-REQ-1 ships almost entirely via API-1/ADMIN-2's generic CRUD factory — `Requirement` was already one of the 20 factory-served entities before this story, so `POST`/`GET /requirements` (create, list/search, project-scoping, permission gating, 404-vs-403 boundary) required no new route code. The one real gap this story closes: `Requirement.title`, specified by this FR and by TC-REQ-001/002 since 2026-09-03, was never actually added to the schema — a plain oversight caught during this story's own planning, not a prior decision being revisited. See [ADR-0025](../adr/0025-requirement-title-field.md).
 
 ### 2.5 Test planning — [test-planning-stories.md](../user-stories/2026-09-03-test-planning-stories.md)
 
@@ -135,6 +135,14 @@ FR-SHELL-2/3/4 extend the shell to full parity with [CoreUI's free Bootstrap adm
 
 FR-DS-1 is frontend-only — no new/changed entity, no new API route. It is the sole implementation output of the narrow, evidenced opportunity found by the business case's discovery pass (interviews: `CFormLabel`+`CFormInput` hand-authored 7× across `Login.tsx` and `Signup.tsx` alone). `Login.tsx`'s 2 and `Signup.tsx`'s 5 hand-authored instances migrate onto `FormField` as part of this story, which also brings both screens onto React Hook Form + Zod (ADR-0009) for the first time — they were plain-`useState` forms before this story, with no client-side schema validation. See [ADR-0023](../adr/0023-frontend-shared-component-location.md).
 
+### 2.13 Landing page — [landing-page-stories.md](../user-stories/2026-09-05-landing-page-stories.md)
+
+| ID | Title | Priority | Entities |
+|---|---|---|---|
+| FR-LANDING-1 | Public landing page at `/` for logged-out visitors (product name/pitch + "Log in"/"Sign up" CTAs), replacing the root scaffold-verification health-check page | Should | — (frontend-only, no entities) |
+
+FR-LANDING-1 is frontend-only — no new/changed entity, no new API route, no authenticated call of any kind. `ScaffoldVerificationPage` (the dev-only `GET /api/health` wiring-proof widget previously mounted at `/`) is deleted, not relocated — see [ADR-0024](../adr/0024-public-landing-page.md). An already-authenticated visitor hitting `/` is redirected to their org context rather than shown the landing page, reusing `Login.tsx`'s existing `orgContext`/`orgs`-driven redirect logic rather than a second bespoke implementation (NFR-35).
+
 ## 3. Non-functional requirements
 
 | ID | Requirement | Rationale / source |
@@ -171,6 +179,7 @@ FR-DS-1 is frontend-only — no new/changed entity, no new API route. It is the 
 | NFR-32 | The generic CRUD factory's list routes support free-text search (`?q=`) only for entities with an explicitly configured `search_fields` set (`ILIKE` across those columns); an entity with none configured silently ignores `?q=` rather than erroring. This revises §1's original "no free-text operator" API Document line. | FR-ADMIN-2, [ADR-0022](../adr/0022-generic-crud-router-factory.md) |
 | NFR-33 | NFR-1's existence-hiding posture extends to two cases beyond wrong-tenant: (a) a tenant-owned row whose FK chain to `org_id` cannot be resolved at all (e.g. an orphaned `TestCase` with `test_condition_id IS NULL` and no `TestSuiteTestCase` link) → `404`, same as a genuinely missing row; (b) a `Role` row with `org_id IS NULL` (system-role template) on `PATCH`/`DELETE` → `404` — `GET` is exempted (readable via `has_permission_in_any_org`, needed for role-assignment UI). | FR-ADMIN-2, [ADR-0022](../adr/0022-generic-crud-router-factory.md) |
 | NFR-34 | Every React Hook Form + Zod-bound text/email/password field added after DS-1 uses `FormField`'s `CFormFeedback`+`invalid` error-display convention, not a bespoke per-field pattern — resolves the pre-existing inconsistency between `OrgHome.tsx`'s `CFormFeedback` usage and `AcceptInvite.tsx`/`OrgMembers.tsx`'s page-level-`CAlert`-only usage, going forward. | DS-1 AC2, [ADR-0023](../adr/0023-frontend-shared-component-location.md) |
+| NFR-35 | An already-authenticated visitor hitting `/` (FR-LANDING-1) is redirected to their org context — `/orgs/{orgId}` on auto-select, `/orgs/pick` on picker — rather than shown the landing page, reusing `Login.tsx`'s own post-login `orgContext`/`orgs` redirect effect rather than a second, independently-maintained redirect implementation. | LANDING-1 scope decision 2026-09-05, [ADR-0024](../adr/0024-public-landing-page.md) |
 
 ## 4. Traceability — requirements to architecture decisions
 
@@ -197,5 +206,6 @@ FR-DS-1 is frontend-only — no new/changed entity, no new API route. It is the 
 | FR-SHELL-2, FR-SHELL-3, FR-SHELL-4, NFR-27, NFR-28 | [ADR-0020](../adr/0020-admin-shell-full-template-parity.md) Full CoreUI free-admin-template parity (partially supersedes ADR-0018's shell-only scope boundary) |
 | FR-ADMIN-2, NFR-6, NFR-10, NFR-31, NFR-32, NFR-33 | [ADR-0022](../adr/0022-generic-crud-router-factory.md) Generic CRUD router factory |
 | FR-DS-1, NFR-34 | [ADR-0023](../adr/0023-frontend-shared-component-location.md) Frontend shared-component location & FormField error-display convention |
+| FR-LANDING-1, NFR-35 | [ADR-0024](../adr/0024-public-landing-page.md) Public landing page replaces root scaffold-verification page |
 
 Full field-level traceability (Requirement → design technique → test case → execution → defect) is itself FR-TRACE-1/2 — this document is the requirements layer that feeds the [WBS](../wbs/2026-09-03-project-scaffold-wbs.md), [Database Document](../database/2026-09-03-database-design.md), [API Document](../api/2026-09-03-api-design.md), and [Test Plan](../test-plan/2026-09-03-master-test-plan.md).

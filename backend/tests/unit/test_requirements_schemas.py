@@ -1,5 +1,5 @@
 """Unit tests for REQ-1's `title` gap-fill on `Requirement`'s generic-CRUD
-schemas (`app/schemas/assets.py`, ADR-0024).
+schemas (`app/schemas/assets.py`, ADR-0025).
 
 Pure Pydantic-model construction, no DB/network — mirrors the style of
 `tests/unit/test_projects_schemas.py`. Scope is narrow and mechanical: does

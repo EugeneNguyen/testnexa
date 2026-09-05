@@ -18,7 +18,7 @@
  * `GET /releases/{id}/test-cycles` (ADR-0019 AC2's nested-executions audit
  * query) — read-only, no edit UI, this is an audit view only.
  *
- * REQ-1 (ADR-0022/ADR-0024): a second, independent section on this same page
+ * REQ-1 (ADR-0022/ADR-0025): a second, independent section on this same page
  * — Requirement list (searchable by `?q=` title/description/external_ref/
  * source substring, per FR-REQ-1's own AC) + "New Requirement" modal, same
  * RHF+Zod+CoreUI convention as "New Release" above, its own separate

@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-03
 **Owner:** xuanbinh91@gmail.com (CTO)
-**Sources:** [Master Test Plan](../test-plan/2026-09-03-master-test-plan.md), [Requirements Document](../requirements/2026-09-03-project-scaffold-requirements.md), [Database Document](../database/2026-09-03-database-design.md), [ADR-0011](../adr/0011-login-rate-limiting.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md), [ADR-0014](../adr/0014-logout-session-revocation-policy.md), [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md), [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md), [ADR-0017](../adr/0017-project-creation-flow.md), [ADR-0018](../adr/0018-admin-shell-sidebar-layout.md), [ADR-0019](../adr/0019-release-creation-flow.md), [ADR-0020](../adr/0020-admin-shell-full-template-parity.md), [ADR-0021](../adr/0021-role-assignment-creation-flow.md), [ADR-0022](../adr/0022-generic-crud-router-factory.md), [ADR-0023](../adr/0023-frontend-shared-component-location.md), [ADR-0024](../adr/0024-requirement-title-field.md)
+**Sources:** [Master Test Plan](../test-plan/2026-09-03-master-test-plan.md), [Requirements Document](../requirements/2026-09-03-project-scaffold-requirements.md), [Database Document](../database/2026-09-03-database-design.md), [ADR-0011](../adr/0011-login-rate-limiting.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md), [ADR-0014](../adr/0014-logout-session-revocation-policy.md), [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md), [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md), [ADR-0017](../adr/0017-project-creation-flow.md), [ADR-0018](../adr/0018-admin-shell-sidebar-layout.md), [ADR-0019](../adr/0019-release-creation-flow.md), [ADR-0020](../adr/0020-admin-shell-full-template-parity.md), [ADR-0021](../adr/0021-role-assignment-creation-flow.md), [ADR-0022](../adr/0022-generic-crud-router-factory.md), [ADR-0023](../adr/0023-frontend-shared-component-location.md), [ADR-0024](../adr/0024-public-landing-page.md), [ADR-0025](../adr/0025-requirement-title-field.md)
 
 Applies ISTQB CTFL v4.0.1 design techniques deliberately — the same vocabulary this product's `TestDesignTechnique` entity asks its own users to declare (ADMIN-1) is used to design the tests below.
 
@@ -25,6 +25,7 @@ Applies ISTQB CTFL v4.0.1 design techniques deliberately — the same vocabulary
 | Admin shell (sidebar + navbar) | Equivalence partitioning (org-context-present vs. absent, current-route-active vs. not) + state coverage (sidebar visible/collapsed) | Layout is a small, enumerable set of UI states, not a combinatorial one |
 | Admin shell extras (breadcrumb, footer, dashboard widgets, dark/light toggle) | Equivalence partitioning (route-with-known-breadcrumb-segment vs. root; theme=light vs. dark vs. unset-defaults-to-system) + state coverage (toggle on/off, persisted vs. fresh session) | Same small-enumerable-state shape as the base shell; widget counts additionally verified against seeded fixture data, not just "renders a number" |
 | Shared `FormField` component + Login/Signup migration | Equivalence partitioning (error-present vs. absent, default vs. explicit `type`) + regression/negative testing (pre-migration behavior reproduced exactly) | Small, enumerable prop-driven states for the component itself; the migration's own risk is regression, not new-behavior combinatorics |
+| Public landing page (LANDING-1) | Equivalence partitioning (no-session vs. authenticated-session, each its own render/redirect outcome) | Small, binary auth-state partition, same shape as the admin shell's org-context classes above |
 
 ## 2. Auth — equivalence classes
 
@@ -234,12 +235,22 @@ Every MCP tool test asserts **contract parity** with its backing REST route (MCP
 
 **Non-goal boundary (AC5):** no checkbox/select/radio variant, no `Controller`-based binding path, and no second component in `components/shared/` are exercised by this section's tests — their absence is the story's own explicit scope boundary, not an oversight.
 
-## 21. REQ-1 Requirement capture — equivalence classes ([ADR-0024](../adr/0024-requirement-title-field.md))
+## 21. LANDING-1 public landing page — equivalence classes ([ADR-0024](../adr/0024-public-landing-page.md))
+
+**Auth-state class (the story's core partition):** no session (no access token, no restorable refresh-cookie session) → `LandingPage` renders (product name/tagline, "Log in"/"Sign up" CTAs). Authenticated session (`orgContext` resolved) → redirected off `/` before the landing content ever paints, reusing `Login.tsx`'s own `orgContext`/`orgs`-driven `useEffect` redirect (`"auto"` → `/orgs/{orgs[0].id}`, `"picker"` → `/orgs/pick`) rather than a second, independently-implemented check — tested as the same two branches `Login.tsx`'s own redirect tests already cover, not a new decision space.
+
+**CTA-navigation class:** click "Log in" → lands on `/login`. Click "Sign up" → lands on `/signup`. Both are plain `react-router-dom` links, no API call involved in the click itself — same assertion shape as `Login.tsx`'s existing "New to TestNexa? Sign up" link test.
+
+**No-auth-call class (the public-route posture under test):** render the page with no token/cookie present at all → no network call fires (a spied/mocked `apiFetch` records zero invocations, or the page renders with no `useQuery`/data-fetch hook at all) — proves the route is genuinely public, not silently gated behind a call that would otherwise 401 and be masked by an error boundary.
+
+**Non-goal boundary:** no marketing-depth content (features grid, testimonials, persona-targeted copy) is exercised by this section's tests — bare-bones scope is this story's explicit boundary (ADR-0024), not an oversight.
+
+## 22. REQ-1 Requirement capture — equivalence classes ([ADR-0025](../adr/0025-requirement-title-field.md))
 
 REQ-1 does not introduce a new technique — `Requirement`'s create/list/search mechanics are already covered generically by §19's ADMIN-2 classes (scope-required-on-list/create, cross-org 404 boundary at the direct-resolver depth, free-text search opt-in). This section covers only what's specific to `title` existing at all.
 
 **`title`-required class (TC-REQ-001):** `POST /requirements` with `project_id`+`title`+`description` (+ optional `source`/`external_ref`) → `201`, row created with the given `title`. `title` omitted from the body → `422` (a plain required-field validation error, same class as `project_id`'s own already-tested "missing scope" case in §19 — not a new error shape).
 
-**`title` search class (TC-REQ-002), extends §19's search/filter class:** `?q=<substring of a seeded title>` → matches via the same `search_fields` `ILIKE` mechanism as `description`/`external_ref`/`source` (ADR-0024 adds a fourth OR'd column, not a new mechanism). `?external_ref=<exact value>` (via `filter_fields`) → exact match only, tested as a distinct class from `?q=` to confirm the two params aren't conflated (a substring of `external_ref` passed to `?external_ref=` instead of `?q=` must **not** match, proving `filter_fields` really is exact, not silently substring too).
+**`title` search class (TC-REQ-002), extends §19's search/filter class:** `?q=<substring of a seeded title>` → matches via the same `search_fields` `ILIKE` mechanism as `description`/`external_ref`/`source` (ADR-0025 adds a fourth OR'd column, not a new mechanism). `?external_ref=<exact value>` (via `filter_fields`) → exact match only, tested as a distinct class from `?q=` to confirm the two params aren't conflated (a substring of `external_ref` passed to `?external_ref=` instead of `?q=` must **not** match, proving `filter_fields` really is exact, not silently substring too).
 
-**Regression class (the ADR-0024 risk):** a `Requirement` fixture created before this ADR's migration (no `title` in the payload) — asserted to fail `422` post-migration if replayed unchanged, proving the new required field is actually enforced, not left effectively-optional by a default value slipping in somewhere in the schema layer.
+**Regression class (the ADR-0025 risk):** a `Requirement` fixture created before this ADR's migration (no `title` in the payload) — asserted to fail `422` post-migration if replayed unchanged, proving the new required field is actually enforced, not left effectively-optional by a default value slipping in somewhere in the schema layer.

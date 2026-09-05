@@ -38,8 +38,9 @@
  * `lib/api/dashboard.ts`'s `getProjectsTotal`/`getActiveMemberTotal` (see
  * that module's own docstring for the exact endpoints and a flagged
  * backend-not-shipped-yet deviation). Each widget is its own `useQuery`,
- * matching this codebase's one existing inline-`useQuery` precedent
- * (`App.tsx`'s `ScaffoldVerificationPage`) rather than a bespoke generic
+ * matching this codebase's original inline-`useQuery` precedent (the
+ * now-deleted `App.tsx`'s `ScaffoldVerificationPage`, replaced by
+ * `LandingPage.tsx` per ADR-0024/LANDING-1) rather than a bespoke generic
  * list-hook (`useEntityList` etc. is WBS task 6.2 scope, not built yet).
  * Loading/error/success are three distinct rendered states — a failed or
  * still-in-flight fetch never renders "0", only a real `total: 0` response
