@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-03
 **Owner:** xuanbinh91@gmail.com (CTO)
-**Sources:** [Scaffold design spec](../superpowers/specs/2026-09-03-project-scaffold-design.md), [Database Document](../database/2026-09-03-database-design.md), [Requirements Document](../requirements/2026-09-03-project-scaffold-requirements.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md) (refresh rotation policy), [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md) (AI agent credential mechanics), [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md) (organization bootstrap & creation flow), [ADR-0017](../adr/0017-project-creation-flow.md) (project creation flow), [ADR-0021](../adr/0021-role-assignment-creation-flow.md) (role assignment creation flow), [ADR-0022](../adr/0022-generic-crud-router-factory.md) (generic CRUD router factory)
+**Sources:** [Scaffold design spec](../superpowers/specs/2026-09-03-project-scaffold-design.md), [Database Document](../database/2026-09-03-database-design.md), [Requirements Document](../requirements/2026-09-03-project-scaffold-requirements.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md) (refresh rotation policy), [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md) (AI agent credential mechanics), [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md) (organization bootstrap & creation flow), [ADR-0017](../adr/0017-project-creation-flow.md) (project creation flow), [ADR-0021](../adr/0021-role-assignment-creation-flow.md) (role assignment creation flow), [ADR-0022](../adr/0022-generic-crud-router-factory.md) (generic CRUD router factory), [ADR-0025](../adr/0025-requirement-title-field.md) (`Requirement.title` gap-fill)
 
 REST over HTTPS, JSON bodies, base path `/api/v1`. FastAPI auto-generates the OpenAPI schema from the implementation — this document is the design-level contract new routes must match, not a substitute for the generated spec once code exists.
 
@@ -107,11 +107,13 @@ REST over HTTPS, JSON bodies, base path `/api/v1`. FastAPI auto-generates the Op
 
 One factory (`make_crud_router()`), called once per entity with a small config object (`resource` name, schemas, `scope_field`, `resolve_org_id`, `filter_fields`, `search_fields`) — composition, not a base-class hierarchy. Example shown for `requirement`; the same shape applies to every entity in the table below except the bespoke ones in §4 and the read-only ones in §5.
 
+`Requirement` fields: `project_id` (scope), `title` (required, [ADR-0025](../adr/0025-requirement-title-field.md)), `description` (required), `external_ref`/`source` (optional). `title`/`description`/`external_ref`/`source` are all `search_fields` (`?q=` substring match); `external_ref` is additionally a `filter_fields` exact-match param.
+
 | Method | Path | Permission | Notes |
 |---|---|---|---|
 | GET | `/requirements?project_id=<uuid>` | `requirement.read` | paginated, filterable, `?q=` search; `project_id` (the scope field) required |
 | GET | `/requirements/{id}` | `requirement.read` | row-resolved (no `org_id`/`project_id` path segment); 404 if cross-tenant, `has_permission` called directly, not `require_permission` |
-| POST | `/requirements` | `requirement.create` | `project_id` required in body; 422 on validation error |
+| POST | `/requirements` | `requirement.create` | `project_id`+`title` required in body; 422 on validation error |
 | PATCH | `/requirements/{id}` | `requirement.update` | partial update |
 | DELETE | `/requirements/{id}` | `requirement.delete` | hard delete for lookups; RESTRICT-blocked → `409`, distinct from `422` |
 

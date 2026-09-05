@@ -18,9 +18,16 @@
  * `GET /releases/{id}/test-cycles` (ADR-0019 AC2's nested-executions audit
  * query) — read-only, no edit UI, this is an audit view only.
  *
+ * REQ-1 (ADR-0022/ADR-0025): a second, independent section on this same page
+ * — Requirement list (searchable by `?q=` title/description/external_ref/
+ * source substring, per FR-REQ-1's own AC) + "New Requirement" modal, same
+ * RHF+Zod+CoreUI convention as "New Release" above, its own separate
+ * `useForm` instance (two independent forms on one page, not a shared one).
+ * No TestCondition/TestCase UI here — that's REQ-2/3's own separate scope.
+ *
  * Built with CoreUI (ADR-0012).
  */
-import { Fragment, useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState, type FormEvent } from "react";
 import { useParams } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -37,6 +44,8 @@ import {
   CFormFeedback,
   CFormLabel,
   CFormText,
+  CFormTextarea,
+  CInputGroup,
   CModal,
   CModalBody,
   CModalFooter,
@@ -59,6 +68,7 @@ import {
   ReleaseSummary,
   TestCycleSummary,
 } from "../../lib/api/releases";
+import { createRequirement, listRequirements, RequirementSummary } from "../../lib/api/requirements";
 
 const newReleaseSchema = z.object({
   versionLabel: z.string().trim().min(1, "Version label is required"),
@@ -66,6 +76,15 @@ const newReleaseSchema = z.object({
 });
 
 type NewReleaseFormValues = z.infer<typeof newReleaseSchema>;
+
+const newRequirementSchema = z.object({
+  title: z.string().trim().min(1, "Title is required"),
+  description: z.string().trim().min(1, "Description is required"),
+  source: z.string().trim().optional(),
+  externalRef: z.string().trim().optional(),
+});
+
+type NewRequirementFormValues = z.infer<typeof newRequirementSchema>;
 
 /**
  * Pulls a `422` field-level message out of an `ApiError`'s body for `field`,
@@ -79,6 +98,10 @@ function fieldError(error: ApiError, field: string): string | undefined {
 }
 
 function formatDate(value: string | null): string {
+  return value ?? "—";
+}
+
+function dashIfEmpty(value: string | null): string {
   return value ?? "—";
 }
 
@@ -108,6 +131,98 @@ function ProjectDetail() {
     resolver: zodResolver(newReleaseSchema),
     defaultValues: { versionLabel: "", targetDate: "" },
   });
+
+  // --- REQ-1: Requirement list + "New Requirement" modal (independent of Releases above) ---
+  const [requirements, setRequirements] = useState<RequirementSummary[]>([]);
+  const [reqLoading, setReqLoading] = useState(true);
+  const [reqLoadError, setReqLoadError] = useState<string | null>(null);
+  const [searchInput, setSearchInput] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+
+  const [showReqModal, setShowReqModal] = useState(false);
+  const [reqApiError, setReqApiError] = useState<string | null>(null);
+
+  const {
+    register: registerRequirement,
+    handleSubmit: handleSubmitRequirement,
+    reset: resetRequirement,
+    setError: setRequirementError,
+    formState: { errors: requirementErrors, isSubmitting: isSubmittingRequirement },
+  } = useForm<NewRequirementFormValues>({
+    resolver: zodResolver(newRequirementSchema),
+    defaultValues: { title: "", description: "", source: "", externalRef: "" },
+  });
+
+  const fetchRequirements = useCallback(
+    async (q: string) => {
+      if (!projectId) {
+        return;
+      }
+      setReqLoading(true);
+      setReqLoadError(null);
+      try {
+        const response = await listRequirements(projectId, q ? { q } : {});
+        setRequirements(response.items);
+      } catch (err) {
+        setReqLoadError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
+      } finally {
+        setReqLoading(false);
+      }
+    },
+    [projectId],
+  );
+
+  useEffect(() => {
+    fetchRequirements(searchTerm);
+  }, [fetchRequirements, searchTerm]);
+
+  function onSearchSubmit(event: FormEvent) {
+    event.preventDefault();
+    setSearchTerm(searchInput.trim());
+  }
+
+  function openReqModal() {
+    setReqApiError(null);
+    resetRequirement({ title: "", description: "", source: "", externalRef: "" });
+    setShowReqModal(true);
+  }
+
+  function closeReqModal() {
+    setShowReqModal(false);
+  }
+
+  async function onSubmitRequirement(values: NewRequirementFormValues) {
+    if (!projectId) {
+      return;
+    }
+    setReqApiError(null);
+    try {
+      await createRequirement(projectId, {
+        title: values.title,
+        description: values.description,
+        // Omitted (not sent as an empty string) when blank, matching the
+        // backend's `str | None = None` optional-field convention.
+        ...(values.source ? { source: values.source } : {}),
+        ...(values.externalRef ? { external_ref: values.externalRef } : {}),
+      });
+      closeReqModal();
+      await fetchRequirements(searchTerm);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        const titleError = fieldError(err, "title");
+        const descriptionError = fieldError(err, "description");
+        if (titleError) {
+          setRequirementError("title", { type: "server", message: titleError });
+        } else if (descriptionError) {
+          setRequirementError("description", { type: "server", message: descriptionError });
+        } else {
+          setReqApiError(err.message);
+        }
+      } else {
+        setReqApiError("Something went wrong. Please try again.");
+      }
+    }
+  }
 
   const fetchReleases = useCallback(
     async (sortOrder: "asc" | "desc") => {
@@ -295,9 +410,124 @@ function ProjectDetail() {
                 )}
               </CCardBody>
             </CCard>
+
+            <CCard className="mt-4">
+              <CCardBody className="p-4">
+                <div className="d-flex justify-content-between align-items-center mb-3">
+                  <h2 className="fs-4 mb-0">Requirements</h2>
+                  <CButton color="primary" onClick={openReqModal}>
+                    New Requirement
+                  </CButton>
+                </div>
+
+                <CForm onSubmit={onSearchSubmit} className="mb-3">
+                  <CInputGroup>
+                    <CFormInput
+                      aria-label="Search requirements"
+                      placeholder="Search by title, description, source, or external ref…"
+                      value={searchInput}
+                      onChange={(e) => setSearchInput(e.target.value)}
+                    />
+                    <CButton type="submit" color="secondary" variant="outline">
+                      Search
+                    </CButton>
+                  </CInputGroup>
+                </CForm>
+
+                {reqLoadError && (
+                  <CAlert color="danger" role="alert">
+                    {reqLoadError}
+                  </CAlert>
+                )}
+
+                {reqLoading ? (
+                  <div className="d-flex justify-content-center py-4">
+                    <CSpinner color="primary" />
+                  </div>
+                ) : requirements.length === 0 ? (
+                  <p className="text-body-secondary mb-0">
+                    {searchTerm ? "No requirements match your search." : "No requirements yet."}
+                  </p>
+                ) : (
+                  <CTable hover responsive>
+                    <CTableHead>
+                      <CTableRow>
+                        <CTableHeaderCell>Title</CTableHeaderCell>
+                        <CTableHeaderCell>External ref</CTableHeaderCell>
+                        <CTableHeaderCell>Source</CTableHeaderCell>
+                      </CTableRow>
+                    </CTableHead>
+                    <CTableBody>
+                      {requirements.map((requirement) => (
+                        <CTableRow key={requirement.id}>
+                          <CTableDataCell>{requirement.title}</CTableDataCell>
+                          <CTableDataCell>{dashIfEmpty(requirement.external_ref)}</CTableDataCell>
+                          <CTableDataCell>{dashIfEmpty(requirement.source)}</CTableDataCell>
+                        </CTableRow>
+                      ))}
+                    </CTableBody>
+                  </CTable>
+                )}
+              </CCardBody>
+            </CCard>
           </CCol>
         </CRow>
       </CContainer>
+
+      <CModal visible={showReqModal} onClose={closeReqModal}>
+        <CModalHeader>
+          <CModalTitle>New Requirement</CModalTitle>
+        </CModalHeader>
+        <CForm onSubmit={handleSubmitRequirement(onSubmitRequirement)} noValidate>
+          <CModalBody>
+            <div className="mb-3">
+              <CFormLabel htmlFor="requirementTitle">Title</CFormLabel>
+              <CFormInput
+                id="requirementTitle"
+                type="text"
+                invalid={!!requirementErrors.title}
+                {...registerRequirement("title")}
+              />
+              {requirementErrors.title && <CFormFeedback invalid>{requirementErrors.title.message}</CFormFeedback>}
+            </div>
+            <div className="mb-3">
+              <CFormLabel htmlFor="requirementDescription">Description</CFormLabel>
+              <CFormTextarea
+                id="requirementDescription"
+                rows={3}
+                invalid={!!requirementErrors.description}
+                {...registerRequirement("description")}
+              />
+              {requirementErrors.description && (
+                <CFormFeedback invalid>{requirementErrors.description.message}</CFormFeedback>
+              )}
+            </div>
+            <div className="mb-3">
+              <CFormLabel htmlFor="requirementSource">Source</CFormLabel>
+              <CFormInput id="requirementSource" type="text" {...registerRequirement("source")} />
+              <CFormText>Optional.</CFormText>
+            </div>
+            <div className="mb-3">
+              <CFormLabel htmlFor="requirementExternalRef">External ref</CFormLabel>
+              <CFormInput id="requirementExternalRef" type="text" {...registerRequirement("externalRef")} />
+              <CFormText>Optional — e.g. a Jira/GitHub issue id.</CFormText>
+            </div>
+            {reqApiError && (
+              <CAlert color="danger" role="alert">
+                {reqApiError}
+              </CAlert>
+            )}
+          </CModalBody>
+          <CModalFooter>
+            <CButton color="secondary" variant="outline" onClick={closeReqModal}>
+              Cancel
+            </CButton>
+            <CButton type="submit" color="primary" disabled={isSubmittingRequirement}>
+              {isSubmittingRequirement ? "Creating..." : "Create"}
+            </CButton>
+          </CModalFooter>
+        </CForm>
+      </CModal>
 
       <CModal visible={showModal} onClose={closeModal}>
         <CModalHeader>
