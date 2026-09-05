@@ -52,7 +52,7 @@ _REQUIREMENT_CONFIG = CrudEntityConfig(
     scope_field="project_id",
     resolve_org_id=chain_resolver([]),
     filter_fields=("external_ref",),
-    search_fields=("description", "external_ref", "source"),
+    search_fields=("title", "description", "external_ref", "source"),
 )
 
 _TEST_CONDITION_CONFIG = CrudEntityConfig(

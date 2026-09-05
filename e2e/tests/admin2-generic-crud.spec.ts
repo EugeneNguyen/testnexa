@@ -185,7 +185,11 @@ test.describe("ADMIN-2: generic CRUD router factory, full stack via nginx", () =
       // --- Generic factory: create a Requirement scoped to that Project -----------------
       const requirementResponse = await request.post("/api/v1/requirements", {
         headers: { Authorization: `Bearer ${tokenA}` },
-        data: { project_id: project.id, description: "ADMIN-2 E2E requirement" },
+        data: {
+          project_id: project.id,
+          title: "ADMIN-2 E2E requirement",
+          description: "ADMIN-2 E2E requirement",
+        },
       });
       expect(requirementResponse.ok()).toBeTruthy();
       const requirement = await requirementResponse.json();

@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-03
 **Owner:** xuanbinh91@gmail.com (CTO)
-**Sources:** [Master Test Plan](../test-plan/2026-09-03-master-test-plan.md), [Requirements Document](../requirements/2026-09-03-project-scaffold-requirements.md), [Database Document](../database/2026-09-03-database-design.md), [ADR-0011](../adr/0011-login-rate-limiting.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md), [ADR-0014](../adr/0014-logout-session-revocation-policy.md), [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md), [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md), [ADR-0017](../adr/0017-project-creation-flow.md), [ADR-0018](../adr/0018-admin-shell-sidebar-layout.md), [ADR-0019](../adr/0019-release-creation-flow.md), [ADR-0020](../adr/0020-admin-shell-full-template-parity.md), [ADR-0021](../adr/0021-role-assignment-creation-flow.md), [ADR-0022](../adr/0022-generic-crud-router-factory.md), [ADR-0023](../adr/0023-frontend-shared-component-location.md), [ADR-0024](../adr/0024-public-landing-page.md)
+**Sources:** [Master Test Plan](../test-plan/2026-09-03-master-test-plan.md), [Requirements Document](../requirements/2026-09-03-project-scaffold-requirements.md), [Database Document](../database/2026-09-03-database-design.md), [ADR-0011](../adr/0011-login-rate-limiting.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md), [ADR-0014](../adr/0014-logout-session-revocation-policy.md), [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md), [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md), [ADR-0017](../adr/0017-project-creation-flow.md), [ADR-0018](../adr/0018-admin-shell-sidebar-layout.md), [ADR-0019](../adr/0019-release-creation-flow.md), [ADR-0020](../adr/0020-admin-shell-full-template-parity.md), [ADR-0021](../adr/0021-role-assignment-creation-flow.md), [ADR-0022](../adr/0022-generic-crud-router-factory.md), [ADR-0023](../adr/0023-frontend-shared-component-location.md), [ADR-0024](../adr/0024-public-landing-page.md), [ADR-0025](../adr/0025-requirement-title-field.md)
 
 Applies ISTQB CTFL v4.0.1 design techniques deliberately — the same vocabulary this product's `TestDesignTechnique` entity asks its own users to declare (ADMIN-1) is used to design the tests below.
 
@@ -245,7 +245,17 @@ Every MCP tool test asserts **contract parity** with its backing REST route (MCP
 
 **Non-goal boundary:** no marketing-depth content (features grid, testimonials, persona-targeted copy) is exercised by this section's tests — bare-bones scope is this story's explicit boundary (ADR-0024), not an oversight.
 
-## 22. ADMIN-2 completion — generic admin CRUD UI + execution/traceability backend ([ADR-0026](../adr/0026-generic-admin-crud-ui-and-backend-completion.md))
+## 22. REQ-1 Requirement capture — equivalence classes ([ADR-0025](../adr/0025-requirement-title-field.md))
+
+REQ-1 does not introduce a new technique — `Requirement`'s create/list/search mechanics are already covered generically by §19's ADMIN-2 classes (scope-required-on-list/create, cross-org 404 boundary at the direct-resolver depth, free-text search opt-in). This section covers only what's specific to `title` existing at all.
+
+**`title`-required class (TC-REQ-001):** `POST /requirements` with `project_id`+`title`+`description` (+ optional `source`/`external_ref`) → `201`, row created with the given `title`. `title` omitted from the body → `422` (a plain required-field validation error, same class as `project_id`'s own already-tested "missing scope" case in §19 — not a new error shape).
+
+**`title` search class (TC-REQ-002), extends §19's search/filter class:** `?q=<substring of a seeded title>` → matches via the same `search_fields` `ILIKE` mechanism as `description`/`external_ref`/`source` (ADR-0025 adds a fourth OR'd column, not a new mechanism). `?external_ref=<exact value>` (via `filter_fields`) → exact match only, tested as a distinct class from `?q=` to confirm the two params aren't conflated (a substring of `external_ref` passed to `?external_ref=` instead of `?q=` must **not** match, proving `filter_fields` really is exact, not silently substring too).
+
+**Regression class (the ADR-0025 risk):** a `Requirement` fixture created before this ADR's migration (no `title` in the payload) — asserted to fail `422` post-migration if replayed unchanged, proving the new required field is actually enforced, not left effectively-optional by a default value slipping in somewhere in the schema layer.
+
+## 23. ADMIN-2 completion — generic admin CRUD UI + execution/traceability backend ([ADR-0026](../adr/0026-generic-admin-crud-ui-and-backend-completion.md))
 
 **Field-type rendering class (AC2):** for one representative entity per `type`, the create/edit form renders the matching input — `string` → text `FormField`, `enum` → `CFormSelect` populated from `values[]`, `fk` → `FkAutocomplete` (typing filters via `?q=` against the ref entity), `date` → a native date input, `boolean` → `CFormSwitch`. Tested per type once against a real config, not per entity — the dispatch logic is shared, so a per-entity repeat would only be re-testing the same `switch` statement.
 
@@ -260,4 +270,3 @@ Every MCP tool test asserts **contract parity** with its backing REST route (MCP
 **Backend completion — resolver-depth extension (extends §19 to the 3 newly-wired entities):** `TestExecution` (one-hop via `TestCycle`) and `TestLog` (two-hop, delegates through `TestExecution`'s own resolver) both hit the same cross-org 404 boundary §19 already established for other depths — tested here specifically because these two resolvers didn't exist before this pass, not because the boundary logic itself is new. The 4 link tables' resolvers (`RequirementTestCaseLink`/`RequirementTestConditionLink` via `Requirement`, `TestConditionTestCaseLink` via `TestCondition`→`Requirement`, `TestCaseDefectLink` delegating to `TestCase`'s resolver) get the same treatment — one cross-org 404 test per table, proving each composed resolver chain actually resolves, not just that `chain_resolver` itself works in isolation (already covered, §19).
 
 **`TestLog`/link-table read-only class:** no route exists for `POST`/`PATCH`/`DELETE` on any of the 5 read-only entities this pass adds — asserted by confirming the router only ever registers `GET`/`list` for them (a route-table inspection, not a runtime 405 test, since FastAPI simply never registers the other methods at all).
-

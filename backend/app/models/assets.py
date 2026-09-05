@@ -34,6 +34,7 @@ class Requirement(Base):
     project_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("project.id", ondelete="RESTRICT"), nullable=False, index=True
     )
+    title: Mapped[str] = mapped_column(String, nullable=False)
     external_ref: Mapped[str | None] = mapped_column(String, nullable=True)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     source: Mapped[str | None] = mapped_column(String, nullable=True)

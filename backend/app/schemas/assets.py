@@ -24,9 +24,14 @@ TestCaseStatus = Literal["draft", "reviewed", "approved", "deprecated"]
 
 
 class CreateRequirementRequest(BaseModel):
-    """Body of `POST /requirements` — `project_id` is the required scope field."""
+    """Body of `POST /requirements` — `project_id` is the required scope field.
+
+    `title` is required ([ADR-0025](../../../docs/adr/0025-requirement-title-field.md)
+    — gap-fill against FR-REQ-1/TC-REQ-001, which have always specified it).
+    """
 
     project_id: UUID
+    title: str
     description: str
     external_ref: str | None = None
     source: str | None = None
@@ -36,9 +41,12 @@ class UpdateRequirementRequest(BaseModel):
     """Body of `PATCH /requirements/{id}` — partial update, `exclude_unset` semantics.
 
     `project_id` is not reassignable through this route (no ADR/story asks
-    for moving a `Requirement` across projects).
+    for moving a `Requirement` across projects). `title` is optional here
+    (ADR-0025) — same partial-update posture every other optional `PATCH`
+    field in this codebase already uses.
     """
 
+    title: str | None = None
     description: str | None = None
     external_ref: str | None = None
     source: str | None = None
@@ -47,6 +55,7 @@ class UpdateRequirementRequest(BaseModel):
 class RequirementSummary(BaseModel):
     id: UUID
     project_id: UUID
+    title: str
     description: str
     external_ref: str | None = None
     source: str | None = None
