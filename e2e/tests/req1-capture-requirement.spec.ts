@@ -9,14 +9,17 @@ import { expect, test } from "@playwright/test";
  * Postgres) from `docs/test-cases/2026-09-03-test-cases.md`.
  *
  * **This is an API-level E2E test, not a browser UI flow** — same posture,
- * and same reason, as `admin2-generic-crud.spec.ts`: there is no frontend
- * UI for creating/searching Requirements in this codebase (confirmed
- * absent by design during this story's planning; no story asked for one).
- * It uses Playwright's `request` API context only, no `page` navigation.
- * This still proves the whole isolated stack end to end — a real network
- * hop through nginx, a real Postgres, not a mocked layer — it just proves
- * it as a black-box HTTP client rather than a browser click-through.
- * Rewrite to drive a UI if/when a future story ships one.
+ * and same reason, as `admin2-generic-crud.spec.ts`. It uses Playwright's
+ * `request` API context only, no `page` navigation. This still proves the
+ * whole isolated stack end to end — a real network hop through nginx, a
+ * real Postgres, not a mocked layer — it just proves it as a black-box HTTP
+ * client rather than a browser click-through.
+ *
+ * A frontend UI for this now exists (`ProjectDetail.tsx`'s Requirements
+ * section) — see `req1-requirements-ui.spec.ts` for the browser-driven
+ * equivalent of this same round trip. Kept alongside it, not replaced by
+ * it: this file still proves the API contract independent of any UI
+ * regression.
  *
  * Fixture seeding: one org_admin (one Organization/Project), same
  * `docker exec ... python -` pattern `admin2-generic-crud.spec.ts` /
