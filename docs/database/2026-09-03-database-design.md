@@ -117,7 +117,7 @@ Partial unique index: `name` **WHERE `org_id IS NULL`** — prevents duplicate s
 | Role | Bundle |
 |---|---|
 | `org_admin` | Every seeded `Permission` (superuser within its org) |
-| `test_manager` | `test_plan.*` + `.approve`, `entry_exit_criteria.*`, `test_cycle.*`, `test_suite.*`, `release.create`/`.read`/`.update`, `approval.create`/`.read`, `requirement.read`/`.export_rtm`, `defect.read`, `risk_item.*`, `test_case.read`, `test_step.read`, `test_condition.read` |
+| `test_manager` | `test_plan.*` + `.approve`, `entry_exit_criteria.*`, `test_cycle.*`, `test_suite.*`, `release.create`/`.read`/`.update`, `project.read`/`.update` (RBAC-3/[ADR-0021](../adr/0021-role-assignment-creation-flow.md) — closes a gap that made TC-RBAC-035's regression case unprovable: a project's own creator, auto-granted this Role project-scoped by PROJ-1, couldn't otherwise view or rename the project itself), `approval.create`/`.read`, `requirement.read`/`.export_rtm`, `defect.read`, `risk_item.*`, `test_case.read`, `test_step.read`, `test_condition.read` |
 | `tester` | `test_case.*`, `test_step.*`, `test_condition.*`, `test_execution.*`, `test_log.read`, `defect.create`/`.read`/`.update`, `test_plan.read`, `test_suite.read`, `requirement.read` — no `approval.*`, no `test_plan.approve` |
 | `auditor` | `.read` on all 29 resources + `requirement.export_rtm` — nothing else, no writes anywhere |
 | `ai_agent_scoped` | `test_case.create`/`.read`/`.update`, `test_step.create`/`.read`/`.update`, `test_execution.create`/`.read`/`.update`, `test_log.read` — no delete, no `approval.*`, no `role`/`role_assignment`/`org_membership` anything, and per [ADR-0004](../adr/0004-rbac-design.md)/RBAC-5, `test_plan.approve` is never seeded into this bundle |
@@ -157,7 +157,9 @@ Unique: `(role_id, permission_id)`.
 | role_id | uuid | FK → role.id, not null |
 | created_at, updated_at | timestamptz | not null |
 
-Unique: `(actor_id, org_id, project_id, role_id)`.
+Unique: `(actor_id, org_id, project_id, role_id)`, **plus a partial unique index `(actor_id, org_id, role_id) WHERE project_id IS NULL`** (RBAC-3 migration, added when this story's own duplicate-grant test exposed a real pre-existing gap — same `NULL <> NULL` reasoning as `Role.uq_role_name_system_role`: a plain composite `UNIQUE` including a nullable `project_id` column never catches two org-wide (`project_id = NULL`) rows for the same `actor_id`/`org_id`/`role_id`, since Postgres treats every `NULL` as distinct from every other `NULL`; the partial index is what actually enforces "no duplicate org-wide grant," the base composite constraint alone only ever covered the project-scoped case).
+
+**Creation flow (RBAC-3, [ADR-0021](../adr/0021-role-assignment-creation-flow.md))** is application logic — `POST /orgs/{org_id}/role-assignments` inserts one row directly; the two constraints above are what turn a duplicate-grant attempt (org-wide or project-scoped) into `422` (caught `IntegrityError`) rather than a silent second row. `project_id NULL` (org-wide) vs. non-null (project-scoped) was already schema-supported since the initial migration — RBAC-3 is the first story to expose creating either shape through a real route, and the first to prove `has_permission`'s `project_id`-aware resolution branch against a real HTTP call (`GET`/`PATCH /projects/{id}`, fixed by the same story to pass `project_id` through — see ADR-0021).
 
 ### 3.4 `actor.py` — Actor, User, AIAgent (joined-table inheritance)
 

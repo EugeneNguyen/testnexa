@@ -23,7 +23,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.requests import Request
 from fastapi.responses import JSONResponse
 
-from app.api.routes import agents, auth, health, org_memberships, organizations, projects, releases
+from app.api.routes import (
+    agents,
+    auth,
+    health,
+    org_memberships,
+    organizations,
+    projects,
+    releases,
+    role_assignments,
+    roles,
+)
 
 app = FastAPI(title="TestNexa API", version="0.1.0")
 
@@ -83,3 +93,7 @@ app.include_router(org_memberships.router, prefix="/api/v1", tags=["org_membersh
 app.include_router(projects.router, prefix="/api/v1", tags=["projects"])
 # PROJ-2/ADR-0019: Release create/read/list + audit-query routes.
 app.include_router(releases.router, prefix="/api/v1", tags=["releases"])
+# RBAC-3/ADR-0021: RoleAssignment create/list routes.
+app.include_router(role_assignments.router, prefix="/api/v1", tags=["role-assignments"])
+# RBAC-3 UI slice: role dropdown data source for the role-assignment form.
+app.include_router(roles.router, prefix="/api/v1", tags=["roles"])

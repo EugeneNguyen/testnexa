@@ -34,7 +34,8 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 | 2.5b | `POST /auth/signup` — public, bootstrap-only (closes once ≥1 `Organization` exists, `pg_advisory_xact_lock`-serialized against concurrent first signups); creates User+Organization+OrgMembership(active)+org_admin RoleAssignment (RBAC-4's seeded Role, not a per-org copy), issues tokens via 2.2's existing cookie/token code | 2.2, 1.3 | M | FR-RBAC-1, NFR-21, [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md) |
 | 2.5c | `POST /orgs` — authenticated, `has_permission_in_any_org("organization.create")` gate (no 404-vs-403 boundary — no target org to hide); creates a second Organization + creator's own OrgMembership/org_admin RoleAssignment in it | 2.5a, 1.3 | S | FR-RBAC-1, [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md) |
 | 2.5d | OrgMembership routes — invite/suspend/reactivate members | 2.5c | M | FR-RBAC-2 |
-| 2.6 | RoleAssignment routes — org-wide/project-scoped grants | 2.4 | S | FR-RBAC-3 |
+| 2.6a | `app/schemas/rbac.py` + `app/api/routes/role_assignments.py` — `POST`/`GET /orgs/{org_id}/role-assignments` (bespoke, org-path-scoped, `require_permission`/404-vs-403 boundary reused; cross-org `role_id`/`project_id` → 422; `User` actor requires an existing `OrgMembership`, any status → 422 if absent) | 2.4, 3.0a | S | FR-RBAC-3, NFR-29, NFR-30, [ADR-0021](../adr/0021-role-assignment-creation-flow.md) |
+| 2.6b | Fix `app/api/routes/projects.py` — `get_project`/`update_project` pass `project_id` into `has_permission`, so a project-scoped grant satisfies `project.read`/`.update` on its own project (closes the gap AUTH-4/PROJ-1 left open) | 3.0b | S | FR-RBAC-3, NFR-30, [ADR-0021](../adr/0021-role-assignment-creation-flow.md) |
 | 2.7 | Human-only Approval defense-in-depth check | 2.4 | S | FR-RBAC-5 |
 | 2.8 | Login throttle: `LoginAttempt` table + per-(IP, email) failed-attempt counter, 429 above threshold | 2.2 | S | NFR-11, [ADR-0011](../adr/0011-login-rate-limiting.md) |
 | 2.9 | RBAC seed data migration — extend `test_manager` bundle with `release.create`/`.read`/`.update` (existence-checked insert, same idempotent pattern as 2.3c's) | 1.3 | S | FR-PROJ-2, [ADR-0019](../adr/0019-release-creation-flow.md) |
@@ -132,7 +133,7 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 |---|---|---|
 | 11.1 | Requirement Document | Done |
 | 11.2 | WBS (this document) | Done |
-| 11.3 | ADRs (0001–0020 + index) | Done |
+| 11.3 | ADRs (0001–0021 + index) | Done |
 | 11.4 | Database Document | Done |
 | 11.5 | API Document | Done |
 | 11.6 | Master Test Plan | Done |

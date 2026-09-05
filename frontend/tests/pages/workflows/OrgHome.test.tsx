@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import OrgHome from "../../../src/pages/workflows/OrgHome";
 import { ApiError } from "../../../src/lib/api/client";
 import { createProject, updateProject } from "../../../src/lib/api/projects";
+import { listRoleAssignments, listRoles } from "../../../src/lib/api/roleAssignments";
 
 // Same partial-mock pattern as Signup.test.tsx: keep the real module shape,
 // replace only `createProject`/`updateProject` with `vi.fn()`s so the "New
@@ -15,6 +16,21 @@ vi.mock("../../../src/lib/api/projects", async (importOriginal) => {
     ...actual,
     createProject: vi.fn(),
     updateProject: vi.fn(),
+  };
+});
+
+// `RoleAssignmentsPanel` (RBAC-3) mounts unconditionally inside `OrgHome` and
+// fetches on mount — mocked here to an empty, resolved list so this file's
+// own Project-focused tests stay deterministic and don't make a real network
+// call. `RoleAssignmentsPanel`'s own behavior has its own dedicated test
+// file (`RoleAssignmentsPanel.test.tsx`).
+vi.mock("../../../src/lib/api/roleAssignments", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../src/lib/api/roleAssignments")>();
+  return {
+    ...actual,
+    listRoleAssignments: vi.fn(),
+    listRoles: vi.fn(),
+    createRoleAssignment: vi.fn(),
   };
 });
 
@@ -32,6 +48,11 @@ vi.mock("../../../src/lib/api/dashboard", () => ({
 
 const mockCreateProject = vi.mocked(createProject);
 const mockUpdateProject = vi.mocked(updateProject);
+const mockListRoleAssignments = vi.mocked(listRoleAssignments);
+const mockListRoles = vi.mocked(listRoles);
+
+mockListRoleAssignments.mockResolvedValue([]);
+mockListRoles.mockResolvedValue([]);
 
 const ORG_ID = "11111111-1111-1111-1111-111111111111";
 

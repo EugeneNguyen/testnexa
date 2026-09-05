@@ -40,6 +40,8 @@ FR-AUTH-4 delivers a minimal, generic `has_permission`/`require_permission` impl
 
 FR-RBAC-1 ships as two routes, not one: `POST /auth/signup` (public, bootstrap-only — closes once any `Organization` exists deployment-wide) and `POST /orgs` (authenticated, for an existing org_admin minting a second org). Both assign the caller RBAC-4's already-seeded `org_admin` system `Role` in the org just created, rather than creating a per-org copy. `POST /orgs` needs a permission check with no target `org_id` to scope by (the org doesn't exist yet) — a bespoke any-org gate (`has_permission_in_any_org`), not FR-AUTH-4's path-scoped `require_permission` reused as-is. See [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md).
 
+FR-RBAC-3 ships as `POST`/`GET /orgs/{org_id}/role-assignments` (bespoke, org-path-scoped, same `require_permission`/404-vs-403 boundary as every other org-scoped route). Creating a grant for a `User` actor requires that user already hold an `OrgMembership` (any status) in `org_id`; a `role_id`/`project_id` that doesn't resolve within the caller's own org → `422`, never `404` (no target-org existence to hide, since the caller already proved membership). This story also fixes a gap FR-AUTH-4/FR-PROJ-1 left open: `GET`/`PATCH /projects/{id}` (PROJ-1) now pass `project_id` into `has_permission`, so a project-scoped grant — including a project's own creator's auto-assigned `test_manager` role — actually works within that project, not just an org-wide grant. See [ADR-0021](../adr/0021-role-assignment-creation-flow.md). A follow-up addendum adds a UI slice — `GET /orgs/{org_id}/roles` (role dropdown data source) and a "Role Assignments" panel on `OrgHome` — not part of the original API-only scope, added on explicit CTO direction after the story's initial acceptance (ADR-0021's addendum).
+
 ### 2.3 Project & Release — [project-release-stories.md](../user-stories/2026-09-03-project-release-stories.md)
 
 | ID | Title | Priority | Entities |
@@ -151,6 +153,8 @@ FR-SHELL-2/3/4 extend the shell to full parity with [CoreUI's free Bootstrap adm
 | NFR-26 | `GET /releases/{id}/test-cycles` requires all three of `release.read`, `test_cycle.read`, and `test_execution.read` — the one route in this scaffold exposing `TestExecution` data without a `test_cycle_id` in the request path, so a single-permission gate (`release.read` alone) would let a Release-only viewer see execution data outside their own granted permissions. | PROJ-2 AC2, [ADR-0019](../adr/0019-release-creation-flow.md) |
 | NFR-27 | Dashboard summary widgets (FR-SHELL-3) display only counts backed by a real, currently-queryable data source (existing generic-CRUD `total`); no widget displays a placeholder, mocked, or fabricated value. | ADR-0020 |
 | NFR-28 | Color-mode preference (FR-SHELL-4) is stored client-side (`localStorage`) only — no server round-trip, no new `User`/`Actor` column, consistent with this being presentation state, not account data. | ADR-0020 |
+| NFR-29 | `POST /orgs/{org_id}/role-assignments` rejects a `role_id` or `project_id` that doesn't resolve within `org_id` with `422` (body-field validation), never `404` — the caller already proved `OrgMembership` in `org_id` via the 404-vs-403 boundary before either field is checked, so there is no cross-tenant existence to hide (a narrow, deliberate exception to NFR-1's default, not a relaxation of it). | RBAC-3 scope decision 2026-09-03, [ADR-0021](../adr/0021-role-assignment-creation-flow.md) |
+| NFR-30 | Creating a `RoleAssignment` for a `User` actor requires that user already hold an `OrgMembership` (any status — `invited`/`active`/`suspended` all satisfy it) in `org_id`; absent → `422`. `AIAgent` actors are exempt (no `OrgMembership` concept applies to them). `GET`/`PATCH /projects/{id}` (PROJ-1) resolve `has_permission` with the row's own `project_id`, so a project-scoped grant satisfies the check on its own project, not org-wide grants only. | RBAC-3 scope decision 2026-09-03, [ADR-0021](../adr/0021-role-assignment-creation-flow.md) |
 
 ## 4. Traceability — requirements to architecture decisions
 
@@ -164,6 +168,7 @@ FR-SHELL-2/3/4 extend the shell to full parity with [CoreUI's free Bootstrap adm
 | FR-RBAC-1, NFR-21 | [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md) Organization bootstrap & creation flow |
 | FR-PROJ-1, NFR-22, NFR-23 | [ADR-0017](../adr/0017-project-creation-flow.md) Project creation flow |
 | FR-PROJ-2, NFR-25, NFR-26 | [ADR-0019](../adr/0019-release-creation-flow.md) Release creation flow |
+| FR-RBAC-3, NFR-29, NFR-30 | [ADR-0021](../adr/0021-role-assignment-creation-flow.md) RoleAssignment creation flow |
 | FR-RBAC-4, NFR-20 | [ADR-0004](../adr/0004-rbac-design.md) (system-role seeding: global templates, full catalog, idempotent migration) |
 | NFR-3 (UUID PKs) | [ADR-0008](../adr/0008-uuid-primary-keys.md) UUID primary keys |
 | FR-AUTH-* | [ADR-0003](../adr/0003-auth-token-strategy.md) Auth & token strategy |
