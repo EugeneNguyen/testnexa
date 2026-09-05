@@ -24,12 +24,34 @@
  * a second form — functional and CoreUI-styled per the task scope, not
  * gold-plated with its own validation library wiring.
  *
+ * RBAC-2 (ADR-0017) adds a "Members" link to the new `/orgs/:orgId/members`
+ * screen — the only nav entry point into it beyond a direct URL, since this
+ * scaffold has no sidebar/nav-menu yet (AUTH-3 scope plan explicitly
+ * descoped one). Unconditional, not org_admin-gated here: `OrgMembers.tsx`
+ * itself gates on the backend's own `403`/`404` (see that file's docstring
+ * for why — there is no client-side permission signal anywhere in this
+ * codebase yet to gate a nav link on instead).
+ *
+ * SHELL-3 (ADR-0020, FR-SHELL-3/NFR-27) adds two dashboard stat widgets —
+ * Project count (`CWidgetStatsA`) and active Org Member count
+ * (`CWidgetStatsB`) — above the project list, sourced from
+ * `lib/api/dashboard.ts`'s `getProjectsTotal`/`getActiveMemberTotal` (see
+ * that module's own docstring for the exact endpoints and a flagged
+ * backend-not-shipped-yet deviation). Each widget is its own `useQuery`,
+ * matching this codebase's one existing inline-`useQuery` precedent
+ * (`App.tsx`'s `ScaffoldVerificationPage`) rather than a bespoke generic
+ * list-hook (`useEntityList` etc. is WBS task 6.2 scope, not built yet).
+ * Loading/error/success are three distinct rendered states — a failed or
+ * still-in-flight fetch never renders "0", only a real `total: 0` response
+ * does (NFR-27, TC-SHELL-011).
+ *
  * Built with CoreUI (ADR-0012).
  */
-import { useState } from "react";
-import { useParams } from "react-router-dom";
+import { ReactNode, useState } from "react";
+import { Link, useParams } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useQuery } from "@tanstack/react-query";
 import { z } from "zod";
 import {
   CAlert,
@@ -55,8 +77,11 @@ import {
   CTableHead,
   CTableHeaderCell,
   CTableRow,
+  CWidgetStatsA,
+  CWidgetStatsB,
 } from "@coreui/react";
 import { ApiError } from "../../lib/api/client";
+import { getActiveMemberTotal, getProjectsTotal } from "../../lib/api/dashboard";
 import { createProject, ProjectSummary, updateProject } from "../../lib/api/projects";
 import RoleAssignmentsPanel from "../../components/RoleAssignmentsPanel";
 
@@ -77,6 +102,72 @@ type NewProjectFormValues = z.infer<typeof newProjectSchema>;
 function fieldError(error: ApiError, field: string): string | undefined {
   const body = error.body as { field_errors?: Record<string, string> } | undefined;
   return body?.field_errors?.[field];
+}
+
+/**
+ * Renders a `useQuery` count result as a widget's `value` node — the one
+ * place loading/error/success are told apart (NFR-27, TC-SHELL-011): a
+ * still-in-flight or failed fetch never renders "0", only a real
+ * `total: 0` response does.
+ */
+function widgetValue(isLoading: boolean, isError: boolean, total: number | undefined): ReactNode {
+  if (isLoading) {
+    return "Loading…";
+  }
+  if (isError || total === undefined) {
+    return "Unable to load";
+  }
+  return total;
+}
+
+/**
+ * FR-SHELL-3 Project-count widget. Its own `useQuery` (not a shared list
+ * hook — see this file's own docstring for why) against
+ * `lib/api/dashboard.ts`'s `getProjectsTotal`.
+ */
+function ProjectCountWidget() {
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ["dashboard", "projects-total"],
+    queryFn: getProjectsTotal,
+    // A 404 (today's reality until ADMIN-2 ships, see `lib/api/dashboard.ts`)
+    // won't start succeeding on retry — TanStack Query's default `retry: 3`
+    // would otherwise hold the widget in its loading state for ~7s
+    // (exponential backoff) before surfacing the error, discovered live
+    // against a real backend, not just in a unit test's synchronous mock.
+    retry: false,
+  });
+
+  return (
+    <CWidgetStatsA
+      data-testid="widget-project-count"
+      color="primary"
+      value={widgetValue(isLoading, isError, data)}
+      title="Projects"
+    />
+  );
+}
+
+/**
+ * FR-SHELL-3 active-Org-Member-count widget. Its own `useQuery` against
+ * `lib/api/dashboard.ts`'s `getActiveMemberTotal`, scoped to the current
+ * `orgId`.
+ */
+function ActiveMemberCountWidget({ orgId }: { orgId: string }) {
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ["dashboard", "active-members-total", orgId],
+    queryFn: () => getActiveMemberTotal(orgId),
+    retry: false, // see ProjectCountWidget's own comment above
+  });
+
+  return (
+    <CWidgetStatsB
+      data-testid="widget-active-member-count"
+      color="info"
+      value={widgetValue(isLoading, isError, data)}
+      title="Active org members"
+      text=""
+    />
+  );
 }
 
 function OrgHome() {
@@ -176,15 +267,38 @@ function OrgHome() {
   return (
     <div className="min-vh-100 bg-body-secondary py-4">
       <CContainer>
+        <CRow className="justify-content-center mb-4">
+          <CCol md={10} lg={8}>
+            <CRow>
+              <CCol sm={6}>
+                <ProjectCountWidget />
+              </CCol>
+              <CCol sm={6}>
+                <ActiveMemberCountWidget orgId={orgId} />
+              </CCol>
+            </CRow>
+          </CCol>
+        </CRow>
         <CRow className="justify-content-center">
           <CCol md={10} lg={8}>
             <CCard>
               <CCardBody className="p-4">
                 <div className="d-flex justify-content-between align-items-center mb-3">
                   <h1 className="fs-4 mb-0">Org: {orgId}</h1>
-                  <CButton color="primary" onClick={openModal}>
-                    New Project
-                  </CButton>
+                  <div>
+                    <CButton
+                      as={Link}
+                      to={`/orgs/${orgId}/members`}
+                      color="secondary"
+                      variant="outline"
+                      className="me-2"
+                    >
+                      Members
+                    </CButton>
+                    <CButton color="primary" onClick={openModal}>
+                      New Project
+                    </CButton>
+                  </div>
                 </div>
 
                 {projects.length === 0 ? (
@@ -201,7 +315,9 @@ function OrgHome() {
                     <CTableBody>
                       {projects.map((project) => (
                         <CTableRow key={project.id}>
-                          <CTableDataCell>{project.name}</CTableDataCell>
+                          <CTableDataCell>
+                            <Link to={`/projects/${project.id}`}>{project.name}</Link>
+                          </CTableDataCell>
                           <CTableDataCell>
                             {editingId === project.id ? (
                               <>

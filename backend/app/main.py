@@ -23,7 +23,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.requests import Request
 from fastapi.responses import JSONResponse
 
-from app.api.routes import agents, auth, health, organizations, projects, role_assignments, roles
+from app.api.routes import (
+    agents,
+    auth,
+    health,
+    org_memberships,
+    organizations,
+    projects,
+    releases,
+    role_assignments,
+    roles,
+)
 
 app = FastAPI(title="TestNexa API", version="0.1.0")
 
@@ -77,8 +87,12 @@ app.include_router(agents.router, prefix="/api/v1", tags=["agents"])
 # RBAC-1/ADR-0016: authenticated org-creation route (`POST /orgs`) — the
 # `POST /auth/signup` bootstrap sibling lives in `auth.router` above.
 app.include_router(organizations.router, prefix="/api/v1", tags=["organizations"])
+# RBAC-2/ADR-0017: invite/list/accept/suspend/reactivate/revoke org members.
+app.include_router(org_memberships.router, prefix="/api/v1", tags=["org_memberships"])
 # PROJ-1/ADR-0017: Project create/read/update routes.
 app.include_router(projects.router, prefix="/api/v1", tags=["projects"])
+# PROJ-2/ADR-0019: Release create/read/list + audit-query routes.
+app.include_router(releases.router, prefix="/api/v1", tags=["releases"])
 # RBAC-3/ADR-0021: RoleAssignment create/list routes.
 app.include_router(role_assignments.router, prefix="/api/v1", tags=["role-assignments"])
 # RBAC-3 UI slice: role dropdown data source for the role-assignment form.

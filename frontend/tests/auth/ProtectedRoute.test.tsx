@@ -26,6 +26,7 @@ function mockAuth(overrides: Partial<ReturnType<typeof useAuth>>) {
     isInitializing: false,
     login: vi.fn(),
     signup: vi.fn(),
+    acceptInvite: vi.fn(),
     logout: vi.fn(),
     ...overrides,
   });

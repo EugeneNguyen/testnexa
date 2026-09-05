@@ -51,6 +51,8 @@ FR-RBAC-3 ships as `POST`/`GET /orgs/{org_id}/role-assignments` (bespoke, org-pa
 
 FR-PROJ-1 ships as `POST /orgs/{org_id}/projects` (bespoke, org-path-scoped — reuses `require_permission`/the 404-vs-403 boundary as-is, same shape as FR-AUTH-4/FR-RBAC-1's own bespoke routes) plus `GET`/`PATCH /projects/{id}` (org resolved from the fetched row, anticipating the eventual generic CRUD factory's item-route contract). The creator is unconditionally granted a project-scoped `test_manager` `RoleAssignment` — not dynamic role-mapping, since only `org_admin`'s seeded bundle currently reaches `project.create` at all. `standards_profile`, if omitted at creation, inherits `Organization.default_standards_profile`; an explicit value (including explicit `null`) always overrides. See [ADR-0017](../adr/0017-project-creation-flow.md).
 
+FR-PROJ-2 ships as `POST`/`GET /projects/{project_id}/releases` (bespoke, project-path-scoped, same `has_permission`-called-directly + 404-vs-403 posture as `GET`/`PATCH /projects/{id}`) plus `GET /releases/{id}` and `GET /releases/{id}/test-cycles` (both row-resolved, no path `project_id`). `test_manager`'s seeded bundle is extended with `release.create`/`.read`/`.update` (it already held full `test_cycle` CRUD) via a new RBAC data migration — a considered fix, not a known-simplification deferral, since Marcus's persona needs to reach `release.create` without being `org_admin`. `TestCycle.release_id` is already a non-nullable FK (migrated); this story makes the relationship *queryable*, not creatable — `TestCycle` creation itself is FR-PLAN-3's scope. `GET /releases/{id}/test-cycles` returns every `TestCycle` targeting the release with its `TestExecution`s nested per cycle, gated on all three of `release.read`/`test_cycle.read`/`test_execution.read` (not `release.read` alone). Release listing sorts by `target_date` with `NULLS LAST` pinned explicitly in both directions. See [ADR-0019](../adr/0019-release-creation-flow.md).
+
 ### 2.4 Requirement & test case authoring — [requirement-testcase-authoring-stories.md](../user-stories/2026-09-03-requirement-testcase-authoring-stories.md)
 
 | ID | Title | Priority | Entities |
@@ -106,6 +108,21 @@ FR-PROJ-1 ships as `POST /orgs/{org_id}/projects` (bespoke, org-path-scoped — 
 | FR-MCP-2 | Agent updates a TestCase via MCP | Could | TestCase |
 | FR-MCP-3 | Agent creates a TestExecution and reads a Requirement via MCP (read-only on Requirement) | Could | TestExecution, Requirement |
 
+### 2.11 Layout & Navigation — [admin-shell-sidebar-stories.md](../user-stories/2026-09-04-admin-shell-sidebar-stories.md)
+
+| ID | Title | Priority | Entities |
+|---|---|---|---|
+| FR-SHELL-1 | Persistent CoreUI sidebar (`CSidebar`/`CSidebarNav`) + navbar (`CHeader`) shell wraps every `ProtectedRoute` screen; nav lists org-home + org-members with current route visually active; a future route's nav-item entry is the only step needed to make it reachable | Must | — (frontend-only, no entities) |
+| FR-SHELL-2 | Route-derived breadcrumb (`CBreadcrumb`) + footer (`CFooter`) complete the persistent shell, matching the CoreUI free-template layout shape | Should | — (frontend-only, no entities) |
+| FR-SHELL-3 | Dashboard summary widgets on org home: Project count, active Org Member count — sourced from existing generic-CRUD list endpoints' `total` field, no new API route | Should | Project, OrgMembership |
+| FR-SHELL-4 | Dark/light color-mode toggle (CoreUI `useColorModes`), `localStorage`-persisted, no server-side preference storage | Should | — (frontend-only, no entities) |
+
+FR-SHELL-1 is frontend-only — no new/changed entity, no new API route. It closes a directly-observed defect: `OrgMembers.tsx` had zero link back to `OrgHome.tsx` (confirmed by inspection, [journey](../user-journeys/2026-09-04-admin-shell-navigation-journeys.md) Journey 1 step 4). See [ADR-0018](../adr/0018-admin-shell-sidebar-layout.md).
+
+FR-SHELL-2/3/4 extend the shell to full parity with [CoreUI's free Bootstrap admin template](https://coreui.io/product/free-bootstrap-admin-template/), per [ADR-0020](../adr/0020-admin-shell-full-template-parity.md) — this lifts ADR-0018/FR-SHELL-1's original "shell-only, wrap the 3 existing routes, no extras" scope boundary; the "no pre-built nav for unbuilt FR-ADMIN-2 entity screens" and "no cross-entity traceability view" boundaries are unchanged. FR-SHELL-3's widgets deliberately stop at 2 real, honestly-sourced counts — the base template's trend-chart widget is explicitly deferred, not built with fabricated data, until `TestExecution`/`Defect` data exists to back it (FR-EXEC-*/FR-ADMIN-2, not yet built).
+
+**Not an FR** (explicitly, per ADR-0020): the CoreUI free-template's UI-element reference pages (Colors, Typography, Icons), added as a "UI Elements" nav group for template-parity only. No business case, story, or acceptance criteria backs them — they are not product scope, and carry no FR ID.
+
 ## 3. Non-functional requirements
 
 | ID | Requirement | Rationale / source |
@@ -131,8 +148,13 @@ FR-PROJ-1 ships as `POST /orgs/{org_id}/projects` (bespoke, org-path-scoped — 
 | NFR-21 | `POST /auth/signup` is available only while zero `Organization` rows exist deployment-wide — self-registration closes after the first org is created. Concurrent bootstrap attempts are serialized via a `pg_advisory_xact_lock`, so at most one `Organization` is created even from simultaneous first-signup requests. `Organization.slug` uniqueness violations return `422` on both creation routes; `409` is reserved exclusively for the signup-closed case, the two are never conflated. | RBAC-1 scope decision 2026-09-03, [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md) |
 | NFR-22 | Every `Requirement`/`TestSuite`/`TestPlan` row carries a non-nullable `project_id` FK — no orphaned test asset can exist outside a `Project`, enforced at the schema level (not just application validation). Live execution coverage (attempt to create one of these entities without `project_id` → 422) is deferred until the first create route for any of the three exists — schema-level enforcement is verifiable today, the negative-test path is not yet. | PROJ-1 AC2, [ADR-0017](../adr/0017-project-creation-flow.md) |
 | NFR-23 | `Project.standards_profile`, when omitted at creation, inherits `Organization.default_standards_profile` (itself nullable); an explicit value in the create/update payload — including explicit `null` — always overrides the inherited default, never silently merged with it. | PROJ-1 AC3, [ADR-0017](../adr/0017-project-creation-flow.md) |
-| NFR-24 | `POST /orgs/{org_id}/role-assignments` rejects a `role_id` or `project_id` that doesn't resolve within `org_id` with `422` (body-field validation), never `404` — the caller already proved `OrgMembership` in `org_id` via the 404-vs-403 boundary before either field is checked, so there is no cross-tenant existence to hide (a narrow, deliberate exception to NFR-1's default, not a relaxation of it). | RBAC-3 scope decision 2026-09-03, [ADR-0021](../adr/0021-role-assignment-creation-flow.md) |
-| NFR-25 | Creating a `RoleAssignment` for a `User` actor requires that user already hold an `OrgMembership` (any status — `invited`/`active`/`suspended` all satisfy it) in `org_id`; absent → `422`. `AIAgent` actors are exempt (no `OrgMembership` concept applies to them). `GET`/`PATCH /projects/{id}` (PROJ-1) resolve `has_permission` with the row's own `project_id`, so a project-scoped grant satisfies the check on its own project, not org-wide grants only. | RBAC-3 scope decision 2026-09-03, [ADR-0021](../adr/0021-role-assignment-creation-flow.md) |
+| NFR-24 | The sidebar's narrow-viewport collapse/toggle uses `CSidebar`'s own `visible`/`onVisibleChange` prop and a `CHeaderToggler`, CoreUI's documented template pattern — no hand-built media-query/breakpoint logic. | SHELL-1 AC4, [ADR-0018](../adr/0018-admin-shell-sidebar-layout.md) |
+| NFR-25 | `GET /projects/{project_id}/releases` sorts by `target_date` with `NULLS LAST` pinned explicitly for both `asc` and `desc` — a Release without a `target_date` always sorts to the end, never flipping to the front on a descending sort via the query engine's untouched default. | PROJ-2 AC3, [ADR-0019](../adr/0019-release-creation-flow.md) |
+| NFR-26 | `GET /releases/{id}/test-cycles` requires all three of `release.read`, `test_cycle.read`, and `test_execution.read` — the one route in this scaffold exposing `TestExecution` data without a `test_cycle_id` in the request path, so a single-permission gate (`release.read` alone) would let a Release-only viewer see execution data outside their own granted permissions. | PROJ-2 AC2, [ADR-0019](../adr/0019-release-creation-flow.md) |
+| NFR-27 | Dashboard summary widgets (FR-SHELL-3) display only counts backed by a real, currently-queryable data source (existing generic-CRUD `total`); no widget displays a placeholder, mocked, or fabricated value. | ADR-0020 |
+| NFR-28 | Color-mode preference (FR-SHELL-4) is stored client-side (`localStorage`) only — no server round-trip, no new `User`/`Actor` column, consistent with this being presentation state, not account data. | ADR-0020 |
+| NFR-29 | `POST /orgs/{org_id}/role-assignments` rejects a `role_id` or `project_id` that doesn't resolve within `org_id` with `422` (body-field validation), never `404` — the caller already proved `OrgMembership` in `org_id` via the 404-vs-403 boundary before either field is checked, so there is no cross-tenant existence to hide (a narrow, deliberate exception to NFR-1's default, not a relaxation of it). | RBAC-3 scope decision 2026-09-03, [ADR-0021](../adr/0021-role-assignment-creation-flow.md) |
+| NFR-30 | Creating a `RoleAssignment` for a `User` actor requires that user already hold an `OrgMembership` (any status — `invited`/`active`/`suspended` all satisfy it) in `org_id`; absent → `422`. `AIAgent` actors are exempt (no `OrgMembership` concept applies to them). `GET`/`PATCH /projects/{id}` (PROJ-1) resolve `has_permission` with the row's own `project_id`, so a project-scoped grant satisfies the check on its own project, not org-wide grants only. | RBAC-3 scope decision 2026-09-03, [ADR-0021](../adr/0021-role-assignment-creation-flow.md) |
 
 ## 4. Traceability — requirements to architecture decisions
 
@@ -145,7 +167,8 @@ FR-PROJ-1 ships as `POST /orgs/{org_id}/projects` (bespoke, org-path-scoped — 
 | FR-RBAC-1, FR-RBAC-2 | [ADR-0007](../adr/0007-real-multi-tenancy.md) Real multi-tenancy |
 | FR-RBAC-1, NFR-21 | [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md) Organization bootstrap & creation flow |
 | FR-PROJ-1, NFR-22, NFR-23 | [ADR-0017](../adr/0017-project-creation-flow.md) Project creation flow |
-| FR-RBAC-3, NFR-24, NFR-25 | [ADR-0021](../adr/0021-role-assignment-creation-flow.md) RoleAssignment creation flow |
+| FR-PROJ-2, NFR-25, NFR-26 | [ADR-0019](../adr/0019-release-creation-flow.md) Release creation flow |
+| FR-RBAC-3, NFR-29, NFR-30 | [ADR-0021](../adr/0021-role-assignment-creation-flow.md) RoleAssignment creation flow |
 | FR-RBAC-4, NFR-20 | [ADR-0004](../adr/0004-rbac-design.md) (system-role seeding: global templates, full catalog, idempotent migration) |
 | NFR-3 (UUID PKs) | [ADR-0008](../adr/0008-uuid-primary-keys.md) UUID primary keys |
 | FR-AUTH-* | [ADR-0003](../adr/0003-auth-token-strategy.md) Auth & token strategy |
@@ -154,5 +177,7 @@ FR-PROJ-1 ships as `POST /orgs/{org_id}/projects` (bespoke, org-path-scoped — 
 | FR-AUTH-3, NFR-14 | [ADR-0014](../adr/0014-logout-session-revocation-policy.md) Logout: idempotent single-session revocation |
 | FR-AUTH-4, NFR-17, NFR-18, NFR-19 | [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md) AI agent credential mechanics & minimal-RBAC-now decision |
 | FR-MCP-* | [ADR-0002](../adr/0002-backend-framework-orm-migrations.md) (async backend), [ADR-0003](../adr/0003-auth-token-strategy.md) (AIAgent credential) |
+| FR-SHELL-1, NFR-24 | [ADR-0018](../adr/0018-admin-shell-sidebar-layout.md) Admin shell layout (extends [ADR-0012](../adr/0012-coreui-design-system.md)) |
+| FR-SHELL-2, FR-SHELL-3, FR-SHELL-4, NFR-27, NFR-28 | [ADR-0020](../adr/0020-admin-shell-full-template-parity.md) Full CoreUI free-admin-template parity (partially supersedes ADR-0018's shell-only scope boundary) |
 
 Full field-level traceability (Requirement → design technique → test case → execution → defect) is itself FR-TRACE-1/2 — this document is the requirements layer that feeds the [WBS](../wbs/2026-09-03-project-scaffold-wbs.md), [Database Document](../database/2026-09-03-database-design.md), [API Document](../api/2026-09-03-api-design.md), and [Test Plan](../test-plan/2026-09-03-master-test-plan.md).

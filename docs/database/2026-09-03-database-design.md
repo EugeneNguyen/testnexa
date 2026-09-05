@@ -6,6 +6,10 @@
 
 This document is the implementation-level schema, refined from the [07 ERD](../product-discovery/07-erd-draft.md) draft per the ADRs above. No code — this is the reference for the Alembic migration that will be written when implementation is authorized.
 
+**SHELL-1** ([ADR-0018](../adr/0018-admin-shell-sidebar-layout.md), FR-SHELL-1) — reviewed, no schema impact. The admin shell (sidebar + navbar) is frontend-only: no new table, column, or index. Noted here explicitly so the gap isn't mistaken for an oversight.
+
+**SHELL-2/3/4** ([ADR-0019](../adr/0019-admin-shell-full-template-parity.md), FR-SHELL-2/3/4) — reviewed, no schema impact. Breadcrumb/footer are frontend-only; dashboard stat widgets read existing `Project`/`OrgMembership` rows via already-built generic-CRUD list queries (no new table/column); dark/light mode preference is `localStorage`-only (NFR-26) — deliberately not a new `User`/`Actor` column, since it's presentation state, not account data worth persisting server-side in this scaffold.
+
 ---
 
 ## 1. Entity count reconciliation
@@ -113,12 +117,14 @@ Partial unique index: `name` **WHERE `org_id IS NULL`** — prevents duplicate s
 | Role | Bundle |
 |---|---|
 | `org_admin` | Every seeded `Permission` (superuser within its org) |
-| `test_manager` | `test_plan.*` + `.approve`, `entry_exit_criteria.*`, `test_cycle.*`, `test_suite.*`, `approval.create`/`.read`, `requirement.read`/`.export_rtm`, `defect.read`, `risk_item.*`, `test_case.read`, `test_step.read`, `test_condition.read` |
+| `test_manager` | `test_plan.*` + `.approve`, `entry_exit_criteria.*`, `test_cycle.*`, `test_suite.*`, `release.create`/`.read`/`.update`, `project.read`/`.update` (RBAC-3/[ADR-0021](../adr/0021-role-assignment-creation-flow.md) — closes a gap that made TC-RBAC-035's regression case unprovable: a project's own creator, auto-granted this Role project-scoped by PROJ-1, couldn't otherwise view or rename the project itself), `approval.create`/`.read`, `requirement.read`/`.export_rtm`, `defect.read`, `risk_item.*`, `test_case.read`, `test_step.read`, `test_condition.read` |
 | `tester` | `test_case.*`, `test_step.*`, `test_condition.*`, `test_execution.*`, `test_log.read`, `defect.create`/`.read`/`.update`, `test_plan.read`, `test_suite.read`, `requirement.read` — no `approval.*`, no `test_plan.approve` |
 | `auditor` | `.read` on all 29 resources + `requirement.export_rtm` — nothing else, no writes anywhere |
 | `ai_agent_scoped` | `test_case.create`/`.read`/`.update`, `test_step.create`/`.read`/`.update`, `test_execution.create`/`.read`/`.update`, `test_log.read` — no delete, no `approval.*`, no `role`/`role_assignment`/`org_membership` anything, and per [ADR-0004](../adr/0004-rbac-design.md)/RBAC-5, `test_plan.approve` is never seeded into this bundle |
 
 Downgrading the seed migration removes only the 5 `Role` rows (`RolePermission` rows cascade via the FK below); the `Permission` catalog rows are left in place.
+
+`test_manager`'s `release.create`/`.read`/`.update` grants above were added by a second, later data migration (PROJ-2, [ADR-0019](../adr/0019-release-creation-flow.md)) — not part of RBAC-4's original seed. Same existence-checked-insert idempotency posture, but a reader auditing `test_manager`'s full permission set must know to check both migrations, not RBAC-4's alone.
 
 **Permission** *(global catalog, no org scoping)*
 | Column | Type | Constraints |
@@ -151,9 +157,9 @@ Unique: `(role_id, permission_id)`.
 | role_id | uuid | FK → role.id, not null |
 | created_at, updated_at | timestamptz | not null |
 
-Unique: `(actor_id, org_id, project_id, role_id)`.
+Unique: `(actor_id, org_id, project_id, role_id)`, **plus a partial unique index `(actor_id, org_id, role_id) WHERE project_id IS NULL`** (RBAC-3 migration, added when this story's own duplicate-grant test exposed a real pre-existing gap — same `NULL <> NULL` reasoning as `Role.uq_role_name_system_role`: a plain composite `UNIQUE` including a nullable `project_id` column never catches two org-wide (`project_id = NULL`) rows for the same `actor_id`/`org_id`/`role_id`, since Postgres treats every `NULL` as distinct from every other `NULL`; the partial index is what actually enforces "no duplicate org-wide grant," the base composite constraint alone only ever covered the project-scoped case).
 
-**Creation flow (RBAC-3, [ADR-0021](../adr/0021-role-assignment-creation-flow.md))** is application logic, not a schema change — no dedicated migration. `POST /orgs/{org_id}/role-assignments` inserts one row directly; the unique constraint above is what turns a duplicate-grant attempt into `422` (caught `IntegrityError`) rather than a silent second row. `project_id NULL` (org-wide) vs. non-null (project-scoped) was already schema-supported since the initial migration — RBAC-3 is the first story to expose creating either shape through a real route, and the first to prove `has_permission`'s `project_id`-aware resolution branch against a real HTTP call (`GET`/`PATCH /projects/{id}`, fixed by the same story to pass `project_id` through — see ADR-0021).
+**Creation flow (RBAC-3, [ADR-0021](../adr/0021-role-assignment-creation-flow.md))** is application logic — `POST /orgs/{org_id}/role-assignments` inserts one row directly; the two constraints above are what turn a duplicate-grant attempt (org-wide or project-scoped) into `422` (caught `IntegrityError`) rather than a silent second row. `project_id NULL` (org-wide) vs. non-null (project-scoped) was already schema-supported since the initial migration — RBAC-3 is the first story to expose creating either shape through a real route, and the first to prove `has_permission`'s `project_id`-aware resolution branch against a real HTTP call (`GET`/`PATCH /projects/{id}`, fixed by the same story to pass `project_id` through — see ADR-0021).
 
 ### 3.4 `actor.py` — Actor, User, AIAgent (joined-table inheritance)
 
@@ -219,6 +225,12 @@ Unique: `(org_id, name)`.
 | version_label | varchar | not null |
 | target_date | date | nullable |
 | created_at, updated_at | timestamptz | not null |
+
+No uniqueness constraint on `version_label` — AC doesn't require it, and unlike `Project.name` (unique per org), two Releases in the same Project may share a `version_label` (e.g. a re-cut build under the same version).
+
+**Creation flow** (PROJ-2, [ADR-0019](../adr/0019-release-creation-flow.md)): `POST /projects/{project_id}/releases` — bespoke, project-path-scoped. No `org_id` path segment exists at this depth, so unlike `POST /orgs/{org_id}/projects` this route fetches the `Project` row first to resolve `org_id` for the 404-vs-403 boundary, then calls `has_permission` directly (`release.create`) — same posture as `GET`/`PATCH /projects/{id}`, one level down. `GET /projects/{project_id}/releases` (list) sorts by `target_date`, `NULLS LAST` pinned explicitly for both `asc`/`desc` (NFR-25) — not the query engine's untouched per-direction default. `GET /releases/{id}` and `GET /releases/{id}/test-cycles` are row-resolved (no path `project_id`), same one-level-deeper extension of `Project`'s own row-resolved read pattern.
+
+`GET /releases/{id}/test-cycles` (AC2's query — "what was tested for release X") returns every `TestCycle` with `release_id` matching the path `id`, each with its `TestExecution` rows nested in the response (not a cycles-only list) — proven queryable via `TestCycle.release_id`/`TestExecution.test_cycle_id`, both already non-nullable FKs. `TestCycle` itself has no create route in this codebase (FR-PLAN-3's scope); this query works against however a `TestCycle` row came to exist. The route requires all three of `release.read`, `test_cycle.read`, `test_execution.read` (NFR-26) — the one route in this scaffold exposing `TestExecution` data without a `test_cycle_id` in the request path, so a single-permission gate would let a Release-only viewer see execution data outside their own granted permissions.
 
 ### 3.6 `assets.py` — Requirement, TestCondition, TestCase, TestStep, TestSuite (+ junction)
 

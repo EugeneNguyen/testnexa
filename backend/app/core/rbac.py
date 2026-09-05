@@ -30,6 +30,7 @@ from app.core.security import decode_token, verify_api_key
 from app.db.session import AsyncSessionLocal, get_db
 from app.models.actor import AIAgent, User
 from app.models.rbac import Permission, Role, RoleAssignment, RolePermission
+from app.models.tenancy import OrgMembership, OrgMembershipStatus
 
 # `auto_error=False` so a missing/malformed `Authorization` header reaches
 # `get_current_actor` as `credentials=None` rather than FastAPI's own
@@ -69,6 +70,18 @@ _PERMISSION_DENIED_ERROR = {
     "field_errors": None,
 }
 
+# RBAC-2 / ADR-0017: distinct from `_PERMISSION_DENIED_ERROR` above — this
+# fires when a `User` actor's `OrgMembership` in the path's `org_id` exists
+# but isn't `active` (i.e. `suspended`), BEFORE the `RoleAssignment` check
+# even runs, independent of whatever that (suspended) member's still-recorded
+# `RoleAssignment` rows would otherwise grant. TC-RBAC-035 requires these two
+# 403s never be conflated.
+_MEMBERSHIP_INACTIVE_ERROR = {
+    "code": "membership_inactive",
+    "message": "Your membership in this organization is suspended.",
+    "field_errors": None,
+}
+
 
 def _unauthorized() -> HTTPException:
     """Build the 401 raised for every `get_current_actor` rejection reason.
@@ -97,6 +110,65 @@ def _forbidden() -> HTTPException:
     returned dependency is also not a route handler.
     """
     return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=_PERMISSION_DENIED_ERROR)
+
+
+def _membership_inactive() -> HTTPException:
+    """Build the 403 raised by `require_permission`'s suspended-member gate.
+
+    Same raise-not-return pattern as `_forbidden()` — see that function's
+    docstring.
+    """
+    return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=_MEMBERSHIP_INACTIVE_ERROR)
+
+
+def _actor_requires_active_membership_check(actor: User | AIAgent) -> bool:
+    """Whether `require_permission`'s suspended-member gate applies to `actor`.
+
+    True only for a `User` actor (ADR-0017 Decision, "keyed off actor type").
+    An `AIAgent` can never own an `OrgMembership` row at all —
+    `OrgMembership.user_id` FKs `user.actor_id` only, and an `AIAgent`'s own
+    org relationship is transitive via `acting_on_behalf_of_user_id`, checked
+    separately by each agent route's own body (`agents.py`'s
+    `_org_membership_exists` pattern) — so this gate is a structural no-op
+    for it, not merely "usually passes". A blanket `OrgMembership` join keyed
+    on the checked actor's own id would 403 every `AIAgent` permission check
+    unconditionally; ADR-0017 explicitly rejects that shape.
+
+    Factored out as its own pure function (no DB access) so this branching
+    decision has a unit-testable seam independent of
+    `_has_active_membership`'s DB query — mirrors this module's own
+    established "DB-touching RBAC join-chain logic is integration-test
+    territory, plain branching logic is unit-test territory" boundary (see
+    `tests/unit/test_rbac1_schemas.py`'s module docstring).
+    """
+    return isinstance(actor, User)
+
+
+async def _has_active_membership(actor_id: str, org_id: str) -> bool:
+    """Check whether `actor_id` holds an `active`-status `OrgMembership` in `org_id`.
+
+    Only ever called for a `User` actor (see
+    `_actor_requires_active_membership_check`) — opens its own short-lived
+    session via `AsyncSessionLocal`, same rationale as `has_permission`
+    above (not a DB-mockable seam; covered by integration tests, e.g.
+    TC-RBAC-006/031/035, not unit tests).
+    """
+    actor_uuid = uuid.UUID(str(actor_id))
+    org_uuid = uuid.UUID(str(org_id))
+
+    query = (
+        select(OrgMembership.id)
+        .where(
+            OrgMembership.user_id == actor_uuid,
+            OrgMembership.org_id == org_uuid,
+            OrgMembership.status == OrgMembershipStatus.active,
+        )
+        .limit(1)
+    )
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(query)
+        return result.first() is not None
 
 
 async def _resolve_agent_actor(raw_key: str, db: AsyncSession) -> AIAgent:
@@ -304,6 +376,17 @@ def require_permission(code: str) -> Callable[..., Any]:
     "does this org even exist / is the caller a member of it" versus "does
     the caller hold this specific permission". This dependency only ever
     403s; it never 404s.
+
+    RBAC-2 / ADR-0017: for a `User` actor with a target `org_id`, this now
+    ALSO requires an *active*-status `OrgMembership` before the
+    `RoleAssignment` check runs — a `suspended` member's still-recorded
+    `RoleAssignment` rows must never satisfy a permission check.
+    `403 membership_inactive`, distinct from this function's own
+    `403 permission_denied`. `AIAgent` actors are exempt entirely (see
+    `_actor_requires_active_membership_check`) — this closes the exact gap
+    RBAC-2's AC3 names, and since every current and future org-scoped route
+    depends on this same function, the enforcement is automatic, not
+    per-route-author-remembered.
     """
 
     async def _check_permission(
@@ -312,6 +395,20 @@ def require_permission(code: str) -> Callable[..., Any]:
     ) -> User | AIAgent:
         org_id = request.path_params.get("org_id")
         project_id = request.path_params.get("project_id")
+
+        # RBAC-2 / ADR-0017: suspended-member gate, checked BEFORE the
+        # RoleAssignment check below — a suspended member's still-recorded
+        # RoleAssignment rows must never satisfy a permission check. Only
+        # applies to a User actor with a target org_id in the path (every
+        # route this dependency guards is `/orgs/{org_id}/...`-rooted); an
+        # AIAgent is exempt entirely (see
+        # `_actor_requires_active_membership_check`'s docstring).
+        if (
+            org_id is not None
+            and _actor_requires_active_membership_check(actor)
+            and not await _has_active_membership(str(actor.actor_id), str(org_id))
+        ):
+            raise _membership_inactive()
 
         allowed = await has_permission(
             actor_id=str(actor.actor_id),
