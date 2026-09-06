@@ -53,4 +53,17 @@ describe("AppSidebar", () => {
     expect(screen.queryByTestId("sidebar-nav-org-home")).not.toBeInTheDocument();
     expect(screen.queryByTestId("sidebar-nav-org-members")).not.toBeInTheDocument();
   });
+
+  // FR-SHELL-5 (ADR-0026) / TC-SHELL-015: `colorScheme="dark"` is a static
+  // prop on `CSidebar`, independent of FR-SHELL-4's app-wide light/dark/auto
+  // toggle (that toggle lives in `AppHeader.tsx` and isn't rendered here at
+  // all) — this only asserts CoreUI's own `sidebar-dark` class is present on
+  // the sidebar root regardless of route/orgId.
+  it("renders with CoreUI's sidebar-dark class (FR-SHELL-5)", () => {
+    const { container } = renderSidebar("/orgs/org-1");
+
+    const sidebar = container.querySelector(".sidebar");
+    expect(sidebar).not.toBeNull();
+    expect(sidebar?.classList.contains("sidebar-dark")).toBe(true);
+  });
 });

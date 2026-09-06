@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-05
 **Owner:** xuanbinh91@gmail.com (CTO)
-**Sources:** [ADR-0026](../adr/0026-generic-admin-crud-ui-and-backend-completion.md), [ADR-0022](../adr/0022-generic-crud-router-factory.md) (backend contract this UI renders), [ADR-0012](../adr/0012-coreui-design-system.md) (CoreUI, the project's design system), [ADR-0023](../adr/0023-frontend-shared-component-location.md) (`components/crud/` location, `FormField` error convention), [API Document §3/§5](../api/2026-09-03-api-design.md), [Sitemap](../sitemap/2026-09-05-project-scaffold-sitemap.md)
+**Sources:** [ADR-0027](../adr/0027-generic-admin-crud-ui-and-backend-completion.md), [ADR-0022](../adr/0022-generic-crud-router-factory.md) (backend contract this UI renders), [ADR-0012](../adr/0012-coreui-design-system.md) (CoreUI, the project's design system), [ADR-0023](../adr/0023-frontend-shared-component-location.md) (`components/crud/` location, `FormField` error convention), [API Document §3/§5](../api/2026-09-03-api-design.md), [Sitemap](../sitemap/2026-09-05-project-scaffold-sitemap.md)
 
 First UI Design Document for this repo — no prior one existed; bespoke workflow screens (`Login`, `OrgHome`, `ProjectDetail`, etc.) were each specced inline in their own story/ADR instead. This document exists because the generic admin surface is, by construction, **not** one-screen-per-entity — it's one config schema rendered by 2 page components across 28 entities, and that schema is the artifact worth designing explicitly. Future generic-surface entities are additions to §3's config table, not new sections here.
 
@@ -69,7 +69,7 @@ A `methods` list without `"create"`/`"update"` means `EntityForm` is never mount
 
 **C — Branch/deep-chain scope** (`RiskItem`, `Attachment`): route `/projects/:projectId/admin/:entity`, but `ScopeSelector` renders first — for `RiskItem`, a toggle between "by Requirement" / "by TestPlan" then an `FkAutocomplete` against whichever; for `Attachment`, a single `FkAutocomplete` against `TestCase`. `EntityTable` only mounts after that selection resolves to a concrete id.
 
-## 5. Permission-driven hide/disable (FR-ADMIN-2 AC4, NFR-36)
+## 5. Permission-driven hide/disable (FR-ADMIN-2 AC4, NFR-37)
 
 `usePermissions(orgId)` (new hook, `auth/usePermissions.ts`) wraps `GET /orgs/{org_id}/permissions/mine` in a `useQuery`, exposing `has(code, projectId?)`. Every action affordance checks it **before** rendering:
 
@@ -79,7 +79,7 @@ A `methods` list without `"create"`/`"update"` means `EntityForm` is never mount
 
 ## 6. Coexistence with bespoke screens
 
-`Organization`, `Project`, `OrgMembership`, `Release` get a generic admin page **in addition to** their existing bespoke screen (`OrgHome`, `ProjectDetail`, `OrgMembers`) — this is deliberate (ADR-0026), not a duplicate-effort oversight. The bespoke screens stay the primary, task-shaped entry points (e.g. "create a project" is a purpose-built modal on `OrgHome`, not a raw field-by-field form); the generic admin page is the fallback for actions the bespoke screen doesn't surface (e.g. deleting an `OrgMembership` row outright, which no bespoke screen does today). No navigation link points from a bespoke screen into its own entity's generic admin page — that would be a confusing "two ways to do the same thing" affordance; the generic page for these 4 entities is reachable only via the Admin nav group (§7/Sitemap), not cross-linked from the bespoke one.
+`Organization`, `Project`, `OrgMembership`, `Release` get a generic admin page **in addition to** their existing bespoke screen (`OrgHome`, `ProjectDetail`, `OrgMembers`) — this is deliberate (ADR-0027), not a duplicate-effort oversight. The bespoke screens stay the primary, task-shaped entry points (e.g. "create a project" is a purpose-built modal on `OrgHome`, not a raw field-by-field form); the generic admin page is the fallback for actions the bespoke screen doesn't surface (e.g. deleting an `OrgMembership` row outright, which no bespoke screen does today). No navigation link points from a bespoke screen into its own entity's generic admin page — that would be a confusing "two ways to do the same thing" affordance; the generic page for these 4 entities is reachable only via the Admin nav group (§7/Sitemap), not cross-linked from the bespoke one.
 
 ## 7. Navigation placement
 

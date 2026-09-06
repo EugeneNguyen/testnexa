@@ -2,11 +2,13 @@
 
 **Date:** 2026-09-03
 **Owner:** xuanbinh91@gmail.com (CTO)
-**Sources:** [07 ERD](../product-discovery/07-erd-draft.md), [Scaffold design spec](../superpowers/specs/2026-09-03-project-scaffold-design.md), [ADR-0005](../adr/0005-traceability-link-dedicated-join-tables.md), [ADR-0006](../adr/0006-test-condition-optional.md), [ADR-0007](../adr/0007-real-multi-tenancy.md), [ADR-0008](../adr/0008-uuid-primary-keys.md), [ADR-0011](../adr/0011-login-rate-limiting.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md), [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md), [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md), [ADR-0022](../adr/0022-generic-crud-router-factory.md), [ADR-0025](../adr/0025-requirement-title-field.md), [ADR-0026](../adr/0026-generic-admin-crud-ui-and-backend-completion.md)
+**Sources:** [07 ERD](../product-discovery/07-erd-draft.md), [Scaffold design spec](../superpowers/specs/2026-09-03-project-scaffold-design.md), [ADR-0005](../adr/0005-traceability-link-dedicated-join-tables.md), [ADR-0006](../adr/0006-test-condition-optional.md), [ADR-0007](../adr/0007-real-multi-tenancy.md), [ADR-0008](../adr/0008-uuid-primary-keys.md), [ADR-0011](../adr/0011-login-rate-limiting.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md), [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md), [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md), [ADR-0022](../adr/0022-generic-crud-router-factory.md), [ADR-0025](../adr/0025-requirement-title-field.md), [ADR-0027](../adr/0027-generic-admin-crud-ui-and-backend-completion.md)
 
 This document is the implementation-level schema, refined from the [07 ERD](../product-discovery/07-erd-draft.md) draft per the ADRs above. No code — this is the reference for the Alembic migration that will be written when implementation is authorized.
 
 **SHELL-1** ([ADR-0018](../adr/0018-admin-shell-sidebar-layout.md), FR-SHELL-1) — reviewed, no schema impact. The admin shell (sidebar + navbar) is frontend-only: no new table, column, or index. Noted here explicitly so the gap isn't mistaken for an oversight.
+
+**Sidebar dark color scheme** ([ADR-0026](../adr/0026-sidebar-dark-color-scheme.md), FR-SHELL-5) — reviewed, no schema impact. A `CSidebar` prop value; no table, column, or index change.
 
 **SHELL-2/3/4** ([ADR-0019](../adr/0019-admin-shell-full-template-parity.md), FR-SHELL-2/3/4) — reviewed, no schema impact. Breadcrumb/footer are frontend-only; dashboard stat widgets read existing `Project`/`OrgMembership` rows via already-built generic-CRUD list queries (no new table/column); dark/light mode preference is `localStorage`-only (NFR-26) — deliberately not a new `User`/`Actor` column, since it's presentation state, not account data worth persisting server-side in this scaffold.
 
@@ -18,7 +20,7 @@ This document is the implementation-level schema, refined from the [07 ERD](../p
 
 **REQ-1** ([ADR-0025](../adr/0025-requirement-title-field.md), FR-REQ-1) — one column added: `Requirement.title` (§3.6), closing a gap between the schema and FR-REQ-1/TC-REQ-001's always-specified `title` field. No other schema impact — `Requirement`'s create/read/update/delete/list routes, permission gating, and tenant-scoping were already fully delivered by ADMIN-2's generic CRUD factory before this story.
 
-**ADR-0026** (generic admin CRUD UI + execution/traceability backend completion, FR-ADMIN-2 completion) — reviewed, no schema impact. `TestExecution`/`TestLog` (§3.8) and the 4 link tables (§3.9) were already fully specified below — this pass only adds application-layer routes/permission-check wiring over tables already defined, same posture ADR-0022's own note above already established for the other 20 entities. `GET /orgs/{org_id}/permissions/mine` reads existing `RoleAssignment`/`Role`/`RolePermission`/`Permission` rows (§3.3) — no new table/column/index.
+**ADR-0027** (generic admin CRUD UI + execution/traceability backend completion, FR-ADMIN-2 completion) — reviewed, no schema impact. `TestExecution`/`TestLog` (§3.8) and the 4 link tables (§3.9) were already fully specified below — this pass only adds application-layer routes/permission-check wiring over tables already defined, same posture ADR-0022's own note above already established for the other 20 entities. `GET /orgs/{org_id}/permissions/mine` reads existing `RoleAssignment`/`Role`/`RolePermission`/`Permission` rows (§3.3) — no new table/column/index.
 
 ---
 
@@ -385,7 +387,7 @@ Unique: `(test_plan_id, test_suite_id)`.
 
 Composite index: `(test_cycle_id, test_case_id)` — dashboard aggregation (EXEC-1) and execution-scope-check (PLAN-3) both filter on this pair.
 
-**TestLog** — *append-only, no `updated_at`, no update/delete API path (list/get only, [ADR-0026](../adr/0026-generic-admin-crud-ui-and-backend-completion.md))*
+**TestLog** — *append-only, no `updated_at`, no update/delete API path (list/get only, [ADR-0027](../adr/0027-generic-admin-crud-ui-and-backend-completion.md))*
 | Column | Type | Constraints |
 |---|---|---|
 | id | uuid | PK |
@@ -410,7 +412,7 @@ Index: `(test_execution_id, logged_at)` — ordered timeline reads (EXEC-2).
 
 ### 3.9 `trace.py` — the 4 dedicated link tables ([ADR-0005](../adr/0005-traceability-link-dedicated-join-tables.md))
 
-All four share the same shape: surrogate `uuid` PK, two FK columns, unique constraint on the pair, `created_at` only (links are immutable — delete-and-recreate, never edited). List/get routes only ([ADR-0026](../adr/0026-generic-admin-crud-ui-and-backend-completion.md)) — a row is still only ever written as a side effect of the bespoke routes in API Document §4, never via a direct `POST`/`PATCH`/`DELETE` on the link table itself.
+All four share the same shape: surrogate `uuid` PK, two FK columns, unique constraint on the pair, `created_at` only (links are immutable — delete-and-recreate, never edited). List/get routes only ([ADR-0027](../adr/0027-generic-admin-crud-ui-and-backend-completion.md)) — a row is still only ever written as a side effect of the bespoke routes in API Document §4, never via a direct `POST`/`PATCH`/`DELETE` on the link table itself.
 
 | Table | FK 1 | FK 2 |
 |---|---|---|
