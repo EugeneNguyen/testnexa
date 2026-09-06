@@ -13,13 +13,18 @@
  * (`requirementId`/`testConditionId`) is a path segment, not a body/query
  * field, and org is resolved server-side.
  *
- * There is deliberately **no `listTestCases*` function for the
+ * REQ-3 shipped with deliberately **no `listTestCases*` function for the
  * TestCondition-mediated path**: no backend route lists TestCases by test
  * condition (or at all via the generic factory — `TestCase` has no
- * factory-registered `list`, see `entityConfigs/test-case.ts`), so REQ-3's UI
- * renders no per-condition TestCase list. That's an explicit YAGNI call in
- * ADR-0028's design spec, not an omission. `listTestCasesForRequirement`
- * below covers REQ-2's direct-link path only.
+ * factory-registered `list`, see `entityConfigs/test-case.ts`), an explicit
+ * YAGNI call in ADR-0028's design spec. REQ-4's UI Design Document needs that
+ * list after all (to hang an "Add to suite" action off each case), and closes
+ * the gap **client-side** rather than with a new backend route:
+ * `listTestCasesForTestCondition` below composes the existing read-only
+ * link-table route (`GET /test-condition-test-case-links?test_condition_id=`,
+ * ADR-0027) with the existing item route (`GET /test-cases/{id}`). A bounded
+ * fan-out — typically single-digit TestCases per condition — not a new
+ * endpoint.
  */
 import { apiFetch } from "./client";
 
@@ -118,4 +123,61 @@ export async function createTestCaseForTestCondition(
  */
 export async function listTestCasesForRequirement(requirementId: string): Promise<TestCaseListResponse> {
   return apiFetch<TestCaseListResponse>(`/api/v1/requirements/${requirementId}/test-cases`);
+}
+
+/**
+ * Fetch one TestCase by id (the generic factory's item route).
+ *
+ * Rejects with an `ApiError`: `404` if it doesn't exist, is in another org, or
+ * is orphaned (unresolvable tenant — ADR-0029's three-branch resolver found no
+ * path to an org); `403` if the caller is a member but lacks `test_case.read`.
+ */
+export async function getTestCase(testCaseId: string): Promise<TestCaseSummary> {
+  return apiFetch<TestCaseSummary>(`/api/v1/test-cases/${testCaseId}`);
+}
+
+interface TestConditionTestCaseLinkRow {
+  test_condition_id: string;
+  test_case_id: string;
+}
+
+interface TestConditionTestCaseLinkListResponse {
+  items: TestConditionTestCaseLinkRow[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+/**
+ * List the TestCases linked to `testConditionId`, composed client-side from
+ * two existing routes (REQ-4's UI Design Document §2): the read-only
+ * link-table list (ADR-0027) to get the ids, then one `getTestCase` per id to
+ * get titles/statuses the junction table doesn't carry.
+ *
+ * Deliberately **not** a new backend route — see this module's docstring. The
+ * fan-out is bounded by how many TestCases one TestCondition has (single
+ * digits in practice), and the calls are issued concurrently.
+ *
+ * Individually unreadable cases are skipped rather than failing the whole
+ * list: a link row can outlive the caller's ability to read its TestCase
+ * (a `403` on `test_case.read`, or a case since deleted), and one such row
+ * shouldn't blank out an otherwise-valid list. A failure of the *link* fetch
+ * itself does reject, since that means the list is genuinely unknown rather
+ * than partially readable.
+ */
+export async function listTestCasesForTestCondition(
+  testConditionId: string,
+): Promise<TestCaseSummary[]> {
+  const query = new URLSearchParams({ test_condition_id: testConditionId });
+  const links = await apiFetch<TestConditionTestCaseLinkListResponse>(
+    `/api/v1/test-condition-test-case-links?${query.toString()}`,
+  );
+  const settled = await Promise.allSettled(
+    links.items.map((link) => getTestCase(link.test_case_id)),
+  );
+  return settled
+    .filter(
+      (result): result is PromiseFulfilledResult<TestCaseSummary> => result.status === "fulfilled",
+    )
+    .map((result) => result.value);
 }

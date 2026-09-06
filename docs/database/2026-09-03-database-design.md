@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-03
 **Owner:** xuanbinh91@gmail.com (CTO)
-**Sources:** [07 ERD](../product-discovery/07-erd-draft.md), [Scaffold design spec](../superpowers/specs/2026-09-03-project-scaffold-design.md), [ADR-0005](../adr/0005-traceability-link-dedicated-join-tables.md), [ADR-0006](../adr/0006-test-condition-optional.md), [ADR-0007](../adr/0007-real-multi-tenancy.md), [ADR-0008](../adr/0008-uuid-primary-keys.md), [ADR-0011](../adr/0011-login-rate-limiting.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md), [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md), [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md), [ADR-0022](../adr/0022-generic-crud-router-factory.md), [ADR-0025](../adr/0025-requirement-title-field.md), [ADR-0027](../adr/0027-generic-admin-crud-ui-and-backend-completion.md), [ADR-0029](../adr/0029-testcase-resolver-direct-link-fallback.md)
+**Sources:** [07 ERD](../product-discovery/07-erd-draft.md), [Scaffold design spec](../superpowers/specs/2026-09-03-project-scaffold-design.md), [ADR-0005](../adr/0005-traceability-link-dedicated-join-tables.md), [ADR-0006](../adr/0006-test-condition-optional.md), [ADR-0007](../adr/0007-real-multi-tenancy.md), [ADR-0008](../adr/0008-uuid-primary-keys.md), [ADR-0011](../adr/0011-login-rate-limiting.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md), [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md), [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md), [ADR-0022](../adr/0022-generic-crud-router-factory.md), [ADR-0025](../adr/0025-requirement-title-field.md), [ADR-0027](../adr/0027-generic-admin-crud-ui-and-backend-completion.md), [ADR-0029](../adr/0029-testcase-resolver-direct-link-fallback.md), [ADR-0030](../adr/0030-req4-test-suite-membership-bespoke-routes.md)
 
 This document is the implementation-level schema, refined from the [07 ERD](../product-discovery/07-erd-draft.md) draft per the ADRs above. No code — this is the reference for the Alembic migration that will be written when implementation is authorized.
 
@@ -316,6 +316,8 @@ Unique: `(test_case_id, sequence)`.
 | created_at | timestamptz | not null |
 
 Unique: `(test_suite_id, test_case_id)`.
+
+**Generic CRUD factory posture on `TestSuiteTestCase`** ([ADR-0030](../adr/0030-req4-test-suite-membership-bespoke-routes.md)): no route via the factory at all, generic or otherwise — `POST`/`DELETE /test-suites/{id}/test-cases/{case_id}` (join row add/remove) plus a new `GET /test-suites/{id}/test-cases` (live membership list, `TestCaseSummary[]`, not raw join rows) are bespoke, `app/api/routes/test_suite_membership.py`. `org_id` resolution reuses `_TEST_SUITE_CONFIG`'s existing `chain_resolver([])` for the `TestSuite` side and `resolve_test_case_org_id` ([ADR-0029](../adr/0029-testcase-resolver-direct-link-fallback.md)) verbatim for the `TestCase` side — no new resolver. Add rejects (`422`) when the `TestCase`'s own resolved `project_id` differs from the `TestSuite`'s `project_id` (same org, different project — a data-modeling rejection, not a tenant boundary); the unique constraint above surfaces as `409 already_in_suite` on a duplicate add, not `422`. `TestSuite`'s own name/purpose CRUD is unaffected — still full generic CRUD via `_TEST_SUITE_CONFIG`, this ADR only adds membership routes on top.
 
 ### 3.7 `planning.py` — TestPlan, EntryExitCriteria, TestCycle, Environment (+ junction)
 

@@ -50,6 +50,7 @@ from app.api.routes import (
     roles,
     taxonomy,
     test_condition_authoring,
+    test_suite_membership,
     trace,
 )
 
@@ -163,3 +164,10 @@ app.include_router(trace.router, prefix="/api/v1", tags=["trace"])
 # which the generic factory above structurally cannot do. Registered after
 # `assets.py`, whose `TestCondition` config drops `create` in the same change.
 app.include_router(test_condition_authoring.router, prefix="/api/v1", tags=["assets"])
+# REQ-4/ADR-0030: bespoke `TestSuite` membership routes
+# (`POST`/`DELETE /test-suites/{id}/test-cases/{case_id}`,
+# `GET /test-suites/{id}/test-cases`) — the `TestSuiteTestCase` junction table
+# has no single-entity row shape the generic factory could serve as a usable
+# membership view. `TestSuite`'s own CRUD stays entirely on `assets.py`'s
+# factory router, unchanged by this story.
+app.include_router(test_suite_membership.router, prefix="/api/v1", tags=["assets"])

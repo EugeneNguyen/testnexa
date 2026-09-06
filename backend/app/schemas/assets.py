@@ -208,9 +208,12 @@ class TestCaseSummary(BaseModel):
 
 
 class TestCaseListResponse(BaseModel):
-    """Response of `GET /requirements/{id}/test-cases` (REQ-2's bespoke,
-    requirement-scoped list — see `CreateTestCaseRequest`'s docstring for why
-    `TestCase` has no factory-registered `list`)."""
+    """Shared response shape for the two bespoke `TestCase` list routes:
+    `GET /requirements/{id}/test-cases` (REQ-2's requirement-scoped list — see
+    `CreateTestCaseRequest`'s docstring for why `TestCase` has no
+    factory-registered `list`) and `GET /test-suites/{id}/test-cases` (REQ-4's
+    live suite-membership list, ADR-0030). Both page identically, so they share
+    one schema rather than each declaring a structurally identical copy."""
 
     items: list[TestCaseSummary]
     total: int
