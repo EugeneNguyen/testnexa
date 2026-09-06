@@ -468,9 +468,15 @@ test.describe("PLAN-2: entry/exit criteria visibility", () => {
 
       // The same claim straight off the wire, not just off the DOM: a fresh
       // `GET /entry-exit-criteria?test_plan_id=<planA>` carries all four types.
+      //
+      // Path-scoped, not just `test_plan_id=` — PLAN-3 (ADR-0033) added a
+      // second `?test_plan_id=`-filtered GET on this same page mount
+      // (`/test-cycles?test_plan_id=`), so matching on the query string alone
+      // would race against whichever of the two responses lands first.
       const [reloadList] = await Promise.all([
         page.waitForResponse(
           (response) =>
+            response.url().includes("/api/v1/entry-exit-criteria?") &&
             response.url().includes(`test_plan_id=${fixture.planAId}`) &&
             response.request().method() === "GET",
         ),
@@ -503,6 +509,7 @@ test.describe("PLAN-2: entry/exit criteria visibility", () => {
         ),
         page.waitForResponse(
           (response) =>
+            response.url().includes("/api/v1/entry-exit-criteria?") &&
             response.url().includes(`test_plan_id=${fixture.planAId}`) &&
             response.request().method() === "GET",
         ),
@@ -526,6 +533,7 @@ test.describe("PLAN-2: entry/exit criteria visibility", () => {
         ),
         page.waitForResponse(
           (response) =>
+            response.url().includes("/api/v1/entry-exit-criteria?") &&
             response.url().includes(`test_plan_id=${fixture.planAId}`) &&
             response.request().method() === "GET",
         ),
