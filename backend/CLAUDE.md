@@ -64,6 +64,22 @@ Every time a bespoke route is gated on a permission code a system role's seeded 
 
 `User`/`AIAgent` are SQLAlchemy joined-table inheritance subclasses of `Actor` (Database Document §3.4's "known drift" note — `actor_id` is both PK and the FK to `actor.id`, no separate `id` column). The correct, working pattern — used by every seed script in `e2e/tests/*.spec.ts` — is `User(name=..., email=..., password_hash=...)` directly; the mapper inserts the parent `Actor` row itself as part of persisting the subclass. **Manually creating `Actor(actor_type=ActorType.user)` first, flushing it, then constructing `User(actor_id=actor.id, ...)`** looks reasonable and is wrong: it throws off the joined-table mapper's own identity tracking (a `SAWarning: Flushing object <Actor> with incompatible polymorphic identity` is the tell), and a later `commit()` fails with a `ForeignKeyViolationError` on whatever child row references `actor_id` next — `org_membership_user_id_fkey` in the case that surfaced this (2026-09-06) — even though the `Actor` insert itself appeared to succeed. If you're writing a one-off seed script and not copying an existing e2e spec's pattern verbatim, grep `e2e/tests/req1-requirements-ui.spec.ts`'s `SEED_SCRIPT` first.
 
+## A DB cloned from `main` is signup-closed and its real user's password is unrecoverable
+
+`POST /auth/signup` (`app/api/routes/auth.py`) is bootstrap-only — it 409s `signup_closed` the moment any `Organization` row exists. Any isolated stack cloned from `main`'s DB (the standard recipe, root `CLAUDE.md`/`e2e/CLAUDE.md`) inherits `main`'s already-bootstrapped org, so you cannot create a fresh account via signup on a clone — confirmed 2026-09-06. `main` currently has exactly one seeded `User` (`admin@example.com`), and its `password_hash` is a real argon2 hash from an actual signup, not seeded by any migration/script in this repo — there is no way to recover or guess the plaintext.
+
+**For a manual-test handoff that needs a working login on a cloned stack**, reset that user's password directly in the *clone only*, using the app's own hasher so the hash is verifiable by the running server:
+
+```
+docker exec <clone-backend-container> python -c \
+  "from app.core.security import hash_password; print(hash_password('<new-password>'))"
+# then, against the clone's postgres only:
+docker exec <clone-postgres-container> psql -U testnexa -d testnexa \
+  -c "UPDATE \"user\" SET password_hash = '<hash from above>' WHERE email = 'admin@example.com';"
+```
+
+Never run the `UPDATE` against `testnexa-postgres-1` (main) — this is a clone-only reset, and the whole point is that main's real credential stays untouched and unknown to the agent.
+
 ## Resolver completeness when adding a bespoke create route (ADR-0029 precedent)
 
 If an entity already has a hand-written `resolve_org_id` function in `app/api/crud_factory.py` (branching/multi-hop resolvers like `TestCase`'s), and you're adding a **new bespoke create route** that produces a row shape the resolver doesn't have a branch for yet, the row will insert successfully and then 404 as "unresolvable tenant" on the very next `GET`/`PATCH`/`DELETE` — a resolver written before that create path existed has no way to know about it. This bit REQ-2 (`POST /requirements/{id}/test-cases`'s direct-link `TestCase` shape had no branch in `resolve_test_case_org_id` until [ADR-0029](../docs/adr/0029-testcase-resolver-direct-link-fallback.md)).
