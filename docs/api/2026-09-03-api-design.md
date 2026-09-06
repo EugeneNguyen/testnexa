@@ -127,7 +127,7 @@ One factory (`make_crud_router()`), called once per entity with a small config o
 | `TestCondition` | `requirement_id` | `Requirement.project_id` → `Project.org_id` |
 | `EntryExitCriteria`, `TestCycle` | `test_plan_id` | `TestPlan.project_id` → `Project.org_id` |
 | `RiskItem` | `requirement_id` **or** `test_plan_id` (exactly one — both set → `422`) | whichever is set, one hop to `project_id` |
-| `TestCase` | n/a, no `create` via factory | `test_condition_id` (if set) → `Requirement.project_id`; else any `TestSuiteTestCase` link → `TestSuite.project_id`; else unresolvable → `404` |
+| `TestCase` | n/a, no `create` via factory (bespoke instead, §4) | `test_condition_id` (if set) → `Requirement.project_id`; else any `RequirementTestCaseLink` (REQ-2's direct-link path, ADR-0006 — checked first) → `Requirement.project_id`; else any `TestSuiteTestCase` link → `TestSuite.project_id`; else unresolvable → `404` |
 | `TestStep`, `Attachment` | `test_case_id` | delegates to `TestCase`'s resolver |
 | `Defect` | n/a, no `create` via factory | `TestExecution.test_cycle_id` → `TestCycle.test_plan_id` → `TestPlan.project_id` → `Project.org_id` |
 | `RoleAssignment` | n/a, no `create`/`list` via factory | direct `org_id` column |
@@ -141,7 +141,7 @@ Entities served by the generic factory (20 total): `Organization`\*, `Project`\*
 \*\* `Permission` is read-only via the generic factory — the catalog is seeded, not user-editable, so only `GET` routes are registered for it.
 \*\*\* `Project` create/read/update stay the existing bespoke routes (§2, PROJ-1/[ADR-0017](../adr/0017-project-creation-flow.md)) — the factory only registers the one method `Project` is still missing, `DELETE /projects/{id}` (no story has asked for Project deletion until now; ADR-0022 doesn't change this, it just fills the gap).
 \*\*\*\* *(reserved — see `Release` below)*
-\*\*\*\*\* `TestCase` and `Defect` register only `GET`/`PATCH`/`DELETE` via the factory — `create` stays reserved for each entity's own future bespoke atomic-create route (§4: `POST /requirements/{id}/test-cases` etc. for `TestCase`; `POST /executions/{id}/defects` for `Defect`), neither built yet. `TestCase`'s orphaned-row edge case (unresolvable `org_id`) is documented in the resolver table above and the [Database Document](../database/2026-09-03-database-design.md) §3.6.
+\*\*\*\*\* `TestCase` and `Defect` register only `GET`/`PATCH`/`DELETE` via the factory — `create` is bespoke instead (§4: `POST /requirements/{id}/test-cases`/`POST /test-conditions/{id}/test-cases` for `TestCase`, REQ-2 built, REQ-3 not yet; `POST /executions/{id}/defects` for `Defect`, not yet built). `TestCase`'s `list` is likewise bespoke and requirement-scoped (`GET /requirements/{id}/test-cases`, REQ-2), not factory-registered — see `app/schemas/assets.py`'s module docstring for why no safe `scope_field` exists. `TestCase`'s orphaned-row edge case (unresolvable `org_id`) is documented in the resolver table above and the [Database Document](../database/2026-09-03-database-design.md) §3.6.
 \*\*\*\*\*\* `TestCycle` registers only `GET`/`PATCH`/`DELETE` — its own `create` is FR-PLAN-3's scope, not built by this pass (unchanged from the original factory listing).
 \*\*\*\*\*\*\* `Attachment`'s factory `POST` is metadata-only (`url_or_path`/`mime_type`/`size_bytes` supplied directly) — no multipart file-upload handling in this factory; actual upload/storage-backend wiring is GOV-3's own separate concern.
 \*\*\*\*\*\*\*\* `Role`'s `org_id IS NULL` (system-role template) rows: readable (`GET`, `has_permission_in_any_org` fallback), but `PATCH`/`DELETE` → `404`; `POST /roles` always requires a non-null `org_id` in the body.
@@ -154,6 +154,7 @@ Entities served by the generic factory (20 total): `Organization`\*, `Project`\*
 | Method | Path | Permission | Maps to |
 |---|---|---|---|
 | POST | `/requirements/{id}/test-cases` | `test_case.create` | FR-REQ-2 — direct link path, creates TestCase + RequirementTestCaseLink atomically |
+| GET | `/requirements/{id}/test-cases` | `test_case.read` | FR-REQ-2 — paginated list of the Requirement's direct-link TestCases only (REQ-3's TestCondition-mediated ones aren't included; that's FR-TRACE-1's job) |
 | POST | `/requirements/{id}/test-conditions` | `test_condition.create` | FR-REQ-3 — creates TestCondition + RequirementTestConditionLink |
 | POST | `/test-conditions/{id}/test-cases` | `test_case.create` | FR-REQ-3 — creates TestCase + TestConditionTestCaseLink |
 | POST | `/test-suites/{id}/test-cases/{case_id}` | `test_suite.update` | FR-REQ-4 — add to suite (join row) |

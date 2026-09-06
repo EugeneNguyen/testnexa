@@ -79,6 +79,7 @@ from app.models.assets import Requirement, TestCase, TestCondition, TestSuite, T
 from app.models.planning import TestPlan
 from app.models.project import Project
 from app.models.tenancy import OrgMembership
+from app.models.trace import RequirementTestCaseLink
 
 # API Document §1: offset-based pagination, default/max page_size = 25 (NFR-6)
 # — same constants `releases.py` already uses verbatim.
@@ -226,17 +227,20 @@ def chain_resolver(hops: Sequence[tuple[type, str]]) -> ResolveOrgId:
 
 
 async def resolve_test_case_org_id(db: AsyncSession, row: Any) -> uuid.UUID | None:
-    """Bespoke `TestCase` resolver (ADR-0022): nullable-hop with a link-table fallback.
+    """Bespoke `TestCase` resolver (ADR-0022): nullable-hop with two link-table fallbacks.
 
     `test_condition_id` (if set) -> `TestCondition.requirement_id` ->
     `Requirement.project_id` -> `Project.org_id`. If `test_condition_id` is
-    `None` (ADR-0006), falls back to any linked `TestSuiteTestCase` ->
-    `TestSuite.project_id` -> `Project.org_id`. A `TestCase` reachable by
-    neither path resolves `None` — genuinely orphaned (schema-legal, no
-    create path in this codebase produces it) — the caller must treat this as
-    "unresolvable tenant", i.e. `404`, never the any-org global-catalog
-    fallback (ADR-0022 edge case #1; `is_global_catalog=False` on `TestCase`'s
-    own config makes that distinction automatically).
+    `None` (ADR-0006), falls back first to any linked `RequirementTestCaseLink`
+    -> `Requirement.project_id` -> `Project.org_id` (REQ-2's direct-link
+    path — the whole point of ADR-0006 is that this shape is first-class, not
+    an edge case), then to any linked `TestSuiteTestCase` -> `TestSuite.project_id`
+    -> `Project.org_id`. A `TestCase` reachable by none of the three resolves
+    `None` — genuinely orphaned (schema-legal, no create path in this
+    codebase produces it) — the caller must treat this as "unresolvable
+    tenant", i.e. `404`, never the any-org global-catalog fallback (ADR-0022
+    edge case #1; `is_global_catalog=False` on `TestCase`'s own config makes
+    that distinction automatically).
     """
     test_condition_id = getattr(row, "test_condition_id", None)
     if test_condition_id is not None:
@@ -251,10 +255,20 @@ async def resolve_test_case_org_id(db: AsyncSession, row: Any) -> uuid.UUID | No
     row_id = getattr(row, "id", None)
     if row_id is None:
         return None
-    link = await db.scalar(select(TestSuiteTestCase).where(TestSuiteTestCase.test_case_id == row_id).limit(1))
-    if link is None:
+
+    requirement_link = await db.scalar(
+        select(RequirementTestCaseLink).where(RequirementTestCaseLink.test_case_id == row_id).limit(1)
+    )
+    if requirement_link is not None:
+        requirement = await db.get(Requirement, requirement_link.requirement_id)
+        if requirement is None:
+            return None
+        return await resolve_terminal_org_id(db, requirement)
+
+    suite_link = await db.scalar(select(TestSuiteTestCase).where(TestSuiteTestCase.test_case_id == row_id).limit(1))
+    if suite_link is None:
         return None
-    suite = await db.get(TestSuite, link.test_suite_id)
+    suite = await db.get(TestSuite, suite_link.test_suite_id)
     if suite is None:
         return None
     return await resolve_terminal_org_id(db, suite)

@@ -6,9 +6,10 @@ Source: API Document §3 (generic CRUD routes, ADR-0022), Database Document
 Field names mirror each ORM model's own column names exactly — the factory's
 `_to_summary`/`create`/`update` machinery (`app/api/crud_factory.py`) maps
 request/response bodies to model attributes purely by name, no per-entity
-mapping function. `TestCase` has no `Create*Request` — its `create` stays
-reserved for a future bespoke atomic-create route (ADR-0022, API Document
-§4), never registered via the factory.
+mapping function. `TestCase`'s `create` stays unregistered via the factory —
+it's served by REQ-2/REQ-3's bespoke atomic-create routes instead
+(`CreateTestCaseRequest`, `app/api/routes/assets.py`, ADR-0022 API Document
+§4).
 """
 
 from typing import Literal
@@ -100,17 +101,44 @@ class TestConditionListResponse(BaseModel):
 
 # --- TestCase ------------------------------------------------------------------------------------
 #
-# No `Create*Request`/`*ListResponse` — `create` is reserved for a future
-# bespoke atomic-create route (ADR-0022), and `list` is deliberately not
-# registered via the factory either: unlike every other scoped entity,
-# `TestCase` has no single non-nullable FK the factory's `scope_field`
-# mechanism could require as a list-scope query param (`test_condition_id` is
-# nullable per ADR-0006, and the suite-link fallback is a many-to-many join,
-# not a column) — requiring one would either wrongly 404 legitimately
-# suite-only-linked test cases or leave `list` unscoped and leak across
-# tenants (CLAUDE.md's multi-tenancy rule). See this story's final report for
-# this deviation from the plan's literal "everything else gets all 5
-# methods" framing.
+# No factory-registered `create`/`list` — `create` is reserved for the
+# bespoke atomic-create routes (ADR-0022, API Document §4: `POST
+# /requirements/{id}/test-cases` for REQ-2's direct link, `POST
+# /test-conditions/{id}/test-cases` for REQ-3's rigor path), and `list` is
+# deliberately not registered via the factory either: unlike every other
+# scoped entity, `TestCase` has no single non-nullable FK the factory's
+# `scope_field` mechanism could require as a list-scope query param
+# (`test_condition_id` is nullable per ADR-0006, and the suite-link fallback
+# is a many-to-many join, not a column) — requiring one would either wrongly
+# 404 legitimately suite-only-linked test cases or leave `list` unscoped and
+# leak across tenants (CLAUDE.md's multi-tenancy rule). `GET
+# /requirements/{id}/test-cases` (REQ-2) is its own bespoke, requirement-
+# scoped list instead. See this story's final report for this deviation from
+# the plan's literal "everything else gets all 5 methods" framing.
+
+
+class CreateTestCaseRequest(BaseModel):
+    """Body of the bespoke `POST /requirements/{id}/test-cases` (REQ-2) and
+    `POST /test-conditions/{id}/test-cases` (REQ-3) atomic-create routes.
+
+    Neither the requirement/test-condition id nor `test_condition_id` is a
+    field here — the parent is the path segment, and the direct-link route
+    never sets `test_condition_id` (ADR-0006: stays `null`). `test_level_id`/
+    `test_type_id` are required non-nullable FKs on `TestCase` itself
+    (Database Document §3.6) — REQ-2's "no forced TestCondition" lightweness
+    doesn't extend to these, they're unrelated to the ISTQB-rigor question
+    ADR-0006 resolved. `created_by_actor_id` is never accepted from the body
+    — the route stamps it from the authenticated caller, same
+    `_ACTOR_STAMPED_FIELDS` posture the generic factory already uses for
+    `TestPlan.created_by_actor_id`.
+    """
+
+    title: str
+    test_level_id: UUID
+    test_type_id: UUID
+    preconditions: str | None = None
+    expected_result: str | None = None
+    status: TestCaseStatus = "draft"
 
 
 class UpdateTestCaseRequest(BaseModel):
@@ -135,6 +163,17 @@ class TestCaseSummary(BaseModel):
     preconditions: str | None = None
     expected_result: str | None = None
     status: TestCaseStatus
+
+
+class TestCaseListResponse(BaseModel):
+    """Response of `GET /requirements/{id}/test-cases` (REQ-2's bespoke,
+    requirement-scoped list — see `CreateTestCaseRequest`'s docstring for why
+    `TestCase` has no factory-registered `list`)."""
+
+    items: list[TestCaseSummary]
+    total: int
+    page: int
+    page_size: int
 
 
 # --- TestStep --------------------------------------------------------------------------------
@@ -202,11 +241,13 @@ class TestSuiteListResponse(BaseModel):
 
 __all__ = [
     "CreateRequirementRequest",
+    "CreateTestCaseRequest",
     "CreateTestConditionRequest",
     "CreateTestStepRequest",
     "CreateTestSuiteRequest",
     "RequirementListResponse",
     "RequirementSummary",
+    "TestCaseListResponse",
     "TestCaseSummary",
     "TestCaseStatus",
     "TestConditionListResponse",

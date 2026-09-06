@@ -63,20 +63,30 @@ class _FakeSession:
 
     `_rows` is `{(model, pk): row_or_None}`; `.get()` returns `None` for any
     key not registered (matches a real `AsyncSession.get()` on a missing
-    row). `_scalar_result` is a single canned return value for `.scalar()`
-    (only `resolve_test_case_org_id`'s `TestSuiteTestCase` link lookup calls
-    it) — good enough since these tests only ever need one canned answer per
-    test case, not real query introspection.
+    row). `.scalar()` calls are answered from `scalar_results` in order (only
+    `resolve_test_case_org_id`'s `RequirementTestCaseLink`/`TestSuiteTestCase`
+    link lookups call it, up to two calls per resolution since REQ-2 added
+    the requirement-link fallback) — once exhausted, further calls repeat the
+    single `scalar_result` value, so single-`.scalar()`-call tests can keep
+    passing just that one canned answer.
     """
 
-    def __init__(self, rows: dict[tuple[type, Any], Any] | None = None, scalar_result: Any = None) -> None:
+    def __init__(
+        self,
+        rows: dict[tuple[type, Any], Any] | None = None,
+        scalar_result: Any = None,
+        scalar_results: list[Any] | None = None,
+    ) -> None:
         self._rows = rows or {}
         self._scalar_result = scalar_result
+        self._scalar_results = list(scalar_results) if scalar_results is not None else None
 
     async def get(self, model: type, pk: Any) -> Any:
         return self._rows.get((model, pk))
 
     async def scalar(self, *_args: Any, **_kwargs: Any) -> Any:
+        if self._scalar_results:
+            return self._scalar_results.pop(0)
         return self._scalar_result
 
 
@@ -246,7 +256,29 @@ class TestResolveTestCaseOrgId:
         )
         assert await resolve_test_case_org_id(db, row) == org_id
 
-    async def test_falls_back_to_test_suite_link_when_condition_unset(self) -> None:
+    async def test_falls_back_to_requirement_link_when_condition_unset(self) -> None:
+        """REQ-2's direct-link path (ADR-0006) — first fallback checked, before `TestSuiteTestCase`."""
+        from app.models.trace import RequirementTestCaseLink
+
+        test_case_id = uuid.uuid4()
+        requirement_id = uuid.uuid4()
+        project_id = uuid.uuid4()
+        org_id = uuid.uuid4()
+
+        link = _row(requirement_id=requirement_id)
+        requirement = _row(project_id=project_id)
+        project = _row(org_id=org_id)
+
+        row = _row(id=test_case_id, test_condition_id=None)
+        db = _FakeSession(
+            rows={(Requirement, requirement_id): requirement, (Project, project_id): project},
+            # Only one `.scalar()` call expected: the `RequirementTestCaseLink`
+            # lookup hits, so `TestSuiteTestCase` is never queried.
+            scalar_results=[link],
+        )
+        assert await resolve_test_case_org_id(db, row) == org_id
+
+    async def test_falls_back_to_test_suite_link_when_condition_and_requirement_link_unset(self) -> None:
         from app.models.assets import TestSuiteTestCase
 
         test_case_id = uuid.uuid4()
@@ -261,12 +293,14 @@ class TestResolveTestCaseOrgId:
         row = _row(id=test_case_id, test_condition_id=None)
         db = _FakeSession(
             rows={(TestSuite, test_suite_id): suite, (Project, project_id): project},
-            scalar_result=link,
+            # First `.scalar()` (RequirementTestCaseLink) misses -> `None`;
+            # second (TestSuiteTestCase) hits -> `link`.
+            scalar_results=[None, link],
         )
         assert await resolve_test_case_org_id(db, row) == org_id
 
     async def test_orphaned_row_resolves_to_none(self) -> None:
-        """No `test_condition_id`, no `TestSuiteTestCase` link -> unresolvable (ADR-0022 edge case #1)."""
+        """No `test_condition_id`, no link of either kind -> unresolvable (ADR-0022 edge case #1)."""
         row = _row(id=uuid.uuid4(), test_condition_id=None)
         db = _FakeSession(scalar_result=None)
         assert await resolve_test_case_org_id(db, row) is None

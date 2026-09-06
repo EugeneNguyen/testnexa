@@ -1,11 +1,13 @@
-"""API-1: generic-CRUD factory routes for the assets cluster (ADR-0022).
+"""API-1: generic-CRUD factory routes for the assets cluster (ADR-0022),
+plus REQ-2's bespoke atomic-create/list routes.
 
-`Requirement`, `TestCondition`, `TestStep`, `TestSuite` get all 5 methods.
-`TestCase` gets `GET`/`PATCH`/`DELETE` only — `create` stays reserved for a
-future bespoke atomic-create route (ADR-0022, API Document §4), and `list` is
-deliberately not registered at all (see `app/schemas/assets.py`'s module
-docstring for why: no single non-nullable FK exists to use as a safe,
-tenant-isolating `scope_field`).
+`Requirement`, `TestCondition`, `TestStep`, `TestSuite` get all 5 factory
+methods. `TestCase` gets `GET`/`PATCH`/`DELETE` via the factory only —
+`create`/`list` are bespoke instead: `POST`/`GET /requirements/{id}/test-cases`
+(below), the direct-link path (ADR-0006/REQ-2). `TestCase` has no single
+non-nullable FK the factory's `scope_field` mechanism could use as a safe,
+tenant-isolating list/create scope (see `app/schemas/assets.py`'s module
+docstring).
 
 Resolver depths (API Document §3's table): `Requirement`/`TestSuite` are
 direct (`project_id` -> `Project.org_id`); `TestCondition` is one hop
@@ -14,7 +16,13 @@ direct (`project_id` -> `Project.org_id`); `TestCondition` is one hop
 to `TestCase`'s resolver one hop up.
 """
 
-from fastapi import APIRouter
+from uuid import UUID
+
+from fastapi import APIRouter, Depends
+from fastapi.responses import JSONResponse
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.crud_factory import (
     CrudEntityConfig,
@@ -23,13 +31,21 @@ from app.api.crud_factory import (
     resolve_test_case_org_id,
     resolve_via_test_case,
 )
+from app.api.deps import get_current_actor, get_db
+from app.core.rbac import has_permission
+from app.models.actor import AIAgent, User
 from app.models.assets import Requirement, TestCase, TestCondition, TestStep, TestSuite
+from app.models.project import Project
+from app.models.tenancy import OrgMembership
+from app.models.trace import RequirementTestCaseLink
 from app.schemas.assets import (
     CreateRequirementRequest,
+    CreateTestCaseRequest,
     CreateTestConditionRequest,
     CreateTestStepRequest,
     CreateTestSuiteRequest,
     RequirementSummary,
+    TestCaseListResponse,
     TestCaseSummary,
     TestConditionSummary,
     TestStepSummary,
@@ -42,6 +58,38 @@ from app.schemas.assets import (
 )
 
 router = APIRouter()
+
+# API Document §1: offset-based pagination, default/max page_size = 25 (NFR-6)
+# — same constants every other bespoke route module already uses verbatim.
+_DEFAULT_PAGE_SIZE = 25
+_MAX_PAGE_SIZE = 25
+
+
+def _error(status_code: int, code: str, message: str) -> JSONResponse:
+    """Mirrors every existing route module's own `_error()` verbatim."""
+    return JSONResponse(status_code=status_code, content={"code": code, "message": message, "field_errors": None})
+
+
+async def _org_membership_exists(db: AsyncSession, org_id: UUID, user_id: UUID) -> bool:
+    """Mirrors `releases.py`/`crud_factory.py`'s helper of the same name verbatim."""
+    result = await db.scalar(
+        select(OrgMembership.id).where(OrgMembership.org_id == org_id, OrgMembership.user_id == user_id).limit(1)
+    )
+    return result is not None
+
+
+def _test_case_summary(test_case: TestCase) -> TestCaseSummary:
+    return TestCaseSummary(
+        id=test_case.id,
+        test_condition_id=test_case.test_condition_id,
+        test_level_id=test_case.test_level_id,
+        test_type_id=test_case.test_type_id,
+        created_by_actor_id=test_case.created_by_actor_id,
+        title=test_case.title,
+        preconditions=test_case.preconditions,
+        expected_result=test_case.expected_result,
+        status=test_case.status,
+    )
 
 _REQUIREMENT_CONFIG = CrudEntityConfig(
     model=Requirement,
@@ -104,5 +152,121 @@ router.include_router(make_crud_router(_TEST_CONDITION_CONFIG))
 router.include_router(make_crud_router(_TEST_CASE_CONFIG))
 router.include_router(make_crud_router(_TEST_STEP_CONFIG))
 router.include_router(make_crud_router(_TEST_SUITE_CONFIG))
+
+
+# --- REQ-2: bespoke atomic create + direct link, and its matching list ---------------------------
+
+
+@router.post("/requirements/{id}/test-cases", response_model=TestCaseSummary, status_code=201)
+async def create_test_case_for_requirement(
+    id: UUID,
+    payload: CreateTestCaseRequest,
+    actor: User | AIAgent = Depends(get_current_actor),
+    db: AsyncSession = Depends(get_db),
+) -> TestCaseSummary | JSONResponse:
+    """Create a `TestCase` under Requirement `id` and link it directly via
+    `RequirementTestCaseLink` — REQ-2's lightweight path, ADR-0006.
+
+    `test_condition_id` is never set here (stays `null` on the row) — the
+    row-resolved factory's bespoke resolver (`resolve_test_case_org_id`)
+    already falls back to this same `RequirementTestCaseLink` for later
+    `GET`/`PATCH`/`DELETE /test-cases/{id}`, so a direct-link `TestCase`
+    isn't an "orphaned" row once created.
+
+    Same row-resolved-parent posture as `releases.py`'s `create_release`:
+    fetch `Requirement`, resolve its `Project.org_id`, any-status
+    `OrgMembership` gate -> `404` if either the Requirement doesn't exist or
+    the caller has no membership in its org (NFR-1); `test_case.create` gate
+    -> `403`. `created_by_actor_id` is stamped from the caller, never
+    accepted from the body. `TestCase` + `RequirementTestCaseLink` are
+    created in one flush/commit — a partial write (TestCase with no link)
+    never happens.
+    """
+    requirement = await db.get(Requirement, id)
+    if requirement is None:
+        return _error(404, "not_found", "Requirement not found.")
+
+    project = await db.get(Project, requirement.project_id)
+    if project is None or not await _org_membership_exists(db, project.org_id, actor.actor_id):
+        return _error(404, "not_found", "Requirement not found.")
+
+    if not await has_permission(str(actor.actor_id), str(project.org_id), "test_case.create"):
+        return _error(403, "permission_denied", "You do not have permission to perform this action.")
+
+    test_case = TestCase(
+        title=payload.title,
+        preconditions=payload.preconditions,
+        expected_result=payload.expected_result,
+        status=payload.status,
+        test_level_id=payload.test_level_id,
+        test_type_id=payload.test_type_id,
+        created_by_actor_id=actor.actor_id,
+    )
+    db.add(test_case)
+    try:
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+        return _error(422, "validation_error", "Request failed validation.")
+
+    db.add(RequirementTestCaseLink(requirement_id=requirement.id, test_case_id=test_case.id))
+    try:
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+        return _error(422, "validation_error", "Request failed validation.")
+
+    await db.commit()
+    await db.refresh(test_case)
+    return _test_case_summary(test_case)
+
+
+@router.get("/requirements/{id}/test-cases", response_model=TestCaseListResponse)
+async def list_test_cases_for_requirement(
+    id: UUID,
+    page: int = 1,
+    page_size: int = _DEFAULT_PAGE_SIZE,
+    actor: User | AIAgent = Depends(get_current_actor),
+    db: AsyncSession = Depends(get_db),
+) -> TestCaseListResponse | JSONResponse:
+    """List TestCases directly linked to Requirement `id` via
+    `RequirementTestCaseLink` (REQ-2). Paginated, same posture as every other
+    list route in this cluster. Gated on `test_case.read`, same 404-vs-403
+    boundary as `create_test_case_for_requirement`.
+
+    Only the direct-link path is listed here — a Requirement's
+    TestCondition-mediated TestCases (REQ-3) aren't included; that's
+    `GET /requirements/{id}/traceability`'s job (FR-TRACE-1), not this route's.
+    """
+    requirement = await db.get(Requirement, id)
+    if requirement is None:
+        return _error(404, "not_found", "Requirement not found.")
+
+    project = await db.get(Project, requirement.project_id)
+    if project is None or not await _org_membership_exists(db, project.org_id, actor.actor_id):
+        return _error(404, "not_found", "Requirement not found.")
+
+    if not await has_permission(str(actor.actor_id), str(project.org_id), "test_case.read"):
+        return _error(403, "permission_denied", "You do not have permission to perform this action.")
+
+    page = max(page, 1)
+    page_size = min(max(page_size, 1), _MAX_PAGE_SIZE)
+
+    query = (
+        select(TestCase)
+        .join(RequirementTestCaseLink, RequirementTestCaseLink.test_case_id == TestCase.id)
+        .where(RequirementTestCaseLink.requirement_id == id)
+    )
+    total = await db.scalar(select(func.count()).select_from(query.subquery()))
+    result = await db.execute(query.offset((page - 1) * page_size).limit(page_size))
+    test_cases = result.scalars().all()
+
+    return TestCaseListResponse(
+        items=[_test_case_summary(test_case) for test_case in test_cases],
+        total=total or 0,
+        page=page,
+        page_size=page_size,
+    )
+
 
 __all__ = ["router"]
