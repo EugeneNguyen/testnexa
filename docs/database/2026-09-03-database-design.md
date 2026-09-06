@@ -268,6 +268,8 @@ No uniqueness constraint on `version_label` — AC doesn't require it, and unlik
 | priority | enum(low, medium, high) | not null |
 | created_at, updated_at | timestamptz | not null |
 
+**Generic CRUD factory posture on `TestCondition`** ([ADR-0028](../adr/0028-req3-test-condition-rigor-path-bespoke-routes.md)): no `POST /test-conditions` via the factory — the route existed briefly under ADR-0022 but only ever wrote the `TestCondition` row, never the `RequirementTestConditionLink` row FR-REQ-3's own AC1 requires, so it's removed rather than left as a second, link-less creation path. Creation stays bespoke: `POST /requirements/{id}/test-conditions` (API Document §4) creates both rows atomically. `GET`/`PATCH`/`DELETE /test-conditions/{id}` are unaffected — same resolver (`requirement_id` → `Requirement.project_id` → `Project.org_id`) as before.
+
 **TestCase**
 | Column | Type | Constraints |
 |---|---|---|
@@ -294,7 +296,7 @@ No uniqueness constraint on `version_label` — AC doesn't require it, and unlik
 
 Unique: `(test_case_id, sequence)`.
 
-**Generic CRUD factory posture on `TestCase`** ([ADR-0022](../adr/0022-generic-crud-router-factory.md)): no `POST /test-cases` via the factory — creation stays bespoke (API Document §4, atomic create+link, not yet built). `GET`/`PATCH`/`DELETE /test-cases/{id}` resolve `org_id` by walking `test_condition_id` → `TestCondition.requirement_id` → `Requirement.project_id` when set; if `test_condition_id IS NULL` (ADR-0006), the resolver falls back to any linked `TestSuiteTestCase` → `TestSuite.project_id`; a row satisfying neither (orphaned — schema-legal, but no create path in this codebase produces it) resolves to `404`, same as a genuinely missing row. `TestStep`/`Attachment` (both scoped by `test_case_id`) delegate to this same resolver.
+**Generic CRUD factory posture on `TestCase`** ([ADR-0022](../adr/0022-generic-crud-router-factory.md)): no `POST /test-cases` via the factory — creation stays bespoke (API Document §4, atomic create+link). `POST /test-conditions/{id}/test-cases` (test-condition-mediated path, FR-REQ-3, [ADR-0028](../adr/0028-req3-test-condition-rigor-path-bespoke-routes.md)) is built; `POST /requirements/{id}/test-cases` (direct-link path, FR-REQ-2) is not yet built — a separate, not-yet-implemented story. `GET`/`PATCH`/`DELETE /test-cases/{id}` resolve `org_id` by walking `test_condition_id` → `TestCondition.requirement_id` → `Requirement.project_id` when set; if `test_condition_id IS NULL` (ADR-0006), the resolver falls back to any linked `TestSuiteTestCase` → `TestSuite.project_id`; a row satisfying neither (orphaned — schema-legal, but no create path in this codebase produces it) resolves to `404`, same as a genuinely missing row. `TestStep`/`Attachment` (both scoped by `test_case_id`) delegate to this same resolver.
 
 **TestSuite**
 | Column | Type | Constraints |
@@ -412,7 +414,7 @@ Index: `(test_execution_id, logged_at)` — ordered timeline reads (EXEC-2).
 
 ### 3.9 `trace.py` — the 4 dedicated link tables ([ADR-0005](../adr/0005-traceability-link-dedicated-join-tables.md))
 
-All four share the same shape: surrogate `uuid` PK, two FK columns, unique constraint on the pair, `created_at` only (links are immutable — delete-and-recreate, never edited). List/get routes only ([ADR-0027](../adr/0027-generic-admin-crud-ui-and-backend-completion.md)) — a row is still only ever written as a side effect of the bespoke routes in API Document §4, never via a direct `POST`/`PATCH`/`DELETE` on the link table itself.
+All four share the same shape: surrogate `uuid` PK, two FK columns, unique constraint on the pair, `created_at` only (links are immutable — delete-and-recreate, never edited). List/get routes only ([ADR-0027](../adr/0027-generic-admin-crud-ui-and-backend-completion.md)) — a row is still only ever written as a side effect of the bespoke routes in API Document §4, never via a direct `POST`/`PATCH`/`DELETE` on the link table itself. `RequirementTestConditionLink` and `TestConditionTestCaseLink` rows are now populated this way by [ADR-0028](../adr/0028-req3-test-condition-rigor-path-bespoke-routes.md)'s two REQ-3 routes; `RequirementTestCaseLink` awaits REQ-2's still-unbuilt direct-link route.
 
 | Table | FK 1 | FK 2 |
 |---|---|---|

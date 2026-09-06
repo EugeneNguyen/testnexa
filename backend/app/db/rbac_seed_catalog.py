@@ -131,7 +131,16 @@ def build_role_bundles(all_permission_codes: set[str]) -> dict[str, set[str]]:
         | {_code("requirement", "read"), _code("requirement", "export_rtm")}
         | {_code("defect", "read")}
         | _crud_codes("risk_item")
-        | {_code("test_case", "read"), _code("test_step", "read"), _code("test_condition", "read")}
+        | {_code("test_step", "read")}
+        # REQ-3/ADR-0028: full CRUD on `test_condition`/`test_case` — parity
+        # with `tester`'s existing bundle below, of which `test_manager`
+        # previously held only `.read`. FR-REQ-3's own persona (Marcus, a
+        # compliance QA manager) otherwise couldn't reach that story's two
+        # authoring routes without also being granted `tester`/`org_admin`,
+        # which no story text asks for — the same shape of pre-existing
+        # RBAC-4 seed gap ADR-0019 already closed once for `release.*`.
+        | _crud_codes("test_condition")
+        | _crud_codes("test_case")
         # RBAC-3/ADR-0021: a project's own creator is auto-granted this Role,
         # project-scoped, unconditionally (PROJ-1/ADR-0017's `create_project`)
         # specifically so they can subsequently GET/PATCH the project they

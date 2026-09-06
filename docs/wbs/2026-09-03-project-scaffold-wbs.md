@@ -39,6 +39,7 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 | 2.7 | Human-only Approval defense-in-depth check | 2.4 | S | FR-RBAC-5 |
 | 2.8 | Login throttle: `LoginAttempt` table + per-(IP, email) failed-attempt counter, 429 above threshold | 2.2 | S | NFR-11, [ADR-0011](../adr/0011-login-rate-limiting.md) |
 | 2.9 | RBAC seed data migration — extend `test_manager` bundle with `release.create`/`.read`/`.update` (existence-checked insert, same idempotent pattern as 2.3c's) | 1.3 | S | FR-PROJ-2, [ADR-0019](../adr/0019-release-creation-flow.md) |
+| 2.10 | RBAC seed data migration — extend `test_manager` bundle with `test_condition.create`/`.update`/`.delete` and `test_case.create`/`.update`/`.delete` (`.read` on both already held; same idempotent pattern as 2.9's) | 1.3 | S | FR-REQ-3, [ADR-0028](../adr/0028-req3-test-condition-rigor-path-bespoke-routes.md) |
 
 ## 3. Generic CRUD API
 
@@ -59,7 +60,10 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 | # | Deliverable | Depends on | Size | Maps to |
 |---|---|---|---|---|
 | 4.0 | `Requirement.title` migration + schema/factory-config update (`search_fields`) — the one gap between FR-REQ-1 and the schema, per [ADR-0025](../adr/0025-requirement-title-field.md); `Requirement`'s create/list/update/delete/search were already delivered by 3.3 (ADMIN-2) | 3.3 | S | FR-REQ-1, [ADR-0025](../adr/0025-requirement-title-field.md) |
-| 4.1 | TestCondition/TestCase/TestStep authoring routes (both link paths) — `Requirement` itself needs no new route here, see 4.0 | 3.2, 4.0 | M | FR-REQ-2..4 |
+| 4.1a | Bespoke `POST /requirements/{id}/test-cases` — direct-link path, atomic `TestCase` + `RequirementTestCaseLink` create | 3.2, 4.0 | M | FR-REQ-2 |
+| 4.1b | Bespoke `POST /requirements/{id}/test-conditions` + `POST /test-conditions/{id}/test-cases` — atomic `TestCondition`/`TestCase` + link-table creates; restrict `_TEST_CONDITION_CONFIG`'s generic `create` (ADR-0022) now redundant and link-less; `test_manager` RBAC seed migration extending `test_condition.*`/`test_case.create`/`.update`/`.delete` | 3.2, 4.0 | M | FR-REQ-3, [ADR-0028](../adr/0028-req3-test-condition-rigor-path-bespoke-routes.md) |
+*4.1a/4.1b correction:* the original single 4.1 row also named `TestStep` as needing new routes here — stale by the time either sub-item was scoped: `TestStep`'s full create/list/update/delete already shipped generically via 3.3 (ADMIN-2's factory, `CreateTestStepRequest` registered from the start), no bespoke work needed for it under FR-REQ-2..4.
+
 | 4.2 | TestPlan/EntryExitCriteria/TestCycle/Environment routes, execution-scope-check (execution only against TestCase in a suite included in the plan) | 3.2 | M | FR-PLAN-1..3 |
 | 4.3 | TestExecution + append-only TestLog routes | 4.2 | M | FR-EXEC-1..2 |
 | 4.4 | Defect routes, raise-from-execution | 4.3 | S | FR-EXEC-3 |

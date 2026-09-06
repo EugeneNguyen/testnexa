@@ -120,6 +120,37 @@ def test_test_manager_bundle_includes_release_create_read_update_but_not_delete(
     assert "release.delete" not in test_manager
 
 
+def test_test_manager_bundle_includes_full_test_condition_and_test_case_crud() -> None:
+    """REQ-3/ADR-0028: `test_manager` gains `test_condition.create`/`.update`/
+    `.delete` and `test_case.create`/`.update`/`.delete` — full parity with
+    `tester`'s existing bundle on both resources, of which `test_manager`
+    previously held only `.read`. Without these, FR-REQ-3's own persona can't
+    reach that story's two authoring routes without also holding `tester`/
+    `org_admin`.
+    """
+    all_codes = {code for code, _resource, _action in build_permission_catalog()}
+    bundles = build_role_bundles(all_codes)
+
+    test_manager = bundles["test_manager"]
+    for action in ("create", "read", "update", "delete"):
+        assert f"test_condition.{action}" in test_manager
+        assert f"test_case.{action}" in test_manager
+
+
+def test_test_manager_matches_tester_on_test_condition_and_test_case() -> None:
+    """The parity ADR-0028 actually asserts: identical code sets on both
+    resources, so the two bundles can't silently diverge again.
+    """
+    all_codes = {code for code, _resource, _action in build_permission_catalog()}
+    bundles = build_role_bundles(all_codes)
+
+    for resource in ("test_condition", "test_case"):
+        prefix = f"{resource}."
+        manager_codes = {code for code in bundles["test_manager"] if code.startswith(prefix)}
+        tester_codes = {code for code in bundles["tester"] if code.startswith(prefix)}
+        assert manager_codes == tester_codes, resource
+
+
 def test_tester_bundle_has_no_approval_or_role_permissions() -> None:
     all_codes = {code for code, _resource, _action in build_permission_catalog()}
     bundles = build_role_bundles(all_codes)

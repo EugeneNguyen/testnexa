@@ -6,9 +6,12 @@ Source: API Document §3 (generic CRUD routes, ADR-0022), Database Document
 Field names mirror each ORM model's own column names exactly — the factory's
 `_to_summary`/`create`/`update` machinery (`app/api/crud_factory.py`) maps
 request/response bodies to model attributes purely by name, no per-entity
-mapping function. `TestCase` has no `Create*Request` — its `create` stays
-reserved for a future bespoke atomic-create route (ADR-0022, API Document
-§4), never registered via the factory.
+mapping function. `TestCase` and `TestCondition` have no factory-registered
+`Create*Request` — both are created only via the bespoke atomic-create routes
+in `app/api/routes/test_condition_authoring.py` (REQ-3/ADR-0028, API Document
+§4), whose request schemas (`CreateTestConditionForRequirementRequest`,
+`CreateTestCaseForTestConditionRequest`) are path-scoped and therefore
+deliberately omit the parent FK the factory would have required in the body.
 """
 
 from typing import Literal
@@ -71,10 +74,20 @@ class RequirementListResponse(BaseModel):
 # --- TestCondition -------------------------------------------------------------------------------
 
 
-class CreateTestConditionRequest(BaseModel):
-    """Body of `POST /test-conditions` — `requirement_id` is the required scope field."""
+class CreateTestConditionForRequirementRequest(BaseModel):
+    """Body of `POST /requirements/{id}/test-conditions` (REQ-3, ADR-0028).
 
-    requirement_id: UUID
+    Path-scoped: the parent `Requirement` is identified by the `{id}` path
+    segment, so `requirement_id` is deliberately absent from the body — the
+    route stamps it from the path, and a client that sends it anyway simply
+    has the extra key ignored (Pydantic v2's default `extra="ignore"`, same
+    posture as every other schema in this file).
+
+    Replaces the generic factory's `CreateTestConditionRequest`, which only
+    ever wrote the `TestCondition` row and never the
+    `RequirementTestConditionLink` row FR-REQ-3 requires (ADR-0028).
+    """
+
     description: str
     priority: TestConditionPriority
 
@@ -100,9 +113,10 @@ class TestConditionListResponse(BaseModel):
 
 # --- TestCase ------------------------------------------------------------------------------------
 #
-# No `Create*Request`/`*ListResponse` — `create` is reserved for a future
-# bespoke atomic-create route (ADR-0022), and `list` is deliberately not
-# registered via the factory either: unlike every other scoped entity,
+# No factory-registered `Create*Request`/`*ListResponse` — `create` is served
+# only by the bespoke atomic-create route `POST /test-conditions/{id}/test-cases`
+# (REQ-3/ADR-0028, schema below), never by the factory, and `list` is
+# deliberately not registered via the factory either: unlike every other scoped entity,
 # `TestCase` has no single non-nullable FK the factory's `scope_field`
 # mechanism could require as a list-scope query param (`test_condition_id` is
 # nullable per ADR-0006, and the suite-link fallback is a many-to-many join,
@@ -111,6 +125,28 @@ class TestConditionListResponse(BaseModel):
 # tenants (CLAUDE.md's multi-tenancy rule). See this story's final report for
 # this deviation from the plan's literal "everything else gets all 5
 # methods" framing.
+
+
+class CreateTestCaseForTestConditionRequest(BaseModel):
+    """Body of `POST /test-conditions/{id}/test-cases` (REQ-3, ADR-0028).
+
+    Path-scoped: `test_condition_id` comes from the `{id}` path segment, not
+    the body. `status` is not accepted either — the route always creates the
+    row as `draft` (ADR-0028's decision block); `created_by_actor_id` is
+    stamped from the calling actor, never from the request (same posture
+    ADR-0025 established for `CreateTestExecutionRequest`'s
+    `executed_by_actor_id`: the field simply doesn't exist on the schema).
+
+    Field shape is intentionally reusable verbatim by REQ-2's future
+    `POST /requirements/{id}/test-cases` route — same body, different link
+    table written server-side (design spec §Components).
+    """
+
+    title: str
+    preconditions: str | None = None
+    expected_result: str | None = None
+    test_level_id: UUID
+    test_type_id: UUID
 
 
 class UpdateTestCaseRequest(BaseModel):
@@ -202,7 +238,8 @@ class TestSuiteListResponse(BaseModel):
 
 __all__ = [
     "CreateRequirementRequest",
-    "CreateTestConditionRequest",
+    "CreateTestCaseForTestConditionRequest",
+    "CreateTestConditionForRequirementRequest",
     "CreateTestStepRequest",
     "CreateTestSuiteRequest",
     "RequirementListResponse",

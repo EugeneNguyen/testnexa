@@ -40,7 +40,19 @@ docker compose --profile dev up --build
 
 Open `http://localhost:54593` (or the host's LAN IP, same port) — nginx is the single external entrypoint (`/api/*` → backend, `/*` → frontend), per [ADR-0010](docs/adr/0010-single-port-docker-compose-topology.md). `postgres-test` starts alongside but is idle until the integration suite runs against it.
 
-**Never run ad hoc Docker commands against the main `testnexa` compose project when testing a change in progress.** Stand up an isolated test environment instead (new `-p` project name, random free port, DB cloned from main via `pg_dump`/`psql`, `docker-compose.override.test.yml`-style port override using the Compose `!override` merge tag — see the AUTH-1 session history in this repo's git log for the exact pattern) so main stays untouched.
+**Never run ad hoc Docker commands against the main `testnexa` compose project when testing a change in progress.** Stand up an isolated test environment instead — validated recipe (run twice now, AUTH-1 and REQ-3):
+
+1. **Name it `testnexa-<purpose>-test`** (compose `-p` flag) — before picking a port, run `docker compose ls` and check for a stale one from a prior session that was never torn down (background/orchestrated work can die without cleaning up after itself, see "Working with agents" below).
+2. **Random 5-digit port**, checked free with `lsof -i :<port>` and against `docker ps`.
+3. **Build context is the worktree**, not the main repo root, or the isolated stack won't actually contain the branch's code: `docker compose -p testnexa-<purpose>-test -f docker-compose.yml -f docker-compose.override.test.yml --profile dev up --build -d` run from inside the worktree directory.
+4. **Port override**: a `docker-compose.override.test.yml` in the worktree overriding `nginx-dev`'s `ports:` — Compose list-merges `ports` by default (appends, doesn't replace), so use the YAML `!override` merge tag on that key. Bind as `"<port>:80"`, not `"127.0.0.1:<port>:80"`, so it's reachable via both `localhost` and the host's LAN IP (same as main's own `0.0.0.0:54593->80`).
+5. **Clone main's DB**, don't start empty: `docker exec testnexa-postgres-1 pg_dump -U testnexa -d testnexa -F c -f /tmp/clone.dump`, copy out, restore into the new stack's `postgres` service, then run `alembic upgrade head` inside the new backend container for any migration the branch adds on top of the clone.
+6. **Backend has no dev volume mount** (unlike `frontend`, which bind-mounts `src`) — after any backend code edit, `docker compose build backend` (or `up --build`) again, or you're silently testing stale code.
+7. **Tear down with `docker compose -p testnexa-<purpose>-test down -v`** when done — removes containers, network, and the cloned DB volume. Full worked example (seed/cleanup script pattern too): [`e2e/CLAUDE.md`](e2e/CLAUDE.md).
+
+## Working with agents / long-running background work
+
+A background or resumed sub-agent can die silently with no completion record if its parent process exits mid-task (observed: a `ceo-orchestrator` given a multi-hour implement+test task stopped with no transcript marker after being resumed). **Never take a sub-agent's self-reported "done" at face value** — after any orchestrated implementation work, independently verify: `git status`/`git diff --stat` in the actual worktree, `docker ps`/`docker compose ls` for what's actually running, and re-run the test suites yourself before reporting results as fact.
 
 ## Testing
 
