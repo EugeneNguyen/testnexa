@@ -22,12 +22,12 @@ transitive assertion goes further and walks
 Requirement` as one multi-hop join, because two independently-existing link
 rows could still point at inconsistent parents.
 
-One known-defect marker: TC-REQ-007's direct-path arm's own
-`GET /test-cases/{id}` is `xfail(strict=True)` — the generic factory's
-`resolve_test_case_org_id` has no `RequirementTestCaseLink` fallback, a
-pre-existing ADR-0022 gap owned by REQ-2, not introduced by this story. See
-`test_direct_path_test_case_is_readable_over_http`'s marker for the full
-root cause.
+TC-REQ-007's direct-path arm's own `GET /test-cases/{id}` (`resolve_test_case_org_id`
+needing a `RequirementTestCaseLink` fallback) was a known REQ-2-scope defect at
+the time this file was first written — closed by ADR-0029 (REQ-2's own
+resolver gap-fill), merged into main ahead of this story's own PR. That test
+now asserts the real `200`/`test_condition_id: null` outcome directly, no
+`xfail` marker.
 
 Each test seeds its own `User`/`Organization`/`OrgMembership`/
 `RoleAssignment`/`Project`/`Requirement` (and, where needed,
@@ -649,10 +649,8 @@ async def test_direct_and_rigor_path_test_cases_coexist_in_same_project() -> Non
     by its own link table.
 
     The direct arm's own `GET /test-cases/{id}` is asserted separately, in
-    `test_direct_path_test_case_is_readable_over_http` below — it currently
-    fails on a pre-existing resolver gap that belongs to REQ-2's scope, not
-    this story's (see that test's docstring). Everything REQ-3 itself owns is
-    asserted here, unweakened.
+    `test_direct_path_test_case_is_readable_over_http` below. Everything
+    REQ-3 itself owns is asserted here, unweakened.
     """
     user_ids: list = []
     org_ids: list = []
@@ -713,7 +711,7 @@ async def test_direct_and_rigor_path_test_cases_coexist_in_same_project() -> Non
 
         # The direct-path TestCase's own `test_condition_id` is NULL — read
         # from the row itself (the HTTP read of this arm is asserted in the
-        # dedicated test below, which the resolver gap currently blocks).
+        # dedicated test below).
         direct_row = await _fetch_test_case(direct_case_id)
         assert direct_row is not None
         assert direct_row.test_condition_id is None
@@ -737,25 +735,15 @@ async def test_direct_and_rigor_path_test_cases_coexist_in_same_project() -> Non
         )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "Known defect, REQ-2 scope, NOT introduced by REQ-3/ADR-0028: "
-        "`resolve_test_case_org_id` (app/api/crud_factory.py:232-264) resolves a "
-        "`test_condition_id IS NULL` TestCase ONLY via the TestSuiteTestCase "
-        "fallback — it never consults `RequirementTestCaseLink`. A direct-path "
-        "TestCase that is linked to its Requirement but not yet in any TestSuite "
-        "therefore resolves org_id=None and the generic factory's item route "
-        "answers 404 (verified: adding the same TestCase to a TestSuite flips it "
-        "to 200). Fixing the resolver belongs to REQ-2's own story, which owns "
-        "`POST /requirements/{id}/test-cases`; this test is left strict-xfail so "
-        "it turns red the moment the gap is closed and the marker must go."
-    ),
-)
 @pytest.mark.asyncio
 async def test_direct_path_test_case_is_readable_over_http() -> None:  # TC-REQ-007 (direct arm, HTTP)
     """`GET /test-cases/{id}` for a REQ-2-shaped direct-path TestCase -> 200,
     `test_condition_id` null (TC-REQ-007's "Both `200`" expected result).
+
+    Was `xfail(strict=True)` until ADR-0029 (REQ-2's own resolver gap-fill —
+    `resolve_test_case_org_id` lacked a `RequirementTestCaseLink` fallback)
+    merged into main ahead of this story's own PR; marker removed once the
+    fix landed, per its own "must go" instruction.
     """
     user_ids: list = []
     org_ids: list = []
