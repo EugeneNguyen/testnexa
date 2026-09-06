@@ -1,6 +1,14 @@
 # CLAUDE.md — backend
 
-Backend-specific guidance. Read the root `CLAUDE.md` first — this file only covers gotchas specific to `backend/`, found the hard way during REQ-2's and REQ-3's implementation/verification (2026-09-05/06).
+Backend-specific guidance. Read the root `CLAUDE.md` first — this file only covers gotchas specific to `backend/`, found the hard way during REQ-2's, REQ-3's, and REQ-4's implementation/verification (2026-09-05/06).
+
+## `TEST_API_BASE_URL` must NOT include `/api` when pointed at nginx
+
+`nginx/nginx.dev.conf`'s `location /api/` passes a request straight through to `backend:8000/api/` unchanged — no path rewrite. Every integration test file builds its own request paths as `f"{TEST_API_BASE_URL}{API_PREFIX}/..."`, and `API_PREFIX = "/api/v1"` already carries the `/api` segment. So the correct base URL against an nginx-fronted stack is the bare host:port (`http://localhost:<port>`), **not** `http://localhost:<port>/api` — `backend/README.md`'s own worked example had this wrong (fixed 2026-09-06) and is exactly the kind of thing worth re-verifying against `nginx/nginx.dev.conf` directly rather than trusting a remembered convention.
+
+Appending `/api` yourself double-prefixes every real feature route to `/api/api/v1/...`. Nginx still forwards it happily (it just strips nothing), but FastAPI's own router then 404s on its own terms with a plain `{"detail": "Not Found"}` body — **no `code` key** — which looks exactly like an application-level tenant-boundary 404 (`{"code": "not_found", ...}`) until you actually diff the two bodies. This bit a REQ-4 verification pass hard: 12 real, passing tests all failed with `KeyError: 'code'` on the first assertion, which reads like a application regression, not a one-character path bug. **When every test in a file fails the same way at the same assertion shape, suspect the harness config (base URL, wrong prefix) before the code under test** — a quick `curl` of one endpoint directly, comparing the raw body to what the route's own source says it returns, settles it in seconds.
+
+The one thing this doesn't fix: `tests/integration/conftest.py`'s skip-guard and `test_health_api.py`/`test_rbac_seed.py`'s own assertions call bare `f"{TEST_API_BASE_URL}/health"` (no prefix at all), and nginx has no bare `/health` location — only `/api/health` and `/`. Those two tests fail against nginx either way; see `e2e/CLAUDE.md`'s "known, harmless failures" note, and don't reach for the old `/api`-suffixed base to silence them — that trade breaks every other integration test instead.
 
 ## Docker image has no dev dependencies
 
@@ -8,6 +16,7 @@ Backend-specific guidance. Read the root `CLAUDE.md` first — this file only co
 
 - Keep a `backend/.venv` (`python3 -m venv .venv && source .venv/bin/activate && pip install -e ".[dev]"`) and run pytest from the host, pointed at whatever live server you're testing against via `TEST_API_BASE_URL`.
 - Re-run `pip install -e ".[dev]"` after any merge/rebase that could have touched `pyproject.toml` — cheap, and catches a drifted venv immediately rather than mid-test-run.
+- If `source .venv/bin/activate && pip ...` fails with something like `bad interpreter: .../python3.8: no such file or directory`, the venv's own shebang/`pyvenv.cfg` points at a Python that no longer exists on this machine (a venv carries absolute paths, so one created on a different host/container/session doesn't travel) — don't debug it, `rm -rf .venv` and recreate. Cheaper than chasing it, and this repo has hit it more than once.
 
 ## Testing an isolated stack's integration suite needs the Postgres port exposed too
 
