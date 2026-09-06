@@ -15,6 +15,7 @@ The one thing this doesn't fix: `tests/integration/conftest.py`'s skip-guard and
 `Dockerfile` runs `pip install --no-cache-dir .` (main deps only), never `.[dev]` — `pytest`/`httpx`-as-a-test-runner aren't in the built image. Don't try to `docker exec <backend-container> pytest`; it isn't there. Instead:
 
 - Keep a `backend/.venv` (`python3 -m venv .venv && source .venv/bin/activate && pip install -e ".[dev]"`) and run pytest from the host, pointed at whatever live server you're testing against via `TEST_API_BASE_URL`.
+- **`source .venv/bin/activate` does not persist across separate tool-call/subprocess invocations** — each one starts a fresh shell. `which python3` after a `source` in an earlier call will still resolve to the system/Homebrew Python, silently running your tests (or failing to find `sqlalchemy` et al.) against the wrong interpreter. Invoke the venv's binaries directly instead: `./.venv/bin/python -m pytest ...`, `./.venv/bin/pytest ...` — this works regardless of whether `activate` ran in the same shell.
 - Re-run `pip install -e ".[dev]"` after any merge/rebase that could have touched `pyproject.toml` — cheap, and catches a drifted venv immediately rather than mid-test-run.
 - If `source .venv/bin/activate && pip ...` fails with something like `bad interpreter: .../python3.8: no such file or directory`, the venv's own shebang/`pyvenv.cfg` points at a Python that no longer exists on this machine (a venv carries absolute paths, so one created on a different host/container/session doesn't travel) — don't debug it, `rm -rf .venv` and recreate. Cheaper than chasing it, and this repo has hit it more than once.
 
@@ -31,6 +32,8 @@ services:
 
 Then `DATABASE_URL=postgresql+asyncpg://testnexa:<password>@localhost:<free-port>/testnexa` for the host-side pytest run. `TEST_API_BASE_URL` stays pointed at the stack's nginx port (or backend port, if exposed directly) — the two env vars serve different halves of each integration test (HTTP calls vs. direct-DB seeding/cleanup).
 
+**Forgetting `DATABASE_URL` doesn't fail loudly or selectively** — `app/core/config.py`'s own default (`localhost:5432`) silently points at whatever's listening on the *host's* default Postgres port (nothing, if you only ever run Postgres in Docker), so every single test that seeds/cleans up via `AsyncSessionLocal` fails identically with an asyncpg `OSError: Multiple exceptions: [Errno 61] Connect call failed`. Same diagnostic instinct as the `/api`-double-prefix note above: **when every test in a file fails the same way at the same point, suspect a missing/wrong env var before the code under test** — confirmed 2026-09-06, `TEST_API_BASE_URL` alone (no `DATABASE_URL`) → 20/20 false failures in one file, fixed by adding the one env var.
+
 ## `JWT_SECRET` must match between whatever mints your test tokens and the live server verifying them
 
 If a pytest run mints access tokens locally via `app.core.security.create_access_token` (most integration tests do, to skip the login flow) and presents them to a live server running in a container, that container's actual `JWT_SECRET` must match the one your pytest process uses — a mismatch fails signature verification, not something obviously "auth is broken." Read it directly rather than assuming `.env.example`'s default: `docker exec <backend-container> printenv JWT_SECRET`.
@@ -38,6 +41,8 @@ If a pytest run mints access tokens locally via `app.core.security.create_access
 ## Dev backend container has no source volume mount
 
 Unlike `frontend` (which bind-mounts `frontend/src` for hot reload), `backend`'s dev service builds the image once and does not mount source. After any backend code edit in a running stack (isolated test env or otherwise), you must `docker compose build backend` (or `up --build`) again — editing files on the host does nothing to a running container until rebuilt.
+
+**`docker compose up --build` can exit `0` while the image build itself actually failed** (observed: a transient registry TLS timeout mid-layer-pull) — Compose still brings up whatever image already exists (the *previous* build), so the container starts fine and looks healthy, but silently runs stale code with zero indication anything went wrong. Combined with the no-volume-mount fact above, this is a real trap: don't trust the exit code alone after any rebuild you're about to test against. Verify the new code is actually live — check the build log's own tail for a real completion line (not just Compose's own "done" summary), or curl/exercise something the new code specifically changes (a new route, a new field) and confirm the *new* behavior, not just a `200`.
 
 ## Seeded demo/test accounts: email domain must not be an IANA reserved special-use domain
 
@@ -50,6 +55,10 @@ Every time a bespoke route is gated on a permission code a system role's seeded 
 ## Before restricting or adding a generic-CRUD `create`, audit for a matching bespoke route
 
 `TestCondition` had a generic `POST /test-conditions` (full CRUD via the ADR-0022 factory) that silently never wrote its `RequirementTestConditionLink` row — the factory's `create_item` only ever inserts the one entity row, it has no concept of a second link-table insert. This went unnoticed until ADR-0028 built the bespoke atomic-create route and discovered the gap. **Whenever an entity's create is meant to also populate a dedicated link table (`app/models/trace.py`), it must never be reachable via the generic factory's plain `create`** — restrict `methods` to drop `"create"` and set `create_schema=None` (mirror `TestCase`'s/`Defect`'s existing exclusion in `app/api/routes/assets.py`/`execution.py`) the same commit the bespoke route is added, not as a follow-up. If you're adding a bespoke atomic-create route for an entity that currently has generic `create` enabled, that's the signal to restrict it now.
+
+## Hand-seeding a `User` row: never construct `Actor()` yourself
+
+`User`/`AIAgent` are SQLAlchemy joined-table inheritance subclasses of `Actor` (Database Document §3.4's "known drift" note — `actor_id` is both PK and the FK to `actor.id`, no separate `id` column). The correct, working pattern — used by every seed script in `e2e/tests/*.spec.ts` — is `User(name=..., email=..., password_hash=...)` directly; the mapper inserts the parent `Actor` row itself as part of persisting the subclass. **Manually creating `Actor(actor_type=ActorType.user)` first, flushing it, then constructing `User(actor_id=actor.id, ...)`** looks reasonable and is wrong: it throws off the joined-table mapper's own identity tracking (a `SAWarning: Flushing object <Actor> with incompatible polymorphic identity` is the tell), and a later `commit()` fails with a `ForeignKeyViolationError` on whatever child row references `actor_id` next — `org_membership_user_id_fkey` in the case that surfaced this (2026-09-06) — even though the `Actor` insert itself appeared to succeed. If you're writing a one-off seed script and not copying an existing e2e spec's pattern verbatim, grep `e2e/tests/req1-requirements-ui.spec.ts`'s `SEED_SCRIPT` first.
 
 ## Resolver completeness when adding a bespoke create route (ADR-0029 precedent)
 

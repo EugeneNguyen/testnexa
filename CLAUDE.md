@@ -58,6 +58,8 @@ A background or resumed sub-agent can die silently with no completion record if 
 
 **[`e2e/CLAUDE.md`](e2e/CLAUDE.md) has the full worked recipe** (port/project naming, the `!override` gotcha, DB clone + verification, migrating, both-IP health-checking, and known-harmless failures when testing through this topology) — read it before improvising your own.
 
+**The independent-reverify habit above keeps paying off, not just for stopped orchestrators.** A PLAN-1 verification pass (2026-09-06) re-ran every layer of a sub-agent's self-reported "all green" results directly and caught four real things the transcript alone would have missed: an integration run that silently connected to the wrong Postgres (missing `DATABASE_URL`, see `backend/CLAUDE.md`), a "26 e2e failures" false alarm from an unset container-name override (see `e2e/CLAUDE.md`), a stale-diagnostic false positive on brand-new frontend files (see `frontend/CLAUDE.md`), and a broken hand-seed script of its own construction (`Actor()`-then-`User()`, see `backend/CLAUDE.md`). None of the four were flagged by the agent's own report as a concern — re-running the actual commands, not re-reading the summary, is what surfaced each one.
+
 ## Testing
 
 Three layers, all real (not mocked-everything):
@@ -71,6 +73,8 @@ Three layers, all real (not mocked-everything):
 Every FR/NFR traces to a test case in `docs/test-cases/`. When implementing a story, check that doc's coverage for the story ID before considering it done — 100% means every TC for *that story's own scope* has a passing automated test, not that every TC in the file (some belong to other, not-yet-built stories) is green.
 
 **Match a TC's literal wording, not a semantically-adjacent assertion.** A test case that names a specific action (e.g. TC-REQ-004's "add 3 steps, **reorder**") needs a test that actually performs that literal action — an "add steps and edit one field" test doesn't satisfy a TC that also says "reorder," even though both fall under the same general "TestStep CRUD" umbrella. This gap shipped and sat undetected through one full doc-propagation pass before being caught (REQ-2, 2026-09-06) — when auditing coverage, read each TC's `Steps`/`Expected result` cells word-for-word against what the test file actually does, don't pattern-match on the general shape.
+
+**`TestLevel`/`TestType` (and any other global-catalog lookup entity) ship with full CRUD but zero seeded rows** — confirmed empty on `main` itself, not just a freshly-cloned stack (2026-09-06). A fresh manual-test handoff hits this immediately: the `TestCase` create form's level/type dropdowns are empty, blocking the most basic manual walkthrough with no error, just nothing to select. Full CRUD existing is not the same claim as "usable out of the box" — if you're handing an environment to someone for manual testing and the story touches `TestCase` creation at all, seed a handful of rows first (same `docker exec -i <backend-container> python -` pattern as any other hand-seed) rather than assuming the catalog is populated. Whether these ship with a permanent default seed (like RBAC-4 seeds `Role`/`Permission`) is an open product decision for a future story/ADR, not something to silently decide inside a docs or verification pass.
 
 ## Architecture decisions are ADR-first
 

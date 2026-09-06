@@ -106,6 +106,11 @@ _PLURAL_PATH_EXCEPTIONS: dict[str, str] = {"entry_exit_criteria": "entry-exit-cr
 
 ScopeField = str | tuple[str, str] | None
 ResolveOrgId = Callable[[AsyncSession, Any], Awaitable[uuid.UUID | None]]
+# PLAN-1/ADR-0031: optional per-entity business-rule check on `PATCH`, run
+# after the 404/403 tenant gate and before any field is mutated. Receives the
+# already-gated row and the caller's `exclude_unset` update dict; returns a
+# `JSONResponse` to short-circuit with, or `None` to let the update proceed.
+UpdateGuard = Callable[[Any, dict[str, Any]], JSONResponse | None]
 
 
 class NoSchema(BaseModel):
@@ -147,6 +152,15 @@ class CrudEntityConfig:
     # `has_permission_in_any_org` (Q3/edge case 2); `PATCH`/`DELETE` still
     # `404`. Meaningless unless `is_global_catalog` is False.
     global_read_fallback: bool = False
+    # PLAN-1/ADR-0031: optional business-rule guard on `PATCH` only. Set today
+    # by `_TEST_PLAN_CONFIG` alone (the `status`-transition legality table);
+    # every other entity leaves it `None` and its `PATCH` path is byte-for-byte
+    # unchanged. ADR-0031's Alternatives section rejected giving `TestPlan` a
+    # second, bespoke `PATCH`-alternative route for this — a body-shape-
+    # conditional check inside the existing factory-produced handler is the
+    # smaller, more honest diff, and this hook is how it gets there without
+    # teaching the factory anything entity-specific.
+    update_guard: UpdateGuard | None = None
 
 
 def _error(
@@ -687,6 +701,19 @@ def make_crud_router(config: CrudEntityConfig) -> APIRouter:
                 return error
 
             updates = payload.model_dump(exclude_unset=True)
+
+            # PLAN-1/ADR-0031: entity-specific business-rule check, if the
+            # config supplies one. Ordering is deliberate and load-bearing:
+            # this runs *after* `_fetch_and_gate` (so a caller outside the
+            # row's org still gets the NFR-1 `404` — a `409` here would
+            # confirm the row exists across a tenant boundary) and *before*
+            # any `setattr` (so a rejected request mutates nothing, not even
+            # in the session's identity map).
+            if config.update_guard is not None:
+                guard_error = config.update_guard(row, updates)
+                if guard_error is not None:
+                    return guard_error
+
             for field_name, value in updates.items():
                 setattr(row, field_name, value)
 
