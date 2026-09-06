@@ -1,5 +1,5 @@
 """Integration tests for ADR-0025's backend completion: `TestExecution` full
-CRUD, `TestLog` read-only, 2 of the 4 traceability link tables, and
+CRUD, `TestLog` read-only, all 4 traceability link tables, and
 `GET /orgs/{org_id}/permissions/mine`.
 
 Real HTTP requests via `httpx.AsyncClient` against a live server
@@ -27,12 +27,17 @@ import pytest
 from sqlalchemy import delete
 
 from app.db.session import AsyncSessionLocal
-from app.models.execution import TestExecution, TestExecutionResult, TestLog, TestLogEventType
+from app.models.execution import Defect, DefectSeverity, TestExecution, TestExecutionResult, TestLog, TestLogEventType
 from app.models.planning import Environment, TestCycle, TestPlan
 from app.models.project import Release
 from app.models.rbac import RoleAssignment
 from app.models.tenancy import OrgMembership, OrgMembershipStatus
-from app.models.trace import RequirementTestCaseLink, TestConditionTestCaseLink
+from app.models.trace import (
+    RequirementTestCaseLink,
+    RequirementTestConditionLink,
+    TestCaseDefectLink,
+    TestConditionTestCaseLink,
+)
 from tests.integration.test_admin2_crud import (
     API_PREFIX,
     TEST_API_BASE_URL,
@@ -99,6 +104,18 @@ async def _create_test_execution(session, *, test_cycle, test_case, executed_by,
     return execution
 
 
+async def _create_defect(session, *, test_execution, reported_by, tag: str) -> Defect:
+    defect = Defect(
+        test_execution_id=test_execution.id,
+        reported_by_actor_id=reported_by,
+        severity=DefectSeverity.medium,
+        status="open",
+    )
+    session.add(defect)
+    await session.flush()
+    return defect
+
+
 async def _cleanup_extra(
     *,
     test_log_ids: list | None = None,
@@ -106,6 +123,7 @@ async def _cleanup_extra(
     test_cycle_ids: list | None = None,
     release_ids: list | None = None,
     environment_ids: list | None = None,
+    defect_ids: list | None = None,
     link_ids: dict | None = None,
 ) -> None:
     """Delete this module's own extra entities, child-first, before
@@ -118,12 +136,26 @@ async def _cleanup_extra(
                         RequirementTestCaseLink.id.in_(link_ids["requirement_test_case_link"])
                     )
                 )
+            if link_ids.get("requirement_test_condition_link"):
+                await session.execute(
+                    delete(RequirementTestConditionLink).where(
+                        RequirementTestConditionLink.id.in_(link_ids["requirement_test_condition_link"])
+                    )
+                )
             if link_ids.get("test_condition_test_case_link"):
                 await session.execute(
                     delete(TestConditionTestCaseLink).where(
                         TestConditionTestCaseLink.id.in_(link_ids["test_condition_test_case_link"])
                     )
                 )
+            if link_ids.get("test_case_defect_link"):
+                await session.execute(
+                    delete(TestCaseDefectLink).where(
+                        TestCaseDefectLink.id.in_(link_ids["test_case_defect_link"])
+                    )
+                )
+        if defect_ids:
+            await session.execute(delete(Defect).where(Defect.id.in_(defect_ids)))
         if test_log_ids:
             await session.execute(delete(TestLog).where(TestLog.id.in_(test_log_ids)))
         if test_execution_ids:
@@ -586,6 +618,218 @@ async def test_test_condition_test_case_link_list_get_and_cross_org_404() -> Non
             test_case_ids=test_case_ids,
             test_level_ids=test_level_ids,
             test_type_ids=test_type_ids,
+        )
+
+
+# --- TC-ADMIN-025: the remaining 2 of 4 link tables (RequirementTestConditionLink, one-hop; -----
+# TestCaseDefectLink, resolve_via_test_case) — same cross-org-404 + no-write-route shape the two
+# link tables above already proved for the one-hop/two-hop resolver depths; these two cover the
+# resolver depths `test_requirement_test_case_link_...`/`test_test_condition_test_case_link_...`
+# don't (a second one-hop instance sharing `Requirement` as the chain target, and the
+# `resolve_via_test_case` resolver reused directly rather than via `chain_resolver`).
+
+
+@pytest.mark.asyncio
+async def test_requirement_test_condition_link_cross_org_404_and_no_write_routes() -> None:
+    user_ids: list = []
+    org_ids: list = []
+    project_ids: list = []
+    requirement_ids: list = []
+    test_condition_ids: list = []
+    link_ids: list = []
+    try:
+        async with AsyncSessionLocal() as session:
+            admin_a, org_a = await _create_org_admin(session, "rtcnl-a")
+            admin_b, _org_b = await _create_org_admin(session, "rtcnl-b")
+            project = await _create_project(session, org_a, "rtcnl")
+            requirement = await _create_requirement(session, project, "rtcnl")
+            condition = await _create_test_condition(session, requirement, "rtcnl")
+            link = RequirementTestConditionLink(requirement_id=requirement.id, test_condition_id=condition.id)
+            session.add(link)
+            await session.flush()
+            await session.commit()
+            user_ids = [admin_a.actor_id, admin_b.actor_id]
+            org_ids = [org_a.id, _org_b.id]
+            project_ids = [project.id]
+            requirement_ids = [requirement.id]
+            test_condition_ids = [condition.id]
+            link_ids = [link.id]
+            token_a = _access_token_for(admin_a.actor_id)
+            token_b = _access_token_for(admin_b.actor_id)
+            requirement_id, link_id = requirement.id, link.id
+
+        async with httpx.AsyncClient(base_url=TEST_API_BASE_URL) as client:
+            list_response = await client.get(
+                f"{API_PREFIX}/requirement-test-condition-links",
+                params={"requirement_id": str(requirement_id)},
+                headers={"Authorization": f"Bearer {token_a}"},
+            )
+            assert list_response.status_code == 200
+            assert list_response.json()["total"] == 1
+
+            get_response = await client.get(
+                f"{API_PREFIX}/requirement-test-condition-links/{link_id}",
+                headers={"Authorization": f"Bearer {token_a}"},
+            )
+            assert get_response.status_code == 200
+
+            cross_org_response = await client.get(
+                f"{API_PREFIX}/requirement-test-condition-links/{link_id}",
+                headers={"Authorization": f"Bearer {token_b}"},
+            )
+            assert cross_org_response.status_code == 404
+            assert cross_org_response.json()["code"] == "not_found"
+
+            # No create/update/delete route exists for this link table at all.
+            post_response = await client.post(
+                f"{API_PREFIX}/requirement-test-condition-links",
+                json={"requirement_id": str(requirement_id), "test_condition_id": str(condition.id)},
+                headers={"Authorization": f"Bearer {token_a}"},
+            )
+            assert post_response.status_code == 405
+            patch_response = await client.patch(
+                f"{API_PREFIX}/requirement-test-condition-links/{link_id}",
+                json={},
+                headers={"Authorization": f"Bearer {token_a}"},
+            )
+            assert patch_response.status_code == 405
+            delete_response = await client.delete(
+                f"{API_PREFIX}/requirement-test-condition-links/{link_id}",
+                headers={"Authorization": f"Bearer {token_a}"},
+            )
+            assert delete_response.status_code == 405
+    finally:
+        await _cleanup_extra(link_ids={"requirement_test_condition_link": link_ids})
+        await _crud_cleanup(
+            user_ids=user_ids,
+            org_ids=org_ids,
+            project_ids=project_ids,
+            requirement_ids=requirement_ids,
+            test_condition_ids=test_condition_ids,
+        )
+
+
+@pytest.mark.asyncio
+async def test_test_case_defect_link_cross_org_404_and_no_write_routes() -> None:
+    user_ids: list = []
+    org_ids: list = []
+    project_ids: list = []
+    requirement_ids: list = []
+    test_condition_ids: list = []
+    test_case_ids: list = []
+    test_level_ids: list = []
+    test_type_ids: list = []
+    test_plan_ids: list = []
+    release_ids: list = []
+    environment_ids: list = []
+    test_cycle_ids: list = []
+    test_execution_ids: list = []
+    defect_ids: list = []
+    link_ids: list = []
+    try:
+        async with AsyncSessionLocal() as session:
+            admin_a, org_a = await _create_org_admin(session, "tcdl-a")
+            admin_b, _org_b = await _create_org_admin(session, "tcdl-b")
+            project = await _create_project(session, org_a, "tcdl")
+            requirement = await _create_requirement(session, project, "tcdl")
+            condition = await _create_test_condition(session, requirement, "tcdl")
+            level, type_ = await _create_taxonomy_pair(session, "tcdl")
+            case = await _create_test_case(
+                session, test_condition=condition, test_level=level, test_type=type_,
+                created_by=admin_a.actor_id, tag="tcdl",
+            )
+            plan = await _create_test_plan(session, project, admin_a.actor_id, "tcdl")
+            release = await _create_release(session, project, "tcdl")
+            environment = await _create_environment_row(session, project, "tcdl")
+            cycle = await _create_test_cycle(
+                session, test_plan=plan, release=release, environment=environment, tag="tcdl"
+            )
+            execution = await _create_test_execution(
+                session, test_cycle=cycle, test_case=case, executed_by=admin_a.actor_id, tag="tcdl"
+            )
+            defect = await _create_defect(session, test_execution=execution, reported_by=admin_a.actor_id, tag="tcdl")
+            link = TestCaseDefectLink(test_case_id=case.id, defect_id=defect.id)
+            session.add(link)
+            await session.flush()
+            await session.commit()
+            user_ids = [admin_a.actor_id, admin_b.actor_id]
+            org_ids = [org_a.id, _org_b.id]
+            project_ids = [project.id]
+            requirement_ids = [requirement.id]
+            test_condition_ids = [condition.id]
+            test_case_ids = [case.id]
+            test_level_ids = [level.id]
+            test_type_ids = [type_.id]
+            test_plan_ids = [plan.id]
+            release_ids = [release.id]
+            environment_ids = [environment.id]
+            test_cycle_ids = [cycle.id]
+            test_execution_ids = [execution.id]
+            defect_ids = [defect.id]
+            link_ids = [link.id]
+            token_a = _access_token_for(admin_a.actor_id)
+            token_b = _access_token_for(admin_b.actor_id)
+            test_case_id, link_id = case.id, link.id
+
+        async with httpx.AsyncClient(base_url=TEST_API_BASE_URL) as client:
+            list_response = await client.get(
+                f"{API_PREFIX}/test-case-defect-links",
+                params={"test_case_id": str(test_case_id)},
+                headers={"Authorization": f"Bearer {token_a}"},
+            )
+            assert list_response.status_code == 200
+            assert list_response.json()["total"] == 1
+
+            get_response = await client.get(
+                f"{API_PREFIX}/test-case-defect-links/{link_id}",
+                headers={"Authorization": f"Bearer {token_a}"},
+            )
+            assert get_response.status_code == 200
+
+            cross_org_response = await client.get(
+                f"{API_PREFIX}/test-case-defect-links/{link_id}",
+                headers={"Authorization": f"Bearer {token_b}"},
+            )
+            assert cross_org_response.status_code == 404
+            assert cross_org_response.json()["code"] == "not_found"
+
+            # No create/update/delete route exists for this link table at all.
+            post_response = await client.post(
+                f"{API_PREFIX}/test-case-defect-links",
+                json={"test_case_id": str(test_case_id), "defect_id": str(defect.id)},
+                headers={"Authorization": f"Bearer {token_a}"},
+            )
+            assert post_response.status_code == 405
+            patch_response = await client.patch(
+                f"{API_PREFIX}/test-case-defect-links/{link_id}",
+                json={},
+                headers={"Authorization": f"Bearer {token_a}"},
+            )
+            assert patch_response.status_code == 405
+            delete_response = await client.delete(
+                f"{API_PREFIX}/test-case-defect-links/{link_id}",
+                headers={"Authorization": f"Bearer {token_a}"},
+            )
+            assert delete_response.status_code == 405
+    finally:
+        await _cleanup_extra(
+            link_ids={"test_case_defect_link": link_ids},
+            defect_ids=defect_ids,
+            test_execution_ids=test_execution_ids,
+            test_cycle_ids=test_cycle_ids,
+            release_ids=release_ids,
+            environment_ids=environment_ids,
+        )
+        await _crud_cleanup(
+            user_ids=user_ids,
+            org_ids=org_ids,
+            project_ids=project_ids,
+            requirement_ids=requirement_ids,
+            test_condition_ids=test_condition_ids,
+            test_case_ids=test_case_ids,
+            test_level_ids=test_level_ids,
+            test_type_ids=test_type_ids,
+            test_plan_ids=test_plan_ids,
         )
 
 

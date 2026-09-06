@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import EntityTable from "../../../src/components/crud/EntityTable";
 import type { EntityConfig } from "../../../src/entityConfigs/types";
@@ -130,5 +130,43 @@ describe("EntityTable", () => {
     render(<EntityTable config={READ_ONLY_CONFIG} rows={[]} total={0} page={1} pageSize={25} onPageChange={vi.fn()} />);
     expect(screen.getByText("No records found.")).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
+  });
+
+  // TC-ADMIN-003: "Paginated ... list renders" -- `EntityTable` derives page
+  // count from `total`/`pageSize` and drives `onPageChange` generically,
+  // no entity-specific pagination code anywhere on this surface.
+  it("renders no pagination controls when everything fits on one page", () => {
+    render(<EntityTable config={READ_ONLY_CONFIG} rows={ROWS} total={2} page={1} pageSize={25} onPageChange={vi.fn()} />);
+    expect(screen.queryByRole("navigation", { name: /page navigation/i })).not.toBeInTheDocument();
+  });
+
+  it("renders one page-number control per page and calls onPageChange with the clicked page", () => {
+    const onPageChange = vi.fn();
+    render(
+      <EntityTable config={READ_ONLY_CONFIG} rows={ROWS} total={55} page={1} pageSize={25} onPageChange={onPageChange} />,
+    );
+
+    // ceil(55 / 25) = 3 pages -- CoreUI renders each `CPaginationItem` as an
+    // `<a class="page-link">` (or `<span>` for the active one), not a `<button>`.
+    expect(screen.getByText("1").closest("li")).toHaveClass("active");
+    expect(screen.getByText("2")).toBeInTheDocument();
+    expect(screen.getByText("3")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("2"));
+    expect(onPageChange).toHaveBeenCalledWith(2);
+  });
+
+  it("disables Previous on the first page and Next on the last page", () => {
+    const { rerender } = render(
+      <EntityTable config={READ_ONLY_CONFIG} rows={ROWS} total={55} page={1} pageSize={25} onPageChange={vi.fn()} />,
+    );
+    expect(screen.getByText("Previous").closest("li")).toHaveClass("disabled");
+    expect(screen.getByText("Next").closest("li")).not.toHaveClass("disabled");
+
+    rerender(
+      <EntityTable config={READ_ONLY_CONFIG} rows={ROWS} total={55} page={3} pageSize={25} onPageChange={vi.fn()} />,
+    );
+    expect(screen.getByText("Previous").closest("li")).not.toHaveClass("disabled");
+    expect(screen.getByText("Next").closest("li")).toHaveClass("disabled");
   });
 });

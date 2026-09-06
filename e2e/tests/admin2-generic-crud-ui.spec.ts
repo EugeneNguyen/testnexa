@@ -277,7 +277,7 @@ test.describe("ADMIN-2 UI: generic admin CRUD surface", () => {
   // Each test below drives multiple full page loads / modals against the
   // "dev" profile's unoptimized Vite dev server (cold module-graph transform
   // per navigation, no production build cache) — heavier than this repo's
-  // other, mostly single-assertion specs. Running this file's 5 tests
+  // other, mostly single-assertion specs. Running this file's 6 tests
   // concurrently against each other reliably starves that dev server under
   // the default `fullyParallel` worker pool (observed: `page.waitForResponse`
   // timeouts on the list fetch itself, not a product bug). Serial mode here
@@ -469,6 +469,49 @@ test.describe("ADMIN-2 UI: generic admin CRUD surface", () => {
       await expect(page.getByRole("alert")).not.toBeVisible();
       await expect(page.getByRole("table")).toBeVisible();
       await expect(page.getByRole("row", { name: new RegExp(fixture.riskItemDescription) })).toBeVisible();
+    } finally {
+      cleanup(fixture);
+    }
+  });
+
+  // TC-ADMIN-026: `Organization`/`Project`/`OrgMembership`/`Release` each have both a bespoke
+  // screen and a generic admin page (ADR-0025 §6). `OrgMembership` deletion has no bespoke
+  // affordance at all (`OrgMembers.tsx` only suspends/reactivates/revokes-an-invite) -- proves the
+  // generic surface's delete round-trip actually removes the row, and the bespoke screen (a
+  // different route, its own `GET /orgs/{org_id}/members` call) reflects that removal cleanly,
+  // with no duplicate-action confusion or stale-row error in either UI.
+  test("delete an OrgMembership via the generic admin page; the bespoke OrgMembers screen has no such action but reflects the removal", async ({
+    page,
+  }) => {
+    const fixture = seedFixture();
+    try {
+      await login(page, fixture.orgAdmin.email, fixture.orgAdmin.password, fixture.orgId);
+
+      await gotoAndWaitForList(page, `/orgs/${fixture.orgId}/admin/org-memberships`, "org-memberships");
+      await expect(page.getByRole("heading", { name: /^org memberships$/i })).toBeVisible();
+      const auditorRow = page.getByRole("row", { name: new RegExp(fixture.auditor.userId) });
+      await expect(auditorRow).toBeVisible();
+
+      await auditorRow.getByRole("button", { name: "Delete" }).click();
+      await expect(page.getByRole("heading", { name: /delete record/i })).toBeVisible();
+
+      const [deleteResponse] = await Promise.all([
+        page.waitForResponse(
+          (response) =>
+            response.url().includes("/api/v1/org-memberships/") && response.request().method() === "DELETE",
+        ),
+        page.locator(".modal-content").getByRole("button", { name: "Delete" }).click(),
+      ]);
+      expect(deleteResponse.status()).toBe(204);
+      await expect(page.getByRole("heading", { name: /delete record/i })).not.toBeVisible();
+      await expect(page.getByRole("row", { name: new RegExp(fixture.auditor.userId) })).toHaveCount(0);
+
+      // Bespoke screen: a different route entirely, no delete action of its own -- confirm it
+      // still loads cleanly (no stale-row error) and no longer lists the removed member.
+      await page.goto(`/orgs/${fixture.orgId}/members`);
+      await expect(page.getByRole("heading", { name: /members/i })).toBeVisible();
+      await expect(page.getByRole("alert")).not.toBeVisible();
+      await expect(page.getByText(fixture.auditor.email)).not.toBeVisible();
     } finally {
       cleanup(fixture);
     }
