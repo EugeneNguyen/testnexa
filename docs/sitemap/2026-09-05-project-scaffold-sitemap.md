@@ -22,10 +22,10 @@ First sitemap for this repo — no prior one existed; routes accreted story-by-s
 | `/orgs/pick` | `OrgPicker` | multi-org account, no org selected yet |
 | `/orgs/:orgId` | `OrgHome` | project list, dashboard stat widgets (FR-SHELL-3) |
 | `/orgs/:orgId/members` | `OrgMembers` | RBAC-2 |
-| `/projects/:projectId` | `ProjectDetail` | Release list, per-release TestCycle/TestExecution audit view (PROJ-2) |
+| `/projects/:projectId` | `ProjectDetail` | Release list, per-release TestCycle/TestExecution audit view (PROJ-2); Requirement list + "New Requirement" modal (REQ-1); per-Requirement direct-link TestCase list + "New Test Case" modal, per-TestCase TestStep list + add/inline-edit (REQ-2, ADR-0006/ADR-0028) |
 | `/orgs/:orgId/ui-elements/{colors,typography,icons}` | `Colors`/`Typography`/`Icons` | template-parity scaffolding, no FR backing (ADR-0020) |
 
-**Not yet built** (scoped by other, not-yet-implemented stories — listed here as reserved paths so a future generic-admin config never collides with them): `RequirementDetail` (FR-REQ-1..3), `TestSuiteBuilder` (FR-REQ-4), `TestExecutionRunner` (FR-EXEC-1..3), `TraceabilityMatrix` (FR-TRACE-1..2).
+**Not yet built** (scoped by other, not-yet-implemented stories — listed here as reserved paths so a future generic-admin config never collides with them): a dedicated `RequirementDetail` route (FR-REQ-1/FR-REQ-2 now ship inline in `ProjectDetail` instead, above — REQ-3's TestCondition-mediated path, FR-REQ-3, is the one still fully unbuilt and the only remaining reason this route might still get built), `TestSuiteBuilder` (FR-REQ-4), `TestExecutionRunner` (FR-EXEC-1..3), `TraceabilityMatrix` (FR-TRACE-1..2).
 
 ## Protected — generic admin CRUD surface (ADR-0027)
 
@@ -54,7 +54,7 @@ Two page components (`EntityListPage`, `EntityFormPage`), routed generically off
 | `test-cycles` | `TestCycle` | plain |
 | `requirements` | `Requirement` | plain |
 | `test-conditions` | `TestCondition` | plain |
-| `test-cases` | `TestCase` | plain (no create — reserved for a future bespoke atomic-create route) |
+| `test-cases` | `TestCase` | plain (no create on this generic-admin page — REQ-2's direct-link create now exists, but as `ProjectDetail`'s bespoke "New Test Case" modal, above, not here; REQ-3's TestCondition-mediated create remains reserved) |
 | `test-steps` | `TestStep` | plain |
 | `test-suites` | `TestSuite` | plain |
 | `defects` | `Defect` | plain (no create — reserved, same reason as `TestCase`) |

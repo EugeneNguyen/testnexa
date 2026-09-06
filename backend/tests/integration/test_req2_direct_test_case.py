@@ -436,3 +436,114 @@ async def test_add_test_steps_are_orderable_and_independently_editable() -> None
             assert first_step_response.json()["action"] == "Open login page"
     finally:
         await fx.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_adjacent_sequence_swap_without_temp_value_returns_422() -> None:  # TC-REQ-004 (collision)
+    """Direct 1<->2 sequence swap collides with `uq_test_step_case_sequence`
+    (documented, accepted limitation — REQ-2 scope plan Q3): the *second*
+    `PATCH` in a naive two-call swap hits the row the first call didn't move
+    off of yet, still occupying the target `sequence`.
+    """
+    fx, token, requirement_id, level_id, type_id = await _seed_admin_requirement("004-collision")
+    try:
+        async with httpx.AsyncClient(base_url=TEST_API_BASE_URL) as client:
+            create_response = await client.post(
+                f"{API_PREFIX}/requirements/{requirement_id}/test-cases",
+                json={"title": "TestCase for collision test", "test_level_id": level_id, "test_type_id": type_id},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            test_case_id = create_response.json()["id"]
+            fx.test_case_ids = [test_case_id]
+
+            step_ids = []
+            for sequence, action in [(1, "Step A"), (2, "Step B")]:
+                step_response = await client.post(
+                    f"{API_PREFIX}/test-steps",
+                    json={"test_case_id": test_case_id, "sequence": sequence, "action": action},
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+                step_ids.append(step_response.json()["id"])
+
+            # Move step A (seq 1) to seq 2 -- succeeds, nothing occupies 2... wait,
+            # step B is at 2 already: this collides immediately.
+            collide_response = await client.patch(
+                f"{API_PREFIX}/test-steps/{step_ids[0]}",
+                json={"sequence": 2},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert collide_response.status_code == 422
+            assert collide_response.json()["code"] == "validation_error"
+    finally:
+        await fx.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_reorder_test_steps_via_temp_sequence_persists() -> None:  # TC-REQ-004 (reorder)
+    """Swapping two steps' positions via a temporary out-of-range `sequence`
+    value (the workaround REQ-2's own scope plan names for the collision
+    above) actually reorders them, and the new order persists on re-fetch --
+    closing TC-REQ-004's "reorder" clause, not just "add"/"independently
+    editable".
+    """
+    fx, token, requirement_id, level_id, type_id = await _seed_admin_requirement("004-reorder")
+    try:
+        async with httpx.AsyncClient(base_url=TEST_API_BASE_URL) as client:
+            create_response = await client.post(
+                f"{API_PREFIX}/requirements/{requirement_id}/test-cases",
+                json={"title": "TestCase for reorder test", "test_level_id": level_id, "test_type_id": type_id},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            test_case_id = create_response.json()["id"]
+            fx.test_case_ids = [test_case_id]
+
+            step_ids = []
+            for sequence, action in [(1, "Open login page"), (2, "Enter credentials"), (3, "Submit form")]:
+                step_response = await client.post(
+                    f"{API_PREFIX}/test-steps",
+                    json={"test_case_id": test_case_id, "sequence": sequence, "action": action},
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+                step_ids.append(step_response.json()["id"])
+            first_id, second_id, third_id = step_ids
+
+            # Swap steps 1 and 3 ("Open login page" <-> "Submit form") via a
+            # temporary out-of-range sequence, avoiding the collision above:
+            # 1) first -> temp (99, clear of 1/2/3)
+            temp_response = await client.patch(
+                f"{API_PREFIX}/test-steps/{first_id}", json={"sequence": 99}, headers={"Authorization": f"Bearer {token}"}
+            )
+            assert temp_response.status_code == 200
+            # 2) third -> 1 (now free)
+            move_third_response = await client.patch(
+                f"{API_PREFIX}/test-steps/{third_id}", json={"sequence": 1}, headers={"Authorization": f"Bearer {token}"}
+            )
+            assert move_third_response.status_code == 200
+            # 3) first -> 3 (now free)
+            move_first_response = await client.patch(
+                f"{API_PREFIX}/test-steps/{first_id}", json={"sequence": 3}, headers={"Authorization": f"Bearer {token}"}
+            )
+            assert move_first_response.status_code == 200
+
+            list_response = await client.get(
+                f"{API_PREFIX}/test-steps",
+                params={"test_case_id": test_case_id},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            items = sorted(list_response.json()["items"], key=lambda i: i["sequence"])
+            assert [item["action"] for item in items] == ["Submit form", "Enter credentials", "Open login page"]
+            assert [item["sequence"] for item in items] == [1, 2, 3]
+
+            # Persists on a fresh re-fetch of one specific row, not just the list view.
+            refetch_response = await client.get(
+                f"{API_PREFIX}/test-steps/{first_id}", headers={"Authorization": f"Bearer {token}"}
+            )
+            assert refetch_response.json() == {
+                "id": first_id,
+                "test_case_id": test_case_id,
+                "sequence": 3,
+                "action": "Open login page",
+                "expected_result": None,
+            }
+    finally:
+        await fx.cleanup()
