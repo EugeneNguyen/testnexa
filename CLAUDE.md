@@ -10,9 +10,9 @@ TestNexa: a self-hosted, ISTQB/IEEE 829-aligned test management tool (React fron
 
 | Path | What |
 |---|---|
-| `backend/` | FastAPI + SQLAlchemy 2.0 + Alembic, Python 3.11+ — has its own [`CLAUDE.md`](backend/CLAUDE.md) (Docker-image dev-deps gap, isolated-stack DB port exposure, `JWT_SECRET` matching, resolver-completeness, `TEST_API_BASE_URL`-vs-nginx double-prefix trap) |
+| `backend/` | FastAPI + SQLAlchemy 2.0 + Alembic, Python 3.11+ — has its own [`CLAUDE.md`](backend/CLAUDE.md) (Docker-image dev-deps gap, isolated-stack DB port exposure + password, `JWT_SECRET` matching, resolver/gate completeness, `TEST_API_BASE_URL`-vs-nginx double-prefix trap) |
 | `frontend/` | Vite + React + TypeScript — has its own [`CLAUDE.md`](frontend/CLAUDE.md) (nested-table a11y-name gotcha, unit-test coverage history, `frontend/tests/` location convention) |
-| `e2e/` | Playwright, runs against the full docker-compose stack — has its own [`CLAUDE.md`](e2e/CLAUDE.md) (the full isolated-stack-plus-Playwright worked recipe) |
+| `e2e/` | Playwright, runs against the full docker-compose stack — has its own [`CLAUDE.md`](e2e/CLAUDE.md) (the full isolated-stack-plus-Playwright worked recipe, concurrent-run false-positive traps) |
 | `docs/adr/` | Architecture Decision Records — **read before changing stack/architecture choices** |
 | `docs/requirements/`, `docs/database/`, `docs/api/` | Canonical requirements/schema/API contracts |
 | `docs/test-plan/`, `docs/test-design/`, `docs/test-cases/` | Test strategy, techniques, concrete test cases |
@@ -83,6 +83,8 @@ Every stack/architecture choice in this repo has an ADR in `docs/adr/` (MADR-sty
 1. Check `docs/adr/README.md` — it might already be decided.
 2. If you're changing a prior decision (like this file's CoreUI-vs-Tailwind change did to ADR-0009), write a new ADR and mark the old one's status `Partially superseded` / `Superseded`, don't silently edit history.
 3. Requirements/WBS/API/Database docs get updated to match whenever an ADR changes something they document — see how ADR-0011 (login rate limiting) propagated across 7 docs in this repo's history for the expected scope of that propagation.
+
+**A UI Design Document's prose and any layout sketch it includes must agree with each other, not just each be internally sensible.** ADR-0032's UI Design Document described a new sub-list as going "directly below" an existing one in its prose, while its own ASCII layout sketch a few lines later showed it above — nobody caught the contradiction at doc-review time, so the implementer had to pick one (documented as an open judgment call in the completion report, not silently absorbed). Cheap to prevent, expensive to leave for later: when a doc pass includes both a prose description and a sketch/diagram of the same layout, read them against each other before considering the doc done, the same word-for-word discipline this file already asks for when auditing TC coverage against a test file.
 
 ## Auth & security conventions (ADR-0003, ADR-0011)
 
