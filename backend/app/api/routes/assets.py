@@ -1,19 +1,33 @@
 """API-1: generic-CRUD factory routes for the assets cluster (ADR-0022),
 plus REQ-2's bespoke atomic-create/list routes.
 
-`Requirement`, `TestCondition`, `TestStep`, `TestSuite` get all 5 factory
-methods. `TestCase` gets `GET`/`PATCH`/`DELETE` via the factory only —
-`create`/`list` are bespoke instead: `POST`/`GET /requirements/{id}/test-cases`
-(below), the direct-link path (ADR-0006/REQ-2). `TestCase` has no single
-non-nullable FK the factory's `scope_field` mechanism could use as a safe,
-tenant-isolating list/create scope (see `app/schemas/assets.py`'s module
-docstring).
+`Requirement`, `TestStep`, `TestSuite` get all 5 factory methods.
+
+`TestCase` gets `GET`/`PATCH`/`DELETE` via the factory only — `create` is
+bespoke instead, and there are two such bespoke create routes, coexisting
+per-TestCase within a project (ADR-0006): `POST /requirements/{id}/test-cases`
+(below, this module) for REQ-2's direct-link path, and
+`POST /test-conditions/{id}/test-cases`
+(`app/api/routes/test_condition_authoring.py`) for REQ-3's rigor path
+(ADR-0028). `list` is deliberately not registered via the factory at all —
+`TestCase` has no single non-nullable FK the factory's `scope_field`
+mechanism could use as a safe, tenant-isolating list scope (see
+`app/schemas/assets.py`'s module docstring); `GET /requirements/{id}/test-cases`
+(below) is REQ-2's own bespoke, requirement-scoped list instead.
+
+`TestCondition` gets `GET`/`PATCH`/`DELETE`/`list` — its `create` was
+withdrawn from the factory by REQ-3/ADR-0028 for the same reason `TestCase`'s
+never registered: the factory only ever inserts the entity's own row, so it
+silently produced a `TestCondition` with no `RequirementTestConditionLink`
+row, breaking FR-REQ-3 AC1's traceability claim. `POST
+/requirements/{id}/test-conditions`
+(`app/api/routes/test_condition_authoring.py`) is now the only creation path.
 
 Resolver depths (API Document §3's table): `Requirement`/`TestSuite` are
 direct (`project_id` -> `Project.org_id`); `TestCondition` is one hop
 (`requirement_id` -> `Requirement.project_id` -> `Project.org_id`);
-`TestCase` is the bespoke branching+fallback resolver; `TestStep` delegates
-to `TestCase`'s resolver one hop up.
+`TestCase` is the bespoke branching+fallback resolver (ADR-0029); `TestStep`
+delegates to `TestCase`'s resolver one hop up.
 """
 
 from uuid import UUID
@@ -41,7 +55,6 @@ from app.models.trace import RequirementTestCaseLink
 from app.schemas.assets import (
     CreateRequirementRequest,
     CreateTestCaseRequest,
-    CreateTestConditionRequest,
     CreateTestStepRequest,
     CreateTestSuiteRequest,
     RequirementSummary,
@@ -103,14 +116,17 @@ _REQUIREMENT_CONFIG = CrudEntityConfig(
     search_fields=("title", "description", "external_ref", "source"),
 )
 
+# No `create` — see module docstring (REQ-3/ADR-0028); same posture as
+# `_TEST_CASE_CONFIG` below, for the identical reason.
 _TEST_CONDITION_CONFIG = CrudEntityConfig(
     model=TestCondition,
     resource="test_condition",
-    create_schema=CreateTestConditionRequest,
+    create_schema=None,
     update_schema=UpdateTestConditionRequest,
     summary_schema=TestConditionSummary,
     scope_field="requirement_id",
     resolve_org_id=chain_resolver([(Requirement, "requirement_id")]),
+    methods=frozenset({"list", "get", "update", "delete"}),
 )
 
 # No `list`/`create` — see module docstring.

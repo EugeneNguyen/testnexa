@@ -1,4 +1,4 @@
-# ADR-0028: `TestCase` org-resolver direct-link fallback (REQ-2 gap-fill)
+# ADR-0029: `TestCase` org-resolver direct-link fallback (REQ-2 gap-fill)
 
 **Date:** 2026-09-05
 **Status:** Accepted

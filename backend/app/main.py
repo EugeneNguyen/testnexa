@@ -49,6 +49,7 @@ from app.api.routes import (
     role_assignments,
     roles,
     taxonomy,
+    test_condition_authoring,
     trace,
 )
 
@@ -156,3 +157,9 @@ app.include_router(rbac_routes.router, prefix="/api/v1", tags=["rbac"])
 app.include_router(execution.router, prefix="/api/v1", tags=["execution"])
 # ADR-0025: generic-CRUD factory routes for the 4 traceability link tables.
 app.include_router(trace.router, prefix="/api/v1", tags=["trace"])
+# REQ-3/ADR-0028: bespoke atomic-create routes for the rigor path
+# (`POST /requirements/{id}/test-conditions`, `POST /test-conditions/{id}/test-cases`)
+# — each writes an entity row plus its dedicated link row in one transaction,
+# which the generic factory above structurally cannot do. Registered after
+# `assets.py`, whose `TestCondition` config drops `create` in the same change.
+app.include_router(test_condition_authoring.router, prefix="/api/v1", tags=["assets"])

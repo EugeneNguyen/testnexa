@@ -1,15 +1,30 @@
 /**
- * Taxonomy read calls — `TestLevel`/`TestType` global catalogs (ADR-0022),
- * needed as `<select>` options for REQ-2's "New Test Case" form
- * (`TestCase.test_level_id`/`test_type_id` are required non-nullable FKs,
- * unrelated to ADR-0006's TestCondition-optional lightweness).
+ * Global taxonomy-catalog reads (`TestLevel`, `TestType`) for bespoke
+ * workflow screens that need to populate a `<select>` — REQ-2's and REQ-3's
+ * "New Test Case" forms are both callers (`TestCase.test_level_id`/
+ * `test_type_id` are required non-nullable FKs regardless of which
+ * atomic-create path produces the row, unrelated to ADR-0006's
+ * TestCondition-optional lightweness).
  *
- * Source: `app/api/routes/taxonomy.py` / `app/schemas/taxonomy.py`. No
- * `org_id`/`project_id` scope — these are global catalogs, gated via
- * `has_permission_in_any_org` server-side, same as every other global-catalog
- * list route.
+ * These are **thin named wrappers over the existing generic
+ * `listEntities()` helper** (`lib/api/entityCrud.ts`) plus the existing
+ * `entityConfigs/test-level.ts` / `entityConfigs/test-type.ts` configs, not a
+ * second hand-rolled `apiFetch` path per catalog — the generic helper already
+ * builds `GET /api/v1/test-levels` / `GET /api/v1/test-types` correctly, and
+ * `FkAutocomplete` sets the precedent of reusing it outside the generic admin
+ * pages. What this module adds on top is a concrete row type (`{id, name}`)
+ * and a stable, greppable name for bespoke callers, so a workflow screen
+ * doesn't have to import `entityConfigs` just to fill a dropdown.
+ *
+ * Neither catalog is org- or project-scoped (API Document §4 shape A), so
+ * these take no scope argument. Both return the backend's first page, whose
+ * `page_size` is capped at 25 (`crud_factory.clamp_pagination`) — fine for a
+ * taxonomy catalog of a handful of ISTQB test levels/types; a catalog that
+ * ever outgrows one page needs real pagination here, not a bigger constant.
  */
-import { apiFetch } from "./client";
+import testLevelConfig from "../../entityConfigs/test-level";
+import testTypeConfig from "../../entityConfigs/test-type";
+import { listEntities, ListEnvelope } from "./entityCrud";
 
 export interface TestLevelSummary {
   id: string;
@@ -21,26 +36,18 @@ export interface TestTypeSummary {
   name: string;
 }
 
-export interface TestLevelListResponse {
-  items: TestLevelSummary[];
-  total: number;
-  page: number;
-  page_size: number;
+/**
+ * `GET /test-levels`. Rejects with an `ApiError` on `403` when the caller
+ * lacks `test_level.read`.
+ */
+export async function listTestLevels(): Promise<ListEnvelope<TestLevelSummary>> {
+  return listEntities<TestLevelSummary>(testLevelConfig);
 }
 
-export interface TestTypeListResponse {
-  items: TestTypeSummary[];
-  total: number;
-  page: number;
-  page_size: number;
-}
-
-/** List every TestLevel in the catalog (global, unpaginated in practice — small lookup table). */
-export async function listTestLevels(): Promise<TestLevelListResponse> {
-  return apiFetch<TestLevelListResponse>("/api/v1/test-levels");
-}
-
-/** List every TestType in the catalog (global, unpaginated in practice — small lookup table). */
-export async function listTestTypes(): Promise<TestTypeListResponse> {
-  return apiFetch<TestTypeListResponse>("/api/v1/test-types");
+/**
+ * `GET /test-types`. Rejects with an `ApiError` on `403` when the caller
+ * lacks `test_type.read`.
+ */
+export async function listTestTypes(): Promise<ListEnvelope<TestTypeSummary>> {
+  return listEntities<TestTypeSummary>(testTypeConfig);
 }

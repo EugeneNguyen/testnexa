@@ -9,3 +9,4 @@ docker-compose.override.ds1-test.yml
 docker-compose.override.admin2-test.yml
 .env.ds1-test
 .mcp.json
+.env

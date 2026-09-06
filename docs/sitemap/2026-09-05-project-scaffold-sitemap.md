@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-05
 **Owner:** xuanbinh91@gmail.com (CTO)
-**Sources:** `frontend/src/App.tsx` (route source of truth — this document tracks it, not the reverse), [UI Design Document](../ui-design/2026-09-05-generic-admin-crud-ui-design.md), [ADR-0027](../adr/0027-generic-admin-crud-ui-and-backend-completion.md)
+**Sources:** `frontend/src/App.tsx` (route source of truth — this document tracks it, not the reverse), [Generic Admin CRUD UI Design Document](../ui-design/2026-09-05-generic-admin-crud-ui-design.md), [ADR-0027](../adr/0027-generic-admin-crud-ui-and-backend-completion.md), [REQ-3 UI Design Document](../ui-design/2026-09-06-req-3-test-condition-rigor-path-ui-design.md), [ADR-0028](../adr/0028-req3-test-condition-rigor-path-bespoke-routes.md), [ADR-0029](../adr/0029-testcase-resolver-direct-link-fallback.md)
 
 First sitemap for this repo — no prior one existed; routes accreted story-by-story directly into `App.tsx`. Written now because the generic admin surface adds routes generated from a registry rather than one literal `<Route>` per entity, which is worth documenting as a pattern rather than 28 individual rows would otherwise obscure.
 
@@ -22,10 +22,12 @@ First sitemap for this repo — no prior one existed; routes accreted story-by-s
 | `/orgs/pick` | `OrgPicker` | multi-org account, no org selected yet |
 | `/orgs/:orgId` | `OrgHome` | project list, dashboard stat widgets (FR-SHELL-3) |
 | `/orgs/:orgId/members` | `OrgMembers` | RBAC-2 |
-| `/projects/:projectId` | `ProjectDetail` | Release list, per-release TestCycle/TestExecution audit view (PROJ-2); Requirement list + "New Requirement" modal (REQ-1); per-Requirement direct-link TestCase list + "New Test Case" modal, per-TestCase TestStep list + add/inline-edit (REQ-2, ADR-0006/ADR-0028) |
+| `/projects/:projectId` | `ProjectDetail` | Release list, per-release TestCycle/TestExecution audit view (PROJ-2); Requirement list + "New Requirement" modal (REQ-1); per-Requirement direct-link TestCase list + "New Test Case" modal, per-TestCase TestStep list + add/inline-edit (REQ-2, ADR-0006/[ADR-0029](../adr/0029-testcase-resolver-direct-link-fallback.md)); per-Requirement Test Condition list + create, per-Test-Condition Test Case create (REQ-3, [ADR-0028](../adr/0028-req3-test-condition-rigor-path-bespoke-routes.md)) — the two coexist per-TestCase within a project (ADR-0006) |
 | `/orgs/:orgId/ui-elements/{colors,typography,icons}` | `Colors`/`Typography`/`Icons` | template-parity scaffolding, no FR backing (ADR-0020) |
 
-**Not yet built** (scoped by other, not-yet-implemented stories — listed here as reserved paths so a future generic-admin config never collides with them): a dedicated `RequirementDetail` route (FR-REQ-1/FR-REQ-2 now ship inline in `ProjectDetail` instead, above — REQ-3's TestCondition-mediated path, FR-REQ-3, is the one still fully unbuilt and the only remaining reason this route might still get built), `TestSuiteBuilder` (FR-REQ-4), `TestExecutionRunner` (FR-EXEC-1..3), `TraceabilityMatrix` (FR-TRACE-1..2).
+**Correction (2026-09-06):** this doc's 2026-09-05 version reserved a dedicated `RequirementDetail` page for FR-REQ-1..3. REQ-1 had already shipped by then with its Requirement list/create inline on `ProjectDetail` instead (never on a separate page) — the reservation was stale before REQ-2/REQ-3 even started. Both REQ-2's direct-link path and REQ-3's TestCondition-mediated path continue that actual placement (see [REQ-3 UI Design Document](../ui-design/2026-09-06-req-3-test-condition-rigor-path-ui-design.md)) rather than resurrecting the unused reservation, which would have split one Requirement's authoring UI across two screens. `RequirementDetail` is removed from the reserved-paths list below.
+
+**Not yet built** (scoped by other, not-yet-implemented stories — listed here as reserved paths so a future generic-admin config never collides with them): `TestSuiteBuilder` (FR-REQ-4), `TestExecutionRunner` (FR-EXEC-1..3), `TraceabilityMatrix` (FR-TRACE-1..2).
 
 ## Protected — generic admin CRUD surface (ADR-0027)
 
@@ -53,8 +55,8 @@ Two page components (`EntityListPage`, `EntityFormPage`), routed generically off
 | `entry-exit-criteria` | `EntryExitCriteria` | plain |
 | `test-cycles` | `TestCycle` | plain |
 | `requirements` | `Requirement` | plain |
-| `test-conditions` | `TestCondition` | plain |
-| `test-cases` | `TestCase` | plain (no create on this generic-admin page — REQ-2's direct-link create now exists, but as `ProjectDetail`'s bespoke "New Test Case" modal, above, not here; REQ-3's TestCondition-mediated create remains reserved) |
+| `test-conditions` | `TestCondition` | plain, read/update/delete only — no create via this surface as of [ADR-0028](../adr/0028-req3-test-condition-rigor-path-bespoke-routes.md) (creation is bespoke, on `ProjectDetail`) |
+| `test-cases` | `TestCase` | plain (no create on this generic-admin page — both REQ-2's direct-link create and REQ-3's TestCondition-mediated create exist only as `ProjectDetail`'s bespoke "New Test Case" modals, above, never here) |
 | `test-steps` | `TestStep` | plain |
 | `test-suites` | `TestSuite` | plain |
 | `defects` | `Defect` | plain (no create — reserved, same reason as `TestCase`) |
