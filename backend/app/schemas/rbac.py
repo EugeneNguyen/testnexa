@@ -128,9 +128,34 @@ class PermissionListResponse(BaseModel):
     page_size: int
 
 
+# --- GET /orgs/{org_id}/permissions/mine (ADR-0025) ---------------------------------------------
+
+
+class MyPermissionCode(BaseModel):
+    """One resolved grant: a `Permission.code` plus which scope it applies at.
+
+    `project_id: None` means an org-wide grant (applies everywhere in this
+    org); a non-null `project_id` means the code only applies within that
+    one Project — matching `has_permission`'s own OR-semantics (`app/core/
+    rbac.py`): an org-wide grant satisfies every project, a project-scoped
+    grant only satisfies its own.
+    """
+
+    code: str
+    project_id: UUID | None = None
+
+
+class MyPermissionsResponse(BaseModel):
+    """Response of `GET /orgs/{org_id}/permissions/mine`."""
+
+    codes: list[MyPermissionCode]
+
+
 __all__ = [
     "CreateRoleAssignmentRequest",
     "CreateRoleRequest",
+    "MyPermissionCode",
+    "MyPermissionsResponse",
     "PermissionListResponse",
     "PermissionSummary",
     "RoleAssignmentSummary",

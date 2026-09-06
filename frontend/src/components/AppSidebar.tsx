@@ -23,6 +23,11 @@
  * Built with CoreUI (ADR-0012) — `CSidebar`/`CSidebarHeader`/
  * `CSidebarBrand`/`CSidebarNav`/`CNavItem`/`CNavLink` only.
  *
+ * `colorScheme="dark"` is `CSidebar`'s own built-in prop (renders its
+ * documented `sidebar-dark` class, shipped in the already-imported
+ * `coreui.min.css`) — matches the CoreUI free-demo look with zero bespoke
+ * CSS, per this story's ask.
+ *
  * `visible`/`onVisibleChange` round-trip to `AppShell`'s state (CoreUI's own
  * documented two-way template pattern — see that file's docstring for why
  * this is safe here specifically because of the `vh-100` class below).
@@ -51,6 +56,7 @@ import {
   CSidebarHeader,
   CSidebarNav,
 } from "@coreui/react";
+import { orgScopedEntities } from "../pages/admin/registry";
 
 interface AppSidebarProps {
   visible: boolean;
@@ -90,7 +96,7 @@ function AppSidebar({ visible, onVisibleChange }: AppSidebarProps) {
     : [];
 
   return (
-    <CSidebar visible={visible} onVisibleChange={onVisibleChange} className="vh-100">
+    <CSidebar visible={visible} onVisibleChange={onVisibleChange} className="vh-100" colorScheme="dark">
       <CSidebarHeader>
         <CSidebarBrand>TestNexa</CSidebarBrand>
       </CSidebarHeader>
@@ -123,6 +129,29 @@ function AppSidebar({ visible, onVisibleChange }: AppSidebarProps) {
                 Icons
               </CNavLink>
             </CNavItem>
+          </CNavGroup>
+        )}
+        {/*
+          ADR-0025 generic admin CRUD surface: the 8 org/global-scoped
+          entities (Sitemap's own table), generated from the registry
+          (`pages/admin/registry.ts`) — one `CNavItem` per registry entry,
+          never a hardcoded literal per entity (per this component's own
+          AC5 extension point and ADR-0025's own "adding entity #28 means
+          adding a config file, never touching a nav component" goal).
+        */}
+        {orgId && (
+          <CNavGroup toggler="Admin" data-testid="sidebar-nav-group-admin">
+            {orgScopedEntities.map((item) => (
+              <CNavItem key={item.key}>
+                <CNavLink
+                  as={NavLink}
+                  to={`/orgs/${orgId}/admin/${item.key}`}
+                  data-testid={`sidebar-nav-admin-${item.key}`}
+                >
+                  {item.label}
+                </CNavLink>
+              </CNavItem>
+            ))}
           </CNavGroup>
         )}
       </CSidebarNav>

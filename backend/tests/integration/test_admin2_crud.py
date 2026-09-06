@@ -8,11 +8,19 @@ to this module too.
 
 Covers TC-ADMIN-006 through TC-ADMIN-013 from
 `docs/test-cases/2026-09-03-test-cases.md` — the factory-specific classes
-Test Design §18 adds on top of TC-ADMIN-003/004/005's generic field-type/
-permission-parity coverage (those three are frontend-level, `entityConfigs`-
-driven, not this file's concern). One representative entity per resolver
-depth (direct/one-hop/branching/multi-hop/global-catalog), per ADR-0022's
-own framing that a pass on one depth doesn't generalize to another.
+Test Design §18 adds on top of TC-ADMIN-003/004's generic list/field-type
+coverage (those two are frontend-level, `entityConfigs`-driven, not this
+file's concern). One representative entity per resolver depth
+(direct/one-hop/branching/multi-hop/global-catalog), per ADR-0022's own
+framing that a pass on one depth doesn't generalize to another.
+
+Also covers TC-ADMIN-005's and TC-ADMIN-017's *server-enforcement* half
+(the client-hides-the-button half of both is `EntityListPage.test.tsx`'s
+concern, frontend-level) — a direct API call, bypassing the UI entirely,
+still gets rejected when the actor lacks the permission, including when
+the permission was granted *and then revoked* after a UI would have
+already cached a "yes" answer (TC-ADMIN-017's "stale client cache never
+substitutes for the real check").
 
 Each test seeds its own `User`/`Organization`/`OrgMembership`/
 `RoleAssignment`/domain rows directly via `AsyncSessionLocal` — same
@@ -33,7 +41,7 @@ from app.db.session import AsyncSessionLocal
 from app.models.actor import Actor, User
 from app.models.assets import Requirement, TestCase, TestCondition, TestStep
 from app.models.auth import AuthIdentity, AuthProvider
-from app.models.governance import RiskItem
+from app.models.governance import RiskItem, RiskLevel
 from app.models.planning import TestPlan
 from app.models.project import Project
 from app.models.rbac import Role, RoleAssignment
@@ -512,6 +520,121 @@ async def test_global_catalog_create_gated_by_any_org_permission() -> None:  # T
             assert denied_response.json()["code"] == "permission_denied"
     finally:
         await _cleanup(user_ids=user_ids, org_ids=org_ids, test_level_ids=test_level_ids)
+
+
+# --- TC-ADMIN-005: generic CRUD permission parity, server-enforcement half ----------------------
+
+
+@pytest.mark.asyncio
+async def test_create_rejected_by_direct_api_call_without_create_permission() -> None:  # TC-ADMIN-005
+    user_ids: list = []
+    org_ids: list = []
+    project_ids: list = []
+    requirement_ids: list = []
+    try:
+        async with AsyncSessionLocal() as session:
+            admin, org = await _create_org_admin(session, "005-admin")
+            project = await _create_project(session, org, "005")
+            # auditor bundle is read-only across every resource (+ requirement.export_rtm) --
+            # no requirement.create at all (rbac_seed_catalog.py).
+            auditor = await _create_member_with_role(session, "005-auditor", org, "auditor")
+            await session.commit()
+            user_ids = [admin.actor_id, auditor.actor_id]
+            org_ids = [org.id]
+            project_ids = [project.id]
+            auditor_token = _access_token_for(auditor.actor_id)
+            project_id = project.id
+
+        async with httpx.AsyncClient(base_url=TEST_API_BASE_URL) as client:
+            # The UI would already hide the "New" button for this actor
+            # (EntityListPage.test.tsx's own coverage) -- this proves a direct
+            # POST, bypassing the UI entirely, is independently rejected too.
+            response = await client.post(
+                f"{API_PREFIX}/requirements",
+                json={"project_id": str(project_id), "title": "Should never be created", "description": "x"},
+                headers={"Authorization": f"Bearer {auditor_token}"},
+            )
+        assert response.status_code == 403
+        assert response.json()["code"] == "permission_denied"
+    finally:
+        await _cleanup(user_ids=user_ids, org_ids=org_ids, project_ids=project_ids, requirement_ids=requirement_ids)
+
+
+# --- TC-ADMIN-017: stale client-side permission cache never bypasses server enforcement ---------
+
+
+@pytest.mark.asyncio
+async def test_delete_rejected_after_permission_revoked_despite_earlier_grant() -> None:  # TC-ADMIN-017
+    user_ids: list = []
+    org_ids: list = []
+    project_ids: list = []
+    requirement_ids: list = []
+    risk_item_ids: list = []
+    role_assignment_id = None
+    try:
+        async with AsyncSessionLocal() as session:
+            admin, org = await _create_org_admin(session, "017-admin")
+            project = await _create_project(session, org, "017")
+            requirement = await _create_requirement(session, project, "017")
+            risk_item = RiskItem(
+                requirement_id=requirement.id,
+                description="ADMIN-2 TC-ADMIN-017 risk",
+                likelihood=RiskLevel.medium,
+                impact=RiskLevel.high,
+            )
+            session.add(risk_item)
+            await session.flush()
+            # test_manager holds full risk_item CRUD (rbac_seed_catalog.py) --
+            # this is the grant a UI's permissions/mine cache would have seen
+            # and rendered a Delete button from.
+            actor = await _create_user(session, _unique_email("017-actor"))
+            await _create_membership(session, actor, org, OrgMembershipStatus.active)
+            test_manager_role = await _get_role_by_name(session, "test_manager")
+            assignment = await _assign_role(
+                session, actor_id=actor.actor_id, org=org, role=test_manager_role, project_id=project.id
+            )
+            await session.commit()
+            user_ids = [admin.actor_id, actor.actor_id]
+            org_ids = [org.id]
+            project_ids = [project.id]
+            requirement_ids = [requirement.id]
+            risk_item_ids = [risk_item.id]
+            role_assignment_id = assignment.id
+            token = _access_token_for(actor.actor_id)
+            risk_item_id = risk_item.id
+
+        # Server-side revocation -- e.g. an org_admin pulls the grant -- happens
+        # *after* the actor's still-live access token and any client-side
+        # permissions cache would already say "yes, can delete". No new token
+        # is issued to the actor; the same bearer token is reused below.
+        async with AsyncSessionLocal() as session:
+            await session.execute(delete(RoleAssignment).where(RoleAssignment.id == role_assignment_id))
+            await session.commit()
+        role_assignment_id = None  # already gone
+
+        async with httpx.AsyncClient(base_url=TEST_API_BASE_URL) as client:
+            response = await client.delete(
+                f"{API_PREFIX}/risk-items/{risk_item_id}", headers={"Authorization": f"Bearer {token}"}
+            )
+        assert response.status_code == 403
+        assert response.json()["code"] == "permission_denied"
+
+        # And the row genuinely wasn't deleted -- the 403 isn't a false negative.
+        async with AsyncSessionLocal() as session:
+            still_there = await session.get(RiskItem, risk_item_id)
+            assert still_there is not None
+    finally:
+        if role_assignment_id is not None:
+            async with AsyncSessionLocal() as session:
+                await session.execute(delete(RoleAssignment).where(RoleAssignment.id == role_assignment_id))
+                await session.commit()
+        await _cleanup(
+            user_ids=user_ids,
+            org_ids=org_ids,
+            project_ids=project_ids,
+            requirement_ids=requirement_ids,
+            risk_item_ids=risk_item_ids,
+        )
 
 
 # --- TC-ADMIN-009: Role org_id-null read/write split --------------------------------------------

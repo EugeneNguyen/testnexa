@@ -190,7 +190,16 @@ test.describe("RBAC-2 org member invite/suspend/reactivate lifecycle", () => {
       // (OrgHome's own "Members" link, per that component's docstring) and
       // invite the new user by email (TC-RBAC-004 territory, exercised
       // end-to-end through the real UI here).
-      await adminPage.getByRole("link", { name: /^members$/i }).click();
+      //
+      // Bugfix (found running the full E2E suite for ADMIN-2 verification):
+      // SHELL-5's persistent sidebar (merged into main separately) added its
+      // own `data-testid="sidebar-nav-org-members"` "Members" nav link, which
+      // now coexists with OrgHome's own inline "Members" button — both match
+      // `getByRole("link", { name: /^members$/i })`, a strict-mode violation
+      // this spec predates. Scoped to the `.btn` class OrgHome's own link
+      // actually renders with (the sidebar link is a plain `.nav-link`) so
+      // this still targets the same element the test always intended.
+      await adminPage.locator("a.btn", { hasText: /^members$/i }).click();
       await adminPage.waitForURL(new RegExp(`/orgs/${admin.orgId}/members`));
 
       await adminPage.getByLabel(/invite by email/i).fill(inviteeEmail);
