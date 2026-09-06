@@ -35,9 +35,10 @@ from app.api.deps import get_current_actor, get_db
 from app.core.rbac import has_permission
 from app.models.actor import AIAgent, User
 from app.models.execution import TestExecution
-from app.models.planning import TestCycle
+from app.models.planning import EntryExitCriteria, EntryExitCriteriaType, TestCycle
 from app.models.project import Project, Release
 from app.models.tenancy import OrgMembership
+from app.schemas.planning import EntryExitCriteriaSummary
 from app.schemas.releases import (
     CreateReleaseRequest,
     ReleaseListResponse,
@@ -238,21 +239,35 @@ async def get_release_test_cycles(
     db: AsyncSession = Depends(get_db),
 ) -> list[TestCycleSummary] | JSONResponse:
     """AC2's audit query: every TestCycle targeting this Release, with each
-    cycle's TestExecutions nested (ADR-0019).
+    cycle's TestExecutions and its parent TestPlan's exit criteria nested
+    (ADR-0019, extended by ADR-0032).
 
-    Row-resolved same as `get_release`. Gated on all THREE permissions —
-    `release.read` AND `test_cycle.read` AND `test_execution.read` — checked
-    as three separate `has_permission` calls, `403` if any is missing (never
-    a partial/degraded `200`). `release.read` is checked first since it's
-    tied to the 404-vs-403 boundary already resolved above; the other two
-    follow in any order (ADR-0019's stated departure from the rest of the
-    codebase's one-permission-per-bespoke-route posture — the sole place
-    `TestExecution` data is exposed without a `test_cycle_id` in the request
-    path).
+    Row-resolved same as `get_release`. Gated on all FOUR permissions —
+    `release.read` AND `test_cycle.read` AND `test_execution.read` AND
+    `entry_exit_criteria.read` — checked as four separate `has_permission`
+    calls, `403` if any is missing (never a partial/degraded `200`).
+    `release.read` is checked first since it's tied to the 404-vs-403
+    boundary already resolved above; the other three follow in any order
+    (ADR-0019's stated departure from the rest of the codebase's
+    one-permission-per-bespoke-route posture, widened from a triple to a
+    quadruple by ADR-0032 — this route exposes data across four distinct
+    resources without any of their ids in the request path, so under-gating
+    any one of them would let a narrower grant see data outside it).
+
+    The fourth code needs no RBAC bundle migration: every system role that
+    can reach this route today already holds `entry_exit_criteria.read`
+    (`test_manager` via `entry_exit_criteria.*`, `org_admin` as superuser,
+    `auditor` via `.read` on all resources).
+
+    `exit_criteria` is batched by the DISTINCT `test_plan_id` across the
+    whole cycle result set — one query total, not one per cycle — since two
+    `TestCycle`s legally share a `TestPlan` and a per-cycle query would
+    re-issue the identical statement (ADR-0032).
 
     A Release with zero linked TestCycles returns `200` with an empty list,
     not `404` — the Release exists; absence of cycles isn't absence of the
-    Release.
+    Release. Likewise a cycle whose plan has no `exit`-type rows carries
+    `exit_criteria: []`, not an omitted field.
     """
     release = await db.get(Release, id)
     if release is None:
@@ -271,9 +286,34 @@ async def get_release_test_cycles(
         return _error(403, "permission_denied", "You do not have permission to perform this action.")
     if not await has_permission(actor_id, org_id, "test_execution.read"):
         return _error(403, "permission_denied", "You do not have permission to perform this action.")
+    if not await has_permission(actor_id, org_id, "entry_exit_criteria.read"):
+        return _error(403, "permission_denied", "You do not have permission to perform this action.")
 
     cycles_result = await db.execute(select(TestCycle).where(TestCycle.release_id == id))
     cycles = cycles_result.scalars().all()
+
+    # ADR-0032: one batched query for the exit criteria of every distinct
+    # TestPlan represented in this result set, grouped in Python — not one
+    # query per cycle (two cycles sharing a TestPlan is a legal shape and
+    # would otherwise re-issue the identical statement).
+    exit_criteria_by_plan: dict[UUID, list[EntryExitCriteriaSummary]] = {}
+    plan_ids = {cycle.test_plan_id for cycle in cycles}
+    if plan_ids:
+        criteria_result = await db.execute(
+            select(EntryExitCriteria).where(
+                EntryExitCriteria.test_plan_id.in_(plan_ids),
+                EntryExitCriteria.type == EntryExitCriteriaType.exit,
+            )
+        )
+        for criteria in criteria_result.scalars().all():
+            exit_criteria_by_plan.setdefault(criteria.test_plan_id, []).append(
+                EntryExitCriteriaSummary(
+                    id=criteria.id,
+                    test_plan_id=criteria.test_plan_id,
+                    type=criteria.type.value if hasattr(criteria.type, "value") else criteria.type,
+                    condition_text=criteria.condition_text,
+                )
+            )
 
     summaries: list[TestCycleSummary] = []
     for cycle in cycles:
@@ -301,6 +341,9 @@ async def get_release_test_cycles(
                     )
                     for execution in executions
                 ],
+                # `[]` for a plan with no exit-type rows — an explicit empty
+                # list, never an omitted field or a null (TC-PLAN-012).
+                exit_criteria=exit_criteria_by_plan.get(cycle.test_plan_id, []),
             )
         )
 

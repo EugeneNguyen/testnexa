@@ -23,7 +23,7 @@ import { expect, test } from "@playwright/test";
  * points at (never the main `testnexa` stack) — `E2E_BACKEND_CONTAINER`
  * names its backend container for the seed/cleanup `docker exec` calls.
  */
-const BACKEND_CONTAINER = process.env.E2E_BACKEND_CONTAINER ?? "testnexa-test-17935-backend-1";
+const BACKEND_CONTAINER = process.env.E2E_BACKEND_CONTAINER ?? "testnexa-test-45004-backend-1";
 const TEST_PASSWORD = "E2ETestPass123!";
 
 interface SeededFixture {

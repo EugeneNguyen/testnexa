@@ -131,7 +131,7 @@ Partial unique index: `name` **WHERE `org_id IS NULL`** — prevents duplicate s
 | Role | Bundle |
 |---|---|
 | `org_admin` | Every seeded `Permission` (superuser within its org) |
-| `test_manager` | `test_plan.*` + `.approve`, `entry_exit_criteria.*`, `test_cycle.*`, `test_suite.*`, `release.create`/`.read`/`.update`, `project.read`/`.update` (RBAC-3/[ADR-0021](../adr/0021-role-assignment-creation-flow.md) — closes a gap that made TC-RBAC-035's regression case unprovable: a project's own creator, auto-granted this Role project-scoped by PROJ-1, couldn't otherwise view or rename the project itself), `approval.create`/`.read`, `requirement.read`/`.export_rtm`, `defect.read`, `risk_item.*`, `test_case.read`, `test_step.read`, `test_condition.read` |
+| `test_manager` | `test_plan.*` + `.approve`, `entry_exit_criteria.*`, `test_cycle.*`, `test_suite.*`, `release.create`/`.read`/`.update`, `environment.*`, `test_execution.create`/`.read`, `project.read`/`.update` (RBAC-3/[ADR-0021](../adr/0021-role-assignment-creation-flow.md) — closes a gap that made TC-RBAC-035's regression case unprovable: a project's own creator, auto-granted this Role project-scoped by PROJ-1, couldn't otherwise view or rename the project itself), `approval.create`/`.read`, `requirement.read`/`.export_rtm`, `defect.read`, `risk_item.*`, `test_case.read`, `test_step.read`, `test_condition.read` |
 | `tester` | `test_case.*`, `test_step.*`, `test_condition.*`, `test_execution.*`, `test_log.read`, `defect.create`/`.read`/`.update`, `test_plan.read`, `test_suite.read`, `requirement.read` — no `approval.*`, no `test_plan.approve` |
 | `auditor` | `.read` on all 29 resources + `requirement.export_rtm` — nothing else, no writes anywhere |
 | `ai_agent_scoped` | `test_case.create`/`.read`/`.update`, `test_step.create`/`.read`/`.update`, `test_execution.create`/`.read`/`.update`, `test_log.read` — no delete, no `approval.*`, no `role`/`role_assignment`/`org_membership` anything, and per [ADR-0004](../adr/0004-rbac-design.md)/RBAC-5, `test_plan.approve` is never seeded into this bundle |
@@ -139,6 +139,8 @@ Partial unique index: `name` **WHERE `org_id IS NULL`** — prevents duplicate s
 Downgrading the seed migration removes only the 5 `Role` rows (`RolePermission` rows cascade via the FK below); the `Permission` catalog rows are left in place.
 
 `test_manager`'s `release.create`/`.read`/`.update` grants above were added by a second, later data migration (PROJ-2, [ADR-0019](../adr/0019-release-creation-flow.md)) — not part of RBAC-4's original seed. Same existence-checked-insert idempotency posture, but a reader auditing `test_manager`'s full permission set must know to check both migrations, not RBAC-4's alone.
+
+`test_manager`'s `environment.*` (full CRUD — held none of the four before this migration) and `test_execution.create`/`.read` (not `.update`/`.delete`, deliberately withheld) grants above were added by a fourth such data migration (PLAN-3, [ADR-0033](../adr/0033-plan3-test-cycle-creation-and-execution-scope-check.md)), chained on the REQ-3 migration — same idempotent existence-checked-insert posture as the `release.*` and `test_condition.*`/`test_case.*` migrations before it. A reader auditing `test_manager`'s full permission set must now check four migrations, not RBAC-4's original seed alone.
 
 **Permission** *(global catalog, no org scoping)*
 | Column | Type | Constraints |
@@ -245,6 +247,8 @@ No uniqueness constraint on `version_label` — AC doesn't require it, and unlik
 **Creation flow** (PROJ-2, [ADR-0019](../adr/0019-release-creation-flow.md)): `POST /projects/{project_id}/releases` — bespoke, project-path-scoped. No `org_id` path segment exists at this depth, so unlike `POST /orgs/{org_id}/projects` this route fetches the `Project` row first to resolve `org_id` for the 404-vs-403 boundary, then calls `has_permission` directly (`release.create`) — same posture as `GET`/`PATCH /projects/{id}`, one level down. `GET /projects/{project_id}/releases` (list) sorts by `target_date`, `NULLS LAST` pinned explicitly for both `asc`/`desc` (NFR-25) — not the query engine's untouched per-direction default. `GET /releases/{id}` and `GET /releases/{id}/test-cycles` are row-resolved (no path `project_id`), same one-level-deeper extension of `Project`'s own row-resolved read pattern.
 
 `GET /releases/{id}/test-cycles` (AC2's query — "what was tested for release X") returns every `TestCycle` with `release_id` matching the path `id`, each with its `TestExecution` rows nested in the response (not a cycles-only list) — proven queryable via `TestCycle.release_id`/`TestExecution.test_cycle_id`, both already non-nullable FKs. `TestCycle` itself has no create route in this codebase (FR-PLAN-3's scope); this query works against however a `TestCycle` row came to exist. The route requires all three of `release.read`, `test_cycle.read`, `test_execution.read` (NFR-26) — the one route in this scaffold exposing `TestExecution` data without a `test_cycle_id` in the request path, so a single-permission gate would let a Release-only viewer see execution data outside their own granted permissions.
+
+**PLAN-2 extension** ([ADR-0032](../adr/0032-plan2-entry-exit-criteria-visibility.md), NFR-42): each nested `TestCycle` in this same response also carries `exit_criteria` — every `EntryExitCriteria` row of `type = exit` belonging to that cycle's parent `TestPlan` (`TestCycle.test_plan_id`), `[]` when none exist, never omitted. Resolved by one additional query batched across the result set's distinct `test_plan_id`s, not once per cycle. The route's permission gate extends from the triple above to a quadruple: **AND `entry_exit_criteria.read`**.
 
 ### 3.6 `assets.py` — Requirement, TestCondition, TestCase, TestStep, TestSuite (+ junction)
 
@@ -358,6 +362,8 @@ Unique: `(test_plan_id, test_suite_id)`.
 | condition_text | text | not null |
 | created_at, updated_at | timestamptz | not null |
 
+**Generic CRUD factory posture on `EntryExitCriteria`** — unlike every other PLAN-* gap, this entity needed **zero new backend route code**: full CRUD (`POST`/`GET`/`PATCH`/`DELETE /entry-exit-criteria`) was already factory-served via `_ENTRY_EXIT_CRITERIA_CONFIG`'s one-hop `chain_resolver([(TestPlan, "test_plan_id")])` since ADMIN-2 — no resolver gap of the ADR-0029/ADR-0030 class. PLAN-2 ([ADR-0032](../adr/0032-plan2-entry-exit-criteria-visibility.md)) is a visibility-surface story only: `TestPlanDetail.tsx` gains a full-CRUD (add/edit/delete) section reusing this same config filtered by `?test_plan_id=`, and `type = exit` rows are additionally nested onto `GET /releases/{id}/test-cycles` (§3.5's PLAN-2 extension note above) — no schema change either way.
+
 **Environment** — *scoped to `project_id` (refinement beyond 07's unscoped draft, required for tenant isolation per NFR-1)*
 | Column | Type | Constraints |
 |---|---|---|
@@ -366,6 +372,8 @@ Unique: `(test_plan_id, test_suite_id)`.
 | name | varchar | not null |
 | config_notes | text | nullable |
 | created_at, updated_at | timestamptz | not null |
+
+**Generic CRUD factory posture on `Environment`** — unaffected by [ADR-0033](../adr/0033-plan3-test-cycle-creation-and-execution-scope-check.md): full CRUD was already factory-served since ADMIN-2, no schema/route change. What PLAN-3 closes is the pre-existing RBAC gap (`test_manager` held none of `environment.*` before this story's migration, above) and adds a frontend inline-create flow (sequential `POST /environments` then `POST /test-plans/{id}/test-cycles`, no new backend route) — see the [PLAN-3 UI Design Document](../ui-design/2026-09-06-plan-3-test-cycle-creation-ui-design.md).
 
 **TestCycle**
 | Column | Type | Constraints |
@@ -378,6 +386,8 @@ Unique: `(test_plan_id, test_suite_id)`.
 | start_date | date | nullable |
 | end_date | date | nullable |
 | created_at, updated_at | timestamptz | not null |
+
+**Generic CRUD factory posture on `TestCycle`** ([ADR-0033](../adr/0033-plan3-test-cycle-creation-and-execution-scope-check.md)): `create` stays excluded from the factory (`GET`/`PATCH`/`DELETE` only, unchanged from ADMIN-2) — `POST /test-plans/{id}/test-cycles` is bespoke, `app/api/routes/test_cycle_creation.py`, gated `test_cycle.create`. `org_id` resolution reuses `_TEST_CYCLE_CONFIG`'s existing `chain_resolver([(TestPlan, "test_plan_id")])` for the path `TestPlan` side — no new resolver, and no resolver-completeness risk (the row this route writes carries exactly the `test_plan_id` FK that resolver already walks). `release_id`/`environment_id` are each independently checked against the target `TestPlan`'s own `project_id`: missing, or resolving to a different org, → `404` (no target-org existence to leak); resolving to the same org but a different project → `422 validation_error` (same cross-project posture NFR-38/NFR-41 already established for `TestSuiteTestCase`/`TestPlanTestSuite`, applied here even though schema alone doesn't enforce it). No unique constraint on `(test_plan_id, name)` — duplicate cycle names within one plan are allowed, same non-uniqueness stance already taken for `Release.version_label` (§3.5).
 
 ### 3.8 `execution.py` — TestExecution, TestLog, Defect
 
@@ -394,6 +404,8 @@ Unique: `(test_plan_id, test_suite_id)`.
 | created_at, updated_at | timestamptz | not null |
 
 Composite index: `(test_cycle_id, test_case_id)` — dashboard aggregation (EXEC-1) and execution-scope-check (PLAN-3) both filter on this pair.
+
+**Generic CRUD factory posture on `TestExecution`** ([ADR-0033](../adr/0033-plan3-test-cycle-creation-and-execution-scope-check.md)): `create` is removed from `_TEST_EXECUTION_CONFIG` (`GET`/`PATCH`/`DELETE` only from here on, same posture `TestCase`/`TestCondition`/`Defect` already have) — the unrestricted generic `POST /test-executions` had no way to enforce FR-PLAN-3 AC3's scope rule, so leaving it reachable alongside the new bespoke route would let a caller bypass the check entirely. `POST /test-cycles/{id}/executions` is bespoke, `app/api/routes/execution_authoring.py`, gated `test_execution.create`: resolves `test_case_id` via `TestCase`'s existing 3-branch resolver ([ADR-0029](../adr/0029-testcase-resolver-direct-link-fallback.md)), then runs an `EXISTS` check against the same `TestPlan`→`TestSuite`→`TestCase` join `GET /test-plans/{id}/test-cases` ([ADR-0031](../adr/0031-plan1-test-plan-membership-and-status-transition-routes.md)) already resolves, scoped to the path `TestCycle`'s own `test_plan_id` — not a member of any suite included in that plan → `422 validation_error`. `executed_by_actor_id` is stamped from the authenticated actor, never client-supplied, same posture the existing generic schema's docstring already established for this field.
 
 **TestLog** — *append-only, no `updated_at`, no update/delete API path (list/get only, [ADR-0027](../adr/0027-generic-admin-crud-ui-and-backend-completion.md))*
 | Column | Type | Constraints |

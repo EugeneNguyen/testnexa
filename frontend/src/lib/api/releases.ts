@@ -42,6 +42,21 @@ export interface TestExecutionSummary {
   executed_at: string;
 }
 
+/**
+ * PLAN-2 (ADR-0032): the backend's own `EntryExitCriteriaSummary`
+ * (`app/schemas/planning.py`), nested verbatim into `TestCycleSummary` below.
+ * No pre-existing frontend type covered this shape — `EntryExitCriteria` was
+ * only ever reached through the generic CRUD surface, whose rows are typed as
+ * the untyped `EntityRow` (`entityCrud.ts`), so this is the first concrete
+ * declaration of it rather than a redundant parallel to an existing one.
+ */
+export interface EntryExitCriteriaSummary {
+  id: string;
+  test_plan_id: string;
+  type: "entry" | "exit" | "suspension" | "resumption";
+  condition_text: string;
+}
+
 export interface TestCycleSummary {
   id: string;
   release_id: string;
@@ -51,6 +66,13 @@ export interface TestCycleSummary {
   start_date: string | null;
   end_date: string | null;
   executions: TestExecutionSummary[];
+  /**
+   * The parent `TestPlan`'s `type = exit` criteria rows, already filtered
+   * server-side (ADR-0032) — the frontend renders them as-is, never
+   * re-filtering. Always present: a plan with no `exit` rows yields `[]`,
+   * never an omitted field.
+   */
+  exit_criteria: EntryExitCriteriaSummary[];
 }
 
 /**
@@ -113,12 +135,13 @@ export async function getRelease(id: string): Promise<ReleaseSummary> {
 
 /**
  * AC2's audit query: every TestCycle targeting `id`, each with its
- * TestExecutions nested (ADR-0019) — read-only, no follow-up call needed.
+ * TestExecutions *and* its parent plan's `exit`-type EntryExitCriteria nested
+ * (ADR-0019, extended by ADR-0032) — read-only, no follow-up call needed.
  *
  * Rejects with an `ApiError` on failure: `404`/`403` same boundary as
- * `getRelease`, but gated on all three of `release.read` AND
- * `test_cycle.read` AND `test_execution.read` (`403` if any is missing, no
- * partial response).
+ * `getRelease`, but gated on all four of `release.read` AND
+ * `test_cycle.read` AND `test_execution.read` AND `entry_exit_criteria.read`
+ * (`403` if any is missing, no partial response).
  */
 export async function getReleaseTestCycles(id: string): Promise<TestCycleSummary[]> {
   return apiFetch<TestCycleSummary[]>(`/api/v1/releases/${id}/test-cycles`);
