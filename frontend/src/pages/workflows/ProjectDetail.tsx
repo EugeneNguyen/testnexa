@@ -75,6 +75,10 @@ import {
   CCol,
   CCollapse,
   CContainer,
+  CDropdown,
+  CDropdownItem,
+  CDropdownMenu,
+  CDropdownToggle,
   CForm,
   CFormInput,
   CFormFeedback,
@@ -116,8 +120,17 @@ import {
   createTestCase,
   createTestCaseForTestCondition,
   listTestCasesForRequirement,
+  listTestCasesForTestCondition,
   TestCaseSummary,
 } from "../../lib/api/testCases";
+import {
+  addTestCaseToSuite,
+  createTestSuite,
+  listSuiteTestCases,
+  listTestSuites,
+  removeTestCaseFromSuite,
+  TestSuiteSummary,
+} from "../../lib/api/testSuites";
 import { createTestStep, listTestSteps, updateTestStep, TestStepSummary } from "../../lib/api/testSteps";
 import {
   createTestCondition,
@@ -189,6 +202,20 @@ const newTestStepSchema = z.object({
 });
 
 type NewTestStepFormValues = z.infer<typeof newTestStepSchema>;
+
+/**
+ * REQ-4 TestSuite form (UI Design Document §3): `name` required, `purpose`
+ * free text with **no client-side enum restriction** — "regression"/"smoke"/
+ * "acceptance" are conventional values, not schema-level ones (the column is a
+ * nullable free-text string per the Database Document), so constraining them
+ * here would invent a rule the backend doesn't have.
+ */
+const newTestSuiteSchema = z.object({
+  name: z.string().trim().min(1, "Name is required"),
+  purpose: z.string().trim().optional(),
+});
+
+type NewTestSuiteFormValues = z.infer<typeof newTestSuiteSchema>;
 
 const TEST_CASE_CREATED_MESSAGE = "Test case created and linked to this test condition";
 
@@ -407,6 +434,53 @@ function ProjectDetail() {
   } = useForm<NewTestCaseFormValues>({
     resolver: zodResolver(newTestCaseSchema),
     defaultValues: { title: "", preconditions: "", expectedResult: "", testLevelId: "", testTypeId: "" },
+  });
+
+  // --- REQ-4 (ADR-0030, UI Design Document 2026-09-06): Test Suites section ---
+  //
+  // A top-level section of its own (alongside Releases/Requirements), not a
+  // child of any Requirement — a TestSuite is project-scoped, not
+  // requirement-scoped.
+  const [testSuites, setTestSuites] = useState<TestSuiteSummary[]>([]);
+  const [suitesLoading, setSuitesLoading] = useState(true);
+  const [suitesLoadError, setSuitesLoadError] = useState<string | null>(null);
+  const [showSuiteModal, setShowSuiteModal] = useState(false);
+  const [suiteApiError, setSuiteApiError] = useState<string | null>(null);
+
+  // Membership of whichever suite row is currently expanded (one at a time,
+  // same single-active-expansion convention as the Release rows above).
+  //
+  // Deliberately NOT keyed-by-id/cached the way the TestCondition sections
+  // above are: AC2's "reflects current membership" means this list is
+  // re-fetched on *every* expand, never restored from a previous one, so a
+  // membership changed elsewhere (or in another tab) can't be shown stale.
+  const [expandedSuiteId, setExpandedSuiteId] = useState<string | null>(null);
+  const [suiteMembers, setSuiteMembers] = useState<TestCaseSummary[]>([]);
+  const [suiteMembersLoading, setSuiteMembersLoading] = useState(false);
+  const [suiteMembersError, setSuiteMembersError] = useState<string | null>(null);
+
+  // REQ-4 also fills the gap REQ-3 left open (ADR-0028's YAGNI call): the list
+  // of TestCases under a TestCondition, so each one can carry an "Add to
+  // suite" action. Keyed by condition id, same shape as the condition lists.
+  const [expandedConditionIds, setExpandedConditionIds] = useState<string[]>([]);
+  const [casesByCondition, setCasesByCondition] = useState<Record<string, TestCaseSummary[]>>({});
+  const [conditionCasesLoading, setConditionCasesLoading] = useState<Record<string, boolean>>({});
+  const [conditionCasesError, setConditionCasesError] = useState<Record<string, string | null>>({});
+
+  // Per-TestCase inline feedback for the "Add to suite" dropdown — keyed by
+  // test case id so a 422/409 stays next to the row it applies to (UI Design
+  // Document §2: an inline dismissible `CAlert`, never a toast).
+  const [addToSuiteError, setAddToSuiteError] = useState<Record<string, string | null>>({});
+
+  const {
+    register: registerSuite,
+    handleSubmit: handleSubmitSuite,
+    reset: resetSuite,
+    setError: setSuiteError,
+    formState: { errors: suiteErrors, isSubmitting: isSubmittingSuite },
+  } = useForm<NewTestSuiteFormValues>({
+    resolver: zodResolver(newTestSuiteSchema),
+    defaultValues: { name: "", purpose: "" },
   });
 
   // TestSteps of whichever TestCase row is currently expanded (one at a time,
@@ -728,6 +802,166 @@ function ProjectDetail() {
     resetTestCase({ title: "", preconditions: "", expectedResult: "", testLevelId: "", testTypeId: "" });
     setTestCaseModalRequirementId(null);
     setTestCaseModalConditionId(testConditionId);
+  }
+
+  // --- REQ-4: Test Suites section + membership actions ------------------------
+
+  const fetchTestSuites = useCallback(async () => {
+    if (!projectId) {
+      return;
+    }
+    setSuitesLoading(true);
+    setSuitesLoadError(null);
+    try {
+      const response = await listTestSuites(projectId);
+      setTestSuites(response.items);
+    } catch (err) {
+      setSuitesLoadError(
+        err instanceof ApiError ? err.message : "Something went wrong. Please try again.",
+      );
+    } finally {
+      setSuitesLoading(false);
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    fetchTestSuites();
+  }, [fetchTestSuites]);
+
+  function openSuiteModal() {
+    setSuiteApiError(null);
+    resetSuite({ name: "", purpose: "" });
+    setShowSuiteModal(true);
+  }
+
+  function closeSuiteModal() {
+    setShowSuiteModal(false);
+  }
+
+  async function onSubmitTestSuite(values: NewTestSuiteFormValues) {
+    if (!projectId) {
+      return;
+    }
+    setSuiteApiError(null);
+    try {
+      await createTestSuite(projectId, {
+        name: values.name,
+        // Blank optional field omitted rather than sent as an empty string,
+        // same convention as the "New Test Case" modal's optional fields.
+        ...(values.purpose ? { purpose: values.purpose } : {}),
+      });
+      closeSuiteModal();
+      await fetchTestSuites();
+    } catch (err) {
+      if (err instanceof ApiError) {
+        const nameError = fieldError(err, "name");
+        const purposeError = fieldError(err, "purpose");
+        if (nameError) {
+          setSuiteError("name", { type: "server", message: nameError });
+        } else if (purposeError) {
+          setSuiteError("purpose", { type: "server", message: purposeError });
+        } else {
+          setSuiteApiError(err.message);
+        }
+      } else {
+        setSuiteApiError("Something went wrong. Please try again.");
+      }
+    }
+  }
+
+  const fetchSuiteMembers = useCallback(async (testSuiteId: string) => {
+    setSuiteMembersLoading(true);
+    setSuiteMembersError(null);
+    try {
+      const response = await listSuiteTestCases(testSuiteId);
+      setSuiteMembers(response.items);
+    } catch (err) {
+      setSuiteMembersError(
+        err instanceof ApiError ? err.message : "Something went wrong. Please try again.",
+      );
+    } finally {
+      setSuiteMembersLoading(false);
+    }
+  }, []);
+
+  function toggleSuiteMembership(testSuiteId: string) {
+    if (expandedSuiteId === testSuiteId) {
+      setExpandedSuiteId(null);
+      return;
+    }
+    setExpandedSuiteId(testSuiteId);
+    setSuiteMembers([]);
+    // Re-fetched on EVERY expand, never restored from a previous one — the
+    // literal mechanism behind AC2's "reflects current membership" claim.
+    fetchSuiteMembers(testSuiteId);
+  }
+
+  async function onRemoveFromSuite(testSuiteId: string, testCaseId: string) {
+    setSuiteMembersError(null);
+    try {
+      await removeTestCaseFromSuite(testSuiteId, testCaseId);
+    } catch (err) {
+      setSuiteMembersError(
+        err instanceof ApiError ? err.message : "Something went wrong. Please try again.",
+      );
+    }
+    // Re-fetch either way (not an optimistic local splice), so the view always
+    // reflects the server's own current state — including after a failed
+    // remove, where the case is still a member.
+    await fetchSuiteMembers(testSuiteId);
+  }
+
+  const fetchConditionTestCases = useCallback(async (testConditionId: string) => {
+    setConditionCasesLoading((prev) => ({ ...prev, [testConditionId]: true }));
+    setConditionCasesError((prev) => ({ ...prev, [testConditionId]: null }));
+    try {
+      const items = await listTestCasesForTestCondition(testConditionId);
+      setCasesByCondition((prev) => ({ ...prev, [testConditionId]: items }));
+    } catch (err) {
+      setConditionCasesError((prev) => ({
+        ...prev,
+        [testConditionId]:
+          err instanceof ApiError ? err.message : "Something went wrong. Please try again.",
+      }));
+    } finally {
+      setConditionCasesLoading((prev) => ({ ...prev, [testConditionId]: false }));
+    }
+  }, []);
+
+  function toggleConditionTestCases(testConditionId: string) {
+    const isExpanded = expandedConditionIds.includes(testConditionId);
+    setExpandedConditionIds((prev) =>
+      isExpanded ? prev.filter((id) => id !== testConditionId) : [...prev, testConditionId],
+    );
+    if (!isExpanded && casesByCondition[testConditionId] === undefined) {
+      fetchConditionTestCases(testConditionId);
+    }
+  }
+
+  async function onAddTestCaseToSuite(testSuiteId: string, testCaseId: string) {
+    setAddToSuiteError((prev) => ({ ...prev, [testCaseId]: null }));
+    try {
+      await addTestCaseToSuite(testSuiteId, testCaseId);
+    } catch (err) {
+      // `409 already_in_suite` and `422 validation_error` (cross-project) both
+      // surface here as the route's own message, inline next to this row — the
+      // reason has to stay visible where it applies (UI Design Document §2).
+      setAddToSuiteError((prev) => ({
+        ...prev,
+        [testCaseId]:
+          err instanceof ApiError ? err.message : "Something went wrong. Please try again.",
+      }));
+      return;
+    }
+    // If the target suite happens to be the one currently expanded above, its
+    // membership view must show the addition immediately.
+    if (expandedSuiteId === testSuiteId) {
+      await fetchSuiteMembers(testSuiteId);
+    }
+  }
+
+  function dismissAddToSuiteError(testCaseId: string) {
+    setAddToSuiteError((prev) => ({ ...prev, [testCaseId]: null }));
   }
 
   const fetchReleases = useCallback(
@@ -1219,30 +1453,198 @@ function ProjectDetail() {
                                               </CTableRow>
                                             </CTableHead>
                                             <CTableBody>
-                                              {conditions.map((condition) => (
-                                                <CTableRow
-                                                  key={condition.id}
-                                                  data-testid={`test-condition-row-${condition.id}`}
-                                                >
-                                                  <CTableDataCell>{condition.description}</CTableDataCell>
-                                                  <CTableDataCell>
-                                                    <CBadge color={priorityColor(condition.priority)}>
-                                                      {condition.priority}
-                                                    </CBadge>
-                                                  </CTableDataCell>
-                                                  <CTableDataCell className="text-end">
-                                                    <CButton
-                                                      color="secondary"
-                                                      variant="outline"
-                                                      size="sm"
-                                                      data-testid={`new-test-case-btn-${condition.id}`}
-                                                      onClick={() => openConditionTestCaseModal(condition.id)}
+                                              {conditions.map((condition) => {
+                                                const casesExpanded = expandedConditionIds.includes(
+                                                  condition.id,
+                                                );
+                                                const conditionCases =
+                                                  casesByCondition[condition.id] ?? [];
+                                                const loadingCases =
+                                                  conditionCasesLoading[condition.id] ?? false;
+                                                const casesLoadError =
+                                                  conditionCasesError[condition.id] ?? null;
+                                                return (
+                                                  <Fragment key={condition.id}>
+                                                    <CTableRow
+                                                      data-testid={`test-condition-row-${condition.id}`}
                                                     >
-                                                      New Test Case
-                                                    </CButton>
-                                                  </CTableDataCell>
-                                                </CTableRow>
-                                              ))}
+                                                      <CTableDataCell>
+                                                        {condition.description}
+                                                      </CTableDataCell>
+                                                      <CTableDataCell>
+                                                        <CBadge color={priorityColor(condition.priority)}>
+                                                          {condition.priority}
+                                                        </CBadge>
+                                                      </CTableDataCell>
+                                                      <CTableDataCell className="text-end">
+                                                        {/*
+                                                          REQ-4: the TestCase
+                                                          sub-list REQ-3
+                                                          deliberately didn't
+                                                          render (ADR-0028's
+                                                          YAGNI call), now
+                                                          needed so each case
+                                                          can carry an "Add to
+                                                          suite" action.
+                                                        */}
+                                                        <CButton
+                                                          color="secondary"
+                                                          variant="ghost"
+                                                          size="sm"
+                                                          className="me-2"
+                                                          data-testid={`tc-cases-toggle-${condition.id}`}
+                                                          aria-expanded={casesExpanded}
+                                                          onClick={() =>
+                                                            toggleConditionTestCases(condition.id)
+                                                          }
+                                                        >
+                                                          Test Cases
+                                                        </CButton>
+                                                        <CButton
+                                                          color="secondary"
+                                                          variant="outline"
+                                                          size="sm"
+                                                          data-testid={`new-test-case-btn-${condition.id}`}
+                                                          onClick={() =>
+                                                            openConditionTestCaseModal(condition.id)
+                                                          }
+                                                        >
+                                                          New Test Case
+                                                        </CButton>
+                                                      </CTableDataCell>
+                                                    </CTableRow>
+                                                    <CTableRow>
+                                                      <CTableDataCell
+                                                        colSpan={3}
+                                                        className="p-0 border-0"
+                                                      >
+                                                        <CCollapse visible={casesExpanded}>
+                                                          {casesExpanded && (
+                                                            <div className="bg-body p-3">
+                                                              {casesLoadError && (
+                                                                <CAlert color="danger" role="alert">
+                                                                  {casesLoadError}
+                                                                </CAlert>
+                                                              )}
+                                                              {loadingCases ? (
+                                                                <div className="d-flex justify-content-center py-2">
+                                                                  <CSpinner size="sm" color="primary" />
+                                                                </div>
+                                                              ) : !casesLoadError &&
+                                                                conditionCases.length === 0 ? (
+                                                                <p className="text-body-secondary mb-0">
+                                                                  No test cases yet.
+                                                                </p>
+                                                              ) : (
+                                                                !casesLoadError && (
+                                                                  /*
+                                                                    Flat <ul>/<li>, never a nested
+                                                                    <CTable>: a <table> inside
+                                                                    another <table>'s <td> has no
+                                                                    ARIA role boundary, so the outer
+                                                                    row's accessible name would
+                                                                    absorb these rows' text and make
+                                                                    Playwright's getByRole("row")
+                                                                    ambiguous (frontend/CLAUDE.md).
+                                                                  */
+                                                                  <ul
+                                                                    className="list-unstyled mb-0"
+                                                                    data-testid={`tc-case-list-${condition.id}`}
+                                                                  >
+                                                                    {conditionCases.map((testCase) => (
+                                                                      <li
+                                                                        key={testCase.id}
+                                                                        className="d-flex flex-column border-bottom py-2"
+                                                                        data-testid={`tc-case-item-${testCase.id}`}
+                                                                      >
+                                                                        <div className="d-flex justify-content-between align-items-center gap-2">
+                                                                          <span>
+                                                                            {testCase.title}{" "}
+                                                                            <CBadge color="secondary">
+                                                                              {testCase.status}
+                                                                            </CBadge>
+                                                                          </span>
+                                                                          <CDropdown variant="btn-group">
+                                                                            <CDropdownToggle
+                                                                              color="secondary"
+                                                                              variant="outline"
+                                                                              size="sm"
+                                                                              disabled={
+                                                                                testSuites.length === 0
+                                                                              }
+                                                                              data-testid={`add-to-suite-toggle-${testCase.id}`}
+                                                                            >
+                                                                              Add to suite
+                                                                            </CDropdownToggle>
+                                                                            <CDropdownMenu>
+                                                                              {/*
+                                                                                Empty-state is a
+                                                                                disabled toggle plus
+                                                                                this placeholder, not
+                                                                                a hidden control, so
+                                                                                the ordering
+                                                                                dependency (create a
+                                                                                suite first) stays
+                                                                                visible (UI Design
+                                                                                Document §4).
+                                                                              */}
+                                                                              {testSuites.length === 0 ? (
+                                                                                <CDropdownItem
+                                                                                  disabled
+                                                                                  data-testid={`add-to-suite-empty-${testCase.id}`}
+                                                                                >
+                                                                                  No suites yet — create
+                                                                                  one above
+                                                                                </CDropdownItem>
+                                                                              ) : (
+                                                                                testSuites.map((suite) => (
+                                                                                  <CDropdownItem
+                                                                                    key={suite.id}
+                                                                                    role="button"
+                                                                                    data-testid={`add-to-suite-${testCase.id}-${suite.id}`}
+                                                                                    onClick={() =>
+                                                                                      onAddTestCaseToSuite(
+                                                                                        suite.id,
+                                                                                        testCase.id,
+                                                                                      )
+                                                                                    }
+                                                                                  >
+                                                                                    {suite.name}
+                                                                                  </CDropdownItem>
+                                                                                ))
+                                                                              )}
+                                                                            </CDropdownMenu>
+                                                                          </CDropdown>
+                                                                        </div>
+                                                                        {addToSuiteError[testCase.id] && (
+                                                                          <CAlert
+                                                                            color="danger"
+                                                                            role="alert"
+                                                                            dismissible
+                                                                            className="mt-2 mb-0 py-1"
+                                                                            data-testid={`add-to-suite-error-${testCase.id}`}
+                                                                            onClose={() =>
+                                                                              dismissAddToSuiteError(
+                                                                                testCase.id,
+                                                                              )
+                                                                            }
+                                                                          >
+                                                                            {addToSuiteError[testCase.id]}
+                                                                          </CAlert>
+                                                                        )}
+                                                                      </li>
+                                                                    ))}
+                                                                  </ul>
+                                                                )
+                                                              )}
+                                                            </div>
+                                                          )}
+                                                        </CCollapse>
+                                                      </CTableDataCell>
+                                                    </CTableRow>
+                                                  </Fragment>
+                                                );
+                                              })}
                                             </CTableBody>
                                           </CTable>
                                         )
@@ -1257,6 +1659,144 @@ function ProjectDetail() {
                       })}
                     </CTableBody>
                   </CTable>
+                )}
+              </CCardBody>
+            </CCard>
+
+            {/*
+              REQ-4 (ADR-0030, UI Design Document 2026-09-06): Test Suites, a
+              top-level section of this page rather than the dedicated
+              `TestSuiteBuilder` route the Sitemap once reserved — same
+              correction REQ-2/REQ-3 already made for `RequirementDetail`.
+
+              The suite's own name/purpose CRUD is the generic factory's
+              (`POST`/`GET /test-suites`); only the membership view below is
+              bespoke, because a many-to-many join is not a plain-field form.
+            */}
+            <CCard className="mt-4">
+              <CCardBody className="p-4">
+                <div className="d-flex justify-content-between align-items-center mb-3">
+                  <h2 className="fs-5 mb-0">Test Suites</h2>
+                  <CButton color="primary" data-testid="new-test-suite-btn" onClick={openSuiteModal}>
+                    New Test Suite
+                  </CButton>
+                </div>
+
+                {suitesLoadError && (
+                  <CAlert color="danger" role="alert">
+                    {suitesLoadError}
+                  </CAlert>
+                )}
+
+                {suitesLoading ? (
+                  <div className="d-flex justify-content-center py-3">
+                    <CSpinner color="primary" />
+                  </div>
+                ) : !suitesLoadError && testSuites.length === 0 ? (
+                  <p className="text-body-secondary mb-0">No test suites yet.</p>
+                ) : (
+                  !suitesLoadError && (
+                    <CTable hover responsive className="mb-0">
+                      <CTableHead>
+                        <CTableRow>
+                          <CTableHeaderCell>Name</CTableHeaderCell>
+                          <CTableHeaderCell>Purpose</CTableHeaderCell>
+                        </CTableRow>
+                      </CTableHead>
+                      <CTableBody>
+                        {testSuites.map((suite) => {
+                          const suiteExpanded = expandedSuiteId === suite.id;
+                          return (
+                            <Fragment key={suite.id}>
+                              <CTableRow
+                                className="cursor-pointer"
+                                data-testid={`test-suite-row-${suite.id}`}
+                                aria-expanded={suiteExpanded}
+                                onClick={() => toggleSuiteMembership(suite.id)}
+                              >
+                                <CTableDataCell>{suite.name}</CTableDataCell>
+                                <CTableDataCell>
+                                  {suite.purpose ? (
+                                    <CBadge color="info">{suite.purpose}</CBadge>
+                                  ) : (
+                                    "—"
+                                  )}
+                                </CTableDataCell>
+                              </CTableRow>
+                              <CTableRow>
+                                <CTableDataCell colSpan={2} className="p-0 border-0">
+                                  <CCollapse visible={suiteExpanded}>
+                                    {suiteExpanded && (
+                                      <div
+                                        className="bg-body-tertiary p-3"
+                                        data-testid={`suite-membership-${suite.id}`}
+                                      >
+                                        <h3 className="fs-6 mb-2">Test cases in this suite</h3>
+
+                                        {suiteMembersError && (
+                                          <CAlert color="danger" role="alert">
+                                            {suiteMembersError}
+                                          </CAlert>
+                                        )}
+
+                                        {suiteMembersLoading ? (
+                                          <div className="d-flex justify-content-center py-2">
+                                            <CSpinner size="sm" color="primary" />
+                                          </div>
+                                        ) : !suiteMembersError && suiteMembers.length === 0 ? (
+                                          /*
+                                            Distinct from the section-level
+                                            "No test suites yet." above — the
+                                            suite exists, it just has no
+                                            members (UI Design Document §4).
+                                          */
+                                          <p className="text-body-secondary mb-0">
+                                            No test cases in this suite yet.
+                                          </p>
+                                        ) : (
+                                          !suiteMembersError && (
+                                            /* Flat <ul>/<li>, not a nested <CTable> — frontend/CLAUDE.md. */
+                                            <ul
+                                              className="list-unstyled mb-0"
+                                              data-testid={`suite-member-list-${suite.id}`}
+                                            >
+                                              {suiteMembers.map((member) => (
+                                                <li
+                                                  key={member.id}
+                                                  className="d-flex justify-content-between align-items-center border-bottom py-2 gap-2"
+                                                  data-testid={`suite-member-${suite.id}-${member.id}`}
+                                                >
+                                                  <span>
+                                                    {member.title}{" "}
+                                                    <CBadge color="secondary">{member.status}</CBadge>
+                                                  </span>
+                                                  <CButton
+                                                    color="danger"
+                                                    variant="outline"
+                                                    size="sm"
+                                                    data-testid={`remove-from-suite-${suite.id}-${member.id}`}
+                                                    onClick={() =>
+                                                      onRemoveFromSuite(suite.id, member.id)
+                                                    }
+                                                  >
+                                                    Remove
+                                                  </CButton>
+                                                </li>
+                                              ))}
+                                            </ul>
+                                          )
+                                        )}
+                                      </div>
+                                    )}
+                                  </CCollapse>
+                                </CTableDataCell>
+                              </CTableRow>
+                            </Fragment>
+                          );
+                        })}
+                      </CTableBody>
+                    </CTable>
+                  )
                 )}
               </CCardBody>
             </CCard>
@@ -1420,6 +1960,60 @@ function ProjectDetail() {
             </CButton>
             <CButton type="submit" color="primary" disabled={isSubmittingRequirement}>
               {isSubmittingRequirement ? "Creating..." : "Create"}
+            </CButton>
+          </CModalFooter>
+        </CForm>
+      </CModal>
+
+      <CModal visible={showSuiteModal} onClose={closeSuiteModal} data-testid="test-suite-modal">
+        <CModalHeader>
+          <CModalTitle>New Test Suite</CModalTitle>
+        </CModalHeader>
+        <CForm onSubmit={handleSubmitSuite(onSubmitTestSuite)} noValidate>
+          <CModalBody>
+            <div className="mb-3">
+              <CFormLabel htmlFor="testSuiteName">Name</CFormLabel>
+              <CFormInput
+                id="testSuiteName"
+                type="text"
+                data-testid="test-suite-name"
+                invalid={!!suiteErrors.name}
+                {...registerSuite("name")}
+              />
+              {suiteErrors.name && <CFormFeedback invalid>{suiteErrors.name.message}</CFormFeedback>}
+            </div>
+            <div className="mb-3">
+              <CFormLabel htmlFor="testSuitePurpose">Purpose</CFormLabel>
+              <CFormInput
+                id="testSuitePurpose"
+                type="text"
+                data-testid="test-suite-purpose"
+                invalid={!!suiteErrors.purpose}
+                {...registerSuite("purpose")}
+              />
+              {suiteErrors.purpose ? (
+                <CFormFeedback invalid>{suiteErrors.purpose.message}</CFormFeedback>
+              ) : (
+                <CFormText>Optional — e.g. regression, smoke, acceptance.</CFormText>
+              )}
+            </div>
+            {suiteApiError && (
+              <CAlert color="danger" role="alert">
+                {suiteApiError}
+              </CAlert>
+            )}
+          </CModalBody>
+          <CModalFooter>
+            <CButton color="secondary" variant="outline" onClick={closeSuiteModal}>
+              Cancel
+            </CButton>
+            <CButton
+              type="submit"
+              color="primary"
+              data-testid="test-suite-submit"
+              disabled={isSubmittingSuite}
+            >
+              {isSubmittingSuite ? "Creating..." : "Create"}
             </CButton>
           </CModalFooter>
         </CForm>
