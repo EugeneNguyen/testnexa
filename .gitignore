@@ -6,5 +6,6 @@
 # colliding with the main `testnexa` stack's ports).
 docker-compose.override.test.yml
 docker-compose.override.ds1-test.yml
+docker-compose.override.admin2-test.yml
 .env.ds1-test
 .mcp.json

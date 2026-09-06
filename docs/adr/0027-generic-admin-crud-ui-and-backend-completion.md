@@ -1,0 +1,70 @@
+# ADR-0026: Generic admin CRUD UI (frontend) + execution/traceability backend completion
+
+**Status:** Accepted
+**Date:** 2026-09-05
+**Deciders:** xuanbinh91@gmail.com (CTO)
+**Related:** [FR-ADMIN-2](../requirements/2026-09-03-project-scaffold-requirements.md#28-taxonomy--generic-admin-crud--taxonomy-admin-crud-storiesmd), [ADR-0022](0022-generic-crud-router-factory.md) (backend router factory this ADR builds the frontend for, and extends), [ADR-0023](0023-frontend-shared-component-location.md) (`components/crud/` location, established but not yet populated), [Database Document §3.8/§3.9](../database/2026-09-03-database-design.md), [API Document §3/§5](../api/2026-09-03-api-design.md). Implementation plan not yet written (documentation-first pass, per user direction — code follows in a separate, later step).
+
+## Context
+
+ADR-0022 built the backend router factory and wired it for 20 entities, but the frontend half of FR-ADMIN-2's own acceptance criteria — a config-driven list/create/edit/delete UI, field-type-appropriate inputs, and permission-aware hide/disable of actions — was never built: `frontend/src/entityConfigs/`, `components/crud/`, and `pages/admin/` shipped as structural placeholders only (each holding a one-line README and nothing else).
+
+Three gaps surfaced while scoping this completion, all decided here:
+
+1. **No client-side permission signal exists.** `GET /auth/me` is identity-only by design ("no resolved permission codes yet — deferred until an RBAC story exists to resolve them," `schemas/auth.py`), and the one precedent for a permission-gated screen (`OrgMembers.tsx`) doesn't pre-check at all — it fires the request and renders whatever 403/404 comes back. FR-ADMIN-2's AC4 explicitly wants action buttons hidden/disabled **before** an attempt, which that precedent doesn't satisfy.
+2. **Three entities have zero backend routes at all**, not merely unbuilt frontend: `TestExecution` (in `CRUD_RESOURCES`, full CRUD permissions already seeded, but no route module ever registered it), `TestLog` (read-only by design — no `updated_at` column, immutable), and the 4 dedicated link tables (`RequirementTestCaseLink`, `RequirementTestConditionLink`, `TestConditionTestCaseLink`, `TestCaseDefectLink` — `READ_ONLY_RESOURCES`, `.read`-only permission code, no create/update/delete code exists for them at all by design, ADR-0005). A generic frontend can't manage an entity with no API to call.
+3. **Two entities have a scope shape harder than "one FK, one hop":** `RiskItem` (`requirement_id` **or** `test_plan_id`, exactly one) and `Attachment` (scoped via a `test_case_id` chain) can't render a list until the user has picked *which* parent row to scope by — a plain "required query param" input isn't enough; the list page needs a resolution step before it can even fire its first request.
+
+Also decided here: which of the 28 ERD entities actually belong on this generic surface at all, now that the user's own direction ("I want admin can manage everything") pushed scope past FR-ADMIN-2's originally-named 6 examples (`Role`, `Permission`, `Environment`, `TestDesignTechnique`, `TestLevel`, `TestType`).
+
+## Decision
+
+### Entity scope: every ERD entity except 4 structural exclusions
+
+Every entity with (or gaining, via this ADR) a plain-field CRUD-shaped backend route goes on the generic admin surface — **including** entities that already have a bespoke workflow screen (`Organization`, `Project`, `OrgMembership`, `Release`): their REST routes are already plain CRUD-shaped (factory-added `GET`/`PATCH`/`DELETE` for the first two, full bespoke CRUD for `Release`), so a generic list/form page coexists with the bespoke screen at no backend cost. This is a broader reading than FR-ADMIN-2's original "entity that doesn't have a bespoke workflow screen" framing — the user's explicit direction was completeness over that narrower boundary.
+
+**Excluded, structurally, not "not built yet":**
+
+- **`Approval`** — no create/update/delete route exists at all; the only write path is the bespoke `POST /test-plans/{id}/approve` action (FR-GOV-1). There is no "set some fields and save" operation to generalize.
+- **`User`** — created only via `POST /auth/signup` or the (unbuilt) invite-accept flow, both of which hash a password and, for invites, send an email. A generic create form bypasses both.
+- **`AIAgent`** — `POST /orgs/{org_id}/agents` mints a one-time-displayed raw API key server-side (ADR-0015). A generic create form has no reveal-once-then-never-again step, and a generic edit form risks exposing/rewriting key-bearing fields a bespoke screen would deliberately never surface.
+- **`AuthIdentity`** — created only as a side effect of `POST /auth/signup` or the invite-accept flow (both always `provider=local`, `is_primary=True`); no route creates one directly, and it has zero permission codes seeded at all. A generic create/edit form has no way to preserve its real invariant (exactly one primary identity per `User`) and no legitimate use case outside the bootstrap flow that already owns it.
+
+Forcing any of these four through the generic form would require entity-specific logic in the "generic" layer — defeating FR-ADMIN-2's AC1 ("no entity-specific component code required to add a new entity"). They stay bespoke-only, structurally, not as a scope-trim.
+
+**Final list:** `Organization`, `Project`, `OrgMembership`, `Release`, `Role`, `RoleAssignment` (edit/delete only — create/list stay RBAC-3's own flow, ADR-0021), `Permission` (read-only), `TestDesignTechnique`, `TestLevel`, `TestType`, `Environment`, `TestPlan`, `EntryExitCriteria`, `TestCycle`, `Requirement`, `TestCondition`, `TestCase`, `TestStep`, `TestSuite`, `RiskItem`, `Attachment`, `Defect`, `TestExecution`, `TestLog` (read-only), and the 4 link tables (read-only) — 24 named conceptual entities, plus `TraceabilityLink` (1 further conceptual entity, ADR-0005, not itself named above — it has no single table of its own) realized as its 4 dedicated link tables: **28 admin pages total** (24 + 4). The backend §3 factory itself serves 27 of those 28 — everything except `Release`, whose routes are 100% bespoke (no factory involvement at all), but which still gets a page per the coexistence decision above.
+
+### Backend completion: wire the 3 missing entities into the existing factory
+
+No new architecture — the same `make_crud_router()`/`CrudEntityConfig` machinery ADR-0022 built, applied to the gap:
+
+- **`TestExecution`** (full CRUD): `app/api/routes/execution.py`, `resolve_org_id = chain_resolver([(TestCycle, "test_cycle_id"), (TestPlan, "test_plan_id")])` → `TestPlan.project_id` → `Project.org_id`. **Correction found during implementation:** this ADR's first draft said `TestCycle.project_id` directly (1-hop) — `TestCycle` has no `project_id`/`org_id` column at all, only `test_plan_id`; the real resolver is the same 2-hop shape `Defect`'s own pre-existing resolver already walks (`TestCycle` → `TestPlan` → `Project`). New `schemas/execution.py` entries (`CreateTestExecutionRequest`, `UpdateTestExecutionRequest`, `TestExecutionSummary`).
+- **`TestLog`** (list/get only, `methods=frozenset({"list","get"})`): same file, resolver delegates one further hop through `TestExecution`'s own resolver (mirrors `resolve_via_test_case`'s "fetch parent, delegate" shape). No update/delete route is ever registered — immutability enforced by the factory config itself, not just by omission.
+- **4 link tables** (list/get only): new `app/api/routes/trace.py` + `schemas/trace.py`. Each resolver composes `chain_resolver` with the existing helpers — no new resolver logic needed: `RequirementTestCaseLink`/`RequirementTestConditionLink` via `chain_resolver([(Requirement, "requirement_id")])`; `TestConditionTestCaseLink` via `chain_resolver([(TestCondition, "test_condition_id"), (Requirement, "requirement_id")])`; `TestCaseDefectLink` reuses `resolve_via_test_case` directly (it already accepts any row with a `test_case_id` attribute).
+
+### New endpoint: `GET /orgs/{org_id}/permissions/mine`
+
+Resolves the calling actor's full set of permission codes in `org_id` in one query — `RoleAssignment` → `Role` → `RolePermission` → `Permission.code`, `WHERE actor_id = :actor AND org_id = :org_id`, org-wide and project-scoped grants both included (project-scoped ones are tagged with their `project_id` so the frontend can distinguish "org-wide" from "only in project X" where that distinction matters). Reuses `has_permission`'s own join shape as a bulk `SELECT` rather than N single-code checks. Response: `{codes: [{code, project_id: uuid | null}]}`.
+
+This is a deliberate, small backend addition — not a workaround. FR-ADMIN-2's AC4 says action buttons must be hidden/disabled, which requires knowing the permission set *before* rendering; the `OrgMembers.tsx` attempt-then-403 precedent only reacts *after* a failed attempt, which doesn't satisfy that AC literally. `GET /auth/me` itself is deliberately left identity-only, per its own documented scope boundary — this is a new, separate, org-scoped route, not a retroactive change to `/auth/me`'s contract.
+
+### Frontend: entity registry + field-config, generic components, scope-selector
+
+- **`entityConfigs/`**: one config object per entity (28 files + `types.ts`). Each declares `resource`, its REST path, `methods` (mirroring the entity's own backend `CrudEntityConfig.methods` — a read-only entity's config simply omits `create`/`update`/`delete` fields, no special-cased component branch), and a `fields[]` array. Each field carries `type: "string" | "enum" | "fk" | "date" | "boolean"`, `label`, `required`; `enum` fields carry `values[]`; `fk` fields carry `{refEntity, labelField}` — the referenced entity's own list endpoint backs an autocomplete, regardless of whether that referenced entity itself has a page on this surface (e.g. `TestStep`'s `test_case_id` FK autocompletes against `Requirement`... via `TestCase`, which *is* on this surface; either way the FK widget only needs a read endpoint, not a full CRUD page, to exist).
+- **Scope routing**: global-catalog entities (`scope_field` absent, matching the backend's own `is_global_catalog`) live at `/orgs/:orgId/admin/:entity`; project-scoped entities at `/projects/:projectId/admin/:entity`. `RiskItem`/`Attachment` add a `scopeSelector: {refEntity, paramName}` to their config — the list page renders an `FkAutocomplete` against `refEntity` (`Requirement` or `TestPlan` for `RiskItem`; `TestCase` for `Attachment`) and does not fire its list query until a selection is made, rather than defaulting to an unscoped call that the backend would 422 anyway.
+- **Generic components** (`components/crud/`, per ADR-0023's location convention): `EntityTable` (CoreUI `CTable`, pagination, filter inputs, all driven by `fields[]`), `EntityForm` (React Hook Form + Zod schema built from `fields[]`, CoreUI inputs per `type`, reusing `FormField`'s error-display convention from DS-1/ADR-0023 for `string`/`date` fields), `FkAutocomplete` (debounced `?q=` search against the ref entity's own list route).
+- **`usePermissions`**: a new `frontend/src/auth/` hook backed by `GET /orgs/{org_id}/permissions/mine`, exposing `has(code)`. Every generic action button (`create`/`update`/`delete`) checks it before rendering; the underlying API call is the actual enforcement boundary regardless (RBAC-3/NFR-10 — hiding is UX, not security).
+- **Registry** (`pages/admin/registry.ts`) maps `:entity` route params to a config; `EntityListPage`/`EntityFormPage` are the only two page components on this surface — adding entity #28 (should `Approval`/`User`/`AIAgent` ever gain a plain-CRUD path) means adding one config file, never a new component.
+
+## Consequences
+
+**Positive:** Every entity with a real backend CRUD route becomes manageable through the UI, closing the "every one of the 28 ERD entities is manageable" gap FR-ADMIN-2's own story text asks for (minus the 3 structurally-excluded ones). Adding entity #28 in the future is a config file, not a component. Permission hide/disable now has a real signal to render from, closing a gap that would otherwise have left AC4 permanently half-satisfied. The 3 backend-completion entities reuse 100% of ADR-0022's existing resolver primitives — zero new resolver logic, only new config wiring.
+
+**Negative / accepted trade-offs:** `GET /orgs/{org_id}/permissions/mine` is a second, purpose-built permission-visibility route rather than folding into `/auth/me` — two routes for a related concern, but `/auth/me`'s identity-only contract is itself already a considered, documented boundary (AUTH-2/4) this ADR chooses not to reopen. The scope-selector step adds one extra click/screen for `RiskItem`/`Attachment` specifically — accepted as the honest cost of their branching/deep-chain scope, not hidden behind a default that would just 422.
+
+## Alternatives considered
+
+- **Attempt-then-403, matching `OrgMembers.tsx`'s existing precedent** — rejected: doesn't satisfy AC4's literal "hidden/disabled" wording, and would leave every generic-surface entity with a worse permission UX than the one bespoke screen that already exists.
+- **Trim scope to FR-ADMIN-2's originally-named 6 entities, defer the rest** — rejected per explicit user direction; the story's own text ("every one of the 28 ERD entities is manageable") already pointed at full coverage, the 6 examples were illustrative, not exhaustive.
+- **Defer `RiskItem`/`Attachment` to a later pass given their scope-selector complexity** — rejected per explicit user direction; complexity is real but fully solvable by composing existing `FkAutocomplete`/resolver primitives, not a new architectural risk.
+- **Fold permission visibility into `/auth/me`** — rejected; `/auth/me` is identity-only across every org the actor belongs to, while permission codes are inherently org-scoped (and sometimes project-scoped) — a single global `/auth/me` payload would need to embed a per-org, per-project breakdown, which is a materially bigger response shape than one org-scoped route returns on demand.

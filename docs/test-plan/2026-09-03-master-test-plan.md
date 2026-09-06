@@ -15,7 +15,7 @@ This plan governs testing of the project scaffold: a full-stack ISTQB/IEEE829-al
 ## 2. Test items
 
 - Backend REST API (FastAPI) — all routes in the [API Document](../api/2026-09-03-api-design.md)
-- Frontend SPA (React/Vite) — generic CRUD surface + bespoke workflow screens + the persistent admin shell (sidebar, navbar, breadcrumb, footer, dashboard stat widgets, dark/light mode toggle) wrapping every `ProtectedRoute` screen, plus the template-parity UI-element reference pages (Colors/Typography/Icons — no FR backing, see Requirements Document), plus the `components/shared/` layer (`FormField`, DS-1) that bespoke workflow screens compose their forms from, plus the public (unauthenticated) `LandingPage` at `/` (LANDING-1) that replaced the scaffold-verification page
+- Frontend SPA (React/Vite) — generic CRUD surface (28 entity pages, `entityConfigs`/`components/crud`/`pages/admin`, permission-driven hide/disable via `usePermissions`, [ADR-0027](../adr/0027-generic-admin-crud-ui-and-backend-completion.md)) + bespoke workflow screens + the persistent admin shell (sidebar, navbar, breadcrumb, footer, dashboard stat widgets, dark/light mode toggle) wrapping every `ProtectedRoute` screen, plus the template-parity UI-element reference pages (Colors/Typography/Icons — no FR backing, see Requirements Document), plus the `components/shared/` layer (`FormField`, DS-1) that bespoke workflow screens compose their forms from, plus the public (unauthenticated) `LandingPage` at `/` (LANDING-1) that replaced the scaffold-verification page
 - MCP server stub — 5 tools per API Document §6
 - Alembic migrations — schema migration + seed data migration
 - Docker Compose stack — full-stack integration surface (`dev` and `prod` profiles)
