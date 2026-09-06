@@ -67,6 +67,18 @@ routes rather than bolting onto an existing generic file.
 - `_TEST_CONDITION_CONFIG.methods` narrowed to `frozenset({"list", "get", "update", "delete"})`,
   `create_schema` dropped to `None` — same posture as `_TEST_CASE_CONFIG` today.
 
+**Frontend — `entityConfigs/test-condition.ts` change (post-merge addition):**
+- Main picked up ADR-0027 (generic admin CRUD UI) while this spec was in
+  review — `entityConfigs/test-condition.ts` mirrors the backend's
+  `CrudEntityConfig.methods` 1:1 and currently declares
+  `methods: ["list","get","create","update","delete"]`. Once the backend
+  drops `create` (above), this file's `methods` array must drop `"create"`
+  too, or the generic admin surface (`/projects/:projectId/admin/test-condition`)
+  shows a Create button calling a route that no longer accepts POST.
+  `test-case.ts` already has no `create` and needs no change — confirmed no
+  existing test (backend or e2e) exercises `POST /test-conditions` over
+  HTTP, so this restriction is safe.
+
 **Backend — RBAC (`db/rbac_seed_catalog.py` + new migration):**
 - `test_manager` bundle gains `test_condition.create`, `test_condition.update`,
   `test_condition.delete`, `test_case.create`, `test_case.update`, `test_case.delete`
