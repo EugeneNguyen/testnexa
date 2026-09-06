@@ -37,14 +37,35 @@ an error) if that server isn't reachable, so a plain `pytest` run of the
 whole `tests/` tree is unaffected.
 
 To actually run it, bring the stack up first, then point it at the exposed
-nginx port (which proxies `/api/health` to the backend's `/health`):
+nginx port — **without** an `/api` suffix. `nginx/nginx.dev.conf`'s
+`location /api/` passes the request straight through to
+`backend:8000/api/` unchanged (no path rewrite), and every integration test
+file builds its own paths as `f"{TEST_API_BASE_URL}{API_PREFIX}/..."` where
+`API_PREFIX = "/api/v1"` already carries the `/api` segment. Appending
+`/api` to `TEST_API_BASE_URL` yourself double-prefixes every real route to
+`/api/api/v1/...`, which nginx still forwards, but which FastAPI's own
+router then 404s on its own terms — a plain `{"detail": "Not Found"}` body
+with no `code` key, easy to mistake for an application bug rather than a
+harness misconfiguration (bit a REQ-4 verification pass, 2026-09-06, see
+`backend/CLAUDE.md`):
 
 ```bash
 docker compose --profile dev up --build
 
 # in another shell:
-TEST_API_BASE_URL=http://localhost:54593/api pytest backend/tests/integration
+TEST_API_BASE_URL=http://localhost:54593 pytest backend/tests/integration
 ```
+
+One known-harmless casualty of the corrected (`/api`-less) base URL: the
+bare-`/health` probe (`tests/integration/conftest.py`'s skip-guard, and
+`test_health_api.py`/`test_rbac_seed.py`'s own assertions) calls
+`f"{TEST_API_BASE_URL}/health"` with no `/api` segment at all, and nginx has
+no bare `/health` location — only `/api/health` (a dedicated proxy to the
+backend's unprefixed `/health`) and `/` (the frontend's catch-all). Those two
+tests fail against nginx regardless of which base URL convention you use;
+see `e2e/CLAUDE.md`'s "known, harmless failures" section — don't chase it,
+and don't reach for the old `/api`-suffixed base URL to silence it, since
+that trade makes every other integration test fail instead.
 
 You can also point it directly at a locally-running backend (bypassing
 nginx) by omitting `TEST_API_BASE_URL` (defaults to `http://localhost:8000`)
