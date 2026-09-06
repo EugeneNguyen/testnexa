@@ -1,11 +1,21 @@
 """API-1: generic-CRUD factory routes for the assets cluster (ADR-0022).
 
-`Requirement`, `TestCondition`, `TestStep`, `TestSuite` get all 5 methods.
-`TestCase` gets `GET`/`PATCH`/`DELETE` only — `create` stays reserved for a
-future bespoke atomic-create route (ADR-0022, API Document §4), and `list` is
+`Requirement`, `TestStep`, `TestSuite` get all 5 methods.
+
+`TestCase` gets `GET`/`PATCH`/`DELETE` only — `create` belongs to the bespoke
+atomic-create route (ADR-0022, API Document §4; built as
+`POST /test-conditions/{id}/test-cases` by REQ-3/ADR-0028), and `list` is
 deliberately not registered at all (see `app/schemas/assets.py`'s module
 docstring for why: no single non-nullable FK exists to use as a safe,
 tenant-isolating `scope_field`).
+
+`TestCondition` gets `GET`/`PATCH`/`DELETE`/`list` — its `create` was
+withdrawn from the factory by REQ-3/ADR-0028 for the same reason `TestCase`'s
+never registered: the factory only ever inserts the entity's own row, so it
+silently produced a `TestCondition` with no `RequirementTestConditionLink`
+row, breaking FR-REQ-3 AC1's traceability claim. `POST
+/requirements/{id}/test-conditions`
+(`app/api/routes/test_condition_authoring.py`) is now the only creation path.
 
 Resolver depths (API Document §3's table): `Requirement`/`TestSuite` are
 direct (`project_id` -> `Project.org_id`); `TestCondition` is one hop
@@ -26,7 +36,6 @@ from app.api.crud_factory import (
 from app.models.assets import Requirement, TestCase, TestCondition, TestStep, TestSuite
 from app.schemas.assets import (
     CreateRequirementRequest,
-    CreateTestConditionRequest,
     CreateTestStepRequest,
     CreateTestSuiteRequest,
     RequirementSummary,
@@ -55,14 +64,17 @@ _REQUIREMENT_CONFIG = CrudEntityConfig(
     search_fields=("title", "description", "external_ref", "source"),
 )
 
+# No `create` — see module docstring (REQ-3/ADR-0028); same posture as
+# `_TEST_CASE_CONFIG` below, for the identical reason.
 _TEST_CONDITION_CONFIG = CrudEntityConfig(
     model=TestCondition,
     resource="test_condition",
-    create_schema=CreateTestConditionRequest,
+    create_schema=None,
     update_schema=UpdateTestConditionRequest,
     summary_schema=TestConditionSummary,
     scope_field="requirement_id",
     resolve_org_id=chain_resolver([(Requirement, "requirement_id")]),
+    methods=frozenset({"list", "get", "update", "delete"}),
 )
 
 # No `list`/`create` — see module docstring.
