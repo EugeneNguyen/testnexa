@@ -151,6 +151,93 @@ def test_test_manager_matches_tester_on_test_condition_and_test_case() -> None:
         assert manager_codes == tester_codes, resource
 
 
+def test_test_manager_bundle_includes_full_environment_crud() -> None:
+    """PLAN-3/ADR-0033: `test_manager` gains `environment.create`/`.read`/
+    `.update`/`.delete` — it held **none** of the four before this ADR, even
+    though it has held full `test_cycle` CRUD since RBAC-4 and a `TestCycle`
+    cannot be created without pointing at an `Environment`.
+
+    FR-PLAN-3 AC2's own wording ("a user with `environment.create`
+    permission…") names this story's persona directly, so without these codes
+    the inline "+ New Environment" flow 403s for the very role the story is
+    written around — the same class of pre-existing RBAC-4 seed gap ADR-0019
+    closed once for `release.*`.
+    """
+    all_codes = {code for code, _resource, _action in build_permission_catalog()}
+    bundles = build_role_bundles(all_codes)
+
+    test_manager = bundles["test_manager"]
+    for action in ("create", "read", "update", "delete"):
+        assert f"environment.{action}" in test_manager, action
+
+
+def test_test_manager_bundle_has_test_execution_create_and_read_only() -> None:
+    """PLAN-3/ADR-0033, and the *withholding* half of it, which matters as much
+    as the grant: `test_manager` gains `test_execution.create` (the minimum to
+    reach `POST /test-cycles/{id}/executions`, TC-PLAN-008) and
+    `test_execution.read` — but deliberately **not** `.update`/`.delete`.
+
+    No FR-PLAN-3 or FR-EXEC-1 acceptance criterion asks `test_manager` to edit
+    or delete a recorded result. Asserting the absence, not just the presence,
+    is what makes a later accidental widening (e.g. someone reaching for
+    `_crud_codes("test_execution")` by symmetry with the resources above it)
+    show up as a failing test rather than a silent scope expansion.
+    """
+    all_codes = {code for code, _resource, _action in build_permission_catalog()}
+    bundles = build_role_bundles(all_codes)
+
+    test_manager = bundles["test_manager"]
+    assert "test_execution.create" in test_manager
+    assert "test_execution.read" in test_manager
+    assert "test_execution.update" not in test_manager
+    assert "test_execution.delete" not in test_manager
+
+
+def test_plan3_migration_code_set_matches_the_catalog_delta() -> None:
+    """The six codes the new Alembic data migration backfills must be exactly
+    the six `test_manager` gained in `rbac_seed_catalog.py`.
+
+    Both halves are required (`backend/CLAUDE.md`'s standing rule): editing the
+    catalog alone only affects a *fresh* DB's initial seed, and running the
+    migration alone would leave a fresh DB's seed disagreeing with an upgraded
+    one. This test is the thing that catches the two drifting apart — it reads
+    the migration module's own `_NEW_CODES` tuple rather than restating the
+    list, so a future edit to one side without the other fails here.
+    """
+    import importlib.util
+    from pathlib import Path
+
+    migration_path = (
+        Path(__file__).resolve().parents[2]
+        / "alembic"
+        / "versions"
+        / "e5b21d7c8f40_seed_environment_test_execution_permissions_test_manager.py"
+    )
+    assert migration_path.exists(), migration_path
+    spec = importlib.util.spec_from_file_location("_plan3_migration", migration_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    all_codes = {code for code, _resource, _action in build_permission_catalog()}
+    test_manager = build_role_bundles(all_codes)["test_manager"]
+
+    assert set(module._NEW_CODES) == {
+        "environment.create",
+        "environment.read",
+        "environment.update",
+        "environment.delete",
+        "test_execution.create",
+        "test_execution.read",
+    }
+    # Every code the migration inserts is one the catalog also grants...
+    assert set(module._NEW_CODES) <= test_manager
+    # ...and every one of them is a real catalogued Permission, so the
+    # migration's own "len mismatch -> skip" guard can never silently no-op.
+    assert set(module._NEW_CODES) <= all_codes
+    assert module.down_revision == "a91c4e0f7db5"
+
+
 def test_tester_bundle_has_no_approval_or_role_permissions() -> None:
     all_codes = {code for code, _resource, _action in build_permission_catalog()}
     bundles = build_role_bundles(all_codes)

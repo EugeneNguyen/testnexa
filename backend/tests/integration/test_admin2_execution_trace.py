@@ -27,8 +27,9 @@ import pytest
 from sqlalchemy import delete
 
 from app.db.session import AsyncSessionLocal
+from app.models.assets import TestSuite, TestSuiteTestCase
 from app.models.execution import Defect, DefectSeverity, TestExecution, TestExecutionResult, TestLog, TestLogEventType
-from app.models.planning import Environment, TestCycle, TestPlan
+from app.models.planning import Environment, TestCycle, TestPlan, TestPlanTestSuite
 from app.models.project import Release
 from app.models.rbac import RoleAssignment
 from app.models.tenancy import OrgMembership, OrgMembershipStatus
@@ -174,6 +175,26 @@ async def _cleanup_extra(
 
 @pytest.mark.asyncio
 async def test_test_execution_full_crud_happy_path() -> None:
+    """ADR-0025's `TestExecution` CRUD round trip, **updated for PLAN-3/ADR-0033**.
+
+    The `create` leg used to call the generic `POST /test-executions`. ADR-0033
+    removed that route (`_TEST_EXECUTION_CONFIG` drops `"create"`) so that
+    FR-PLAN-3 AC3's scope check cannot be bypassed, and this test's create leg
+    now goes through the bespoke `POST /test-cycles/{id}/executions` instead —
+    the only reachable create path.
+
+    That has a real fixture consequence, not just a URL swap: the bespoke route
+    rejects (`422`) a `TestCase` that isn't covered by the cycle's parent
+    `TestPlan`, so this test now additionally seeds a `TestSuite`, a
+    `TestPlanTestSuite` row (suite included in the plan) and a
+    `TestSuiteTestCase` row (case a member of that suite). Without them the
+    create leg would `422` — correctly.
+
+    `GET`/`list`/`PATCH`/`DELETE` are deliberately left exactly as they were:
+    ADR-0033's restriction is `create`-only, and keeping the other four legs
+    unchanged here is what proves it wasn't an accidental blanket removal (the
+    same split TC-PLAN-017 asserts from the other direction).
+    """
     user_ids: list = []
     org_ids: list = []
     project_ids: list = []
@@ -187,6 +208,7 @@ async def test_test_execution_full_crud_happy_path() -> None:
     release_ids: list = []
     environment_ids: list = []
     test_execution_ids: list = []
+    test_suite_ids: list = []
     try:
         async with AsyncSessionLocal() as session:
             admin, org = await _create_org_admin(session, "exec-crud")
@@ -204,7 +226,16 @@ async def test_test_execution_full_crud_happy_path() -> None:
             cycle = await _create_test_cycle(
                 session, test_plan=plan, release=release, environment=environment, tag="exec-crud"
             )
+            # PLAN-3/ADR-0033 scope-check precondition: the bespoke create route
+            # only accepts a `TestCase` reachable as
+            # `TestPlan -> TestPlanTestSuite -> TestSuite -> TestSuiteTestCase`.
+            suite = TestSuite(project_id=project.id, name=_unique_name("Suite exec-crud"))
+            session.add(suite)
+            await session.flush()
+            session.add(TestPlanTestSuite(test_plan_id=plan.id, test_suite_id=suite.id))
+            session.add(TestSuiteTestCase(test_suite_id=suite.id, test_case_id=case.id))
             await session.commit()
+            test_suite_ids = [suite.id]
             user_ids = [admin.actor_id]
             org_ids = [org.id]
             project_ids = [project.id]
@@ -222,10 +253,12 @@ async def test_test_execution_full_crud_happy_path() -> None:
 
         headers = {"Authorization": f"Bearer {token}"}
         async with httpx.AsyncClient(base_url=TEST_API_BASE_URL) as client:
+            # PLAN-3/ADR-0033: the bespoke route, not the removed generic
+            # `POST /test-executions`. `test_cycle_id` moves to the path and
+            # `executed_by_actor_id` is stamped server-side.
             create_response = await client.post(
-                f"{API_PREFIX}/test-executions",
+                f"{API_PREFIX}/test-cycles/{cycle_id}/executions",
                 json={
-                    "test_cycle_id": str(cycle_id),
                     "test_case_id": str(case_id),
                     "result": "pass",
                     "executed_at": datetime.now(UTC).isoformat(),
@@ -267,6 +300,25 @@ async def test_test_execution_full_crud_happy_path() -> None:
             release_ids=release_ids,
             environment_ids=environment_ids,
         )
+        # The PLAN-3 scope-check fixture's own rows. Handled locally rather than
+        # threaded through `_cleanup_extra`/`_crud_cleanup` (neither knows about
+        # `TestSuite`) — join rows first, then the suite, and all of it before
+        # `_crud_cleanup` deletes the `TestCase`/`TestPlan`/`Project` they hang
+        # off, which are `RESTRICT`.
+        if test_suite_ids:
+            async with AsyncSessionLocal() as session:
+                await session.execute(
+                    delete(TestSuiteTestCase).where(
+                        TestSuiteTestCase.test_suite_id.in_(test_suite_ids)
+                    )
+                )
+                await session.execute(
+                    delete(TestPlanTestSuite).where(
+                        TestPlanTestSuite.test_suite_id.in_(test_suite_ids)
+                    )
+                )
+                await session.execute(delete(TestSuite).where(TestSuite.id.in_(test_suite_ids)))
+                await session.commit()
         await _crud_cleanup(
             user_ids=user_ids,
             org_ids=org_ids,

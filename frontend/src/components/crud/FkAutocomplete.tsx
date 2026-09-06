@@ -34,6 +34,14 @@ export interface FkAutocompleteProps {
   disabled?: boolean;
   /** Extra fixed query params merged into the ref entity's own list call (e.g. an already-known `project_id`). */
   extraParams?: Record<string, string | undefined>;
+  /**
+   * Route params for interpolating a `listPath` placeholder (PLAN-3).
+   * Only `Release` has one today (`/projects/:projectId/releases`,
+   * `entityConfigs/release.ts`) — every other config's `listPath` is a literal,
+   * so omitting this (the default) is correct for all of them. Without it a
+   * `release` autocomplete would request the literal `:projectId` segment.
+   */
+  routeParams?: Record<string, string | undefined>;
 }
 
 function labelFor(row: EntityRow, labelField: string | undefined): string {
@@ -54,6 +62,7 @@ function FkAutocomplete({
   error,
   disabled,
   extraParams,
+  routeParams,
 }: FkAutocompleteProps) {
   const refConfig = entityConfigByKey[refEntity];
   const canSearch = Boolean(refConfig) && refConfig.methods.includes("list");
@@ -104,7 +113,7 @@ function FkAutocomplete({
     }
     debounceRef.current = setTimeout(() => {
       setIsLoading(true);
-      listEntities(refConfig, {}, { q: query, params: extraParams })
+      listEntities(refConfig, routeParams ?? {}, { q: query, params: extraParams })
         .then((response) => {
           setResults(response.items);
           setIsOpen(true);
