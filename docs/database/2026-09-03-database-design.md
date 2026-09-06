@@ -246,6 +246,8 @@ No uniqueness constraint on `version_label` — AC doesn't require it, and unlik
 
 `GET /releases/{id}/test-cycles` (AC2's query — "what was tested for release X") returns every `TestCycle` with `release_id` matching the path `id`, each with its `TestExecution` rows nested in the response (not a cycles-only list) — proven queryable via `TestCycle.release_id`/`TestExecution.test_cycle_id`, both already non-nullable FKs. `TestCycle` itself has no create route in this codebase (FR-PLAN-3's scope); this query works against however a `TestCycle` row came to exist. The route requires all three of `release.read`, `test_cycle.read`, `test_execution.read` (NFR-26) — the one route in this scaffold exposing `TestExecution` data without a `test_cycle_id` in the request path, so a single-permission gate would let a Release-only viewer see execution data outside their own granted permissions.
 
+**PLAN-2 extension** ([ADR-0032](../adr/0032-plan2-entry-exit-criteria-visibility.md), NFR-42): each nested `TestCycle` in this same response also carries `exit_criteria` — every `EntryExitCriteria` row of `type = exit` belonging to that cycle's parent `TestPlan` (`TestCycle.test_plan_id`), `[]` when none exist, never omitted. Resolved by one additional query batched across the result set's distinct `test_plan_id`s, not once per cycle. The route's permission gate extends from the triple above to a quadruple: **AND `entry_exit_criteria.read`**.
+
 ### 3.6 `assets.py` — Requirement, TestCondition, TestCase, TestStep, TestSuite (+ junction)
 
 **Requirement**
@@ -357,6 +359,8 @@ Unique: `(test_plan_id, test_suite_id)`.
 | type | enum(entry, exit, suspension, resumption) | not null |
 | condition_text | text | not null |
 | created_at, updated_at | timestamptz | not null |
+
+**Generic CRUD factory posture on `EntryExitCriteria`** — unlike every other PLAN-* gap, this entity needed **zero new backend route code**: full CRUD (`POST`/`GET`/`PATCH`/`DELETE /entry-exit-criteria`) was already factory-served via `_ENTRY_EXIT_CRITERIA_CONFIG`'s one-hop `chain_resolver([(TestPlan, "test_plan_id")])` since ADMIN-2 — no resolver gap of the ADR-0029/ADR-0030 class. PLAN-2 ([ADR-0032](../adr/0032-plan2-entry-exit-criteria-visibility.md)) is a visibility-surface story only: `TestPlanDetail.tsx` gains a full-CRUD (add/edit/delete) section reusing this same config filtered by `?test_plan_id=`, and `type = exit` rows are additionally nested onto `GET /releases/{id}/test-cycles` (§3.5's PLAN-2 extension note above) — no schema change either way.
 
 **Environment** — *scoped to `project_id` (refinement beyond 07's unscoped draft, required for tenant isolation per NFR-1)*
 | Column | Type | Constraints |
