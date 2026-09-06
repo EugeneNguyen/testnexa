@@ -10,8 +10,8 @@ TestNexa: a self-hosted, ISTQB/IEEE 829-aligned test management tool (React fron
 
 | Path | What |
 |---|---|
-| `backend/` | FastAPI + SQLAlchemy 2.0 + Alembic, Python 3.11+ — has its own [`CLAUDE.md`](backend/CLAUDE.md) (Docker-image dev-deps gap, isolated-stack DB port exposure, `JWT_SECRET` matching, resolver-completeness) |
-| `frontend/` | Vite + React + TypeScript — has its own [`CLAUDE.md`](frontend/CLAUDE.md) (nested-table a11y-name gotcha, unit-test coverage history) |
+| `backend/` | FastAPI + SQLAlchemy 2.0 + Alembic, Python 3.11+ — has its own [`CLAUDE.md`](backend/CLAUDE.md) (Docker-image dev-deps gap, isolated-stack DB port exposure, `JWT_SECRET` matching, resolver-completeness, `TEST_API_BASE_URL`-vs-nginx double-prefix trap) |
+| `frontend/` | Vite + React + TypeScript — has its own [`CLAUDE.md`](frontend/CLAUDE.md) (nested-table a11y-name gotcha, unit-test coverage history, `frontend/tests/` location convention) |
 | `e2e/` | Playwright, runs against the full docker-compose stack — has its own [`CLAUDE.md`](e2e/CLAUDE.md) (the full isolated-stack-plus-Playwright worked recipe) |
 | `docs/adr/` | Architecture Decision Records — **read before changing stack/architecture choices** |
 | `docs/requirements/`, `docs/database/`, `docs/api/` | Canonical requirements/schema/API contracts |
@@ -54,7 +54,7 @@ Open `http://localhost:54593` (or the host's LAN IP, same port) — nginx is the
 
 ## Working with agents / long-running background work
 
-A background or resumed sub-agent can die silently with no completion record if its parent process exits mid-task (observed: a `ceo-orchestrator` given a multi-hour implement+test task stopped with no transcript marker after being resumed). **Never take a sub-agent's self-reported "done" at face value** — after any orchestrated implementation work, independently verify: `git status`/`git diff --stat` in the actual worktree, `docker ps`/`docker compose ls` for what's actually running, and re-run the test suites yourself before reporting results as fact.
+A background or resumed sub-agent can die silently with no completion record if its parent process exits mid-task (observed twice now on the same class of task: a `ceo-orchestrator` given a multi-hour implement+test task stopped with no transcript marker after being resumed, then — resumed a second time with a `SendMessage`, given a clear "don't stop until done" instruction — stopped again with no completion record, REQ-4, 2026-09-06). **Treat this as the expected failure mode for any multi-hour orchestrated task, not a one-off**: don't assume a second resume will finish what the first one didn't. **Never take a sub-agent's self-reported "done" at face value, and don't stop verifying after the first check either** — after *every* resume or apparent stop, independently re-verify: `git status`/`git diff --stat` in the actual worktree, `docker ps`/`docker compose ls` for what's actually running, and re-run the test suites yourself before reporting results as fact. In practice this means: read whatever the agent *did* leave on disk (files, partial test output) before deciding whether to resume it again or just finish the remaining work directly — a stopped orchestrator's on-disk artifacts are often further along than its last transcript message suggests, and picking up from there is faster than a third resume attempt.
 
 **[`e2e/CLAUDE.md`](e2e/CLAUDE.md) has the full worked recipe** (port/project naming, the `!override` gotcha, DB clone + verification, migrating, both-IP health-checking, and known-harmless failures when testing through this topology) — read it before improvising your own.
 
