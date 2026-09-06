@@ -21,6 +21,7 @@ import {
   updateTestPlan,
 } from "../../../src/lib/api/testPlans";
 import { listTestSuites } from "../../../src/lib/api/testSuites";
+import { listEntities } from "../../../src/lib/api/entityCrud";
 
 vi.mock("../../../src/lib/api/testPlans", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../../src/lib/api/testPlans")>();
@@ -40,11 +41,28 @@ vi.mock("../../../src/lib/api/testSuites", async (importOriginal) => {
   return { ...actual, listTestSuites: vi.fn() };
 });
 
+// PLAN-2 (ADR-0032) added an `entityCrud` import to `TestPlanDetail` for its
+// Entry/Exit Criteria section. Without this mock that section's mount-time
+// list call would reach the real `apiFetch` in jsdom — mocked here (and given
+// an empty-envelope default below) so this file keeps testing only its own
+// section, exactly as it did before that section existed.
+vi.mock("../../../src/lib/api/entityCrud", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../src/lib/api/entityCrud")>();
+  return {
+    ...actual,
+    listEntities: vi.fn(),
+    createEntity: vi.fn(),
+    updateEntity: vi.fn(),
+    deleteEntity: vi.fn(),
+  };
+});
+
 const mockGetTestPlan = vi.mocked(getTestPlan);
 const mockUpdateTestPlan = vi.mocked(updateTestPlan);
 const mockListPlanTestSuites = vi.mocked(listPlanTestSuites);
 const mockListPlanTestCases = vi.mocked(listPlanTestCases);
 const mockListTestSuites = vi.mocked(listTestSuites);
+const mockListEntities = vi.mocked(listEntities);
 
 const PROJECT_ID = "11111111-1111-1111-1111-111111111111";
 const PLAN_ID = "22222222-2222-2222-2222-222222222222";
@@ -85,6 +103,7 @@ describe("TestPlanDetail — header card and Edit modal (PLAN-1)", () => {
     mockListPlanTestSuites.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 25 });
     mockListPlanTestCases.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 25 });
     mockListTestSuites.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 25 });
+    mockListEntities.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 25 });
   });
 
   afterEach(() => {

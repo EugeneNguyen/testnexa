@@ -16,7 +16,12 @@
  *
  * Each Release row expands in place to fetch and render
  * `GET /releases/{id}/test-cycles` (ADR-0019 AC2's nested-executions audit
- * query) — read-only, no edit UI, this is an audit view only.
+ * query) — read-only, no edit UI, this is an audit view only. PLAN-2
+ * (ADR-0032) adds each cycle's parent plan's `exit`-type EntryExitCriteria to
+ * that same expanded row, as a second flat `<ul>` above the executions one, so
+ * exit criteria and execution progress are visible in one view without a
+ * separate lookup. Read-only there too: criteria are edited only on
+ * `TestPlanDetail`'s own section.
  *
  * REQ-1 (ADR-0022/ADR-0025): a second, independent section on this same page
  * — Requirement list (searchable by `?q=` title/description/external_ref/
@@ -1175,6 +1180,57 @@ function ProjectDetail() {
                                       <li key={cycle.id} className="mb-2">
                                         <div className="fw-semibold">
                                           {cycle.name} ({formatDate(cycle.start_date)} – {formatDate(cycle.end_date)})
+                                        </div>
+                                        {/*
+                                          PLAN-2 (ADR-0032, UI Design Document
+                                          §2): the parent plan's `exit` criteria,
+                                          read-only, above the executions list in
+                                          this same <li>. Rendered as-is — the
+                                          backend already filtered to `type =
+                                          exit`, so there is deliberately no
+                                          client-side filter here. Flat <ul>, not
+                                          a nested <CTable> (frontend/CLAUDE.md).
+                                        */}
+                                        <div
+                                          className="small text-body-secondary"
+                                          data-testid={`cycle-exit-criteria-label-${cycle.id}`}
+                                        >
+                                          Exit criteria:
+                                        </div>
+                                        {cycle.exit_criteria.length === 0 ? (
+                                          <div
+                                            className="text-body-secondary small"
+                                            data-testid={`cycle-exit-criteria-empty-${cycle.id}`}
+                                          >
+                                            No exit criteria defined.
+                                          </div>
+                                        ) : (
+                                          <ul data-testid={`cycle-exit-criteria-${cycle.id}`}>
+                                            {cycle.exit_criteria.map((criteria) => (
+                                              <li
+                                                key={criteria.id}
+                                                className="small"
+                                                data-testid={`cycle-exit-criterion-${criteria.id}`}
+                                              >
+                                                {criteria.condition_text}
+                                              </li>
+                                            ))}
+                                          </ul>
+                                        )}
+                                        {/*
+                                          The matching "Executions:" label from
+                                          PLAN-2 UI Design Document §2's layout
+                                          sketch. Added so the two sub-lists in
+                                          this cell are symmetrically labelled —
+                                          §2 shows both. The executions list
+                                          itself, and its "No executions yet."
+                                          copy, are unchanged from ADR-0019.
+                                        */}
+                                        <div
+                                          className="small text-body-secondary"
+                                          data-testid={`cycle-executions-label-${cycle.id}`}
+                                        >
+                                          Executions:
                                         </div>
                                         {cycle.executions.length === 0 ? (
                                           <div className="text-body-secondary small">No executions yet.</div>

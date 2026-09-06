@@ -81,7 +81,9 @@ function App() {
           route — deliberately its own URL rather than another `ProjectDetail`
           expand-in-place section, since PLAN-2's entry/exit criteria and
           PLAN-3's TestCycle view are known, imminent extensions of this same
-          object. Sits above the generic `/projects/:projectId/admin/:entity`
+          object. PLAN-2 (ADR-0032) has since landed on this same route, as
+          predicted; PLAN-3's TestCycle view is still outstanding. Sits above
+          the generic `/projects/:projectId/admin/:entity`
           routes below only for readability — react-router ranks the static
           `test-plans` segment over the `:entity` param either way.
         */}

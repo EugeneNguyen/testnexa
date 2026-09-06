@@ -1,7 +1,7 @@
 """Unit tests for PROJ-2 request/response schemas —
 `CreateReleaseRequest`/`ReleaseSummary`/`ReleaseListResponse`/
 `TestExecutionSummary`/`TestCycleSummary` (`app/schemas/releases.py`,
-ADR-0019).
+ADR-0019), extended by PLAN-2/ADR-0032's `TestCycleSummary.exit_criteria`.
 
 Pure Pydantic-model construction, no DB/network — mirrors the style of
 `tests/unit/test_projects_schemas.py`.
@@ -13,6 +13,7 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
+from app.schemas.planning import EntryExitCriteriaSummary
 from app.schemas.releases import (
     CreateReleaseRequest,
     ReleaseListResponse,
@@ -110,9 +111,12 @@ def test_test_execution_summary_requires_all_fields() -> None:
 # --- TestCycleSummary -------------------------------------------------------------------------
 
 
-def test_test_cycle_summary_nests_executions() -> None:
+def test_test_cycle_summary_nests_executions_and_exit_criteria() -> None:
     execution = TestExecutionSummary(
         id=uuid4(), test_case_id=uuid4(), result="fail", executed_at=datetime(2026, 9, 1)
+    )
+    criteria = EntryExitCriteriaSummary(
+        id=uuid4(), test_plan_id=uuid4(), type="exit", condition_text="All P1 cases executed"
     )
     cycle = TestCycleSummary(
         id=uuid4(),
@@ -123,12 +127,15 @@ def test_test_cycle_summary_nests_executions() -> None:
         start_date=date(2026, 9, 1),
         end_date=date(2026, 9, 15),
         executions=[execution],
+        exit_criteria=[criteria],
     )
     assert cycle.executions == [execution]
+    # PLAN-2/ADR-0032: nested alongside `executions`, not replacing it.
+    assert cycle.exit_criteria == [criteria]
     assert cycle.name == "Regression Cycle 1"
 
 
-def test_test_cycle_summary_allows_empty_executions_and_null_dates() -> None:
+def test_test_cycle_summary_allows_empty_executions_criteria_and_null_dates() -> None:
     cycle = TestCycleSummary(
         id=uuid4(),
         release_id=uuid4(),
@@ -138,7 +145,38 @@ def test_test_cycle_summary_allows_empty_executions_and_null_dates() -> None:
         start_date=None,
         end_date=None,
         executions=[],
+        exit_criteria=[],
     )
     assert cycle.executions == []
+    assert cycle.exit_criteria == []
     assert cycle.start_date is None
     assert cycle.end_date is None
+
+
+def test_test_cycle_summary_requires_exit_criteria_explicitly() -> None:
+    """TC-PLAN-012's "never omitted" claim, pinned at the schema layer.
+
+    `exit_criteria` deliberately has **no default** — exactly like the
+    pre-existing `executions` — so a code path that forgot to populate it
+    raises here rather than silently serializing a cycle without the key.
+    Giving it a `= []` default would make "omitted" and "empty" indis-
+    tinguishable at construction time, quietly defeating the boundary
+    TC-PLAN-012 exists to protect; this test is what stops that default from
+    being added as a convenience later.
+
+    This is the one genuinely isolable, DB-free assertion PLAN-2 adds — the
+    route's own batching/grouping logic is inlined in
+    `get_release_test_cycles` and has no pure function to unit-test, so it is
+    covered by `tests/integration/test_plan2_entry_exit_criteria.py` instead.
+    """
+    with pytest.raises(ValidationError):
+        TestCycleSummary(
+            id=uuid4(),
+            release_id=uuid4(),
+            test_plan_id=uuid4(),
+            environment_id=uuid4(),
+            name="Missing Criteria Cycle",
+            start_date=None,
+            end_date=None,
+            executions=[],
+        )
