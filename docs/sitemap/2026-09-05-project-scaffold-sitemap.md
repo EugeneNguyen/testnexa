@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-05
 **Owner:** xuanbinh91@gmail.com (CTO)
-**Sources:** `frontend/src/App.tsx` (route source of truth — this document tracks it, not the reverse), [UI Design Document](../ui-design/2026-09-05-generic-admin-crud-ui-design.md), [ADR-0027](../adr/0027-generic-admin-crud-ui-and-backend-completion.md)
+**Sources:** `frontend/src/App.tsx` (route source of truth — this document tracks it, not the reverse), [Generic Admin CRUD UI Design Document](../ui-design/2026-09-05-generic-admin-crud-ui-design.md), [ADR-0027](../adr/0027-generic-admin-crud-ui-and-backend-completion.md), [REQ-3 UI Design Document](../ui-design/2026-09-06-req-3-test-condition-rigor-path-ui-design.md), [ADR-0028](../adr/0028-req3-test-condition-rigor-path-bespoke-routes.md)
 
 First sitemap for this repo — no prior one existed; routes accreted story-by-story directly into `App.tsx`. Written now because the generic admin surface adds routes generated from a registry rather than one literal `<Route>` per entity, which is worth documenting as a pattern rather than 28 individual rows would otherwise obscure.
 
@@ -22,10 +22,12 @@ First sitemap for this repo — no prior one existed; routes accreted story-by-s
 | `/orgs/pick` | `OrgPicker` | multi-org account, no org selected yet |
 | `/orgs/:orgId` | `OrgHome` | project list, dashboard stat widgets (FR-SHELL-3) |
 | `/orgs/:orgId/members` | `OrgMembers` | RBAC-2 |
-| `/projects/:projectId` | `ProjectDetail` | Release list, per-release TestCycle/TestExecution audit view (PROJ-2) |
+| `/projects/:projectId` | `ProjectDetail` | Release list, per-release TestCycle/TestExecution audit view (PROJ-2); Requirement list + create (REQ-1); per-Requirement Test Condition list + create, per-Test-Condition Test Case create (REQ-3, [ADR-0028](../adr/0028-req3-test-condition-rigor-path-bespoke-routes.md)) |
 | `/orgs/:orgId/ui-elements/{colors,typography,icons}` | `Colors`/`Typography`/`Icons` | template-parity scaffolding, no FR backing (ADR-0020) |
 
-**Not yet built** (scoped by other, not-yet-implemented stories — listed here as reserved paths so a future generic-admin config never collides with them): `RequirementDetail` (FR-REQ-1..3), `TestSuiteBuilder` (FR-REQ-4), `TestExecutionRunner` (FR-EXEC-1..3), `TraceabilityMatrix` (FR-TRACE-1..2).
+**Correction (2026-09-06):** this doc's 2026-09-05 version reserved a dedicated `RequirementDetail` page for FR-REQ-1..3. REQ-1 had already shipped by then with its Requirement list/create inline on `ProjectDetail` instead (never on a separate page) — the reservation was stale before REQ-3 even started. REQ-3 continues that actual placement (see [REQ-3 UI Design Document](../ui-design/2026-09-06-req-3-test-condition-rigor-path-ui-design.md)) rather than resurrecting the unused reservation, which would have split one Requirement's authoring UI across two screens. `RequirementDetail` is removed from the reserved-paths list below.
+
+**Not yet built** (scoped by other, not-yet-implemented stories — listed here as reserved paths so a future generic-admin config never collides with them): `TestSuiteBuilder` (FR-REQ-4), `TestExecutionRunner` (FR-EXEC-1..3), `TraceabilityMatrix` (FR-TRACE-1..2). FR-REQ-2's own direct-link "New Test Case" modal (on `ProjectDetail`, alongside REQ-3's Test Condition UI) also remains not-yet-built.
 
 ## Protected — generic admin CRUD surface (ADR-0027)
 
@@ -53,7 +55,7 @@ Two page components (`EntityListPage`, `EntityFormPage`), routed generically off
 | `entry-exit-criteria` | `EntryExitCriteria` | plain |
 | `test-cycles` | `TestCycle` | plain |
 | `requirements` | `Requirement` | plain |
-| `test-conditions` | `TestCondition` | plain |
+| `test-conditions` | `TestCondition` | plain, read/update/delete only — no create via this surface as of [ADR-0028](../adr/0028-req3-test-condition-rigor-path-bespoke-routes.md) (creation is bespoke, on `ProjectDetail`) |
 | `test-cases` | `TestCase` | plain (no create — reserved for a future bespoke atomic-create route) |
 | `test-steps` | `TestStep` | plain |
 | `test-suites` | `TestSuite` | plain |

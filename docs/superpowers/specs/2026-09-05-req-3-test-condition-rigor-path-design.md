@@ -130,6 +130,10 @@ routes rather than bolting onto an existing generic file.
 - No E2E required by the story's ACs; can be added later if a full journey
   test is wanted.
 
+## Addendum (docs pass, 2026-09-06)
+
+Full ADR/requirements/WBS/database/API/UI-design/sitemap/test-plan/test-design/test-cases propagation written — see [ADR-0028](../../adr/0028-req3-test-condition-rigor-path-bespoke-routes.md) for the finalized decision record. One correction surfaced while updating the Sitemap: its 2026-09-05 version reserved a dedicated `RequirementDetail` page for FR-REQ-1..3, but REQ-1 had already shipped its Requirement UI inline on `ProjectDetail` instead. This design's "extends `ProjectDetail`" placement (§Components, Frontend) already matched that reality — the Sitemap itself was the stale artifact, now corrected rather than this design being changed.
+
 ## Out of scope
 
 - REQ-2's own direct-link route/UI (separate worktree/story) — this design

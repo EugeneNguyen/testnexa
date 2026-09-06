@@ -31,6 +31,7 @@ Index of ADRs for the Project Scaffold. Format: [MADR](https://adr.github.io/mad
 | [0025](0025-requirement-title-field.md) | `Requirement.title` schema gap-fill & inclusion in generic-CRUD `search_fields` (no new mechanism, reuses ADR-0022's `?q=`) | Accepted |
 | [0026](0026-sidebar-dark-color-scheme.md) | Sidebar dark color scheme (`CSidebar colorScheme="dark"`) matching the CoreUI free-template demo, static and independent of the FR-SHELL-4 app-wide light/dark toggle | Accepted |
 | [0027](0027-generic-admin-crud-ui-and-backend-completion.md) | Generic admin CRUD UI (entity registry + field-config, scope-selector, `usePermissions`) + backend completion (`TestExecution`/`TestLog`/4 link tables, `GET /orgs/{org_id}/permissions/mine`); 28-page final scope, 4 structural exclusions | Accepted |
+| [0028](0028-req3-test-condition-rigor-path-bespoke-routes.md) | REQ-3 rigor-path bespoke routes (TestCondition/TestCase atomic create+link), generic `TestCondition` create removed (link-table gap it left open), `test_manager` RBAC bundle extension for `test_condition.*`/`test_case.*` | Accepted |
 
 **Deciders on all ADRs below:** xuanbinh91@gmail.com (CTO), unless noted otherwise.
-**Date:** 2026-09-03 (0001–0017, 0021), 2026-09-04 (0018–0020), 2026-09-05 (0022–0027)
+**Date:** 2026-09-03 (0001–0017, 0021), 2026-09-04 (0018–0020), 2026-09-05 (0022–0027), 2026-09-06 (0028)
