@@ -56,21 +56,34 @@ class DefectListResponse(BaseModel):
     page_size: int
 
 
-# --- TestExecution (ADR-0025, full CRUD) --------------------------------------------------------
+# --- TestExecution (ADR-0025 full CRUD; `create` bespoke-only as of ADR-0033) -------------------
 
 
-class CreateTestExecutionRequest(BaseModel):
-    """Body of `POST /test-executions`.
+class CreateExecutionForCycleRequest(BaseModel):
+    """Body of the bespoke `POST /test-cycles/{id}/executions` (ADR-0033).
 
-    `executed_by_actor_id` is not accepted from the body — no story asks for
-    recording an execution "on behalf of" another actor via this generic
-    route, unlike `TestPlan.created_by_actor_id` (the one column
-    `crud_factory._ACTOR_STAMPED_FIELDS` auto-stamps today). Rather than
-    silently dropping a caller-supplied value, this field simply doesn't
-    exist on the request schema at all.
+    Replaces the removed generic `POST /test-executions` body
+    (`CreateTestExecutionRequest`, deleted in the same change that dropped
+    `"create"` from `_TEST_EXECUTION_CONFIG.methods`) — the generic route
+    enforced no PLAN-3 scope check, so leaving it reachable would have let any
+    caller bypass FR-PLAN-3 AC3 entirely by using the unrestricted path
+    (`backend/CLAUDE.md`'s standing "restrict the generic create in the same
+    commit" rule).
+
+    Two fields the generic schema had are deliberately absent here:
+
+    - `test_cycle_id` — comes from the path segment, not the body. It is what
+      the route's own 404/403 gate and the scope check's `test_plan_id` are
+      both computed from; accepting it twice would create a contradictable
+      second source of truth.
+    - `executed_by_actor_id` — stamped server-side from the authenticated
+      actor, never client-supplied. Same posture the generic schema's own
+      docstring already established for this field: rather than silently
+      dropping a caller-supplied value, the field simply does not exist on the
+      request schema at all, so a body attempting to set it is ignored by
+      Pydantic rather than honored.
     """
 
-    test_cycle_id: UUID
     test_case_id: UUID
     result: TestExecutionResult
     actual_result: str | None = None
@@ -126,7 +139,7 @@ class TestLogListResponse(BaseModel):
 
 
 __all__ = [
-    "CreateTestExecutionRequest",
+    "CreateExecutionForCycleRequest",
     "DefectListResponse",
     "DefectSeverity",
     "DefectSummary",

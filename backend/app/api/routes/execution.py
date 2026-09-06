@@ -1,11 +1,21 @@
 """API-1/ADR-0025: generic-CRUD factory routes for `Defect`, `TestExecution`, `TestLog`.
 
 `TestExecution`'s only prior exposure was `releases.py`'s bespoke nested
-audit query (`GET /releases/{id}/test-cycles`) — ADR-0025 adds full
-generic-CRUD routes for it here. `TestLog` is append-only/immutable by
-schema (no `updated_at` column, Database Document §3.8) — `list`/`get` only,
-no `create`/`update`/`delete` route is ever registered for it, generic or
-bespoke.
+audit query (`GET /releases/{id}/test-cycles`) — ADR-0025 added full
+generic-CRUD routes for it here. **PLAN-3/ADR-0033 narrows that to
+`GET`/`PATCH`/`DELETE`**: `create` is dropped from `_TEST_EXECUTION_CONFIG`
+below (`create_schema=None`) in favor of the bespoke
+`POST /test-cycles/{id}/executions` in `execution_authoring.py`, which enforces
+FR-PLAN-3 AC3's scope check. This restriction is not optional and had to land
+in the same change as that route (`backend/CLAUDE.md`'s standing rule): the
+generic `POST /test-executions` enforced no scope check at all, so leaving it
+reachable alongside the bespoke route would let any caller bypass the gate
+entirely by using the unrestricted path. Same posture
+`TestCase`/`TestCondition`/`Defect` already have.
+
+`TestLog` is append-only/immutable by schema (no `updated_at` column, Database
+Document §3.8) — `list`/`get` only, no `create`/`update`/`delete` route is ever
+registered for it, generic or bespoke.
 
 `Defect` registers `GET`/`PATCH`/`DELETE` only — `create` stays reserved for
 a future bespoke `POST /executions/{id}/defects` atomic-create route
@@ -55,7 +65,6 @@ from app.api.crud_factory import (
 from app.models.execution import Defect, TestExecution, TestLog
 from app.models.planning import TestCycle, TestPlan
 from app.schemas.execution import (
-    CreateTestExecutionRequest,
     DefectSummary,
     TestExecutionSummary,
     TestLogSummary,
@@ -108,15 +117,19 @@ _DEFECT_CONFIG = CrudEntityConfig(
     methods=frozenset({"list", "get", "update", "delete"}),
 )
 
+# No `create` — PLAN-3/ADR-0033 (see module docstring). `list`/`get`/`update`/
+# `delete` are unchanged: the restriction is `create`-only, not an accidental
+# blanket removal (TC-PLAN-017 asserts exactly that split).
 _TEST_EXECUTION_CONFIG = CrudEntityConfig(
     model=TestExecution,
     resource="test_execution",
-    create_schema=CreateTestExecutionRequest,
+    create_schema=None,
     update_schema=UpdateTestExecutionRequest,
     summary_schema=TestExecutionSummary,
     scope_field="test_cycle_id",
     resolve_org_id=_resolve_test_execution_org_id,
     filter_fields=("test_case_id", "result"),
+    methods=frozenset({"list", "get", "update", "delete"}),
 )
 
 _TEST_LOG_CONFIG = CrudEntityConfig(

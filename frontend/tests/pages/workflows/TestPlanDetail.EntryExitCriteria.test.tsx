@@ -99,6 +99,50 @@ function envelope(items: EntryExitCriteriaSummary[]) {
   return { items, total: items.length, page: 1, page_size: 25 };
 }
 
+/**
+ * `listEntities` is one shared mock across every `entityConfigs/*.ts` caller
+ * on this page — as of PLAN-3 (ADR-0033) that's no longer just this section's
+ * `criteriaConfig`: `TestPlanDetail`'s new "Test Cycles" section also calls it
+ * (`testCycleConfig`, `environmentConfig`) on the same mount. Routing by the
+ * config's own `path` (rather than relying on call *order*, the way a plain
+ * `mockResolvedValueOnce` chain does) keeps this file's assertions scoped to
+ * *this* section's own calls regardless of how many other sections' `mount`
+ * effects also happen to call the same generic helper — the exact class of
+ * cross-section drift `frontend/CLAUDE.md` now documents.
+ */
+const CRITERIA_PATH = "/entry-exit-criteria";
+
+function mockCriteriaSequence(
+  ...responses: Array<ReturnType<typeof envelope>>
+) {
+  let index = 0;
+  mockListEntities.mockImplementation(async (config) => {
+    if (config.path !== CRITERIA_PATH) {
+      // Test Cycles' own `testCycleConfig`/`environmentConfig` fetches — this
+      // file has nothing to say about them, so a fixed empty response keeps
+      // that section quiet without affecting any assertion below.
+      return envelope([]) as unknown as ReturnType<typeof envelope>;
+    }
+    const response = responses[Math.min(index, responses.length - 1)];
+    index += 1;
+    return response;
+  });
+}
+
+function mockCriteriaRejection(error: unknown) {
+  mockListEntities.mockImplementation(async (config) => {
+    if (config.path !== CRITERIA_PATH) {
+      return envelope([]) as unknown as ReturnType<typeof envelope>;
+    }
+    throw error;
+  });
+}
+
+/** Only this section's own `listEntities` calls — see `mockCriteriaSequence` above. */
+function criteriaCalls() {
+  return mockListEntities.mock.calls.filter(([config]) => config.path === CRITERIA_PATH);
+}
+
 function renderTestPlanDetail() {
   return render(
     <MemoryRouter initialEntries={[`/projects/${PROJECT_ID}/test-plans/${PLAN_ID}`]}>
@@ -120,7 +164,7 @@ describe("TestPlanDetail — Entry/Exit Criteria (PLAN-2)", () => {
     mockListPlanTestSuites.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 25 });
     mockListPlanTestCases.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 25 });
     mockListTestSuites.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 25 });
-    mockListEntities.mockResolvedValue(envelope([]));
+    mockCriteriaSequence(envelope([]));
   });
 
   afterEach(() => {
@@ -132,7 +176,7 @@ describe("TestPlanDetail — Entry/Exit Criteria (PLAN-2)", () => {
   it("fetches the plan's criteria on mount, scoped by ?test_plan_id=", async () => {
     await renderAndSettle();
 
-    await waitFor(() => expect(mockListEntities).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(criteriaCalls()).toHaveLength(1));
     expect(mockListEntities).toHaveBeenCalledWith(
       expect.objectContaining({ path: "/entry-exit-criteria" }),
       {},
@@ -142,14 +186,14 @@ describe("TestPlanDetail — Entry/Exit Criteria (PLAN-2)", () => {
 
   it("filters test_plan_id out of the config it lists/creates with — the route already fixes it", async () => {
     await renderAndSettle();
-    await waitFor(() => expect(mockListEntities).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(criteriaCalls()).toHaveLength(1));
 
-    const config = mockListEntities.mock.calls[0][0];
+    const config = criteriaCalls()[0][0];
     expect(config.fields.map((field) => field.name)).toEqual(["type", "condition_text"]);
   });
 
   it("renders each row's condition text and its type as a badge", async () => {
-    mockListEntities.mockResolvedValue(envelope([criteria()]));
+    mockCriteriaSequence(envelope([criteria()]));
     await renderAndSettle();
 
     const row = await screen.findByTestId(`criteria-${EXIT_ID}`);
@@ -158,7 +202,7 @@ describe("TestPlanDetail — Entry/Exit Criteria (PLAN-2)", () => {
   });
 
   it("colours all four criteria types per §1's mapping", async () => {
-    mockListEntities.mockResolvedValue(
+    mockCriteriaSequence(
       envelope([
         criteria({ id: ENTRY_ID, type: "entry", condition_text: "Environment provisioned" }),
         criteria({ id: EXIT_ID, type: "exit", condition_text: "All P1 defects closed" }),
@@ -188,7 +232,7 @@ describe("TestPlanDetail — Entry/Exit Criteria (PLAN-2)", () => {
 
   it("surfaces a failed list fetch as its own inline alert", async () => {
     const { ApiError } = await import("../../../src/lib/api/client");
-    mockListEntities.mockRejectedValue(
+    mockCriteriaRejection(
       new ApiError("You do not have permission to perform this action.", 403, {
         code: "permission_denied",
       }),
@@ -203,12 +247,10 @@ describe("TestPlanDetail — Entry/Exit Criteria (PLAN-2)", () => {
   // --- "Add Criteria" ---------------------------------------------------------
 
   it("creates a criteria row with test_plan_id merged in, then re-fetches (not an optimistic splice)", async () => {
-    mockListEntities
-      .mockResolvedValueOnce(envelope([]))
-      .mockResolvedValueOnce(envelope([criteria()]));
+    mockCriteriaSequence(envelope([]), envelope([criteria()]));
     mockCreateEntity.mockResolvedValue(criteria() as unknown as Record<string, unknown>);
     await renderAndSettle();
-    await waitFor(() => expect(mockListEntities).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(criteriaCalls()).toHaveLength(1));
 
     fireEvent.click(screen.getByTestId("add-criteria-btn"));
     fireEvent.change(screen.getByLabelText("Type"), { target: { value: "exit" } });
@@ -224,7 +266,7 @@ describe("TestPlanDetail — Entry/Exit Criteria (PLAN-2)", () => {
         { type: "exit", condition_text: "All P1 defects closed", test_plan_id: PLAN_ID },
       ),
     );
-    await waitFor(() => expect(mockListEntities).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(criteriaCalls()).toHaveLength(2));
     expect(await screen.findByTestId(`criteria-${EXIT_ID}`)).toHaveTextContent(
       "All P1 defects closed",
     );
@@ -241,11 +283,10 @@ describe("TestPlanDetail — Entry/Exit Criteria (PLAN-2)", () => {
   // --- "Edit" -----------------------------------------------------------------
 
   it("edits a row through the same form, pre-filled, then re-fetches", async () => {
-    mockListEntities
-      .mockResolvedValueOnce(envelope([criteria()]))
-      .mockResolvedValueOnce(
-        envelope([criteria({ condition_text: "All P1 and P2 defects closed" })]),
-      );
+    mockCriteriaSequence(
+      envelope([criteria()]),
+      envelope([criteria({ condition_text: "All P1 and P2 defects closed" })]),
+    );
     mockUpdateEntity.mockResolvedValue(criteria() as unknown as Record<string, unknown>);
     await renderAndSettle();
 
@@ -267,7 +308,7 @@ describe("TestPlanDetail — Entry/Exit Criteria (PLAN-2)", () => {
         { type: "exit", condition_text: "All P1 and P2 defects closed" },
       ),
     );
-    await waitFor(() => expect(mockListEntities).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(criteriaCalls()).toHaveLength(2));
     expect(await screen.findByTestId(`criteria-${EXIT_ID}`)).toHaveTextContent(
       "All P1 and P2 defects closed",
     );
@@ -276,9 +317,7 @@ describe("TestPlanDetail — Entry/Exit Criteria (PLAN-2)", () => {
   // --- "Delete" ---------------------------------------------------------------
 
   it("deletes a row with no confirmation modal, then re-fetches rather than splicing locally", async () => {
-    mockListEntities
-      .mockResolvedValueOnce(envelope([criteria()]))
-      .mockResolvedValueOnce(envelope([]));
+    mockCriteriaSequence(envelope([criteria()]), envelope([]));
     mockDeleteEntity.mockResolvedValue(undefined);
     await renderAndSettle();
 
@@ -290,7 +329,7 @@ describe("TestPlanDetail — Entry/Exit Criteria (PLAN-2)", () => {
         EXIT_ID,
       ),
     );
-    await waitFor(() => expect(mockListEntities).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(criteriaCalls()).toHaveLength(2));
     expect(await screen.findByText("No entry/exit criteria defined yet.")).toBeInTheDocument();
   });
 
@@ -339,12 +378,12 @@ describe("TestPlanDetail — Entry/Exit Criteria (PLAN-2)", () => {
       await screen.findByText("Condition must be under 500 characters."),
     ).toBeInTheDocument();
     // The failed create changed nothing server-side, so the list is not re-fetched.
-    expect(mockListEntities).toHaveBeenCalledTimes(1);
+    expect(criteriaCalls()).toHaveLength(1);
   });
 
   it("surfaces a failed delete inline and still re-fetches, so the row stays visible", async () => {
     const { ApiError } = await import("../../../src/lib/api/client");
-    mockListEntities.mockResolvedValue(envelope([criteria()]));
+    mockCriteriaSequence(envelope([criteria()]));
     mockDeleteEntity.mockRejectedValue(
       new ApiError("Entry exit criteria not found.", 404, { code: "not_found" }),
     );
@@ -355,14 +394,14 @@ describe("TestPlanDetail — Entry/Exit Criteria (PLAN-2)", () => {
     expect(await screen.findByTestId("criteria-error")).toHaveTextContent(
       "Entry exit criteria not found.",
     );
-    await waitFor(() => expect(mockListEntities).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(criteriaCalls()).toHaveLength(2));
     expect(screen.getByTestId(`criteria-${EXIT_ID}`)).toBeInTheDocument();
   });
 
   // --- §1: attempt-then-error, no permission-based hide/disable ---------------
 
   it("renders Add/Edit/Delete unconditionally — no permission-based hide or disable", async () => {
-    mockListEntities.mockResolvedValue(envelope([criteria()]));
+    mockCriteriaSequence(envelope([criteria()]));
     await renderAndSettle();
 
     expect(screen.getByTestId("add-criteria-btn")).toBeEnabled();

@@ -141,6 +141,23 @@ def build_role_bundles(all_permission_codes: set[str]) -> dict[str, set[str]]:
         # RBAC-4 seed gap ADR-0019 already closed once for `release.*`.
         | _crud_codes("test_condition")
         | _crud_codes("test_case")
+        # PLAN-3/ADR-0033: full CRUD on `environment` — `test_manager` held
+        # none of the four before this ADR, even though it has held full
+        # `test_cycle` CRUD since RBAC-4 and a `TestCycle` is unusable without
+        # an `Environment` to point at. Surfaced by FR-PLAN-3 AC2's own "user
+        # with `environment.create` permission" wording naming this story's
+        # persona (Priya) directly — the same class of pre-existing RBAC-4 seed
+        # gap ADR-0019 closed once for `release.*` and ADR-0028 for
+        # `test_condition.*`/`test_case.*` above.
+        | _crud_codes("environment")
+        # PLAN-3/ADR-0033: `test_execution.create` (the minimum to reach this
+        # story's own `POST /test-cycles/{id}/executions`, TC-PLAN-008) and
+        # `.read`. `.update`/`.delete` deliberately withheld — no FR-PLAN-3 or
+        # FR-EXEC-1 acceptance criterion asks `test_manager` to edit or delete a
+        # recorded result, and granting them now would be a silent scope
+        # expansion this ADR doesn't need. EXEC-1/EXEC-3 write their own
+        # migration if re-run-editing/defect workflow needs them.
+        | {_code("test_execution", "create"), _code("test_execution", "read")}
         # RBAC-3/ADR-0021: a project's own creator is auto-granted this Role,
         # project-scoped, unconditionally (PROJ-1/ADR-0017's `create_project`)
         # specifically so they can subsequently GET/PATCH the project they
