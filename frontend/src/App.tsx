@@ -12,6 +12,8 @@ import Signup from "./pages/workflows/Signup";
 import Colors from "./pages/ui-elements/Colors";
 import Icons from "./pages/ui-elements/Icons";
 import Typography from "./pages/ui-elements/Typography";
+import EntityFormPage from "./pages/admin/EntityFormPage";
+import EntityListPage from "./pages/admin/EntityListPage";
 
 function App() {
   return (
@@ -102,6 +104,47 @@ function App() {
           element={
             <ProtectedRoute>
               <Icons />
+            </ProtectedRoute>
+          }
+        />
+        {/*
+          ADR-0025 generic admin CRUD surface: 2 page components
+          (`EntityListPage`/`EntityFormPage`), routed generically off the
+          `:entity` param — the registry (`pages/admin/registry.ts`) maps it
+          to an `EntityConfig`, not 28 separate route declarations here. See
+          the Sitemap's own "generic admin CRUD surface" table for the full
+          28-entity list these 4 routes serve (8 org/global-scoped, 20
+          project-scoped).
+        */}
+        <Route
+          path="/orgs/:orgId/admin/:entity"
+          element={
+            <ProtectedRoute>
+              <EntityListPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/orgs/:orgId/admin/:entity/:id/edit"
+          element={
+            <ProtectedRoute>
+              <EntityFormPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/projects/:projectId/admin/:entity"
+          element={
+            <ProtectedRoute>
+              <EntityListPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/projects/:projectId/admin/:entity/:id/edit"
+          element={
+            <ProtectedRoute>
+              <EntityFormPage />
             </ProtectedRoute>
           }
         />

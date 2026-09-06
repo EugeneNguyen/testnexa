@@ -51,6 +51,8 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 | 3.1 | Pydantic v2 schemas — 1:1 mirror of `app/models/`, one file per model cluster (`assets`, `planning`, `taxonomy`, `governance`, `rbac`) | 1.1 | M | [API Document](../api/2026-09-03-api-design.md) |
 | 3.2 | `app/api/crud_factory.py` — `CrudEntityConfig` dataclass + `chain_resolver()` (per-entity `org_id`-resolution, direct/one-hop/branching/multi-hop) + `make_crud_router()` (list/get/create/update/delete, pagination, exact-match `filter_fields` + opt-in `?q=` `search_fields`, item routes gated via row-resolved `has_permission` not `require_permission`, global-catalog routes via `has_permission_in_any_org`, `DELETE`'s `IntegrityError` → `409`) | 2.4, 2.5a, 3.1 | L | FR-ADMIN-2, NFR-6, NFR-29, NFR-30, [ADR-0022](../adr/0022-generic-crud-router-factory.md) |
 | 3.3 | Apply factory to all 20 entities the API Document §3 lists, across 6 route modules (`assets`, `planning`, `taxonomy`, `governance`, `execution` (Defect only), `rbac_routes`) + extend `organizations.py`/`projects.py`/`org_memberships.py` with the factory-served methods each is still missing (`Project`: `DELETE` only; `Organization`: `GET`/`PATCH`/`DELETE`; `OrgMembership`: full 5) | 3.2 | L | FR-ADMIN-2, [ADR-0022](../adr/0022-generic-crud-router-factory.md), [ADMIN-2 plan](../superpowers/plans/2026-09-05-admin-2-generic-crud-factory-plan.md) |
+| 3.4 | Wire the 3 entities the factory never registered a route for: `TestExecution` (full CRUD, `execution.py`, resolver via `TestCycle`), `TestLog` (list/get only, same file, resolver delegates one further hop through `TestExecution`'s), new `app/api/routes/trace.py` + `schemas/trace.py` for the 4 link tables (list/get only, resolvers compose existing `chain_resolver`/`resolve_via_test_case` helpers, no new resolver logic) | 3.3 | M | FR-ADMIN-2, [ADR-0027](../adr/0027-generic-admin-crud-ui-and-backend-completion.md) |
+| 3.5 | `GET /orgs/{org_id}/permissions/mine` — bulk-resolves the caller's own permission codes in `org_id` (`RoleAssignment`→`Role`→`RolePermission`→`Permission.code`, one query, reusing `has_permission`'s join shape) | 2.5a | S | FR-ADMIN-2, NFR-37, [ADR-0027](../adr/0027-generic-admin-crud-ui-and-backend-completion.md) |
 
 ## 4. Bespoke API routes
 
@@ -89,14 +91,16 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 | 6.7 | Dark/light color-mode toggle — CoreUI `useColorModes` hook + header dropdown, `localStorage`-persisted | 6.3d | S | FR-SHELL-4, NFR-28, [ADR-0020](../adr/0020-admin-shell-full-template-parity.md) |
 | 6.8 | UI-element reference pages (Colors, Typography, Icons) + "UI Elements" sidebar nav group — template-parity scaffolding, no FR/story backing (flagged explicitly, not to be mistaken for product scope) | 6.4 | S | [ADR-0020](../adr/0020-admin-shell-full-template-parity.md) |
 | 6.9 | `FormField` shared component (`components/shared/`, CoreUI `CFormLabel`+`CFormInput`+`CFormFeedback`, RHF `register()`-bound); `Login.tsx`'s 2 and `Signup.tsx`'s 5 hand-authored label+input blocks migrated onto it, both screens brought onto React Hook Form + Zod for the first time in the process | 6.1 | M | FR-DS-1, NFR-34, [ADR-0023](../adr/0023-frontend-shared-component-location.md) |
+| 6.10 | `AppSidebar`'s `<CSidebar>` gains `colorScheme="dark"` — matches CoreUI free-template demo look, static (not wired to 6.7's toggle) | 6.4 | XS | FR-SHELL-5, NFR-36, [ADR-0026](../adr/0026-sidebar-dark-color-scheme.md) |
 
 ## 7. Generic CRUD UI
 
 | # | Deliverable | Depends on | Size | Maps to |
 |---|---|---|---|---|
-| 7.1 | `<EntityTable>`, `<EntityForm>` (react-hook-form + zod) generic components | 6.2 | M | FR-ADMIN-2 |
-| 7.2 | `entityConfigs/` — one field-config object per entity (28) | 7.1 | L | FR-ADMIN-2 |
-| 7.3 | Admin pages routed from an entity registry, permission-gated action buttons | 7.2, 6.3b | M | FR-ADMIN-2, NFR-10 |
+| 7.1 | `<EntityTable>`, `<EntityForm>` (react-hook-form + zod), `<FkAutocomplete>` — generic `components/crud/` components ([ADR-0023](../adr/0023-frontend-shared-component-location.md) location) | 6.2 | M | FR-ADMIN-2 |
+| 7.2 | `entityConfigs/` — one field-config object per entity (28 — every ERD entity except `Approval`/`User`/`AIAgent`/`AuthIdentity`, structurally excluded per [ADR-0027](../adr/0027-generic-admin-crud-ui-and-backend-completion.md)) | 7.1 | L | FR-ADMIN-2, [ADR-0027](../adr/0027-generic-admin-crud-ui-and-backend-completion.md) |
+| 7.3 | Admin pages routed from an entity registry (`pages/admin/`), permission-gated action buttons via a new `usePermissions` hook | 7.2, 6.3b, 3.5 | M | FR-ADMIN-2, NFR-10, NFR-37 |
+| 7.4 | Scope-selector step (`FkAutocomplete` against the ref entity before the list query fires) for `RiskItem`/`Attachment`'s branching/deep-chain scope; nav wiring — org/global entities in `AppSidebar`'s new "Admin" `CNavGroup`, project-scoped entities linked from `ProjectDetail.tsx` | 7.3 | M | FR-ADMIN-2, [ADR-0027](../adr/0027-generic-admin-crud-ui-and-backend-completion.md) |
 
 ## 8. Bespoke workflow screens
 
@@ -129,6 +133,7 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 | 10.4 | E2E tests (Playwright) — login→requirement→test case→execution; RBAC-denial flow | 9.1, all §6–8 | L | [Test Case doc](../test-cases/2026-09-03-test-cases.md) |
 | 10.4b | E2E test — members→org-home round trip via the sidebar's nav link (`shell-nav.spec.ts`), asserted by URL after a real click, not browser back | 6.4, 9.1 | S | FR-SHELL-1 AC3, TC-SHELL-003 |
 | 10.4c | E2E test — dark/light toggle flips theme + persists across reload; frontend/integration tests for stat widget counts (seeded fixture, not mocked) and breadcrumb path-derivation | 6.5, 6.6, 6.7, 9.1 | S | FR-SHELL-2..4, TC-SHELL-007..013 |
+| 10.4d | Frontend test — sidebar keeps dark `colorScheme` across all three app-wide mode states (light/dark/auto), proving 6.10 is not wired to 6.7's toggle | 6.10, 6.7 | XS | FR-SHELL-5, TC-SHELL-015 |
 
 ## 11. Documentation (this batch)
 
@@ -145,6 +150,7 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 | 11.9 | ADR-0022 (generic CRUD router factory) + propagation across Requirements/WBS/Database/API/Test Plan/Test Design/Test Cases (this revision, 2026-09-05) | Done |
 | 11.10 | ADR-0024 (public landing page) + LANDING-1 user story + propagation across Requirements/WBS/Database/API/Test Plan/Test Design/Test Cases (this revision, 2026-09-05) | Done |
 | 11.11 | ADR-0025 (`Requirement.title` schema gap-fill) + propagation across Requirements/WBS/Database/API/Test Cases (REQ-1 documentation pass, 2026-09-05) — Test Plan/Test Design needed no new content (existing ADMIN-2/generic-CRUD sections already cover `Requirement` generically; no new technique or risk this ADR introduces) | Done |
+| 11.12 | ADR-0027 (generic admin CRUD UI + execution/traceability backend completion) + new UI Design Document + new Sitemap Document + propagation across Requirements/WBS/Database/API/Test Plan/Test Design/Test Cases (this revision, 2026-09-05) | Done |
 
 ## Critical path
 
