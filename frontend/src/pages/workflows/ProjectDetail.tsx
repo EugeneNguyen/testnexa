@@ -131,6 +131,7 @@ import {
   removeTestCaseFromSuite,
   TestSuiteSummary,
 } from "../../lib/api/testSuites";
+import { listTestPlans, TestPlanSummary } from "../../lib/api/testPlans";
 import { createTestStep, listTestSteps, updateTestStep, TestStepSummary } from "../../lib/api/testSteps";
 import {
   createTestCondition,
@@ -225,6 +226,21 @@ function priorityColor(priority: TestConditionPriority): string {
       return "danger";
     case "medium":
       return "warning";
+    default:
+      return "secondary";
+  }
+}
+
+/**
+ * PLAN-1 UI Design Document §2's TestPlan status colours — kept identical to
+ * `TestPlanDetail.tsx`'s own mapping so a plan reads the same on both screens.
+ */
+function testPlanStatusColor(status: TestPlanSummary["status"]): string {
+  switch (status) {
+    case "approved":
+      return "success";
+    case "superseded":
+      return "dark";
     default:
       return "secondary";
   }
@@ -454,6 +470,13 @@ function ProjectDetail() {
   // above are: AC2's "reflects current membership" means this list is
   // re-fetched on *every* expand, never restored from a previous one, so a
   // membership changed elsewhere (or in another tab) can't be shown stale.
+  // PLAN-1: the project's TestPlans — a plain linked list, no create/expand
+  // here (creation stays on the generic admin surface, detail lives on
+  // `TestPlanDetail`).
+  const [testPlans, setTestPlans] = useState<TestPlanSummary[]>([]);
+  const [plansLoading, setPlansLoading] = useState(true);
+  const [plansLoadError, setPlansLoadError] = useState<string | null>(null);
+
   const [expandedSuiteId, setExpandedSuiteId] = useState<string | null>(null);
   const [suiteMembers, setSuiteMembers] = useState<TestCaseSummary[]>([]);
   const [suiteMembersLoading, setSuiteMembersLoading] = useState(false);
@@ -963,6 +986,34 @@ function ProjectDetail() {
   function dismissAddToSuiteError(testCaseId: string) {
     setAddToSuiteError((prev) => ({ ...prev, [testCaseId]: null }));
   }
+
+  // --- PLAN-1 (ADR-0031, UI Design Document §1): Test Plans list ------------
+  //
+  // The one section on this page whose rows *link out* (to
+  // `/projects/:projectId/test-plans/:testPlanId`) instead of expanding in
+  // place — a TestPlan is its own multi-part object with its own detail route,
+  // not one more facet of the Requirement→TestCase flow this page anchors.
+  const fetchTestPlans = useCallback(async () => {
+    if (!projectId) {
+      return;
+    }
+    setPlansLoading(true);
+    setPlansLoadError(null);
+    try {
+      const response = await listTestPlans(projectId);
+      setTestPlans(response.items);
+    } catch (err) {
+      setPlansLoadError(
+        err instanceof ApiError ? err.message : "Something went wrong. Please try again.",
+      );
+    } finally {
+      setPlansLoading(false);
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    fetchTestPlans();
+  }, [fetchTestPlans]);
 
   const fetchReleases = useCallback(
     async (sortOrder: "asc" | "desc") => {
@@ -1794,6 +1845,60 @@ function ProjectDetail() {
                             </Fragment>
                           );
                         })}
+                      </CTableBody>
+                    </CTable>
+                  )
+                )}
+              </CCardBody>
+            </CCard>
+
+            {/*
+              PLAN-1 (ADR-0031, UI Design Document §1): Test Plans. The only
+              section here whose rows link to a dedicated route
+              (`TestPlanDetail`) rather than expanding in place — see that
+              page's own docstring for why PLAN-1 breaks the pattern every
+              prior REQ-* section follows. Deliberately thin: no create modal
+              (the generic admin `/test-plans` page owns that), no membership
+              UI (that's the detail route's own).
+            */}
+            <CCard className="mt-4">
+              <CCardBody className="p-4">
+                <h2 className="fs-5 mb-3">Test Plans</h2>
+
+                {plansLoadError && (
+                  <CAlert color="danger" role="alert" data-testid="test-plans-error">
+                    {plansLoadError}
+                  </CAlert>
+                )}
+
+                {plansLoading ? (
+                  <div className="d-flex justify-content-center py-3">
+                    <CSpinner color="primary" />
+                  </div>
+                ) : !plansLoadError && testPlans.length === 0 ? (
+                  <p className="text-body-secondary mb-0">No test plans yet.</p>
+                ) : (
+                  !plansLoadError && (
+                    <CTable hover responsive className="mb-0">
+                      <CTableHead>
+                        <CTableRow>
+                          <CTableHeaderCell>Identifier</CTableHeaderCell>
+                          <CTableHeaderCell>Status</CTableHeaderCell>
+                        </CTableRow>
+                      </CTableHead>
+                      <CTableBody>
+                        {testPlans.map((plan) => (
+                          <CTableRow key={plan.id} data-testid={`test-plan-row-${plan.id}`}>
+                            <CTableDataCell>
+                              <Link to={`/projects/${projectId}/test-plans/${plan.id}`}>
+                                {plan.identifier}
+                              </Link>
+                            </CTableDataCell>
+                            <CTableDataCell>
+                              <CBadge color={testPlanStatusColor(plan.status)}>{plan.status}</CBadge>
+                            </CTableDataCell>
+                          </CTableRow>
+                        ))}
                       </CTableBody>
                     </CTable>
                   )

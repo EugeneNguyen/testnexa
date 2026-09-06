@@ -34,6 +34,7 @@ Index of ADRs for the Project Scaffold. Format: [MADR](https://adr.github.io/mad
 | [0028](0028-req3-test-condition-rigor-path-bespoke-routes.md) | REQ-3 rigor-path bespoke routes (TestCondition/TestCase atomic create+link), generic `TestCondition` create removed (link-table gap it left open), `test_manager` RBAC bundle extension for `test_condition.*`/`test_case.*` | Accepted |
 | [0029](0029-testcase-resolver-direct-link-fallback.md) | `TestCase` org-resolver direct-link fallback (REQ-2 gap-fill): `RequirementTestCaseLink` added as a 3rd branch, checked before the `TestSuiteTestCase` fallback — a direct-link `TestCase` had no resolver path and 404'd as "orphaned" right after creation | Accepted |
 | [0030](0030-req4-test-suite-membership-bespoke-routes.md) | REQ-4 TestSuite membership bespoke routes (`TestSuiteTestCase` add/remove/live-list) — cross-project add rejected (`422`), duplicate add is `409` (third meaning this API gives the code), no RBAC bundle change needed | Accepted |
+| [0031](0031-plan1-test-plan-membership-and-status-transition-routes.md) | PLAN-1 TestPlan↔TestSuite membership bespoke routes (`TestPlanTestSuite` add/remove/live-list) + new coverage query (`GET /test-plans/{id}/test-cases`) + `status`-transition legality guard on the generic `PATCH` (fourth `409` meaning), no RBAC bundle change needed | Accepted |
 
 **Deciders on all ADRs below:** xuanbinh91@gmail.com (CTO), unless noted otherwise.
-**Date:** 2026-09-03 (0001–0017, 0021), 2026-09-04 (0018–0020), 2026-09-05 (0022–0027, 0029), 2026-09-06 (0028, 0030)
+**Date:** 2026-09-03 (0001–0017, 0021), 2026-09-04 (0018–0020), 2026-09-05 (0022–0027, 0029), 2026-09-06 (0028, 0030, 0031)

@@ -15,3 +15,7 @@ Every Vitest + RTL spec in this repo is under `frontend/tests/` (mirroring `src/
 ## No frontend unit-test convention existed before ADMIN-2 (2026-09-05)
 
 `frontend/tests/` (Vitest + RTL) only started getting real coverage with ADMIN-2's generic CRUD UI — earlier bespoke screens (`Login`, `OrgHome`, `ProjectDetail`, etc.) shipped with e2e (Playwright) coverage only, no per-component unit tests. Both are legitimate per the root `CLAUDE.md`'s three-layer testing model, but don't assume a bespoke screen has Vitest coverage just because the layer exists in the repo now — check `frontend/tests/` for that specific component before assuming a gap is actually a regression.
+
+## A "Cannot find module 'react'" diagnostic right after adding a new file can be stale, not real
+
+The harness's own background diagnostics can fire on a just-created `.tsx` file before its module resolution/language-server view has caught up (observed on a freshly-added page component + its imports, 2026-09-06) — every import line (`react`, `react-router-dom`, `@coreui/react`, ...) flagged `Cannot find module`, which reads exactly like a broken `node_modules` or a real compile break. It wasn't: `node_modules` was present and `npx tsc --noEmit` (run directly, not through the diagnostic system) was clean. **Before acting on a wall of module-resolution errors on recently-touched files, run `npx tsc --noEmit` yourself and trust that over the background diagnostic** — it's the ground truth; the diagnostic view can lag.

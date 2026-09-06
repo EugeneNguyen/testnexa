@@ -9,6 +9,7 @@ import OrgMembers from "./pages/workflows/OrgMembers";
 import OrgPicker from "./pages/workflows/OrgPicker";
 import ProjectDetail from "./pages/workflows/ProjectDetail";
 import Signup from "./pages/workflows/Signup";
+import TestPlanDetail from "./pages/workflows/TestPlanDetail";
 import Colors from "./pages/ui-elements/Colors";
 import Icons from "./pages/ui-elements/Icons";
 import Typography from "./pages/ui-elements/Typography";
@@ -72,6 +73,23 @@ function App() {
           element={
             <ProtectedRoute>
               <ProjectDetail />
+            </ProtectedRoute>
+          }
+        />
+        {/*
+          PLAN-1 (ADR-0031, UI Design Document §1): a `TestPlan`'s own detail
+          route — deliberately its own URL rather than another `ProjectDetail`
+          expand-in-place section, since PLAN-2's entry/exit criteria and
+          PLAN-3's TestCycle view are known, imminent extensions of this same
+          object. Sits above the generic `/projects/:projectId/admin/:entity`
+          routes below only for readability — react-router ranks the static
+          `test-plans` segment over the `:entity` param either way.
+        */}
+        <Route
+          path="/projects/:projectId/test-plans/:testPlanId"
+          element={
+            <ProtectedRoute>
+              <TestPlanDetail />
             </ProtectedRoute>
           }
         />

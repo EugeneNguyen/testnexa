@@ -50,6 +50,7 @@ from app.api.routes import (
     roles,
     taxonomy,
     test_condition_authoring,
+    test_plan_membership,
     test_suite_membership,
     trace,
 )
@@ -171,3 +172,13 @@ app.include_router(test_condition_authoring.router, prefix="/api/v1", tags=["ass
 # membership view. `TestSuite`'s own CRUD stays entirely on `assets.py`'s
 # factory router, unchanged by this story.
 app.include_router(test_suite_membership.router, prefix="/api/v1", tags=["assets"])
+# PLAN-1/ADR-0031: bespoke `TestPlan` membership + coverage routes
+# (`POST`/`DELETE /test-plans/{id}/test-suites/{suite_id}`,
+# `GET /test-plans/{id}/test-suites`, `GET /test-plans/{id}/test-cases`) — the
+# `TestPlanTestSuite` junction table has no single-entity row shape the generic
+# factory could serve as a usable membership view, and the coverage query is a
+# two-hop derived read the factory has no concept of at all. `TestPlan`'s own
+# CRUD stays entirely on `planning.py`'s factory router; the one change this
+# story makes there is the `status`-transition guard wired into
+# `_TEST_PLAN_CONFIG`, not a route.
+app.include_router(test_plan_membership.router, prefix="/api/v1", tags=["planning"])
