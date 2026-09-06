@@ -131,7 +131,11 @@ function EntityListPage() {
             for why.
           </CAlert>
         ) : config.scopeSelector && !scope.ready ? (
-          <ScopeSelector options={config.scopeSelector} onResolved={onScopeSelectorResolved} />
+          <ScopeSelector
+            options={config.scopeSelector}
+            onResolved={onScopeSelectorResolved}
+            extraParams={projectId ? { project_id: projectId } : undefined}
+          />
         ) : (
           <EntityTable
             config={config}

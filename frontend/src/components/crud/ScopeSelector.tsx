@@ -8,6 +8,30 @@
  * "by Requirement" / "by TestPlan" toggle, UI Design Document §4), renders a
  * `CButtonGroup` toggle first, then the `FkAutocomplete` for whichever
  * option is active.
+ *
+ * **Bugfix (found writing ADMIN-2 UI E2E coverage):** the picker's own
+ * `FkAutocomplete` search previously fired with no scope params at all
+ * (`extraParams` unset), but every scope-selector `refEntity` used across
+ * this surface (`requirement`, `test-plan`, `test-condition`, `test-case`)
+ * is itself a scoped entity whose own `GET .../list` route *requires* its
+ * scope query param (e.g. `requirement`/`test-plan` both require
+ * `project_id`) — see `backend/app/api/crud_factory.py`'s `list_items`,
+ * `extract_scope_value`. With no `project_id` on the request the backend
+ * 422s, `FkAutocomplete`'s `.catch` swallows it into an empty result set,
+ * and the search box could never find anything: `RiskItem`/`TestCondition`/
+ * `EntryExitCriteria`/`TestCycle`/the two `Requirement*Link` entities'
+ * scope-selectors were unusable end to end. `extraParams` now threads the
+ * current route's `project_id` through (`EntityListPage` passes it in) —
+ * fixes every *one-hop* case above, where the ref entity's own scope field
+ * is literally `project_id`. Documented, not fixed here: entities whose
+ * scope-selector target is itself scoped by something other than
+ * `project_id` (`TestExecution` -> `TestCycle` needs `test_plan_id`,
+ * `Defect`/`TestLog` -> `TestExecution` needs `test_cycle_id`,
+ * `TestConditionTestCaseLink` -> `TestCondition` needs `requirement_id`) —
+ * those need a cascading multi-step picker, a larger change; and anything
+ * scoped via `TestCase` (`TestStep`, `TestCaseDefectLink`, `Attachment`)
+ * stays blocked on `test-case.ts`'s own pre-existing "no list route exists"
+ * gap regardless of this fix.
  */
 import { useState } from "react";
 import { CButton, CButtonGroup } from "@coreui/react";
@@ -18,9 +42,11 @@ export interface ScopeSelectorProps {
   options: ScopeSelectorOption | ScopeSelectorOption[];
   /** Fires once a concrete id has been picked for the active option. */
   onResolved: (paramName: string, value: string) => void;
+  /** Extra fixed query params merged into the ref entity's own list call (e.g. the current route's `project_id`). */
+  extraParams?: Record<string, string | undefined>;
 }
 
-function ScopeSelector({ options, onResolved }: ScopeSelectorProps) {
+function ScopeSelector({ options, onResolved, extraParams }: ScopeSelectorProps) {
   const optionList = Array.isArray(options) ? options : [options];
   const [activeIndex, setActiveIndex] = useState(0);
   const [value, setValue] = useState<string | undefined>(undefined);
@@ -61,6 +87,7 @@ function ScopeSelector({ options, onResolved }: ScopeSelectorProps) {
         refEntity={active.refEntity}
         value={value}
         onChange={handleChange}
+        extraParams={extraParams}
       />
     </div>
   );

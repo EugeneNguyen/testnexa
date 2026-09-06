@@ -443,6 +443,10 @@ async def test_requirement_test_case_link_list_get_and_cross_org_404() -> None:
     org_ids: list = []
     project_ids: list = []
     requirement_ids: list = []
+    test_condition_ids: list = []
+    test_case_ids: list = []
+    test_level_ids: list = []
+    test_type_ids: list = []
     link_ids: list = []
     try:
         async with AsyncSessionLocal() as session:
@@ -464,6 +468,10 @@ async def test_requirement_test_case_link_list_get_and_cross_org_404() -> None:
             org_ids = [org_a.id, _org_b.id]
             project_ids = [project.id]
             requirement_ids = [requirement.id]
+            test_condition_ids = [condition.id]
+            test_case_ids = [case.id]
+            test_level_ids = [level.id]
+            test_type_ids = [type_.id]
             link_ids = [link.id]
             token_a = _access_token_for(admin_a.actor_id)
             token_b = _access_token_for(admin_b.actor_id)
@@ -505,6 +513,10 @@ async def test_requirement_test_case_link_list_get_and_cross_org_404() -> None:
             org_ids=org_ids,
             project_ids=project_ids,
             requirement_ids=requirement_ids,
+            test_condition_ids=test_condition_ids,
+            test_case_ids=test_case_ids,
+            test_level_ids=test_level_ids,
+            test_type_ids=test_type_ids,
         )
 
 

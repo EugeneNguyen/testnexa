@@ -88,11 +88,15 @@ _MAX_PAGE_SIZE = 25
 _PERMISSION_DENIED_MESSAGE = "You do not have permission to perform this action."
 
 # Model columns this factory auto-stamps with the acting actor's id on
-# `create`, never accepted from the request body — currently only
-# `TestPlan.created_by_actor_id` is create-registered and carries one of
-# these (`TestCase`/`Defect` also have an equivalent column but neither
-# registers `create` via this factory, ADR-0022).
-_ACTOR_STAMPED_FIELDS: tuple[str, ...] = ("created_by_actor_id",)
+# `create`, never accepted from the request body — `TestPlan.created_by_actor_id`
+# and `TestExecution.executed_by_actor_id` (ADR-0025's `CreateTestExecutionRequest`
+# docstring: "not accepted from the body... this field simply doesn't exist on
+# the request schema at all", relying on this tuple to stamp it) are the two
+# create-registered models that carry one of these (`TestCase`/`Defect` also
+# have an equivalent column but neither registers `create` via this factory,
+# ADR-0022). `hasattr(model, stamped_field)` in the caller below makes adding
+# a field here safe for every other model — it's simply skipped when absent.
+_ACTOR_STAMPED_FIELDS: tuple[str, ...] = ("created_by_actor_id", "executed_by_actor_id")
 
 # `entry_exit_criteria` is already grammatically plural ("criteria") — the
 # one exception to "resource.replace('_', '-') + 's'" among this factory's 20

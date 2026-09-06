@@ -102,6 +102,39 @@ export const entityConfigByKey: Record<string, EntityConfig> = Object.fromEntrie
   allEntities.map((e) => [e.key, e.config]),
 );
 
+/**
+ * **Bugfix (found writing ADMIN-2 UI E2E coverage):** every `refEntity`
+ * value used across every `entityConfigs/*.ts` file's `fields[]`,
+ * `scopeSelector`, and `scopeResolution.viaEntity` is the entity's singular
+ * noun (`"project"`, `"requirement"`, `"test-case"`, ...) — but this map's
+ * own keys above are `key = config.path.slice(1)`, always plural, since
+ * every backend route is plural REST (`/projects`, `/requirements`, ...).
+ * Before this alias table, every one of those lookups (`FkAutocomplete`'s
+ * `entityConfigByKey[refEntity]`, `EntityTable`'s FK-label resolution,
+ * `useEntityScope`'s `entityConfigByKey[scopeResolution.viaEntity]`) always
+ * returned `undefined`: every FK field's autocomplete was permanently
+ * disabled ("Search unavailable for this field") or showed a raw id instead
+ * of its label, every `scopeSelector` picker (`RiskItem`, `TestCondition`,
+ * `TestCycle`, `EntryExitCriteria`, `Defect`, `TestExecution`, `TestLog`, the
+ * 4 link tables, `Attachment`) could never resolve a scope, and `Project`'s
+ * own admin page (`scopeResolution.viaEntity: "project"`) could never leave
+ * its loading state. Adding a plural-stripped singular alias for every key
+ * fixes every one of those lookups without touching the config files
+ * themselves — verified by inspection that every `refEntity`/`viaEntity`
+ * string actually used in this codebase is a plain "-s" singular of an
+ * existing key (no irregular plurals appear in this domain, and no alias
+ * collides with a real key: `entry-exit-criteria` is the only key not ending
+ * in "s" and is never referenced as a `refEntity` anyway).
+ */
+for (const entityEntry of allEntities) {
+  if (entityEntry.key.endsWith("s")) {
+    const singularAlias = entityEntry.key.slice(0, -1);
+    if (!(singularAlias in entityConfigByKey)) {
+      entityConfigByKey[singularAlias] = entityEntry.config;
+    }
+  }
+}
+
 export function isOrgScoped(key: string): boolean {
   return orgScopedEntities.some((e) => e.key === key);
 }
