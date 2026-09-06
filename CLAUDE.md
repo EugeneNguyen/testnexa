@@ -10,14 +10,16 @@ TestNexa: a self-hosted, ISTQB/IEEE 829-aligned test management tool (React fron
 
 | Path | What |
 |---|---|
-| `backend/` | FastAPI + SQLAlchemy 2.0 + Alembic, Python 3.11+ |
-| `frontend/` | Vite + React + TypeScript |
-| `e2e/` | Playwright, runs against the full docker-compose stack |
+| `backend/` | FastAPI + SQLAlchemy 2.0 + Alembic, Python 3.11+ — has its own [`CLAUDE.md`](backend/CLAUDE.md) (Docker-image dev-deps gap, isolated-stack DB port exposure, `JWT_SECRET` matching, resolver-completeness) |
+| `frontend/` | Vite + React + TypeScript — has its own [`CLAUDE.md`](frontend/CLAUDE.md) (nested-table a11y-name gotcha, unit-test coverage history) |
+| `e2e/` | Playwright, runs against the full docker-compose stack — has its own [`CLAUDE.md`](e2e/CLAUDE.md) (the full isolated-stack-plus-Playwright worked recipe) |
 | `docs/adr/` | Architecture Decision Records — **read before changing stack/architecture choices** |
 | `docs/requirements/`, `docs/database/`, `docs/api/` | Canonical requirements/schema/API contracts |
 | `docs/test-plan/`, `docs/test-design/`, `docs/test-cases/` | Test strategy, techniques, concrete test cases |
 | `docs/user-stories/` | Source acceptance criteria, one file per feature area |
 | `docs/superpowers/plans/` | Per-story implementation/scope plans |
+
+Each subfolder's `CLAUDE.md` covers gotchas specific to that area only — read the relevant one before working there, in addition to (not instead of) this file. If you create a new top-level working directory that accumulates its own hard-won gotchas, give it a `CLAUDE.md` too and link it here, same pattern.
 
 ## Design system: CoreUI for React
 
@@ -40,7 +42,7 @@ docker compose --profile dev up --build
 
 Open `http://localhost:54593` (or the host's LAN IP, same port) — nginx is the single external entrypoint (`/api/*` → backend, `/*` → frontend), per [ADR-0010](docs/adr/0010-single-port-docker-compose-topology.md). `postgres-test` starts alongside but is idle until the integration suite runs against it.
 
-**Never run ad hoc Docker commands against the main `testnexa` compose project when testing a change in progress.** Stand up an isolated test environment instead — validated recipe (run twice now, AUTH-1 and REQ-3):
+**Never run ad hoc Docker commands against the main `testnexa` compose project when testing a change in progress.** Stand up an isolated test environment instead — validated recipe (run against AUTH-1, REQ-2, and REQ-3):
 
 1. **Name it `testnexa-<purpose>-test`** (compose `-p` flag) — before picking a port, run `docker compose ls` and check for a stale one from a prior session that was never torn down (background/orchestrated work can die without cleaning up after itself, see "Working with agents" below).
 2. **Random 5-digit port**, checked free with `lsof -i :<port>` and against `docker ps`.
@@ -54,6 +56,8 @@ Open `http://localhost:54593` (or the host's LAN IP, same port) — nginx is the
 
 A background or resumed sub-agent can die silently with no completion record if its parent process exits mid-task (observed: a `ceo-orchestrator` given a multi-hour implement+test task stopped with no transcript marker after being resumed). **Never take a sub-agent's self-reported "done" at face value** — after any orchestrated implementation work, independently verify: `git status`/`git diff --stat` in the actual worktree, `docker ps`/`docker compose ls` for what's actually running, and re-run the test suites yourself before reporting results as fact.
 
+**[`e2e/CLAUDE.md`](e2e/CLAUDE.md) has the full worked recipe** (port/project naming, the `!override` gotcha, DB clone + verification, migrating, both-IP health-checking, and known-harmless failures when testing through this topology) — read it before improvising your own.
+
 ## Testing
 
 Three layers, all real (not mocked-everything):
@@ -65,6 +69,8 @@ Three layers, all real (not mocked-everything):
 - **E2E** (`e2e/`) — Playwright, real browser, full stack, `E2E_BASE_URL` overridable.
 
 Every FR/NFR traces to a test case in `docs/test-cases/`. When implementing a story, check that doc's coverage for the story ID before considering it done — 100% means every TC for *that story's own scope* has a passing automated test, not that every TC in the file (some belong to other, not-yet-built stories) is green.
+
+**Match a TC's literal wording, not a semantically-adjacent assertion.** A test case that names a specific action (e.g. TC-REQ-004's "add 3 steps, **reorder**") needs a test that actually performs that literal action — an "add steps and edit one field" test doesn't satisfy a TC that also says "reorder," even though both fall under the same general "TestStep CRUD" umbrella. This gap shipped and sat undetected through one full doc-propagation pass before being caught (REQ-2, 2026-09-06) — when auditing coverage, read each TC's `Steps`/`Expected result` cells word-for-word against what the test file actually does, don't pattern-match on the general shape.
 
 ## Architecture decisions are ADR-first
 
@@ -81,10 +87,13 @@ Every stack/architecture choice in this repo has an ADR in `docs/adr/` (MADR-sty
 - Login is rate-limited: 5 failed attempts per `(client_ip, email)` per 15 minutes → 429; resets on a successful login for that pair.
 - Unknown email and wrong password return the **identical** generic 401 body — no user-enumeration leak, timing-safe (always run the password-verify code path, real hash or a fixed dummy hash).
 - AI agents (`AIAgent`, joined-table-inheritance sibling of `User` under `Actor`) authenticate via a separate long-lived API-key bearer flow, never the human login route.
+- **Seeded demo/test accounts must use a real-shaped email domain.** Inserting a `User` row directly (bypassing `POST /auth/signup`'s Pydantic validation) accepts any string in `email`, but `POST /auth/login`'s `EmailStr` validation permanently rejects IANA reserved special-use **TLDs** (`.local`, `.test`, `.invalid`, `.example`) with a `422` — the frontend then shows a generic "check your email and password" message that reads like wrong credentials, not a malformed address. `@example.com` itself is fine (verified against the live validator — only the reserved *TLDs* are blocked, not that specific second-level domain). Bit a real demo handoff, 2026-09-06 (see `backend/CLAUDE.md` for the full story).
 
 ## Multi-tenancy (ADR-0007)
 
 Every tenant-scoped table carries a resolvable `org_id` path. Cross-tenant resource access returns **404**, never 403 — existence is never confirmable across an org boundary (NFR-1). Don't add a query that skips the `org_id` filter, generic or bespoke.
+
+**When adding a new bespoke create route for an entity that already has a hand-written resolver** (`app/api/crud_factory.py`'s per-entity `resolve_org_id` functions), check the resolver's branches actually cover the row shape your new route produces — a resolver written before that create path existed has no branch for it, so the row inserts fine and then 404s as "unresolvable" on the very next read. See [ADR-0029](docs/adr/0029-testcase-resolver-direct-link-fallback.md) for the concrete case (REQ-2's direct-link `TestCase`) and `backend/CLAUDE.md` for the general rule. Test with a create-then-immediate-read round trip, not a create-only assertion — the latter cannot catch this class of bug.
 
 ## Git / worktrees
 

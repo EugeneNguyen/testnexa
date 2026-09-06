@@ -60,23 +60,23 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 | # | Deliverable | Depends on | Size | Maps to |
 |---|---|---|---|---|
 | 4.0 | `Requirement.title` migration + schema/factory-config update (`search_fields`) — the one gap between FR-REQ-1 and the schema, per [ADR-0025](../adr/0025-requirement-title-field.md); `Requirement`'s create/list/update/delete/search were already delivered by 3.3 (ADMIN-2) | 3.3 | S | FR-REQ-1, [ADR-0025](../adr/0025-requirement-title-field.md) |
-| 4.1a | Bespoke `POST /requirements/{id}/test-cases` — direct-link path, atomic `TestCase` + `RequirementTestCaseLink` create | 3.2, 4.0 | M | FR-REQ-2 |
+| 4.1a | Bespoke `POST`/`GET /requirements/{id}/test-cases` — direct-link path, atomic `TestCase` + `RequirementTestCaseLink` create + requirement-scoped list, plus a resolver gap-fill ([ADR-0029](../adr/0029-testcase-resolver-direct-link-fallback.md)) | 3.2, 4.0 | M | FR-REQ-2 |
 | 4.1b | Bespoke `POST /requirements/{id}/test-conditions` + `POST /test-conditions/{id}/test-cases` — atomic `TestCondition`/`TestCase` + link-table creates; restrict `_TEST_CONDITION_CONFIG`'s generic `create` (ADR-0022) now redundant and link-less; `test_manager` RBAC seed migration extending `test_condition.*`/`test_case.create`/`.update`/`.delete` | 3.2, 4.0 | M | FR-REQ-3, [ADR-0028](../adr/0028-req3-test-condition-rigor-path-bespoke-routes.md) |
-*4.1a/4.1b correction:* the original single 4.1 row also named `TestStep` as needing new routes here — stale by the time either sub-item was scoped: `TestStep`'s full create/list/update/delete already shipped generically via 3.3 (ADMIN-2's factory, `CreateTestStepRequest` registered from the start), no bespoke work needed for it under FR-REQ-2..4.
+*4.1a/4.1b correction:* the original single 4.1 row also named `TestStep` as needing new routes here — stale by the time either sub-item was scoped: `TestStep`'s full create/list/update/delete already shipped generically via 3.3 (ADMIN-2's factory, `CreateTestStepRequest` registered from the start), no bespoke work needed for it under FR-REQ-2..4. Both 4.1a and 4.1b are now delivered, coexisting per-TestCase within a project (ADR-0006).
 
 | 4.2 | TestPlan/EntryExitCriteria/TestCycle/Environment routes, execution-scope-check (execution only against TestCase in a suite included in the plan) | 3.2 | M | FR-PLAN-1..3 |
 | 4.3 | TestExecution + append-only TestLog routes | 4.2 | M | FR-EXEC-1..2 |
 | 4.4 | Defect routes, raise-from-execution | 4.3 | S | FR-EXEC-3 |
 | 4.5 | Approval route (human-only, GOV-1) | 2.7 | S | FR-GOV-1 |
 | 4.6 | RiskItem, Attachment routes (incl. server-side size/type limits, storage backend switch) | 3.2 | M | FR-GOV-2..3, NFR-4, NFR-7 |
-| 4.7 | RTM traversal route + CSV export | 4.1, 4.3, 4.4 | M | FR-TRACE-1..2 |
+| 4.7 | RTM traversal route + CSV export | 4.1a, 4.1b, 4.3, 4.4 | M | FR-TRACE-1..2 |
 
 ## 5. MCP server stub
 
 | # | Deliverable | Depends on | Size | Maps to |
 |---|---|---|---|---|
 | 5.1 | MCP server scaffolding, thin client over the same service layer as REST (no separate weaker code path) | 2.3 | M | FR-MCP-1..3 |
-| 5.2 | Tools: create/list/update TestCase | 5.1, 4.1 | S | FR-MCP-1, FR-MCP-2 |
+| 5.2 | Tools: create/list/update TestCase | 5.1, 4.1a, 4.1b | S | FR-MCP-1, FR-MCP-2 |
 | 5.3 | Tools: create TestExecution, read Requirement (read-only) | 5.1, 4.3 | S | FR-MCP-3 |
 
 ## 6. Frontend foundation
@@ -113,8 +113,8 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 | 8.1 | Login, OrgSwitcher/ProjectSwitcher | 6.3b | M | FR-AUTH-1, FR-RBAC-1 |
 | 8.1b | `OrgHome.tsx` project list + "New Project" CoreUI modal (name, optional standards_profile), inline standards_profile edit | 8.1, 3.0b | S | FR-PROJ-1, [ADR-0017](../adr/0017-project-creation-flow.md) |
 | 8.1c | `ProjectDetail.tsx` (route `/projects/:projectId`) — Release list (sortable `target_date` column) + "New Release" CoreUI modal; `OrgHome.tsx` project list items link here; per-release expand renders `GET .../test-cycles` result (cycles + nested executions, read-only audit view) | 8.1b, 3.0d | M | FR-PROJ-2, [ADR-0019](../adr/0019-release-creation-flow.md) |
-| 8.2 | RequirementDetail (Requirement → optional TestCondition → TestCase, both paths) | 7.1, 4.1 | M | FR-REQ-1..3 |
-| 8.3 | TestSuiteBuilder | 7.1, 4.1 | S | FR-REQ-4 |
+| 8.2 | RequirementDetail (Requirement → optional TestCondition → TestCase, both paths). **Both REQ-2's direct-link path and REQ-3's TestCondition-mediated path landed as extensions of `ProjectDetail.tsx` instead** (2026-09-05/06, expand-in-place Requirement rows → TestCase list/TestCondition list, same pattern the Release/TestCycle audit view already uses) — a dedicated `RequirementDetail` route was never built and is no longer reserved (Sitemap's stale 2026-09-05 reservation removed) | 7.1, 4.1a, 4.1b | M | FR-REQ-1..3 |
+| 8.3 | TestSuiteBuilder | 7.1, 4.1a, 4.1b | S | FR-REQ-4 |
 | 8.4 | TestExecutionRunner (pass/fail/blocked + notes, raises Defect) | 7.1, 4.3, 4.4 | M | FR-EXEC-1..3 |
 | 8.5 | TraceabilityMatrix (view + CSV export) | 7.1, 4.7 | M | FR-TRACE-1..2 |
 | 8.6 | `LandingPage` (route `/`) — CoreUI `CCard`/`CContainer`, "Log in"/"Sign up" CTAs; redirect-if-authenticated reuses `Login.tsx`'s own `orgContext`/`orgs` effect; replaces `ScaffoldVerificationPage` (deleted) as the root route in `App.tsx` | 6.3b | S | FR-LANDING-1, NFR-35, [ADR-0024](../adr/0024-public-landing-page.md) |
@@ -155,6 +155,7 @@ Sizing: **S** ≤ 0.5 day, **M** ≈ 1–2 days, **L** ≈ 3–5 days, for one e
 | 11.10 | ADR-0024 (public landing page) + LANDING-1 user story + propagation across Requirements/WBS/Database/API/Test Plan/Test Design/Test Cases (this revision, 2026-09-05) | Done |
 | 11.11 | ADR-0025 (`Requirement.title` schema gap-fill) + propagation across Requirements/WBS/Database/API/Test Cases (REQ-1 documentation pass, 2026-09-05) — Test Plan/Test Design needed no new content (existing ADMIN-2/generic-CRUD sections already cover `Requirement` generically; no new technique or risk this ADR introduces) | Done |
 | 11.12 | ADR-0027 (generic admin CRUD UI + execution/traceability backend completion) + new UI Design Document + new Sitemap Document + propagation across Requirements/WBS/Database/API/Test Plan/Test Design/Test Cases (this revision, 2026-09-05) | Done |
+| 11.13 | ADR-0029 (`TestCase` resolver direct-link fallback, REQ-2 gap-fill; renumbered from an initial 0028 draft after a numbering collision with REQ-3's own, separately-landed ADR-0028) + correction of ADR-0022's own resolver prose (not silently edited — ADR-0029 records why) + propagation across Requirements/WBS/Database/API/Sitemap/Test Plan/Test Design (REQ-2 documentation pass, 2026-09-05) — UI Design Document needed only a one-line scope note (REQ-2 is a bespoke `ProjectDetail.tsx` extension, out of that document's stated generic-admin-surface scope, same posture it already declares for every other bespoke workflow screen); Test Cases needed no new row (TC-REQ-003/004 already existed and already assert the behavior this ADR fixes, just a source-link addition) | Done |
 
 ## Critical path
 

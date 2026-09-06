@@ -1,7 +1,10 @@
 /**
  * Global taxonomy-catalog reads (`TestLevel`, `TestType`) for bespoke
- * workflow screens that need to populate a `<select>` — REQ-3's "New Test
- * Case" modal is the first caller.
+ * workflow screens that need to populate a `<select>` — REQ-2's and REQ-3's
+ * "New Test Case" forms are both callers (`TestCase.test_level_id`/
+ * `test_type_id` are required non-nullable FKs regardless of which
+ * atomic-create path produces the row, unrelated to ADR-0006's
+ * TestCondition-optional lightweness).
  *
  * These are **thin named wrappers over the existing generic
  * `listEntities()` helper** (`lib/api/entityCrud.ts`) plus the existing

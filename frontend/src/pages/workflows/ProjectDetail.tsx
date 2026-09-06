@@ -24,16 +24,35 @@
  * RHF+Zod+CoreUI convention as "New Release" above, its own separate
  * `useForm` instance (two independent forms on one page, not a shared one).
  *
+ * REQ-2 (ADR-0006): each Requirement row itself is click-to-expand (same
+ * convention the Release rows above already use) to list its directly-linked
+ * TestCases (`GET /requirements/{id}/test-cases`, no TestCondition anywhere
+ * in the chain) + a "New Test Case" modal. Each TestCase row itself expands
+ * one level further to list/add/edit its TestSteps — independently
+ * editable, ordered by `sequence`.
+ *
  * REQ-3 (ADR-0028, UI Design Document 2026-09-06): the rigor path hangs off
- * that same Requirement list rather than a dedicated `RequirementDetail` page
- * (the Sitemap's stale 2026-09-05 reservation) — each Requirement row expands
- * (`CCollapse`) into its own TestCondition list, lazily fetched on first
- * expand, with a "New Test Condition" modal per requirement and a "New Test
- * Case" modal per condition. Two more independent `useForm` instances, same
- * per-section convention as above (four forms on this page now, none shared).
+ * that same Requirement list too, coexisting with REQ-2's direct-link
+ * section per ADR-0006 (a Requirement can have both directly-linked
+ * TestCases and TestCondition-mediated ones) rather than a dedicated
+ * `RequirementDetail` page (the Sitemap's stale 2026-09-05 reservation) —
+ * a dedicated "Test conditions" toggle button on each Requirement row (kept
+ * independent of REQ-2's row-click expand, via its own `stopPropagation`)
+ * expands (`CCollapse`) into its own TestCondition list, lazily fetched on
+ * first expand, with a "New Test Condition" modal per requirement and a
+ * "New Test Case" modal per condition. Two more independent `useForm`
+ * instances beyond REQ-2's own two (Release/Requirement/TestCase/TestStep),
+ * each section keeping its own separate instance rather than a shared one.
  * No per-condition TestCase list is rendered: no backend route lists
  * TestCases by condition (explicit YAGNI, ADR-0028's design spec), so the
  * create modal confirms with a `CToast` instead.
+ *
+ * The "New Test Case" modal itself (form fields, schema, RHF instance) is
+ * shared verbatim between REQ-2's direct-link path and REQ-3's rigor path —
+ * both need the exact same fields (title/preconditions/expected result/test
+ * level/test type) and only one can be open at a time, so `onSubmitTestCase`
+ * branches on which target id (`testCaseModalRequirementId` vs
+ * `testCaseModalConditionId`) is set rather than duplicating the form.
  *
  * None of the REQ-3 buttons are permission-hidden/disabled — this is a
  * bespoke workflow screen, so it keeps this page's existing attempt-then-
@@ -94,12 +113,18 @@ import {
 import { projectScopedEntities } from "../admin/registry";
 import { createRequirement, listRequirements, RequirementSummary } from "../../lib/api/requirements";
 import {
+  createTestCase,
+  createTestCaseForTestCondition,
+  listTestCasesForRequirement,
+  TestCaseSummary,
+} from "../../lib/api/testCases";
+import { createTestStep, listTestSteps, updateTestStep, TestStepSummary } from "../../lib/api/testSteps";
+import {
   createTestCondition,
   listTestConditions,
   TestConditionPriority,
   TestConditionSummary,
 } from "../../lib/api/testConditions";
-import { createTestCaseForTestCondition } from "../../lib/api/testCases";
 import { listTestLevels, listTestTypes, TestLevelSummary, TestTypeSummary } from "../../lib/api/taxonomy";
 
 const newReleaseSchema = z.object({
@@ -141,10 +166,12 @@ const newTestConditionSchema = z.object({
 type NewTestConditionFormValues = z.infer<typeof newTestConditionSchema>;
 
 /**
- * REQ-3 TestCase form. `testLevelId`/`testTypeId` are select-driven, so
- * "required" here really means "a selection was made" — surfaced as the same
- * required-field `CFormFeedback` message as any other field (ADR-0023's
- * `FormField` convention, which this page applies inline).
+ * Shared "New Test Case" form (REQ-2's direct-link path and REQ-3's rigor
+ * path both use it — same fields either way). `testLevelId`/`testTypeId`
+ * are select-driven, so "required" here really means "a selection was made"
+ * — surfaced as the same required-field `CFormFeedback` message as any
+ * other field (ADR-0023's `FormField` convention, which this page applies
+ * inline).
  */
 const newTestCaseSchema = z.object({
   title: z.string().trim().min(1, "Title is required"),
@@ -155,6 +182,13 @@ const newTestCaseSchema = z.object({
 });
 
 type NewTestCaseFormValues = z.infer<typeof newTestCaseSchema>;
+
+const newTestStepSchema = z.object({
+  action: z.string().trim().min(1, "Action is required"),
+  expectedResult: z.string().trim().optional(),
+});
+
+type NewTestStepFormValues = z.infer<typeof newTestStepSchema>;
 
 const TEST_CASE_CREATED_MESSAGE = "Test case created and linked to this test condition";
 
@@ -307,12 +341,25 @@ function ProjectDetail() {
     }
   }
 
+  // --- REQ-2: directly-linked TestCases per expanded Requirement row ------------------------
+  const [expandedRequirementId, setExpandedRequirementId] = useState<string | null>(null);
+  const [testCases, setTestCases] = useState<TestCaseSummary[]>([]);
+  const [testCasesLoading, setTestCasesLoading] = useState(false);
+  const [testCasesError, setTestCasesError] = useState<string | null>(null);
+
+  const [showTestCaseModal, setShowTestCaseModal] = useState(false);
+  const [testCaseModalRequirementId, setTestCaseModalRequirementId] = useState<string | null>(null);
+  const [testCaseApiError, setTestCaseApiError] = useState<string | null>(null);
+
   // --- REQ-3: per-Requirement TestCondition sections + the two create modals ---
   //
-  // Keyed by requirement id rather than a single "expanded row" id (the
-  // Releases section's own shape above): several Requirement rows may be
-  // expanded at once here, and each keeps its own fetched list/loading/error
-  // so collapsing one doesn't discard another's data.
+  // Keyed by requirement id rather than a single "expanded row" id (REQ-2's
+  // own shape above, which this section intentionally keeps independent of
+  // — a Requirement's Test Cases section and its Test Conditions section
+  // expand/collapse separately): several Requirement rows may have their
+  // Test Conditions section expanded at once here, and each keeps its own
+  // fetched list/loading/error so collapsing one doesn't discard another's
+  // data.
   const [expandedRequirementIds, setExpandedRequirementIds] = useState<string[]>([]);
   const [conditionsByRequirement, setConditionsByRequirement] = useState<
     Record<string, TestConditionSummary[]>
@@ -322,6 +369,7 @@ function ProjectDetail() {
 
   // Global taxonomy catalog for the "New Test Case" modal's two selects —
   // fetched once per page load (not per modal open), per the UI design.
+  // Shared by both REQ-2's and REQ-3's "New Test Case" modals.
   const [testLevels, setTestLevels] = useState<TestLevelSummary[]>([]);
   const [testTypes, setTestTypes] = useState<TestTypeSummary[]>([]);
   const [catalogError, setCatalogError] = useState<string | null>(null);
@@ -330,7 +378,6 @@ function ProjectDetail() {
   const [conditionModalRequirementId, setConditionModalRequirementId] = useState<string | null>(null);
   const [conditionApiError, setConditionApiError] = useState<string | null>(null);
   const [testCaseModalConditionId, setTestCaseModalConditionId] = useState<string | null>(null);
-  const [testCaseApiError, setTestCaseApiError] = useState<string | null>(null);
 
   // `id` bumps per toast so a second confirmation re-mounts `CToast` (it
   // unmounts itself on exit) instead of silently reusing a hidden instance.
@@ -347,6 +394,10 @@ function ProjectDetail() {
     defaultValues: { description: "", priority: "" },
   });
 
+  // Shared "New Test Case" form instance — REQ-2's direct-link modal and
+  // REQ-3's per-condition modal both bind to this one RHF instance, since
+  // only one of the two modals can ever be open at a time (see module
+  // docstring). `onSubmitTestCase` below branches on which target id is set.
   const {
     register: registerTestCase,
     handleSubmit: handleSubmitTestCase,
@@ -357,6 +408,34 @@ function ProjectDetail() {
     resolver: zodResolver(newTestCaseSchema),
     defaultValues: { title: "", preconditions: "", expectedResult: "", testLevelId: "", testTypeId: "" },
   });
+
+  // TestSteps of whichever TestCase row is currently expanded (one at a time,
+  // same single-active-expansion convention as Release/Requirement rows above).
+  const [expandedTestCaseId, setExpandedTestCaseId] = useState<string | null>(null);
+  const [testSteps, setTestSteps] = useState<TestStepSummary[]>([]);
+  const [testStepsLoading, setTestStepsLoading] = useState(false);
+  const [testStepsError, setTestStepsError] = useState<string | null>(null);
+
+  const {
+    register: registerTestStep,
+    handleSubmit: handleSubmitTestStep,
+    reset: resetTestStep,
+    formState: { errors: testStepErrors, isSubmitting: isSubmittingTestStep },
+  } = useForm<NewTestStepFormValues>({
+    resolver: zodResolver(newTestStepSchema),
+    defaultValues: { action: "", expectedResult: "" },
+  });
+  const [testStepApiError, setTestStepApiError] = useState<string | null>(null);
+
+  // Inline per-step edit (independently editable, REQ-2 AC3) — plain local
+  // state rather than a second RHF instance: only two fields, one row at a
+  // time, no validation beyond "non-empty action" already guaranteed by the
+  // step existing.
+  const [editingStepId, setEditingStepId] = useState<string | null>(null);
+  const [editAction, setEditAction] = useState("");
+  const [editExpectedResult, setEditExpectedResult] = useState("");
+  const [editStepApiError, setEditStepApiError] = useState<string | null>(null);
+  const [editStepSubmitting, setEditStepSubmitting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -381,6 +460,197 @@ function ProjectDetail() {
       cancelled = true;
     };
   }, []);
+
+  async function fetchTestCases(requirementId: string) {
+    setTestCasesLoading(true);
+    setTestCasesError(null);
+    try {
+      const response = await listTestCasesForRequirement(requirementId);
+      setTestCases(response.items);
+    } catch (err) {
+      setTestCasesError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
+    } finally {
+      setTestCasesLoading(false);
+    }
+  }
+
+  async function toggleRequirementExpand(requirement: RequirementSummary) {
+    if (expandedRequirementId === requirement.id) {
+      setExpandedRequirementId(null);
+      return;
+    }
+    setExpandedRequirementId(requirement.id);
+    setExpandedTestCaseId(null);
+    setTestCases([]);
+    await fetchTestCases(requirement.id);
+  }
+
+  function openTestCaseModal(requirementId: string) {
+    setTestCaseApiError(null);
+    resetTestCase({ title: "", preconditions: "", expectedResult: "", testLevelId: "", testTypeId: "" });
+    setTestCaseModalConditionId(null);
+    setTestCaseModalRequirementId(requirementId);
+    setShowTestCaseModal(true);
+  }
+
+  function closeTestCaseModal() {
+    setShowTestCaseModal(false);
+    setTestCaseModalRequirementId(null);
+    setTestCaseModalConditionId(null);
+  }
+
+  /**
+   * Shared submit handler for both "New Test Case" modals — branches on
+   * which target id is currently set. REQ-2's direct-link path
+   * (`testCaseModalRequirementId`) creates via `createTestCase` and
+   * re-fetches that requirement's TestCase list; REQ-3's rigor path
+   * (`testCaseModalConditionId`) creates via `createTestCaseForTestCondition`
+   * and confirms with a toast instead (no per-condition list to re-fetch,
+   * ADR-0028 YAGNI).
+   */
+  async function onSubmitTestCase(values: NewTestCaseFormValues) {
+    if (testCaseModalRequirementId) {
+      const requirementId = testCaseModalRequirementId;
+      setTestCaseApiError(null);
+      try {
+        await createTestCase(requirementId, {
+          title: values.title,
+          test_level_id: values.testLevelId,
+          test_type_id: values.testTypeId,
+          ...(values.preconditions ? { preconditions: values.preconditions } : {}),
+          ...(values.expectedResult ? { expected_result: values.expectedResult } : {}),
+        });
+        closeTestCaseModal();
+        await fetchTestCases(requirementId);
+      } catch (err) {
+        if (err instanceof ApiError) {
+          const titleError = fieldError(err, "title");
+          if (titleError) {
+            setTestCaseError("title", { type: "server", message: titleError });
+          } else {
+            setTestCaseApiError(err.message);
+          }
+        } else {
+          setTestCaseApiError("Something went wrong. Please try again.");
+        }
+      }
+      return;
+    }
+
+    const testConditionId = testCaseModalConditionId;
+    if (!testConditionId) {
+      return;
+    }
+    setTestCaseApiError(null);
+    try {
+      await createTestCaseForTestCondition(testConditionId, {
+        title: values.title,
+        // Omitted (not sent as an empty string) when blank, matching the
+        // backend's `str | None = None` optional-field convention.
+        ...(values.preconditions ? { preconditions: values.preconditions } : {}),
+        ...(values.expectedResult ? { expected_result: values.expectedResult } : {}),
+        test_level_id: values.testLevelId,
+        test_type_id: values.testTypeId,
+      });
+      closeTestCaseModal();
+      // No list to re-fetch — no backend route lists TestCases by condition
+      // (ADR-0028 YAGNI), so a toast is the only success feedback.
+      setToast((prev) => ({ id: (prev?.id ?? 0) + 1, message: TEST_CASE_CREATED_MESSAGE }));
+    } catch (err) {
+      if (err instanceof ApiError) {
+        const titleError = fieldError(err, "title");
+        const levelError = fieldError(err, "test_level_id");
+        const typeError = fieldError(err, "test_type_id");
+        if (titleError) {
+          setTestCaseError("title", { type: "server", message: titleError });
+        } else if (levelError) {
+          setTestCaseError("testLevelId", { type: "server", message: levelError });
+        } else if (typeError) {
+          setTestCaseError("testTypeId", { type: "server", message: typeError });
+        } else {
+          setTestCaseApiError(err.message);
+        }
+      } else {
+        setTestCaseApiError("Something went wrong. Please try again.");
+      }
+    }
+  }
+
+  async function fetchTestSteps(testCaseId: string) {
+    setTestStepsLoading(true);
+    setTestStepsError(null);
+    try {
+      const response = await listTestSteps(testCaseId);
+      setTestSteps([...response.items].sort((a, b) => a.sequence - b.sequence));
+    } catch (err) {
+      setTestStepsError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
+    } finally {
+      setTestStepsLoading(false);
+    }
+  }
+
+  async function toggleTestCaseExpand(testCase: TestCaseSummary) {
+    if (expandedTestCaseId === testCase.id) {
+      setExpandedTestCaseId(null);
+      return;
+    }
+    setExpandedTestCaseId(testCase.id);
+    setEditingStepId(null);
+    resetTestStep({ action: "", expectedResult: "" });
+    setTestStepApiError(null);
+    setTestSteps([]);
+    await fetchTestSteps(testCase.id);
+  }
+
+  async function onSubmitTestStep(values: NewTestStepFormValues) {
+    if (!expandedTestCaseId) {
+      return;
+    }
+    setTestStepApiError(null);
+    try {
+      await createTestStep({
+        test_case_id: expandedTestCaseId,
+        sequence: testSteps.length + 1,
+        action: values.action,
+        ...(values.expectedResult ? { expected_result: values.expectedResult } : {}),
+      });
+      resetTestStep({ action: "", expectedResult: "" });
+      await fetchTestSteps(expandedTestCaseId);
+    } catch (err) {
+      setTestStepApiError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
+    }
+  }
+
+  function startEditStep(step: TestStepSummary) {
+    setEditingStepId(step.id);
+    setEditAction(step.action);
+    setEditExpectedResult(step.expected_result ?? "");
+    setEditStepApiError(null);
+  }
+
+  function cancelEditStep() {
+    setEditingStepId(null);
+    setEditStepApiError(null);
+  }
+
+  async function saveEditStep(stepId: string) {
+    setEditStepSubmitting(true);
+    setEditStepApiError(null);
+    try {
+      await updateTestStep(stepId, {
+        action: editAction,
+        expected_result: editExpectedResult || null,
+      });
+      setEditingStepId(null);
+      if (expandedTestCaseId) {
+        await fetchTestSteps(expandedTestCaseId);
+      }
+    } catch (err) {
+      setEditStepApiError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
+    } finally {
+      setEditStepSubmitting(false);
+    }
+  }
 
   const fetchTestConditions = useCallback(async (requirementId: string) => {
     setConditionsLoading((prev) => ({ ...prev, [requirementId]: true }));
@@ -453,54 +723,11 @@ function ProjectDetail() {
     }
   }
 
-  function openTestCaseModal(testConditionId: string) {
+  function openConditionTestCaseModal(testConditionId: string) {
     setTestCaseApiError(null);
     resetTestCase({ title: "", preconditions: "", expectedResult: "", testLevelId: "", testTypeId: "" });
+    setTestCaseModalRequirementId(null);
     setTestCaseModalConditionId(testConditionId);
-  }
-
-  function closeTestCaseModal() {
-    setTestCaseModalConditionId(null);
-  }
-
-  async function onSubmitTestCase(values: NewTestCaseFormValues) {
-    const testConditionId = testCaseModalConditionId;
-    if (!testConditionId) {
-      return;
-    }
-    setTestCaseApiError(null);
-    try {
-      await createTestCaseForTestCondition(testConditionId, {
-        title: values.title,
-        // Omitted (not sent as an empty string) when blank, matching the
-        // backend's `str | None = None` optional-field convention.
-        ...(values.preconditions ? { preconditions: values.preconditions } : {}),
-        ...(values.expectedResult ? { expected_result: values.expectedResult } : {}),
-        test_level_id: values.testLevelId,
-        test_type_id: values.testTypeId,
-      });
-      closeTestCaseModal();
-      // No list to re-fetch — no backend route lists TestCases by condition
-      // (ADR-0028 YAGNI), so a toast is the only success feedback.
-      setToast((prev) => ({ id: (prev?.id ?? 0) + 1, message: TEST_CASE_CREATED_MESSAGE }));
-    } catch (err) {
-      if (err instanceof ApiError) {
-        const titleError = fieldError(err, "title");
-        const levelError = fieldError(err, "test_level_id");
-        const typeError = fieldError(err, "test_type_id");
-        if (titleError) {
-          setTestCaseError("title", { type: "server", message: titleError });
-        } else if (levelError) {
-          setTestCaseError("testLevelId", { type: "server", message: levelError });
-        } else if (typeError) {
-          setTestCaseError("testTypeId", { type: "server", message: typeError });
-        } else {
-          setTestCaseApiError(err.message);
-        }
-      } else {
-        setTestCaseApiError("Something went wrong. Please try again.");
-      }
-    }
   }
 
   const fetchReleases = useCallback(
@@ -745,7 +972,10 @@ function ProjectDetail() {
                         const conditionsLoadError = conditionsError[requirement.id] ?? null;
                         return (
                           <Fragment key={requirement.id}>
-                            <CTableRow>
+                            <CTableRow
+                              style={{ cursor: "pointer" }}
+                              onClick={() => toggleRequirementExpand(requirement)}
+                            >
                               <CTableDataCell>{requirement.title}</CTableDataCell>
                               <CTableDataCell>{dashIfEmpty(requirement.external_ref)}</CTableDataCell>
                               <CTableDataCell>{dashIfEmpty(requirement.source)}</CTableDataCell>
@@ -755,12 +985,194 @@ function ProjectDetail() {
                                   className="p-0 text-decoration-none"
                                   aria-expanded={expanded}
                                   data-testid={`tc-section-toggle-${requirement.id}`}
-                                  onClick={() => toggleTestConditions(requirement.id)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleTestConditions(requirement.id);
+                                  }}
                                 >
                                   Test conditions {expanded ? "▲" : "▼"}
                                 </CButton>
                               </CTableDataCell>
                             </CTableRow>
+                            {expandedRequirementId === requirement.id && (
+                              <CTableRow key={`${requirement.id}-detail`}>
+                                <CTableDataCell colSpan={4} className="bg-body-tertiary">
+                                  <div className="d-flex justify-content-between align-items-center mb-2">
+                                    <h3 className="fs-6 mb-0">Test cases</h3>
+                                    <CButton
+                                      size="sm"
+                                      color="primary"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        openTestCaseModal(requirement.id);
+                                      }}
+                                    >
+                                      New Test Case
+                                    </CButton>
+                                  </div>
+
+                                  {testCasesError && (
+                                    <CAlert color="danger" role="alert">
+                                      {testCasesError}
+                                    </CAlert>
+                                  )}
+
+                                  {testCasesLoading ? (
+                                    <div className="d-flex justify-content-center py-2">
+                                      <CSpinner size="sm" color="primary" />
+                                    </div>
+                                  ) : !testCasesError && testCases.length === 0 ? (
+                                    <p className="text-body-secondary mb-0">No test cases yet.</p>
+                                  ) : (
+                                    // Flat `<ul>`, not a nested `<CTable>` — same convention the
+                                    // Release-cycles audit view above already uses, and for the
+                                    // same reason: a `<table>` nested inside a `<td>` of an outer
+                                    // `<table>` makes the outer row's accessible name aggregate the
+                                    // inner rows' text too (no ARIA role boundary between them),
+                                    // which breaks `getByRole("row", {name})`-style lookups.
+                                    <ul className="list-unstyled mb-0">
+                                      {testCases.map((testCase) => (
+                                        <li key={testCase.id} className="mb-2">
+                                          <div
+                                            role="button"
+                                            tabIndex={0}
+                                            style={{ cursor: "pointer" }}
+                                            className="fw-semibold"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              toggleTestCaseExpand(testCase);
+                                            }}
+                                          >
+                                            {testCase.title} — {testCase.status}
+                                          </div>
+                                          {expandedTestCaseId === testCase.id && (
+                                            <div className="ms-3 mt-1">
+                                              {testStepsError && (
+                                                <CAlert color="danger" role="alert">
+                                                  {testStepsError}
+                                                </CAlert>
+                                              )}
+                                              {testStepsLoading ? (
+                                                <div className="d-flex justify-content-center py-2">
+                                                  <CSpinner size="sm" color="primary" />
+                                                </div>
+                                              ) : (
+                                                <>
+                                                  {testSteps.length === 0 && !testStepsError && (
+                                                    <p className="text-body-secondary small mb-2">No steps yet.</p>
+                                                  )}
+                                                  {testSteps.length > 0 && (
+                                                    <ol className="mb-2">
+                                                      {testSteps.map((step) => (
+                                                        <li key={step.id} className="mb-2">
+                                                          {editingStepId === step.id ? (
+                                                            <div>
+                                                              <CFormInput
+                                                                aria-label={`Step ${step.sequence} action`}
+                                                                className="mb-1"
+                                                                value={editAction}
+                                                                onChange={(e) => setEditAction(e.target.value)}
+                                                              />
+                                                              <CFormInput
+                                                                aria-label={`Step ${step.sequence} expected result`}
+                                                                className="mb-1"
+                                                                placeholder="Expected result (optional)"
+                                                                value={editExpectedResult}
+                                                                onChange={(e) =>
+                                                                  setEditExpectedResult(e.target.value)
+                                                                }
+                                                              />
+                                                              {editStepApiError && (
+                                                                <CAlert color="danger" role="alert" className="py-1">
+                                                                  {editStepApiError}
+                                                                </CAlert>
+                                                              )}
+                                                              <CButton
+                                                                size="sm"
+                                                                color="primary"
+                                                                className="me-1"
+                                                                disabled={editStepSubmitting}
+                                                                onClick={() => saveEditStep(step.id)}
+                                                              >
+                                                                Save
+                                                              </CButton>
+                                                              <CButton
+                                                                size="sm"
+                                                                color="secondary"
+                                                                variant="outline"
+                                                                onClick={cancelEditStep}
+                                                              >
+                                                                Cancel
+                                                              </CButton>
+                                                            </div>
+                                                          ) : (
+                                                            <div>
+                                                              <span>{step.action}</span>
+                                                              {step.expected_result && (
+                                                                <span className="text-body-secondary">
+                                                                  {" "}
+                                                                  — {step.expected_result}
+                                                                </span>
+                                                              )}
+                                                              <CButton
+                                                                size="sm"
+                                                                color="link"
+                                                                className="p-0 ms-2"
+                                                                onClick={() => startEditStep(step)}
+                                                              >
+                                                                Edit
+                                                              </CButton>
+                                                            </div>
+                                                          )}
+                                                        </li>
+                                                      ))}
+                                                    </ol>
+                                                  )}
+                                                </>
+                                              )}
+
+                                              <CForm onSubmit={handleSubmitTestStep(onSubmitTestStep)} noValidate>
+                                                <CInputGroup className="mb-1">
+                                                  <CFormInput
+                                                    aria-label="New step action"
+                                                    placeholder="Action"
+                                                    invalid={!!testStepErrors.action}
+                                                    {...registerTestStep("action")}
+                                                  />
+                                                  <CFormInput
+                                                    aria-label="New step expected result"
+                                                    placeholder="Expected result (optional)"
+                                                    {...registerTestStep("expectedResult")}
+                                                  />
+                                                  <CButton
+                                                    type="submit"
+                                                    color="secondary"
+                                                    variant="outline"
+                                                    disabled={isSubmittingTestStep}
+                                                  >
+                                                    Add step
+                                                  </CButton>
+                                                </CInputGroup>
+                                                {testStepErrors.action && (
+                                                  <CFormFeedback invalid className="d-block">
+                                                    {testStepErrors.action.message}
+                                                  </CFormFeedback>
+                                                )}
+                                                {testStepApiError && (
+                                                  <CAlert color="danger" role="alert" className="py-1">
+                                                    {testStepApiError}
+                                                  </CAlert>
+                                                )}
+                                              </CForm>
+                                            </div>
+                                          )}
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  )}
+                                </CTableDataCell>
+                              </CTableRow>
+                            )}
                             <CTableRow>
                               <CTableDataCell colSpan={4} className="p-0 border-0">
                                 <CCollapse visible={expanded}>
@@ -824,7 +1236,7 @@ function ProjectDetail() {
                                                       variant="outline"
                                                       size="sm"
                                                       data-testid={`new-test-case-btn-${condition.id}`}
-                                                      onClick={() => openTestCaseModal(condition.id)}
+                                                      onClick={() => openConditionTestCaseModal(condition.id)}
                                                     >
                                                       New Test Case
                                                     </CButton>
@@ -880,6 +1292,83 @@ function ProjectDetail() {
           </CCol>
         </CRow>
       </CContainer>
+
+      <CModal visible={showTestCaseModal} onClose={closeTestCaseModal}>
+        <CModalHeader>
+          <CModalTitle>New Test Case</CModalTitle>
+        </CModalHeader>
+        <CForm onSubmit={handleSubmitTestCase(onSubmitTestCase)} noValidate>
+          <CModalBody>
+            <div className="mb-3">
+              <CFormLabel htmlFor="testCaseTitle">Title</CFormLabel>
+              <CFormInput
+                id="testCaseTitle"
+                type="text"
+                invalid={!!testCaseErrors.title}
+                {...registerTestCase("title")}
+              />
+              {testCaseErrors.title && <CFormFeedback invalid>{testCaseErrors.title.message}</CFormFeedback>}
+            </div>
+            <div className="mb-3">
+              <CFormLabel htmlFor="testCasePreconditions">Preconditions</CFormLabel>
+              <CFormTextarea id="testCasePreconditions" rows={2} {...registerTestCase("preconditions")} />
+              <CFormText>Optional.</CFormText>
+            </div>
+            <div className="mb-3">
+              <CFormLabel htmlFor="testCaseExpectedResult">Expected result</CFormLabel>
+              <CFormTextarea id="testCaseExpectedResult" rows={2} {...registerTestCase("expectedResult")} />
+              <CFormText>Optional.</CFormText>
+            </div>
+            <div className="mb-3">
+              <CFormLabel htmlFor="testCaseTestLevel">Test level</CFormLabel>
+              <CFormSelect
+                id="testCaseTestLevel"
+                invalid={!!testCaseErrors.testLevelId}
+                {...registerTestCase("testLevelId")}
+              >
+                <option value="">Select a test level…</option>
+                {testLevels.map((level) => (
+                  <option key={level.id} value={level.id}>
+                    {level.name}
+                  </option>
+                ))}
+              </CFormSelect>
+              {testCaseErrors.testLevelId && (
+                <CFormFeedback invalid>{testCaseErrors.testLevelId.message}</CFormFeedback>
+              )}
+            </div>
+            <div className="mb-3">
+              <CFormLabel htmlFor="testCaseTestType">Test type</CFormLabel>
+              <CFormSelect
+                id="testCaseTestType"
+                invalid={!!testCaseErrors.testTypeId}
+                {...registerTestCase("testTypeId")}
+              >
+                <option value="">Select a test type…</option>
+                {testTypes.map((type) => (
+                  <option key={type.id} value={type.id}>
+                    {type.name}
+                  </option>
+                ))}
+              </CFormSelect>
+              {testCaseErrors.testTypeId && <CFormFeedback invalid>{testCaseErrors.testTypeId.message}</CFormFeedback>}
+            </div>
+            {testCaseApiError && (
+              <CAlert color="danger" role="alert">
+                {testCaseApiError}
+              </CAlert>
+            )}
+          </CModalBody>
+          <CModalFooter>
+            <CButton color="secondary" variant="outline" onClick={closeTestCaseModal}>
+              Cancel
+            </CButton>
+            <CButton type="submit" color="primary" disabled={isSubmittingTestCase}>
+              {isSubmittingTestCase ? "Creating..." : "Create"}
+            </CButton>
+          </CModalFooter>
+        </CForm>
+      </CModal>
 
       <CModal visible={showReqModal} onClose={closeReqModal}>
         <CModalHeader>
@@ -1011,9 +1500,9 @@ function ProjectDetail() {
         <CForm onSubmit={handleSubmitTestCase(onSubmitTestCase)} noValidate>
           <CModalBody>
             <div className="mb-3">
-              <CFormLabel htmlFor="testCaseTitle">Title</CFormLabel>
+              <CFormLabel htmlFor="conditionTestCaseTitle">Title</CFormLabel>
               <CFormInput
-                id="testCaseTitle"
+                id="conditionTestCaseTitle"
                 type="text"
                 data-testid="test-case-title"
                 invalid={!!testCaseErrors.title}
@@ -1022,9 +1511,9 @@ function ProjectDetail() {
               {testCaseErrors.title && <CFormFeedback invalid>{testCaseErrors.title.message}</CFormFeedback>}
             </div>
             <div className="mb-3">
-              <CFormLabel htmlFor="testCasePreconditions">Preconditions</CFormLabel>
+              <CFormLabel htmlFor="conditionTestCasePreconditions">Preconditions</CFormLabel>
               <CFormTextarea
-                id="testCasePreconditions"
+                id="conditionTestCasePreconditions"
                 rows={2}
                 data-testid="test-case-preconditions"
                 {...registerTestCase("preconditions")}
@@ -1032,9 +1521,9 @@ function ProjectDetail() {
               <CFormText>Optional.</CFormText>
             </div>
             <div className="mb-3">
-              <CFormLabel htmlFor="testCaseExpectedResult">Expected result</CFormLabel>
+              <CFormLabel htmlFor="conditionTestCaseExpectedResult">Expected result</CFormLabel>
               <CFormTextarea
-                id="testCaseExpectedResult"
+                id="conditionTestCaseExpectedResult"
                 rows={2}
                 data-testid="test-case-expected-result"
                 {...registerTestCase("expectedResult")}
@@ -1042,9 +1531,9 @@ function ProjectDetail() {
               <CFormText>Optional.</CFormText>
             </div>
             <div className="mb-3">
-              <CFormLabel htmlFor="testCaseTestLevel">Test level</CFormLabel>
+              <CFormLabel htmlFor="conditionTestCaseTestLevel">Test level</CFormLabel>
               <CFormSelect
-                id="testCaseTestLevel"
+                id="conditionTestCaseTestLevel"
                 data-testid="test-case-test-level"
                 invalid={!!testCaseErrors.testLevelId}
                 {...registerTestCase("testLevelId")}
@@ -1061,9 +1550,9 @@ function ProjectDetail() {
               )}
             </div>
             <div className="mb-3">
-              <CFormLabel htmlFor="testCaseTestType">Test type</CFormLabel>
+              <CFormLabel htmlFor="conditionTestCaseTestType">Test type</CFormLabel>
               <CFormSelect
-                id="testCaseTestType"
+                id="conditionTestCaseTestType"
                 data-testid="test-case-test-type"
                 invalid={!!testCaseErrors.testTypeId}
                 {...registerTestCase("testTypeId")}

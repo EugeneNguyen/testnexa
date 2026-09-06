@@ -7,11 +7,13 @@ Field names mirror each ORM model's own column names exactly — the factory's
 `_to_summary`/`create`/`update` machinery (`app/api/crud_factory.py`) maps
 request/response bodies to model attributes purely by name, no per-entity
 mapping function. `TestCase` and `TestCondition` have no factory-registered
-`Create*Request` — both are created only via the bespoke atomic-create routes
-in `app/api/routes/test_condition_authoring.py` (REQ-3/ADR-0028, API Document
-§4), whose request schemas (`CreateTestConditionForRequirementRequest`,
-`CreateTestCaseForTestConditionRequest`) are path-scoped and therefore
-deliberately omit the parent FK the factory would have required in the body.
+`Create*Request` — both entities' `create` is served only by bespoke
+atomic-create routes instead: REQ-2's direct-link `CreateTestCaseRequest`
+(`app/api/routes/assets.py`, ADR-0029) and REQ-3's path-scoped
+`CreateTestConditionForRequirementRequest`/`CreateTestCaseForTestConditionRequest`
+(`app/api/routes/test_condition_authoring.py`, ADR-0028, API Document §4),
+which deliberately omit the parent FK the factory would have required in the
+body.
 """
 
 from typing import Literal
@@ -113,18 +115,49 @@ class TestConditionListResponse(BaseModel):
 
 # --- TestCase ------------------------------------------------------------------------------------
 #
-# No factory-registered `Create*Request`/`*ListResponse` — `create` is served
-# only by the bespoke atomic-create route `POST /test-conditions/{id}/test-cases`
-# (REQ-3/ADR-0028, schema below), never by the factory, and `list` is
-# deliberately not registered via the factory either: unlike every other scoped entity,
-# `TestCase` has no single non-nullable FK the factory's `scope_field`
-# mechanism could require as a list-scope query param (`test_condition_id` is
-# nullable per ADR-0006, and the suite-link fallback is a many-to-many join,
-# not a column) — requiring one would either wrongly 404 legitimately
-# suite-only-linked test cases or leave `list` unscoped and leak across
-# tenants (CLAUDE.md's multi-tenancy rule). See this story's final report for
-# this deviation from the plan's literal "everything else gets all 5
-# methods" framing.
+# No factory-registered `Create*Request`/`list` — `create` is reserved for
+# two bespoke atomic-create routes (ADR-0022, API Document §4): `POST
+# /requirements/{id}/test-cases` for REQ-2's direct link (`CreateTestCaseRequest`
+# below, `app/api/routes/assets.py`, ADR-0029), and `POST
+# /test-conditions/{id}/test-cases` for REQ-3's rigor path
+# (`CreateTestCaseForTestConditionRequest` below,
+# `app/api/routes/test_condition_authoring.py`, ADR-0028). `list` is
+# deliberately not registered via the factory either: unlike every other
+# scoped entity, `TestCase` has no single non-nullable FK the factory's
+# `scope_field` mechanism could require as a list-scope query param
+# (`test_condition_id` is nullable per ADR-0006, and the suite-link fallback
+# is a many-to-many join, not a column) — requiring one would either wrongly
+# 404 legitimately suite-only-linked test cases or leave `list` unscoped and
+# leak across tenants (CLAUDE.md's multi-tenancy rule). `GET
+# /requirements/{id}/test-cases` (REQ-2) is its own bespoke, requirement-
+# scoped list instead. See this story's final report for this deviation from
+# the plan's literal "everything else gets all 5 methods" framing.
+
+
+class CreateTestCaseRequest(BaseModel):
+    """Body of the bespoke `POST /requirements/{id}/test-cases` (REQ-2)
+    direct-link atomic-create route.
+
+    Neither the requirement id nor `test_condition_id` is a field here — the
+    parent Requirement is the path segment, and this direct-link route never
+    sets `test_condition_id` (ADR-0006: stays `null`). `test_level_id`/
+    `test_type_id` are required non-nullable FKs on `TestCase` itself
+    (Database Document §3.6) — REQ-2's "no forced TestCondition" lightweness
+    doesn't extend to these, they're unrelated to the ISTQB-rigor question
+    ADR-0006 resolved. `created_by_actor_id` is never accepted from the body
+    — the route stamps it from the authenticated caller, same
+    `_ACTOR_STAMPED_FIELDS` posture the generic factory already uses for
+    `TestPlan.created_by_actor_id`. See `CreateTestCaseForTestConditionRequest`
+    below for REQ-3's sibling schema, used by the rigor-path route instead —
+    the two coexist per-TestCase within a project (ADR-0006).
+    """
+
+    title: str
+    test_level_id: UUID
+    test_type_id: UUID
+    preconditions: str | None = None
+    expected_result: str | None = None
+    status: TestCaseStatus = "draft"
 
 
 class CreateTestCaseForTestConditionRequest(BaseModel):
@@ -137,9 +170,10 @@ class CreateTestCaseForTestConditionRequest(BaseModel):
     ADR-0025 established for `CreateTestExecutionRequest`'s
     `executed_by_actor_id`: the field simply doesn't exist on the schema).
 
-    Field shape is intentionally reusable verbatim by REQ-2's future
-    `POST /requirements/{id}/test-cases` route — same body, different link
-    table written server-side (design spec §Components).
+    Field shape mirrors REQ-2's `CreateTestCaseRequest` (same fields minus
+    `status`, always `draft` here) — same body shape, different link table
+    written server-side, per entity's own bespoke route (design spec
+    §Components).
     """
 
     title: str
@@ -171,6 +205,17 @@ class TestCaseSummary(BaseModel):
     preconditions: str | None = None
     expected_result: str | None = None
     status: TestCaseStatus
+
+
+class TestCaseListResponse(BaseModel):
+    """Response of `GET /requirements/{id}/test-cases` (REQ-2's bespoke,
+    requirement-scoped list — see `CreateTestCaseRequest`'s docstring for why
+    `TestCase` has no factory-registered `list`)."""
+
+    items: list[TestCaseSummary]
+    total: int
+    page: int
+    page_size: int
 
 
 # --- TestStep --------------------------------------------------------------------------------
@@ -239,11 +284,13 @@ class TestSuiteListResponse(BaseModel):
 __all__ = [
     "CreateRequirementRequest",
     "CreateTestCaseForTestConditionRequest",
+    "CreateTestCaseRequest",
     "CreateTestConditionForRequirementRequest",
     "CreateTestStepRequest",
     "CreateTestSuiteRequest",
     "RequirementListResponse",
     "RequirementSummary",
+    "TestCaseListResponse",
     "TestCaseSummary",
     "TestCaseStatus",
     "TestConditionListResponse",
