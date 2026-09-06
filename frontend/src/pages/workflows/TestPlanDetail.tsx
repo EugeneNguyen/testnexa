@@ -10,9 +10,10 @@
  * TestCycle view still to come), so it gets its own addressable URL now rather
  * than a plan-selection sub-state inside an already-large page (UI Design
  * Document §1). `ProjectDetail` only gains a thin "Test Plans" list whose rows
- * link here.
+ * link here. PLAN-2 (ADR-0032) has since landed the entry/exit-criteria
+ * section named there; PLAN-3's TestCycle view is still the only one to come.
  *
- * Three sections, per §2:
+ * Four sections — PLAN-1's three, per §2, plus PLAN-2's fourth:
  *
  * 1. **Header card** — identifier, `status` as a colour-coded `CBadge`, and
  *    scope/approach/staffing/schedule as labelled read-only text blocks. Its
@@ -30,19 +31,33 @@
  *    /test-plans/{id}/test-cases`), re-fetched on every successful include or
  *    remove above, so the coverage view never silently drifts from the
  *    membership that produces it (§2). No per-row actions: it's a derived view.
+ * 4. **Entry/Exit Criteria** (PLAN-2, ADR-0032, UI Design Document
+ *    `docs/ui-design/2026-09-06-plan-2-entry-exit-criteria-visibility-ui-design.md`
+ *    §1) — full CRUD (list/add/edit/delete) over `GET|POST|PATCH|DELETE
+ *    /entry-exit-criteria`, driven entirely through the generic
+ *    `entityCrud.ts` helpers against `entityConfigs/entry-exit-criteria.ts`.
+ *    No new API-lib file: the generic list route already filters by
+ *    `?test_plan_id=`, so no bespoke `/test-plans/{id}/entry-exit-criteria`
+ *    route was added either (ADR-0032's own "Alternatives considered").
+ *    `test_plan_id` is fixed to this route's own scope and filtered out of the
+ *    visible field list, exactly as `editConfig` above does for
+ *    `TestPlan.project_id`. Unlike the Test Suites section, this one gets
+ *    `PATCH` too — criteria are freestanding rows, not join-table membership.
  *
- * Both membership writes re-fetch rather than splicing local state — same
- * "always reflects the server's own current state" posture REQ-4 established.
+ * All membership and criteria writes re-fetch rather than splicing local state
+ * — same "always reflects the server's own current state" posture REQ-4
+ * established.
  *
- * No permission-based hide/disable on the Edit/Include/Remove buttons (§5):
- * this is a bespoke workflow screen, so it keeps the attempt-then-error
- * convention every other one uses, not the generic admin surface's ADR-0027
- * hide/disable rule. A `403` simply surfaces as the same inline `CAlert` a
- * `422`/`409` does.
+ * No permission-based hide/disable on the Edit/Include/Remove buttons (§5), nor
+ * on PLAN-2's Add/Edit/Delete criteria buttons (ADR-0032): this is a bespoke
+ * workflow screen, so it keeps the attempt-then-error convention every other
+ * one uses, not the generic admin surface's ADR-0027 hide/disable rule. A
+ * `403` simply surfaces as the same inline `CAlert` a `422`/`409` does.
  *
  * Non-goals (§6): no Approve/Supersede buttons (GOV-1's own `/approve` route),
- * no entry/exit-criteria UI (PLAN-2), no TestCycle/execution UI (PLAN-3), no
- * bulk-include.
+ * no TestCycle/execution UI (PLAN-3), no bulk-include, and — per PLAN-2's own
+ * UI Design Document §5 — no bulk-add/bulk-edit or type-grouping of criteria
+ * rows.
  *
  * Built with CoreUI (ADR-0012).
  */
@@ -81,8 +96,16 @@ import {
 } from "../../lib/api/testPlans";
 import { listTestSuites, type TestSuiteSummary } from "../../lib/api/testSuites";
 import type { TestCaseSummary } from "../../lib/api/testCases";
+import type { EntryExitCriteriaSummary } from "../../lib/api/releases";
+import {
+  createEntity,
+  deleteEntity,
+  listEntities,
+  updateEntity,
+} from "../../lib/api/entityCrud";
 import EntityForm from "../../components/crud/EntityForm";
 import testPlanConfig from "../../entityConfigs/test-plan";
+import entryExitCriteriaConfig from "../../entityConfigs/entry-exit-criteria";
 import type { EntityConfig } from "../../entityConfigs/types";
 
 const GENERIC_ERROR = "Something went wrong. Please try again.";
@@ -97,6 +120,37 @@ const editConfig: EntityConfig = {
   ...testPlanConfig,
   fields: testPlanConfig.fields.filter((field) => field.name !== "project_id"),
 };
+
+/**
+ * The generic admin `EntryExitCriteria` config minus its `test_plan_id` field
+ * — exactly the same derivation `editConfig` above performs for
+ * `TestPlan.project_id`, and for the same reason: this route already fixes the
+ * plan, so the field is neither shown nor user-editable. `test_plan_id` is
+ * merged back into the `create` payload by `onSubmitCriteria` itself (PLAN-2 UI
+ * Design Document §1); `update` never sends it, matching the backend's
+ * "scope fields aren't reassignable through PATCH" posture.
+ */
+const criteriaConfig: EntityConfig = {
+  ...entryExitCriteriaConfig,
+  fields: entryExitCriteriaConfig.fields.filter((field) => field.name !== "test_plan_id"),
+};
+
+/**
+ * PLAN-2 UI Design Document §1's four-colour criteria-type mapping — a
+ * first-pass convention for this section only, not a general-purpose palette.
+ */
+function criteriaTypeColor(type: string): string {
+  switch (type) {
+    case "entry":
+      return "info";
+    case "exit":
+      return "success";
+    case "suspension":
+      return "warning";
+    default:
+      return "secondary";
+  }
+}
 
 /** UI Design Document §2's colour mapping — not a general-purpose status palette. */
 function statusColor(status: TestPlanStatus): string {
@@ -183,6 +237,22 @@ function TestPlanDetail() {
   const [coverageLoading, setCoverageLoading] = useState(true);
   const [coverageError, setCoverageError] = useState<string | null>(null);
 
+  // Entry/Exit Criteria (PLAN-2, ADR-0032) — full CRUD via the generic
+  // `entityCrud` helpers, list filtered to this route's own plan.
+  const [criteria, setCriteria] = useState<EntryExitCriteriaSummary[]>([]);
+  const [criteriaLoading, setCriteriaLoading] = useState(true);
+  const [criteriaLoadError, setCriteriaLoadError] = useState<string | null>(null);
+  // `422`/`403`/`409` from an add/edit/delete — the dismissible `CAlert` under
+  // the section header, same convention as `membershipError` above.
+  const [criteriaError, setCriteriaError] = useState<string | null>(null);
+  // `null` when closed; `{ row: null }` = create, `{ row }` = edit that row.
+  const [criteriaModal, setCriteriaModal] = useState<{ row: EntryExitCriteriaSummary | null } | null>(
+    null,
+  );
+  const [criteriaFieldErrors, setCriteriaFieldErrors] = useState<
+    Record<string, string> | undefined
+  >(undefined);
+
   const fetchPlan = useCallback(async () => {
     if (!testPlanId) {
       return;
@@ -230,6 +300,31 @@ function TestPlanDetail() {
     }
   }, [testPlanId]);
 
+  /**
+   * `GET /entry-exit-criteria?test_plan_id=<id>` through the generic list
+   * helper — the same route and config the generic admin surface uses, just
+   * pre-filtered to this plan instead of scope-selected by the user.
+   */
+  const fetchCriteria = useCallback(async () => {
+    if (!testPlanId) {
+      return;
+    }
+    setCriteriaLoading(true);
+    setCriteriaLoadError(null);
+    try {
+      const response = await listEntities<EntryExitCriteriaSummary>(
+        criteriaConfig,
+        {},
+        { params: { test_plan_id: testPlanId } },
+      );
+      setCriteria(response.items);
+    } catch (err) {
+      setCriteriaLoadError(errorMessage(err));
+    } finally {
+      setCriteriaLoading(false);
+    }
+  }, [testPlanId]);
+
   const fetchProjectSuites = useCallback(async () => {
     if (!projectId) {
       return;
@@ -256,6 +351,10 @@ function TestPlanDetail() {
   useEffect(() => {
     fetchCoverage();
   }, [fetchCoverage]);
+
+  useEffect(() => {
+    fetchCriteria();
+  }, [fetchCriteria]);
 
   useEffect(() => {
     fetchProjectSuites();
@@ -370,6 +469,79 @@ function TestPlanDetail() {
       setMembershipError(errorMessage(err));
     }
     await Promise.all([fetchIncludedSuites(), fetchCoverage()]);
+  }
+
+  // --- Entry/Exit Criteria (PLAN-2, ADR-0032) --------------------------------
+
+  function openCriteriaModal(row: EntryExitCriteriaSummary | null) {
+    setCriteriaFieldErrors(undefined);
+    setCriteriaModal({ row });
+  }
+
+  function closeCriteriaModal() {
+    setCriteriaModal(null);
+  }
+
+  /**
+   * One handler for both modes: `create` merges this route's own
+   * `test_plan_id` into the payload (the field is filtered out of
+   * `criteriaConfig`, so `EntityForm` never emits it), `edit` sends only the
+   * editable fields — the backend's `UpdateEntryExitCriteriaRequest` doesn't
+   * accept a scope reassignment.
+   *
+   * On success the modal closes and the list is re-fetched rather than
+   * spliced, same posture as every other section on this screen.
+   *
+   * On failure, a `422` that carries `field_errors` keeps the modal open and
+   * puts each message on its own field (the only place a per-field message can
+   * meaningfully render); anything else — `403`, `409`, a field-less `422`,
+   * a network failure — closes the modal and surfaces as the dismissible
+   * section-header `CAlert` (§1), the same handling `onSubmitInclude` gives
+   * the Test Suites section's own failures.
+   */
+  async function onSubmitCriteria(values: Record<string, unknown>) {
+    if (!testPlanId || !criteriaModal) {
+      return;
+    }
+    setCriteriaError(null);
+    setCriteriaFieldErrors(undefined);
+    const editing = criteriaModal.row;
+    try {
+      if (editing) {
+        await updateEntity(criteriaConfig, editing.id, values);
+      } else {
+        await createEntity(criteriaConfig, {}, { ...values, test_plan_id: testPlanId });
+      }
+      setCriteriaModal(null);
+      await fetchCriteria();
+    } catch (err) {
+      const fields = serverFieldErrors(err);
+      if (fields) {
+        setCriteriaFieldErrors(fields);
+      } else {
+        setCriteriaModal(null);
+        setCriteriaError(errorMessage(err));
+      }
+    }
+  }
+
+  /**
+   * Delete a criteria row — no confirmation modal, same no-confirm convention
+   * the Test Suites section's "Remove" already uses (§1). Re-fetches either
+   * way, so a failed delete leaves the row visible next to its own error
+   * rather than optimistically vanishing.
+   */
+  async function onDeleteCriteria(id: string) {
+    if (!testPlanId) {
+      return;
+    }
+    setCriteriaError(null);
+    try {
+      await deleteEntity(criteriaConfig, id);
+    } catch (err) {
+      setCriteriaError(errorMessage(err));
+    }
+    await fetchCriteria();
   }
 
   if (!projectId || !testPlanId) {
@@ -550,6 +722,87 @@ function TestPlanDetail() {
                 )}
               </CCardBody>
             </CCard>
+
+            {/* --- Entry/Exit Criteria (PLAN-2, ADR-0032, §1) -------------- */}
+            <CCard className="mt-4">
+              <CCardBody className="p-4">
+                <div className="d-flex justify-content-between align-items-center mb-3">
+                  <h2 className="fs-5 mb-0">Entry/Exit Criteria</h2>
+                  <CButton
+                    color="primary"
+                    data-testid="add-criteria-btn"
+                    onClick={() => openCriteriaModal(null)}
+                  >
+                    Add Criteria
+                  </CButton>
+                </div>
+
+                {/* §1: a `422`/`403`/`409` from add/edit/delete renders here. */}
+                {criteriaError && (
+                  <CAlert
+                    color="danger"
+                    role="alert"
+                    dismissible
+                    data-testid="criteria-error"
+                    onClose={() => setCriteriaError(null)}
+                  >
+                    {criteriaError}
+                  </CAlert>
+                )}
+
+                {criteriaLoadError && (
+                  <CAlert color="danger" role="alert" data-testid="criteria-load-error">
+                    {criteriaLoadError}
+                  </CAlert>
+                )}
+
+                {criteriaLoading ? (
+                  <div className="d-flex justify-content-center py-3">
+                    <CSpinner color="primary" />
+                  </div>
+                ) : !criteriaLoadError && criteria.length === 0 ? (
+                  <p className="text-body-secondary mb-0">No entry/exit criteria defined yet.</p>
+                ) : (
+                  !criteriaLoadError && (
+                    /* Flat <ul>/<li>, same nesting-avoidance reasoning as above. */
+                    <ul className="list-unstyled mb-0" data-testid="criteria-list">
+                      {criteria.map((row) => (
+                        <li
+                          key={row.id}
+                          className="d-flex justify-content-between align-items-center border-bottom py-2 gap-2"
+                          data-testid={`criteria-${row.id}`}
+                        >
+                          <span>
+                            <CBadge color={criteriaTypeColor(row.type)}>{row.type}</CBadge>{" "}
+                            {row.condition_text}
+                          </span>
+                          <span className="d-flex gap-2">
+                            <CButton
+                              color="primary"
+                              variant="outline"
+                              size="sm"
+                              data-testid={`edit-criteria-${row.id}`}
+                              onClick={() => openCriteriaModal(row)}
+                            >
+                              Edit
+                            </CButton>
+                            <CButton
+                              color="danger"
+                              variant="outline"
+                              size="sm"
+                              data-testid={`delete-criteria-${row.id}`}
+                              onClick={() => onDeleteCriteria(row.id)}
+                            >
+                              Delete
+                            </CButton>
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )
+                )}
+              </CCardBody>
+            </CCard>
           </CCol>
         </CRow>
       </CContainer>
@@ -626,6 +879,39 @@ function TestPlanDetail() {
             </CButton>
           </CModalFooter>
         </CForm>
+      </CModal>
+
+      {/* --- Criteria add/edit modal: the same generic config, reused ------ */}
+      <CModal
+        visible={criteriaModal !== null}
+        onClose={closeCriteriaModal}
+        data-testid="criteria-modal"
+      >
+        <CModalHeader>
+          <CModalTitle>
+            {criteriaModal?.row ? "Edit Criteria" : "Add Criteria"}
+          </CModalTitle>
+        </CModalHeader>
+        <CModalBody>
+          {criteriaModal && (
+            <EntityForm
+              // Remount between create and each edit target so RHF picks up
+              // that row's own `defaultValues` — `EntityForm` reads
+              // `initialValues` once, at mount.
+              key={criteriaModal.row ? criteriaModal.row.id : "create"}
+              config={criteriaConfig}
+              mode={criteriaModal.row ? "edit" : "create"}
+              initialValues={
+                criteriaModal.row
+                  ? (criteriaModal.row as unknown as Record<string, unknown>)
+                  : undefined
+              }
+              onSubmit={onSubmitCriteria}
+              onCancel={closeCriteriaModal}
+              serverFieldErrors={criteriaFieldErrors}
+            />
+          )}
+        </CModalBody>
       </CModal>
     </div>
   );

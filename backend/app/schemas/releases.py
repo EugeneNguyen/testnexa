@@ -11,6 +11,8 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+from app.schemas.planning import EntryExitCriteriaSummary
+
 
 class CreateReleaseRequest(BaseModel):
     """Body of `POST /projects/{project_id}/releases`.
@@ -74,6 +76,21 @@ class TestCycleSummary(BaseModel):
     than returning cycles only — ADR-0019's decision that this route answers
     "what was tested for release X" as a single queryable unit, since no
     `GET /test-cycles/{id}/executions` route exists to chase separately.
+
+    PLAN-2 (ADR-0032) extends that same "one queryable unit" reasoning with
+    `exit_criteria`: the `type = exit` `EntryExitCriteria` rows belonging to
+    this cycle's parent `TestPlan`, so a reviewer sees a cycle's exit
+    criteria alongside its execution progress without a separate lookup
+    (FR-PLAN-2 AC2). `EntryExitCriteriaSummary` is reused verbatim from
+    `app/schemas/planning.py` — no new nested shape invented.
+
+    Only `exit`-type rows surface here (ADR-0032's confirmed decision —
+    AC2's literal wording is "its exit criteria," not "its criteria");
+    entry/suspension/resumption rows remain visible only on
+    `TestPlanDetail`'s own section. A cycle whose parent plan has zero
+    `exit` rows carries `exit_criteria: []` — never an omitted field or a
+    `null`, the same "valid, common state" posture `executions: []` already
+    established.
     """
 
     id: UUID
@@ -84,6 +101,7 @@ class TestCycleSummary(BaseModel):
     start_date: date | None = None
     end_date: date | None = None
     executions: list[TestExecutionSummary]
+    exit_criteria: list[EntryExitCriteriaSummary]
 
 
 __all__ = [
