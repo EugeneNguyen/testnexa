@@ -14,9 +14,9 @@ import { CCard, CCardBody, CContainer } from "@coreui/react";
 
 function Typography() {
   return (
-    <CContainer fluid className="px-4 py-4">
+    <CContainer fluid className="px-4 py-4 h-100 d-flex flex-column">
       <h1 className="fs-4 mb-3">Typography</h1>
-      <CCard>
+      <CCard className="flex-grow-1">
         <CCardBody>
           <h1>Heading 1</h1>
           <h2>Heading 2</h2>

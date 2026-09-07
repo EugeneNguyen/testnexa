@@ -112,8 +112,8 @@ function EntityListPage() {
 
   if (!config) {
     return (
-      <CContainer fluid className="px-4 py-4">
-        <CCard>
+      <CContainer fluid className="px-4 py-4 h-100">
+        <CCard className="h-100">
           <CCardBody>
             <CAlert color="danger" role="alert">
               Unknown admin entity &quot;{entityKey}&quot;.
@@ -127,8 +127,8 @@ function EntityListPage() {
   const canCreate = config.methods.includes("create") && permissions.has(`${config.resource}.create`, projectId);
 
   return (
-    <CContainer fluid className="px-4 py-4">
-      <CCard>
+    <CContainer fluid className="px-4 py-4 h-100">
+      <CCard className="h-100">
       <CCardBody>
         <div className="d-flex justify-content-between align-items-center mb-3">
           <h1 className="fs-4 mb-0">{entityKey.replace(/-/g, " ")}</h1>
