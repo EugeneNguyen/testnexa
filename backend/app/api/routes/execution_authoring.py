@@ -64,11 +64,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.crud_factory import (
-    _org_membership_exists,
+    _actor_membership_exists,
     chain_resolver,
     resolve_test_case_org_id,
 )
 from app.api.deps import get_current_actor, get_db
+from app.api.routes.execution import build_status_change_log
 from app.core.rbac import has_permission
 from app.models.actor import AIAgent, User
 from app.models.assets import TestCase, TestSuiteTestCase
@@ -178,7 +179,15 @@ async def create_execution_for_cycle(
         return _error(404, "not_found", _CYCLE_NOT_FOUND_MESSAGE)
 
     org_id = await _resolve_test_cycle_org_id(db, cycle)
-    if org_id is None or not await _org_membership_exists(db, org_id, actor.actor_id):
+    # EXEC-2: `_actor_membership_exists`, not the plain `_org_membership_exists`
+    # -- this route has always taken a `User | AIAgent` actor, but had never
+    # actually been exercised by a real `AIAgent` caller until EXEC-2's own
+    # test suite did, surfacing the same AIAgent-membership gap
+    # `backend/CLAUDE.md` already documents for `assets.py`'s routes
+    # (`OrgMembership.user_id` FKs `user.actor_id` only -- an agent has no
+    # `user` row, so the plain check always 404'd it regardless of its
+    # `acting_on_behalf_of_user_id`'s real membership).
+    if org_id is None or not await _actor_membership_exists(db, org_id, actor):
         return _error(404, "not_found", _CYCLE_NOT_FOUND_MESSAGE)
 
     if not await has_permission(str(actor.actor_id), str(org_id), "test_execution.create"):
@@ -209,6 +218,23 @@ async def create_execution_for_cycle(
         executed_at=payload.executed_at,
     )
     db.add(execution)
+    try:
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+        return _error(422, "validation_error", "Request failed validation.")
+
+    # EXEC-2 AC1 (Q2 default): the initial recording gets its own `TestLog`
+    # entry too (`from=None`), not just corrections — an audit timeline with
+    # a gap before its first entry isn't much of an audit timeline. Needs its
+    # own `flush` since `execution.id` (the log's FK) is only populated by
+    # the flush above (`TestExecution.id`'s Python-side `generate_uuid7` default).
+    # `execution.result` is still the plain string assigned above at this
+    # point (not yet refreshed into a `TestExecutionResult` member) — same
+    # `hasattr(..., "value")` guard this function's own return statement
+    # below already uses for the same reason.
+    result_value = execution.result.value if hasattr(execution.result, "value") else execution.result
+    db.add(build_status_change_log(execution.id, None, result_value, actor))
     try:
         await db.flush()
     except IntegrityError:

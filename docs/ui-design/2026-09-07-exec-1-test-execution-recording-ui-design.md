@@ -65,6 +65,6 @@ Submit → `POST /test-cycles/{id}/executions`. On `201`: close modal, refetch b
 
 ## 6. Explicitly not built (non-goals, same as ADR-0034's own scope line)
 
-- No `TestLog`/status-change timeline (EXEC-2) — recording a second result for the same `TestCase` shows as a second row in the flat history list above, nothing more.
+- ~~No `TestLog`/status-change timeline (EXEC-2)~~ — **built 2026-09-07** as a "History" button per history row, opening a modal on this same screen. See the [EXEC-2 UI Design Document](2026-09-07-exec-2-append-only-test-log-ui-design.md). This section's original claim held true at the time EXEC-1 shipped; it's struck through rather than deleted so this document's own history of what was and wasn't in scope stays legible.
 - No "Raise Defect" button or flow (EXEC-3), even on a `fail` result.
 - No edit/delete of a recorded execution — `test_manager` doesn't hold `test_execution.update`/`.delete` (ADR-0033's own deliberate withholding), and no UI affordance implies otherwise.

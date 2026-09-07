@@ -111,6 +111,15 @@ ResolveOrgId = Callable[[AsyncSession, Any], Awaitable[uuid.UUID | None]]
 # already-gated row and the caller's `exclude_unset` update dict; returns a
 # `JSONResponse` to short-circuit with, or `None` to let the update proceed.
 UpdateGuard = Callable[[Any, dict[str, Any]], JSONResponse | None]
+# EXEC-2: optional per-entity side-effect hook on `PATCH`, run after `setattr`
+# but before `flush`/`commit` — same transaction, so any row the hook
+# `db.add()`s (e.g. a `TestLog` append) lands atomically with the update it
+# describes. Receives the already-gated+mutated row, the pre-mutation values
+# of every field named in the update dict (`old_values`), the raw
+# `exclude_unset` update dict (`updates`), the acting actor, and the session.
+# Only `_TEST_EXECUTION_CONFIG` sets this today (append a `TestLog` row when
+# `result` changes) — every other entity's `PATCH` path is unchanged.
+PostUpdateHook = Callable[[Any, dict[str, Any], dict[str, Any], "User | AIAgent", AsyncSession], Awaitable[None]]
 
 
 class NoSchema(BaseModel):
@@ -161,6 +170,9 @@ class CrudEntityConfig:
     # smaller, more honest diff, and this hook is how it gets there without
     # teaching the factory anything entity-specific.
     update_guard: UpdateGuard | None = None
+    # EXEC-2: optional post-mutation side-effect hook on `PATCH`, see
+    # `PostUpdateHook`'s own docstring above.
+    post_update_hook: PostUpdateHook | None = None
 
 
 def _error(
@@ -190,6 +202,26 @@ async def _org_membership_exists(db: AsyncSession, org_id: uuid.UUID, user_id: u
         select(OrgMembership.id).where(OrgMembership.org_id == org_id, OrgMembership.user_id == user_id).limit(1)
     )
     return result is not None
+
+
+async def _actor_membership_exists(db: AsyncSession, org_id: uuid.UUID, actor: "User | AIAgent") -> bool:
+    """`_org_membership_exists`, `AIAgent`-correct (EXEC-2; mirrors
+    `assets.py`'s own helper of the same name verbatim, ADR-0033/MCP-1's
+    precedent). `OrgMembership.user_id` FKs `user.actor_id` specifically — an
+    `AIAgent` caller has no `user` row of its own, so the plain
+    `_org_membership_exists(org_id, actor.actor_id)` check above always
+    returns `False` for an agent, 404-ing every agent-originated request as
+    "no membership" regardless of its `acting_on_behalf_of_user_id`'s real
+    membership. Any *new* route gated on org membership and taking a
+    `User | AIAgent` actor should use this, not the plain helper
+    (`backend/CLAUDE.md`'s standing rule) -- added here rather than only in
+    `assets.py` because `execution.py`'s two new EXEC-2 bespoke routes and
+    `execution_authoring.py`'s existing create route (which had never been
+    exercised by a real `AIAgent` caller before EXEC-2's own test suite) both
+    need it too.
+    """
+    target_user_id = actor.acting_on_behalf_of_user_id if isinstance(actor, AIAgent) else actor.actor_id
+    return await _org_membership_exists(db, org_id, target_user_id)
 
 
 # --- resolve_org_id building blocks (ADR-0022's resolver map) --------------------------------
@@ -714,8 +746,16 @@ def make_crud_router(config: CrudEntityConfig) -> APIRouter:
                 if guard_error is not None:
                     return guard_error
 
+            # EXEC-2: capture pre-mutation values only for fields actually
+            # being updated, before `setattr` overwrites them — the hook
+            # (if any) needs the "from" side of a change (e.g. old `result`).
+            old_values = {f: getattr(row, f) for f in updates} if config.post_update_hook is not None else {}
+
             for field_name, value in updates.items():
                 setattr(row, field_name, value)
+
+            if config.post_update_hook is not None:
+                await config.post_update_hook(row, old_values, updates, actor, db)
 
             try:
                 await db.flush()

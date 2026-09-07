@@ -320,7 +320,7 @@ from app.db.session import AsyncSessionLocal
 from app.models.actor import Actor, User
 from app.models.assets import Requirement, TestCase, TestSuite, TestSuiteTestCase
 from app.models.auth import AuthIdentity, RefreshToken
-from app.models.execution import TestExecution
+from app.models.execution import TestExecution, TestLog
 from app.models.planning import (
     EntryExitCriteria,
     Environment,
@@ -352,6 +352,17 @@ async def main():
             ).scalars().all()
 
         if cycle_ids:
+            execution_ids = (
+                await session.execute(
+                    select(TestExecution.id).where(TestExecution.test_cycle_id.in_(cycle_ids))
+                )
+            ).scalars().all()
+            # EXEC-2 (ADR-0036): TestLog.test_execution_id is ON DELETE RESTRICT,
+            # and this spec's own POST /test-cycles/id/executions calls
+            # (the AC3 scope-check accepted case) now each append a TestLog row
+            # -- logs must go before the executions they reference.
+            if execution_ids:
+                await session.execute(delete(TestLog).where(TestLog.test_execution_id.in_(execution_ids)))
             await session.execute(delete(TestExecution).where(TestExecution.test_cycle_id.in_(cycle_ids)))
             await session.execute(delete(TestCycle).where(TestCycle.id.in_(cycle_ids)))
 

@@ -138,7 +138,27 @@ class TestLogListResponse(BaseModel):
     page_size: int
 
 
+class AddTestLogCommentRequest(BaseModel):
+    """Body of the bespoke `POST /executions/{id}/comments` (EXEC-2).
+
+    Not a `Comment` entity of its own — there is none (Database Document
+    §3.8 unchanged) — this route's only effect is appending one `TestLog`
+    row. `attachment_url`/`file_name` are optional plain-reference fields
+    (no file upload, no `Attachment` row): same "plain text/URL, no live
+    integration needed for v1" posture EXEC-3's `Defect.external_ref`
+    already established. Supplying either flips the appended row's
+    `event_type` from `comment` to `attachment` (still `agent_action` instead
+    of either, unchanged, if the caller is an `AIAgent` — see
+    `execution.py`'s `_build_comment_log` docstring).
+    """
+
+    text: str
+    attachment_url: str | None = None
+    file_name: str | None = None
+
+
 __all__ = [
+    "AddTestLogCommentRequest",
     "CreateExecutionForCycleRequest",
     "DefectListResponse",
     "DefectSeverity",

@@ -52,27 +52,46 @@ text appears to have skipped `TestCycle`'s own indirection through
 import uuid
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from fastapi.responses import JSONResponse
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.crud_factory import (
+    _actor_membership_exists,
+    _DEFAULT_PAGE_SIZE,
+    _MAX_PAGE_SIZE,
     CrudEntityConfig,
     NoSchema,
     ResolveOrgId,
     chain_resolver,
     make_crud_router,
 )
-from app.models.execution import Defect, TestExecution, TestLog
+from app.api.deps import get_current_actor, get_db
+from app.core.rbac import has_permission
+from app.models.actor import AIAgent, User
+from app.models.execution import Defect, TestExecution, TestExecutionResult, TestLog, TestLogEventType
 from app.models.planning import TestCycle, TestPlan
 from app.schemas.execution import (
+    AddTestLogCommentRequest,
     DefectSummary,
     TestExecutionSummary,
+    TestLogListResponse,
     TestLogSummary,
     UpdateDefectRequest,
     UpdateTestExecutionRequest,
 )
 
 router = APIRouter()
+
+_PERMISSION_DENIED_MESSAGE = "You do not have permission to perform this action."
+_EXECUTION_NOT_FOUND_MESSAGE = "Test execution not found."
+
+
+def _error(status_code: int, code: str, message: str) -> JSONResponse:
+    """Mirrors every other route module's own `_error()` verbatim (established
+    per-module convention, see `execution_authoring.py`'s copy)."""
+    return JSONResponse(status_code=status_code, content={"code": code, "message": message, "field_errors": None})
 
 # Shared by `Defect` and `TestExecution` — see this module's docstring for
 # why this is 2 hops (`TestCycle` -> `TestPlan`), not 1.
@@ -96,6 +115,73 @@ async def _resolve_test_log_org_id(db: AsyncSession, row: Any) -> uuid.UUID | No
     if execution is None:
         return None
     return await _resolve_test_execution_org_id(db, execution)
+
+
+# --- EXEC-2: TestLog append helpers -------------------------------------------------------------
+#
+# `TestLogEventType.agent_action` is used whenever the *acting* actor is an
+# `AIAgent` — it overrides what would otherwise be `status_change`/`comment`/
+# `attachment`, rather than being a 4th, independently-triggered category (no
+# MCP tool touches `TestExecution` yet, so "agent does something the other 3
+# categories don't cover" has nothing to fire it — the story's own AC3 "when
+# an agent takes an action... a TestLog row is appended" is satisfied this
+# way instead: any of the other 3 actions, performed by an agent, appends an
+# `agent_action` row whose `payload.kind` still records which one it was).
+
+
+def _event_type_for_actor(actor: "User | AIAgent", human_event_type: TestLogEventType) -> TestLogEventType:
+    return TestLogEventType.agent_action if isinstance(actor, AIAgent) else human_event_type
+
+
+def build_status_change_log(
+    test_execution_id: uuid.UUID,
+    old_result: str | None,
+    new_result: str,
+    actor: "User | AIAgent",
+) -> TestLog:
+    """Build (not persist) a `status_change`/`agent_action` `TestLog` row.
+
+    Shared by `execution_authoring.py`'s create route (initial recording,
+    `old_result=None`) and this module's own `PATCH` hook below (a later
+    correction) — one payload shape for both, so a timeline reader never has
+    to special-case "was this the first result or a correction."
+    """
+    return TestLog(
+        test_execution_id=test_execution_id,
+        event_type=_event_type_for_actor(actor, TestLogEventType.status_change),
+        payload={
+            "kind": "status_change",
+            "from": old_result,
+            "to": new_result,
+            "actor_id": str(actor.actor_id),
+            "actor_type": "ai_agent" if isinstance(actor, AIAgent) else "user",
+        },
+    )
+
+
+async def _test_execution_post_update_hook(
+    row: TestExecution,
+    old_values: dict[str, Any],
+    updates: dict[str, Any],
+    actor: "User | AIAgent",
+    db: AsyncSession,
+) -> None:
+    """`_TEST_EXECUTION_CONFIG.post_update_hook` (EXEC-2 AC1): append a
+    `TestLog` row only when `result` is actually part of this `PATCH` *and*
+    its value actually changed — an `actual_result`/`executed_at`-only edit
+    logs nothing (Q6 default: AC1's own example is a `result` correction,
+    not every field edit).
+    """
+    if "result" not in updates:
+        return
+    old_result = old_values["result"]
+    old_result_value = old_result.value if isinstance(old_result, TestExecutionResult) else old_result
+    new_result_value = updates["result"]
+    if isinstance(new_result_value, TestExecutionResult):
+        new_result_value = new_result_value.value
+    if old_result_value == new_result_value:
+        return
+    db.add(build_status_change_log(row.id, old_result_value, new_result_value, actor))
 
 
 _DEFECT_CONFIG = CrudEntityConfig(
@@ -130,6 +216,9 @@ _TEST_EXECUTION_CONFIG = CrudEntityConfig(
     resolve_org_id=_resolve_test_execution_org_id,
     filter_fields=("test_case_id", "result"),
     methods=frozenset({"list", "get", "update", "delete"}),
+    # EXEC-2 AC1: append a `TestLog` row whenever `PATCH` actually changes
+    # `result` (e.g. corrected pass -> fail) — see `_test_execution_post_update_hook`.
+    post_update_hook=_test_execution_post_update_hook,
 )
 
 _TEST_LOG_CONFIG = CrudEntityConfig(
@@ -148,4 +237,129 @@ router.include_router(make_crud_router(_DEFECT_CONFIG))
 router.include_router(make_crud_router(_TEST_EXECUTION_CONFIG))
 router.include_router(make_crud_router(_TEST_LOG_CONFIG))
 
-__all__ = ["router"]
+
+async def _fetch_execution_gated(
+    db: AsyncSession, actor: "User | AIAgent", id: uuid.UUID, permission: str
+) -> tuple[TestExecution | None, JSONResponse | None]:
+    """Flat 404-vs-403 gate for the two bespoke `/executions/{id}/...` routes
+    below — same shape `execution_authoring.py`'s create route already uses,
+    reused rather than re-derived (`_resolve_test_execution_org_id` is this
+    module's own resolver, not `crud_factory`'s private `_fetch_and_gate`,
+    which isn't exported). Uses `_actor_membership_exists`, not the plain
+    `_org_membership_exists`, since both routes below take a
+    `User | AIAgent` actor (`backend/CLAUDE.md`'s standing rule)."""
+    execution = await db.get(TestExecution, id)
+    if execution is None:
+        return None, _error(404, "not_found", _EXECUTION_NOT_FOUND_MESSAGE)
+
+    org_id = await _resolve_test_execution_org_id(db, execution)
+    if org_id is None or not await _actor_membership_exists(db, org_id, actor):
+        return None, _error(404, "not_found", _EXECUTION_NOT_FOUND_MESSAGE)
+
+    if not await has_permission(str(actor.actor_id), str(org_id), permission):
+        return None, _error(403, "permission_denied", _PERMISSION_DENIED_MESSAGE)
+
+    return execution, None
+
+
+@router.post(
+    "/executions/{id}/comments",
+    response_model=TestLogSummary,
+    status_code=201,
+)
+async def add_test_execution_comment(
+    id: uuid.UUID,
+    payload: AddTestLogCommentRequest,
+    actor: User | AIAgent = Depends(get_current_actor),
+    db: AsyncSession = Depends(get_db),
+) -> TestLogSummary | JSONResponse:
+    """FR-EXEC-2 AC1's "comment"/"attachment" triggers: appends one `TestLog`
+    row, no separate `Comment`/execution-scoped `Attachment` entity (see
+    `AddTestLogCommentRequest`'s own docstring). Gated `test_execution.update`
+    — same permission a `result` correction already requires, already seeded
+    for `tester`/`ai_agent_scoped` (no RBAC migration needed).
+    """
+    execution, error = await _fetch_execution_gated(db, actor, id, "test_execution.update")
+    if error is not None:
+        return error
+    assert execution is not None
+
+    is_attachment = payload.attachment_url is not None or payload.file_name is not None
+    human_event_type = TestLogEventType.attachment if is_attachment else TestLogEventType.comment
+    log = TestLog(
+        test_execution_id=execution.id,
+        event_type=_event_type_for_actor(actor, human_event_type),
+        payload={
+            "kind": "attachment" if is_attachment else "comment",
+            "text": payload.text,
+            "attachment_url": payload.attachment_url,
+            "file_name": payload.file_name,
+            "actor_id": str(actor.actor_id),
+            "actor_type": "ai_agent" if isinstance(actor, AIAgent) else "user",
+        },
+    )
+    db.add(log)
+    await db.commit()
+    await db.refresh(log)
+
+    return TestLogSummary(
+        id=log.id,
+        test_execution_id=log.test_execution_id,
+        logged_at=log.logged_at,
+        event_type=log.event_type.value if hasattr(log.event_type, "value") else log.event_type,
+        payload=log.payload,
+    )
+
+
+@router.get(
+    "/executions/{id}/logs",
+    response_model=TestLogListResponse,
+)
+async def list_test_execution_logs(
+    id: uuid.UUID,
+    page: int = 1,
+    page_size: int = _DEFAULT_PAGE_SIZE,
+    actor: User | AIAgent = Depends(get_current_actor),
+    db: AsyncSession = Depends(get_db),
+) -> TestLogListResponse | JSONResponse:
+    """FR-EXEC-2 AC3: a `TestExecution`'s full history as an ordered `TestLog`
+    timeline, oldest first — the bespoke, purpose-built equivalent of the
+    generic factory's `GET /test-logs?test_execution_id=<uuid>` (same
+    `test_log.read`-gated rows, no ordering guarantee promised there).
+    """
+    execution, error = await _fetch_execution_gated(db, actor, id, "test_execution.read")
+    if error is not None:
+        return error
+    assert execution is not None
+
+    page_size = min(max(page_size, 1), _MAX_PAGE_SIZE)
+    page = max(page, 1)
+
+    base_query = select(TestLog).where(TestLog.test_execution_id == id)
+    total = await db.scalar(select(func.count()).select_from(base_query.subquery()))
+    rows = (
+        await db.scalars(
+            base_query.order_by(TestLog.logged_at.asc(), TestLog.id.asc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+    ).all()
+
+    return TestLogListResponse(
+        items=[
+            TestLogSummary(
+                id=row.id,
+                test_execution_id=row.test_execution_id,
+                logged_at=row.logged_at,
+                event_type=row.event_type.value if hasattr(row.event_type, "value") else row.event_type,
+                payload=row.payload,
+            )
+            for row in rows
+        ],
+        total=total or 0,
+        page=page,
+        page_size=page_size,
+    )
+
+
+__all__ = ["router", "build_status_change_log"]
