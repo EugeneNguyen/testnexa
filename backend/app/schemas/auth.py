@@ -48,6 +48,24 @@ class OrgSummary(BaseModel):
     slug: str
 
 
+class MeOrgsResponse(BaseModel):
+    """Response of `GET /auth/me/orgs` (SHELL-6, ADR-0036, API Document §2).
+
+    A plain envelope around the **exact same** `OrgSummary` entries
+    `LoginResponse.orgs` already returns — deliberately no new per-org
+    schema (ADR-0036: "reusing the exact `OrgSummary {id, name, slug}`
+    schema `LoginResponse` already returns — no new schema"), so the
+    frontend can share one type across the login response and this route.
+
+    Envelope-object rather than a bare top-level list, matching
+    `MyPermissionsResponse`/`RoleListResponse` (`app/schemas/rbac.py`) — every
+    collection response in this API is an object, leaving room to add
+    pagination/metadata keys later without a breaking change.
+    """
+
+    orgs: list[OrgSummary]
+
+
 class LoginResponse(BaseModel):
     """Response of `POST /auth/login`.
 
