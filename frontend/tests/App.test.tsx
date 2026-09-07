@@ -4,24 +4,30 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../src/App";
 
 /**
- * LANDING-1 (ADR-0024): `/` now mounts the real public `LandingPage`
- * (previously `ScaffoldVerificationPage`, a `GET /api/health` wiring-proof
- * widget, deleted outright — see `LandingPage.tsx`'s own docstring). `App`
- * wraps everything in the real `AuthProvider`, which fires a boot-time
- * silent-refresh call on mount (`AuthContext.tsx`) — this test stubs global
- * `fetch` to reject it (no session), same as an unauthenticated page load,
- * so `orgContext`/`orgs` stay `null`/`[]` and the landing content renders
- * instead of redirecting off `/`.
+ * DASH-1 (ADR-0035) router-level coverage: TC-DASH-001 and TC-DASH-002.
+ *
+ * `/` no longer mounts a screen at all — LANDING-1's public `LandingPage`
+ * (which itself replaced the scaffold-phase `ScaffoldVerificationPage`) is
+ * deleted, and `/` is now the `RootRedirect` auth guard. `RootRedirect.test.tsx`
+ * drives that guard's branches directly with a mocked `useAuth`; this file
+ * deliberately does not mock `AuthContext` at all, so it exercises the real
+ * `AuthProvider` + real router wiring — including the boot-time silent-refresh
+ * cycle that makes `isInitializing` genuinely transition, which a mocked
+ * `useAuth` cannot prove.
+ *
+ * Global `fetch` is stubbed to a 401 so the boot refresh fails, i.e. exactly
+ * an unauthenticated page load: no session to restore, `accessToken` stays
+ * `null`.
  */
-function renderApp() {
+function renderAppAt(path: string) {
   return render(
-    <MemoryRouter initialEntries={["/"]}>
+    <MemoryRouter initialEntries={[path]}>
       <App />
     </MemoryRouter>,
   );
 }
 
-describe("App", () => {
+describe("App routing", () => {
   beforeEach(() => {
     vi.stubGlobal(
       "fetch",
@@ -33,14 +39,31 @@ describe("App", () => {
     vi.unstubAllGlobals();
   });
 
-  it("renders the public LandingPage at / for a logged-out visitor", async () => {
-    renderApp();
+  // TC-DASH-001
+  it("redirects a logged-out visitor from / to /login, rendering no landing content", async () => {
+    renderAppAt("/");
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: /testnexa/i })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: /^log in$/i })).toBeInTheDocument();
     });
 
-    expect(screen.getByRole("link", { name: /log in/i })).toHaveAttribute("href", "/login");
+    // The deleted LandingPage's product-name heading and pitch CTAs must not
+    // paint at any point — `/` has no content of its own anymore.
+    expect(screen.queryByRole("heading", { name: /testnexa/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /^log in$/i })).not.toBeInTheDocument();
     expect(screen.queryByTestId("health-status")).not.toBeInTheDocument();
+  });
+
+  // TC-DASH-002: direct navigation to /dashboard while logged out, not via /.
+  // Handled by the same ProtectedRoute mechanism every other protected route
+  // uses, not a second bespoke guard.
+  it("redirects a logged-out visitor from /dashboard directly to /login", async () => {
+    renderAppAt("/dashboard");
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: /^log in$/i })).toBeInTheDocument();
+    });
+
+    expect(screen.queryByRole("heading", { name: /^dashboard$/i })).not.toBeInTheDocument();
   });
 });
