@@ -39,6 +39,7 @@ from app.models.tenancy import Organization, OrgMembership, OrgMembershipStatus
 from app.schemas.auth import (
     LoginRequest,
     LoginResponse,
+    MeOrgsResponse,
     MeResponse,
     OrgSummary,
     RefreshResponse,
@@ -75,6 +76,29 @@ def _error(
         status_code=status_code,
         content={"code": code, "message": message, "field_errors": field_errors},
     )
+
+
+async def _active_orgs_for_user(db: AsyncSession, user_id) -> list[Organization]:
+    """Every `Organization` the given user holds an **active** membership in.
+
+    `status == active` only — `suspended`/`invited` memberships never appear
+    (API Document §2). Extracted (SHELL-6 / ADR-0036) from the two places
+    that had this exact query inline — `login()` step 5 and `refresh()`'s
+    re-check — so `GET /auth/me/orgs` shares one definition of "the caller's
+    orgs" with the login/refresh flows rather than growing a third copy that
+    could silently diverge from them (e.g. if the status filter ever changes).
+    Behaviour is unchanged for both existing callers: same `select`, same
+    join, same filters, same ordering (none).
+    """
+    result = await db.execute(
+        select(Organization)
+        .join(OrgMembership, OrgMembership.org_id == Organization.id)
+        .where(
+            OrgMembership.user_id == user_id,
+            OrgMembership.status == OrgMembershipStatus.active,
+        )
+    )
+    return list(result.scalars().all())
 
 
 @router.post("/auth/signup", response_model=LoginResponse, status_code=status.HTTP_201_CREATED)
@@ -320,16 +344,9 @@ async def login(
 
     db.add(LoginAttempt(email=email, client_ip=client_ip, succeeded=True))
 
-    # 5. Resolve active-only org memberships.
-    org_result = await db.execute(
-        select(Organization)
-        .join(OrgMembership, OrgMembership.org_id == Organization.id)
-        .where(
-            OrgMembership.user_id == user.actor_id,
-            OrgMembership.status == OrgMembershipStatus.active,
-        )
-    )
-    orgs = list(org_result.scalars().all())
+    # 5. Resolve active-only org memberships (shared with `refresh()` and
+    # `GET /auth/me/orgs` via `_active_orgs_for_user`).
+    orgs = await _active_orgs_for_user(db, user.actor_id)
 
     if not orgs:
         await db.commit()
@@ -458,16 +475,9 @@ async def refresh(
         )
 
     # Re-check active org membership (ADR-0013) — same rule as login, but a
-    # rejection here does NOT revoke the presented token.
-    org_result = await db.execute(
-        select(Organization)
-        .join(OrgMembership, OrgMembership.org_id == Organization.id)
-        .where(
-            OrgMembership.user_id == stored_token.user_id,
-            OrgMembership.status == OrgMembershipStatus.active,
-        )
-    )
-    orgs = list(org_result.scalars().all())
+    # rejection here does NOT revoke the presented token. Same shared
+    # `_active_orgs_for_user` query login uses.
+    orgs = await _active_orgs_for_user(db, stored_token.user_id)
     if not orgs:
         return _error(
             status.HTTP_403_FORBIDDEN,
@@ -553,6 +563,54 @@ async def me(actor: User | AIAgent = Depends(get_current_actor)) -> MeResponse:
     if isinstance(actor, AIAgent):
         return MeResponse(actor_id=str(actor.actor_id), actor_type="ai_agent", agent_name=actor.agent_name)
     return MeResponse(actor_id=str(actor.actor_id), actor_type="user", email=actor.email)
+
+
+@router.get("/auth/me/orgs", response_model=MeOrgsResponse)
+async def me_orgs(
+    actor: User | AIAgent = Depends(get_current_actor),
+    db: AsyncSession = Depends(get_db),
+) -> MeOrgsResponse | JSONResponse:
+    """The calling human's own `active`-membership Organizations (SHELL-6, ADR-0036).
+
+    Backs `AppHeader`'s organization-switcher dropdown, which lazy-fetches
+    this on every open rather than reading a login-time-cached list — so it
+    stays correct after a page reload, which `AuthContext.orgs` does not
+    (the AUTH-2 gap ADR-0035 deferred and ADR-0036 closes for this one
+    surface).
+
+    Identity-scoped, not org-scoped: no `org_id` path param, so there is no
+    tenant boundary to enforce here and no `require_permission` call — the
+    route only ever reports the caller's own memberships, the same posture
+    `GET /orgs/{org_id}/permissions/mine` takes for the caller's own grants.
+
+    Gates, in order:
+    1. Authentication — `get_current_actor` 401s (`invalid_token`) on a
+       missing/invalid/expired bearer before this body ever runs, same as
+       `me()`.
+    2. **Human-only.** An `AIAgent` authenticates successfully but is
+       forbidden: `403 actor_forbidden`, identical code/message to
+       `agents.py`'s own human-only gate (`POST /orgs/{org_id}/agents`),
+       reusing that established shape rather than inventing a new one. This
+       is not merely a policy choice — `OrgMembership.user_id` FKs
+       `user.actor_id`, so an `AIAgent` has no `OrgMembership` row to
+       resolve at all (`backend/CLAUDE.md`'s "OrgMembership existence check
+       must accept AIAgent actors" note) and would otherwise always get a
+       misleading empty list rather than an honest rejection.
+
+    Zero active memberships is **not** an error here: `200` with
+    `orgs: []`. Deliberately unlike `login()`/`refresh()`, which 403
+    `no_active_organization` on the same condition — those two are deciding
+    whether to grant a session at all, whereas this route just reports the
+    caller's current state to an already-authenticated session (test-design
+    §31's own equivalence class). The dropdown renders its distinct "No
+    organizations" empty state off this, and can therefore tell it apart
+    from a failed fetch.
+    """
+    if not isinstance(actor, User):
+        return _error(status.HTTP_403_FORBIDDEN, "actor_forbidden", "This action is restricted to human users.")
+
+    orgs = await _active_orgs_for_user(db, actor.actor_id)
+    return MeOrgsResponse(orgs=[OrgSummary(id=org.id, name=org.name, slug=org.slug) for org in orgs])
 
 
 @router.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT)

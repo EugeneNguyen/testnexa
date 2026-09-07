@@ -139,6 +139,32 @@ export async function me(): Promise<MeResponse> {
   return apiFetch<MeResponse>("/api/v1/auth/me");
 }
 
+export interface MeOrgsResponse {
+  orgs: OrgSummary[];
+}
+
+/**
+ * SHELL-6 organization-switcher org list (`GET /auth/me/orgs`, ADR-0036).
+ *
+ * Source: API Document §2. Returns the caller's `active`-membership
+ * Organizations only (`suspended`/`invited` never appear) in the same
+ * `OrgSummary` shape `login()` already returns — hence the shared
+ * `OrgSummary` type above rather than a second identical interface.
+ *
+ * Called lazily, on each dropdown open, rather than once at login: it is
+ * deliberately NOT wired into `AuthContext`'s login-time-only `orgs` field,
+ * which is empty after a page reload (the AUTH-2 gap ADR-0035 deferred).
+ * Every open is a fresh read — see `AppHeader.tsx`'s own docstring.
+ *
+ * Human-only: an `AIAgent` bearer credential gets `403 actor_forbidden`.
+ * Rejects with `ApiError` on any non-2xx, including that 403 — the caller
+ * renders a generic "couldn't load" state rather than branching on it,
+ * since no agent-authenticated browser session exists in practice.
+ */
+export async function getMyOrgs(): Promise<MeOrgsResponse> {
+  return apiFetch<MeOrgsResponse>("/api/v1/auth/me/orgs");
+}
+
 /**
  * AUTH-3 logout call.
  *
