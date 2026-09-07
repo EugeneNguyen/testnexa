@@ -4,23 +4,24 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import OrgHome from "../../../src/pages/workflows/OrgHome";
 import { ApiError } from "../../../src/lib/api/client";
-import { createProject, listProjects, updateProject } from "../../../src/lib/api/projects";
+import { createProject, deleteProject, listProjects, updateProject } from "../../../src/lib/api/projects";
 import { listRoleAssignments, listRoles } from "../../../src/lib/api/roleAssignments";
 
 // Same partial-mock pattern as Signup.test.tsx: keep the real module shape,
-// replace only `createProject`/`updateProject`/`listProjects` with `vi.fn()`s
-// so the "New Project" modal / inline edit / initial list fetch can all be
-// driven without a real network call. `listProjects` defaults to an empty
-// list below (every existing test in this file starts from "no projects yet"
-// and adds one via `createProject`'s own optimistic cache write, per
-// `OrgHome.tsx`'s docstring) — the fix's own dedicated persistence test
-// further down overrides this per-test.
+// replace only `createProject`/`updateProject`/`deleteProject`/`listProjects`
+// with `vi.fn()`s so the "New Project"/"Edit Project"/delete-confirm modals
+// and the initial list fetch can all be driven without a real network call.
+// `listProjects` defaults to an empty list below (every existing test in
+// this file starts from "no projects yet" and adds one via `createProject`'s
+// own optimistic cache write, per `OrgHome.tsx`'s docstring) — the fix's own
+// dedicated persistence test further down overrides this per-test.
 vi.mock("../../../src/lib/api/projects", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../../src/lib/api/projects")>();
   return {
     ...actual,
     createProject: vi.fn(),
     updateProject: vi.fn(),
+    deleteProject: vi.fn(),
     listProjects: vi.fn(),
   };
 });
@@ -54,6 +55,7 @@ vi.mock("../../../src/lib/api/dashboard", () => ({
 
 const mockCreateProject = vi.mocked(createProject);
 const mockUpdateProject = vi.mocked(updateProject);
+const mockDeleteProject = vi.mocked(deleteProject);
 const mockListProjects = vi.mocked(listProjects);
 const mockListRoleAssignments = vi.mocked(listRoleAssignments);
 const mockListRoles = vi.mocked(listRoles);
@@ -92,7 +94,7 @@ describe("OrgHome — New Project modal", () => {
   it("renders the org page with a New Project action and no projects initially", async () => {
     renderOrgHome();
 
-    expect(screen.getByText(`Org: ${ORG_ID}`)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /^dashboard$/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^new project$/i })).toBeInTheDocument();
     // `listProjects` resolves asynchronously (a real fetch, mocked to `[]`) —
     // the empty state only renders once that settles, not synchronously.
@@ -136,6 +138,21 @@ describe("OrgHome — New Project modal", () => {
 
     expect(await screen.findByText("Checkout Revamp")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: /^new project$/i })).not.toBeInTheDocument();
+  });
+
+  it("renders the full ID/Name/Standards profile/Actions column set (TC-PROJ-019)", async () => {
+    mockListProjects.mockResolvedValueOnce([
+      { id: "proj-cols", org_id: ORG_ID, name: "Column Check", standards_profile: null },
+    ]);
+    renderOrgHome();
+    await screen.findByText("Column Check");
+
+    // Name is the default active sort (ascending) — its header carries a "▲"
+    // decoration, same as any other sortable-header render; the column
+    // *labels* are still exactly this set, decoration aside.
+    const headers = screen.getAllByRole("columnheader");
+    expect(headers.map((h) => h.textContent)).toEqual(["ID", "Name ▲", "Standards profile", ""]);
+    expect(headers[3]).toHaveAccessibleName("Actions");
   });
 
   it("submits with standards_profile included when filled in", async () => {
@@ -197,7 +214,7 @@ describe("OrgHome — New Project modal", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(/do not have permission/i);
   });
 
-  it("supports inline standards_profile edit on a listed project via updateProject()", async () => {
+  it("opens an Edit modal pre-filled with the project's name/standards_profile, and saves via updateProject()", async () => {
     mockCreateProject.mockResolvedValue({
       id: "proj-3",
       org_id: ORG_ID,
@@ -207,7 +224,7 @@ describe("OrgHome — New Project modal", () => {
     mockUpdateProject.mockResolvedValue({
       id: "proj-3",
       org_id: ORG_ID,
-      name: "Mobile App",
+      name: "Mobile App v2",
       standards_profile: "IEEE-829",
     });
 
@@ -218,13 +235,152 @@ describe("OrgHome — New Project modal", () => {
     await screen.findByText("Mobile App");
 
     fireEvent.click(screen.getByRole("button", { name: /^edit$/i }));
-    fireEvent.change(screen.getByLabelText(/standards profile for mobile app/i), {
-      target: { value: "IEEE-829" },
-    });
+    expect(screen.getByRole("heading", { name: /^edit project$/i })).toBeInTheDocument();
+    const nameInputs = screen.getAllByLabelText(/^name$/i);
+    const editNameInput = nameInputs[nameInputs.length - 1] as HTMLInputElement;
+    expect(editNameInput.value).toBe("Mobile App");
+
+    fireEvent.change(editNameInput, { target: { value: "Mobile App v2" } });
+    const profileInputs = screen.getAllByLabelText(/standards profile/i);
+    fireEvent.change(profileInputs[profileInputs.length - 1], { target: { value: "IEEE-829" } });
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
 
-    await waitFor(() => expect(mockUpdateProject).toHaveBeenCalledWith("proj-3", { standards_profile: "IEEE-829" }));
+    await waitFor(() =>
+      expect(mockUpdateProject).toHaveBeenCalledWith("proj-3", {
+        name: "Mobile App v2",
+        standards_profile: "IEEE-829",
+      }),
+    );
+    expect(await screen.findByText("Mobile App v2")).toBeInTheDocument();
     expect(await screen.findByText("IEEE-829")).toBeInTheDocument();
+  });
+
+  it("deletes a project via a confirm modal + deleteProject()", async () => {
+    mockCreateProject.mockResolvedValue({
+      id: "proj-4",
+      org_id: ORG_ID,
+      name: "To Delete",
+      standards_profile: null,
+    });
+    mockDeleteProject.mockResolvedValue(undefined);
+
+    renderOrgHome();
+    openNewProjectModal();
+    fireEvent.change(screen.getByLabelText(/^name$/i), { target: { value: "To Delete" } });
+    fireEvent.click(screen.getByRole("button", { name: /^create$/i }));
+    await screen.findByText("To Delete");
+
+    fireEvent.click(screen.getByRole("button", { name: /^delete$/i }));
+    expect(screen.getByRole("heading", { name: /^delete project$/i })).toBeInTheDocument();
+
+    const confirmButtons = screen.getAllByRole("button", { name: /^delete$/i });
+    fireEvent.click(confirmButtons[confirmButtons.length - 1]);
+
+    await waitFor(() => expect(mockDeleteProject).toHaveBeenCalledWith("proj-4"));
+    await waitFor(() => expect(screen.queryByText("To Delete")).not.toBeInTheDocument());
+  });
+
+  /**
+   * TC-PROJ-021's negative half. The positive half is the test directly above;
+   * this closes the gap the Test Cases doc's own DASH-2 coverage-recompute note
+   * flagged as "no automated test yet" (2026-09-07).
+   *
+   * `DELETE /projects/{id}` is gated on `project.delete` (ADR-0022's generic
+   * factory), which only `org_admin` holds today — a `test_manager`/
+   * `test_engineer` caller gets a `403`. Per the UI Design Document §5, that
+   * `403` surfaces as a `CAlert` *inside the still-open confirm modal*, and the
+   * row must NOT be removed, so the user isn't left wondering whether the
+   * delete silently no-op'd.
+   */
+  it("keeps the confirm modal open with a 403 alert and does NOT remove the row when the caller lacks project.delete", async () => {
+    mockListProjects.mockResolvedValueOnce([
+      { id: "proj-5", org_id: ORG_ID, name: "Undeletable", standards_profile: null },
+    ]);
+    mockDeleteProject.mockRejectedValue(
+      new ApiError("You do not have permission to delete this project.", 403, {
+        code: "permission_denied",
+        message: "You do not have permission to delete this project.",
+        field_errors: null,
+      }),
+    );
+
+    renderOrgHome();
+    await screen.findByText("Undeletable");
+
+    fireEvent.click(screen.getByRole("button", { name: /^delete$/i }));
+    expect(screen.getByRole("heading", { name: /^delete project$/i })).toBeInTheDocument();
+
+    const confirmButtons = screen.getAllByRole("button", { name: /^delete$/i });
+    fireEvent.click(confirmButtons[confirmButtons.length - 1]);
+
+    await waitFor(() => expect(mockDeleteProject).toHaveBeenCalledWith("proj-5"));
+
+    // The 403 surfaces inline as an alert...
+    expect(await screen.findByRole("alert")).toHaveTextContent(/do not have permission to delete/i);
+    // ...the modal stays open...
+    expect(screen.getByRole("heading", { name: /^delete project$/i })).toBeInTheDocument();
+    // ...and the row is still in the table. Asserted via the row's own link
+    // (not `getByText`): the name deliberately appears twice at this point —
+    // once in the surviving table row, once in the still-open modal's "Are you
+    // sure you want to delete <name>?" copy — so a bare text query is
+    // ambiguous. The link is unique to the table row.
+    expect(screen.getByRole("link", { name: "Undeletable" })).toBeInTheDocument();
+  });
+
+  it("filters the list by name via the search box", async () => {
+    mockListProjects.mockResolvedValueOnce([
+      { id: "proj-a", org_id: ORG_ID, name: "Alpha", standards_profile: null },
+      { id: "proj-b", org_id: ORG_ID, name: "Beta", standards_profile: null },
+    ]);
+
+    renderOrgHome();
+    await screen.findByText("Alpha");
+    expect(screen.getByText("Beta")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/search projects/i), { target: { value: "alp" } });
+
+    expect(screen.getByText("Alpha")).toBeInTheDocument();
+    expect(screen.queryByText("Beta")).not.toBeInTheDocument();
+  });
+
+  it("sorts by Name descending on header click, toggling back to ascending on a second click", async () => {
+    mockListProjects.mockResolvedValueOnce([
+      { id: "proj-a", org_id: ORG_ID, name: "Alpha", standards_profile: null },
+      { id: "proj-b", org_id: ORG_ID, name: "Beta", standards_profile: null },
+    ]);
+
+    renderOrgHome();
+    await screen.findByText("Alpha");
+
+    const rowsOrder = () => screen.getAllByRole("row").slice(1).map((row) => row.textContent);
+    expect(rowsOrder()[0]).toContain("Alpha");
+
+    fireEvent.click(screen.getByRole("columnheader", { name: /^name/i }));
+    expect(rowsOrder()[0]).toContain("Beta");
+
+    fireEvent.click(screen.getByRole("columnheader", { name: /^name/i }));
+    expect(rowsOrder()[0]).toContain("Alpha");
+  });
+
+  it("paginates the list at 10 rows per page", async () => {
+    const manyProjects = Array.from({ length: 12 }, (_, i) => ({
+      id: `proj-${i}`,
+      org_id: ORG_ID,
+      name: `Project ${String(i).padStart(2, "0")}`,
+      standards_profile: null,
+    }));
+    mockListProjects.mockResolvedValueOnce(manyProjects);
+
+    renderOrgHome();
+    await screen.findByText("Project 00");
+
+    expect(screen.getAllByRole("row")).toHaveLength(11); // 10 data rows + 1 header row
+    expect(screen.queryByText("Project 11")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("2", { selector: "a.page-link" }));
+
+    expect(await screen.findByText("Project 11")).toBeInTheDocument();
+    expect(screen.queryByText("Project 00")).not.toBeInTheDocument();
   });
 });
 

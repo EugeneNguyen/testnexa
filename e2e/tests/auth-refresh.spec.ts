@@ -156,7 +156,7 @@ test.describe("AUTH-2 session persistence", () => {
       // /orgs/{orgId}, never the picker (see file docstring for why the
       // picker path is deliberately out of scope for this test).
       await page.waitForURL(new RegExp(`/orgs/${user.orgId}`));
-      await expect(page.getByRole("heading", { name: `Org: ${user.orgId}` })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
 
       // The actual proof of AC1: reload the page (module-level token store
       // resets to empty on every fresh load) and confirm AuthContext's
@@ -168,7 +168,7 @@ test.describe("AUTH-2 session persistence", () => {
 
       await expect(page).toHaveURL(new RegExp(`/orgs/${user.orgId}`));
       await expect(page).not.toHaveURL(/\/login/);
-      await expect(page.getByRole("heading", { name: `Org: ${user.orgId}` })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
     } finally {
       cleanupUser(user);
     }
@@ -204,7 +204,7 @@ test.describe("AUTH-2 session persistence", () => {
       await page.getByRole("button", { name: /log in|sign in/i }).click();
 
       await page.waitForURL(new RegExp(`/orgs/${user.orgId}`));
-      await expect(page.getByRole("heading", { name: `Org: ${user.orgId}` })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
 
       const storageState = await context.storageState();
       const refreshCookie = storageState.cookies.find((cookie) => cookie.name === "refresh_token");
@@ -227,7 +227,7 @@ test.describe("AUTH-2 session persistence", () => {
       await newPage.goto(`/orgs/${user.orgId}`);
 
       await expect(newPage).not.toHaveURL(/\/login/);
-      await expect(newPage.getByRole("heading", { name: `Org: ${user.orgId}` })).toBeVisible();
+      await expect(newPage.getByRole("heading", { name: "Dashboard" })).toBeVisible();
     } finally {
       await newContext?.close();
       cleanupUser(user);
@@ -243,7 +243,7 @@ test.describe("AUTH-2 session persistence", () => {
       await page.getByRole("button", { name: /log in|sign in/i }).click();
 
       await page.waitForURL(new RegExp(`/orgs/${user.orgId}`));
-      await expect(page.getByRole("heading", { name: `Org: ${user.orgId}` })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
 
       // Revoke the session's RefreshToken row server-side -- simulates an
       // admin force-logout / explicit logout per AUTH-2 AC2's precondition.
@@ -331,7 +331,7 @@ test.describe("AUTH-2 TC-AUTH-006: real 401 -> refresh -> retry chain", () => {
       await page.getByLabel(/password/i).fill(user.password);
       await page.getByRole("button", { name: /log in|sign in/i }).click();
       await page.waitForURL(new RegExp(`/orgs/${user.orgId}`));
-      await expect(page.getByRole("heading", { name: `Org: ${user.orgId}` })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
 
       // Let the deliberately short-lived access token actually expire.
       // Overridable so the wait can be tuned to whatever TTL override was

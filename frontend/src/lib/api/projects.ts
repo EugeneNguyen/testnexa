@@ -128,3 +128,18 @@ export async function updateProject(id: string, payload: UpdateProjectPayload): 
     body: JSON.stringify(payload),
   });
 }
+
+/**
+ * Delete a Project by id (DASH-2). `DELETE /projects/{id}` is the generic
+ * factory's own `delete` method (ADR-0022, `_PROJECT_FACTORY_CONFIG` in
+ * `backend/app/api/routes/projects.py`) — already shipped, just never wired
+ * to any frontend caller until now. Gated on `project.delete`; only the
+ * `org_admin` system role's seeded bundle grants it today (RBAC-4), so a
+ * `test_manager`/`test_engineer` caller gets a `403`.
+ *
+ * Rejects with an `ApiError` on failure: `404`/`403` same boundary as
+ * `getProject`, but gated on `project.delete`.
+ */
+export async function deleteProject(id: string): Promise<void> {
+  return apiFetch<void>(`/api/v1/projects/${id}`, { method: "DELETE" });
+}

@@ -178,7 +178,7 @@ test.describe("RBAC-1 AC2: existing org_admin creates a second organization via 
       expect(match).not.toBeNull();
       newOrgId = match ? match[1] : null;
 
-      await expect(page.getByRole("heading", { name: `Org: ${newOrgId}` })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
     } finally {
       cleanup(admin, newOrgId);
     }

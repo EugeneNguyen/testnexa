@@ -169,7 +169,7 @@ test.describe("SHELL-6 organization switcher (ADR-0036)", () => {
       // Lands on Org B's ROOT -- never /orgs/{orgBId}/admin/roles.
       await page.waitForURL(new RegExp(`/orgs/${user.orgBId}$`));
       await expect(page).not.toHaveURL(/\/admin\/roles$/);
-      await expect(page.getByRole("heading", { name: `Org: ${user.orgBId}` })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
     } finally {
       cleanup(user);
     }

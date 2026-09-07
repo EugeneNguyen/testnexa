@@ -231,7 +231,7 @@ test.describe("RBAC-2 org member invite/suspend/reactivate lifecycle", () => {
       // -> AcceptInvite's own redirect effect lands here, the same
       // access-token + org-context wiring Login/Signup already use.
       await inviteePage.waitForURL(new RegExp(`/orgs/${admin.orgId}$`));
-      await expect(inviteePage.getByRole("heading", { name: `Org: ${admin.orgId}` })).toBeVisible();
+      await expect(inviteePage.getByRole("heading", { name: "Dashboard" })).toBeVisible();
 
       // A fresh API-level login as the invitee gives us their own bearer
       // token for the access checks below, independent of inviteePage's own

@@ -175,13 +175,15 @@ Unique: `(role_id, permission_id)`.
 | id | uuid | PK |
 | actor_id | uuid | FK → actor.id, not null, indexed |
 | org_id | uuid | FK → organization.id, not null, indexed |
-| project_id | uuid | FK → project.id, **nullable** (null = org-wide role) |
+| project_id | uuid | FK → project.id, **nullable** (null = org-wide role), **`ON DELETE CASCADE`** (was `RESTRICT` until [ADR-0040](../adr/0040-role-assignment-project-cascade-delete.md), migration `6a11a6a1d803`, 2026-09-07) |
 | role_id | uuid | FK → role.id, not null |
 | created_at, updated_at | timestamptz | not null |
 
 Unique: `(actor_id, org_id, project_id, role_id)`, **plus a partial unique index `(actor_id, org_id, role_id) WHERE project_id IS NULL`** (RBAC-3 migration, added when this story's own duplicate-grant test exposed a real pre-existing gap — same `NULL <> NULL` reasoning as `Role.uq_role_name_system_role`: a plain composite `UNIQUE` including a nullable `project_id` column never catches two org-wide (`project_id = NULL`) rows for the same `actor_id`/`org_id`/`role_id`, since Postgres treats every `NULL` as distinct from every other `NULL`; the partial index is what actually enforces "no duplicate org-wide grant," the base composite constraint alone only ever covered the project-scoped case).
 
 **Creation flow (RBAC-3, [ADR-0021](../adr/0021-role-assignment-creation-flow.md))** is application logic — `POST /orgs/{org_id}/role-assignments` inserts one row directly; the two constraints above are what turn a duplicate-grant attempt (org-wide or project-scoped) into `422` (caught `IntegrityError`) rather than a silent second row. `project_id NULL` (org-wide) vs. non-null (project-scoped) was already schema-supported since the initial migration — RBAC-3 is the first story to expose creating either shape through a real route, and the first to prove `has_permission`'s `project_id`-aware resolution branch against a real HTTP call (`GET`/`PATCH /projects/{id}`, fixed by the same story to pass `project_id` through — see ADR-0021).
+
+**`project_id` FK `RESTRICT` → `CASCADE` ([ADR-0040](../adr/0040-role-assignment-project-cascade-delete.md), 2026-09-07):** originally `RESTRICT` from the initial schema migration, which meant `DELETE /projects/{id}` (ADR-0022) permanently `409`'d for every Project ever created through `POST /orgs/{org_id}/projects` — that route's own creator-grant (ADR-0017 step 5) was the row always blocking its own Project's deletion. Found during DASH-2's isolated-env verification, fixed same-day: a project-scoped `RoleAssignment` has no meaning once its own Project is gone, so cascading it away is correct semantics, not a workaround. Every other `project_id`-FK'd entity (`Release`/`Requirement`/`TestSuite`/etc.) is unaffected and keeps `RESTRICT`.
 
 ### 3.4 `actor.py` — Actor, User, AIAgent (joined-table inheritance)
 
@@ -238,6 +240,8 @@ Raw key format on the wire: `tnx_agent_<key_prefix>_<secret>` — `key_prefix` i
 Unique: `(org_id, name)`.
 
 **Creation flow** (PROJ-1, [ADR-0017](../adr/0017-project-creation-flow.md)): `POST /orgs/{org_id}/projects` — bespoke, org-path-scoped (reuses `require_permission` and the established any-status-`OrgMembership` 404-vs-403 check as-is, same shape as `agents.py`/`organizations.py`). `standards_profile`, if omitted from the request, inherits `Organization.default_standards_profile` at creation time (a one-time copy, not a live reference — later changes to the org's default do not retroactively change an existing Project's value); an explicit value (including explicit `null`) in the request always overrides. Creating the row also inserts one project-scoped `RoleAssignment` (`org_id` = the Project's org, `project_id` = the new Project, `role_id` = the seeded `test_manager` `Role`) for the creator, unconditionally — not derived from the creator's org-level role, since only `org_admin`'s seeded bundle currently reaches `project.create` at all. `GET`/`PATCH /projects/{id}` resolve `org_id` from the fetched row itself (no `org_id` path segment), anticipating the eventual generic CRUD factory's item-route shape.
+
+**DASH-2** ([ADR-0039](../adr/0039-dash-2-org-home-dashboard-relabel-and-project-table.md)) — reviewed, no schema impact of its own. The `OrgHome`→"Dashboard" relabel is frontend-only (heading/sidebar/breadcrumb text). The Project table's new Edit modal reuses `PATCH /projects/{id}` unchanged; Delete wires the already-shipped `DELETE /projects/{id}` (ADR-0022's factory, `_PROJECT_FACTORY_CONFIG`) to a UI action for the first time — no route/schema change, no new column. Search/sort/pagination are client-side over the existing `GET /projects?org_id=` response — no new query parameter. **DASH-2's own verification of that Delete wiring is what found the `role_assignment.project_id` `RESTRICT` defect — the actual schema fix is [ADR-0040](../adr/0040-role-assignment-project-cascade-delete.md)'s own separate FK change, documented above under §3.3's `RoleAssignment` entry, not this section.**
 
 **Release**
 | Column | Type | Constraints |

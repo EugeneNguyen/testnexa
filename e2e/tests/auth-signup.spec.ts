@@ -103,7 +103,7 @@ test("bootstrap signup succeeds on a fresh instance, or shows signup-closed once
   if (successUrlPattern.test(page.url())) {
     // Fresh-instance branch (TC-RBAC-001): landed on the new org's own view.
     await expect(page).toHaveURL(successUrlPattern);
-    await expect(page.getByRole("heading", { name: /^Org: /i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /^Dashboard$/i })).toBeVisible();
     cleanup(email, orgSlug);
   } else {
     // Already-bootstrapped branch (TC-RBAC-021): signup closed, inline

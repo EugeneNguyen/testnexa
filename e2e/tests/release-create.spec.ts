@@ -165,7 +165,7 @@ test.describe("PROJ-2: create Releases via ProjectDetail's New Release modal", (
       // Single active OrgMembership -> org_context "auto" -> Login.tsx's own
       // redirect effect lands here automatically.
       await page.waitForURL(new RegExp(`/orgs/${admin.orgId}`));
-      await expect(page.getByRole("heading", { name: `Org: ${admin.orgId}` })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
 
       // --- Create a Project via OrgHome's "New Project" modal -----------------------------
       await page.getByRole("button", { name: /new project/i }).click();

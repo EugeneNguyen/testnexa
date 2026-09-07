@@ -32,6 +32,16 @@ describe("AppSidebar", () => {
     expect(screen.getByTestId("sidebar-nav-org-members")).toBeInTheDocument();
   });
 
+  // DASH-2: label text is "Dashboard" (testid/route unchanged), with a
+  // cilSpeedometer icon — the only sidebar nav item that gets one.
+  it("labels the org-home item 'Dashboard' with an icon", () => {
+    renderSidebar("/orgs/org-1");
+
+    const orgHomeLink = screen.getByTestId("sidebar-nav-org-home");
+    expect(orgHomeLink).toHaveTextContent("Dashboard");
+    expect(orgHomeLink.querySelector("svg")).not.toBeNull();
+  });
+
   it("marks the org-home item active on /orgs/:orgId but not on /orgs/:orgId/members (prefix-match regression check)", () => {
     const onOrgHome = renderSidebar("/orgs/org-1");
     expect(onOrgHome.getByTestId("sidebar-nav-org-home").className).toMatch(/\bactive\b/);
