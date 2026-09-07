@@ -1,7 +1,20 @@
 /**
  * `TestExecution` (backend/app/api/routes/execution.py
- * `_TEST_EXECUTION_CONFIG`, backend/app/schemas/execution.py). Full CRUD,
- * added by ADR-0025 (previously had zero routes at all).
+ * `_TEST_EXECUTION_CONFIG`, backend/app/schemas/execution.py). Full CRUD was
+ * added by ADR-0025 (previously had zero routes at all); **PLAN-3/ADR-0033
+ * removed `create`** from the generic factory in favour of the bespoke
+ * `POST /test-cycles/{id}/executions`, which enforces FR-PLAN-3 AC3's scope
+ * check — so this config drops `"create"` too, mirroring the backend exactly.
+ *
+ * Leaving `"create"` here would render a "New Test Execution" button on the
+ * generic admin page that submits to a route now answering `405` — a dead
+ * affordance, and the frontend half of the same "restrict the generic create
+ * in the same commit" rule `backend/CLAUDE.md` states for the backend.
+ * `entityConfigs/test-cycle.ts` already has this shape for the same reason.
+ *
+ * No admin-surface create replaces it: recording a result is EXEC-1's own
+ * screen (PLAN-3 UI Design Document §4, "No TestExecutionRunner UI"), and the
+ * bespoke route is reachable meanwhile via the MCP tool or a direct API call.
  *
  * **Deviation from the Sitemap's "plain" classification, flagged here:** the
  * real `scope_field` is `test_cycle_id`, not `project_id`. Uses a
@@ -23,7 +36,8 @@ const testExecution: EntityConfig = {
   path: "/test-executions",
   scopeField: "test_cycle_id",
   scopeSelector: { refEntity: "test-cycle", paramName: "test_cycle_id" },
-  methods: ["list", "get", "create", "update", "delete"],
+  // No `create` — bespoke-only as of PLAN-3/ADR-0033, see docstring.
+  methods: ["list", "get", "update", "delete"],
   filterFields: ["test_case_id", "result"],
   fields: [
     { name: "test_cycle_id", label: "Test cycle", type: "fk", refEntity: "test-cycle", labelField: "name", required: true },

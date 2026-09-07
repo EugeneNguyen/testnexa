@@ -38,6 +38,7 @@ from app.api.routes import (
     assets,
     auth,
     execution,
+    execution_authoring,
     governance,
     health,
     org_memberships,
@@ -50,6 +51,7 @@ from app.api.routes import (
     roles,
     taxonomy,
     test_condition_authoring,
+    test_cycle_creation,
     test_plan_membership,
     test_suite_membership,
     trace,
@@ -183,7 +185,17 @@ app.include_router(test_suite_membership.router, prefix="/api/v1", tags=["assets
 # story makes there is the `status`-transition guard wired into
 # `_TEST_PLAN_CONFIG`, not a route.
 app.include_router(test_plan_membership.router, prefix="/api/v1", tags=["planning"])
-
+# PLAN-3/ADR-0033: bespoke `TestCycle` create (`POST /test-plans/{id}/test-cycles`)
+# — the factory has no hook for a create that must fetch and validate two *other*
+# rows (`Release`, `Environment`) beyond the entity's own scope field, so
+# `planning.py`'s `_TEST_CYCLE_CONFIG` keeps `create_schema=None` permanently.
+app.include_router(test_cycle_creation.router, prefix="/api/v1", tags=["planning"])
+# PLAN-3/ADR-0033: bespoke `TestExecution` create with FR-PLAN-3 AC3's scope check
+# (`POST /test-cycles/{id}/executions`). Registered after `execution.py`, whose
+# `_TEST_EXECUTION_CONFIG` drops `create` in the same change — leaving the generic
+# `POST /test-executions` reachable alongside this route would let any caller
+# bypass the scope check entirely by using the unrestricted path.
+app.include_router(execution_authoring.router, prefix="/api/v1", tags=["execution"])
 # MCP-1/ADR-0033: first-party MCP server at `/mcp` over Streamable HTTP. ASGI
 # sub-app on this same FastAPI process — no separate runtime, `tnx_agent_`
 # API keys work identically across the MCP and REST surfaces.

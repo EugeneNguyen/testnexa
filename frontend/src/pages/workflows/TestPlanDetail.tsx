@@ -7,13 +7,13 @@
  * expand-in-place section — every prior REQ-* story folded its bespoke UI into
  * `ProjectDetail`, but a `TestPlan` is its own multi-part object (this story's
  * suite membership + coverage, plus PLAN-2's entry/exit criteria and PLAN-3's
- * TestCycle view still to come), so it gets its own addressable URL now rather
- * than a plan-selection sub-state inside an already-large page (UI Design
- * Document §1). `ProjectDetail` only gains a thin "Test Plans" list whose rows
- * link here. PLAN-2 (ADR-0032) has since landed the entry/exit-criteria
- * section named there; PLAN-3's TestCycle view is still the only one to come.
+ * TestCycle view), so it gets its own addressable URL rather than a
+ * plan-selection sub-state inside an already-large page (UI Design Document
+ * §1). `ProjectDetail` only gains a thin "Test Plans" list whose rows link
+ * here.
  *
- * Four sections — PLAN-1's three, per §2, plus PLAN-2's fourth:
+ * Five sections — PLAN-1's three, per §2, plus PLAN-2's fourth and PLAN-3's
+ * fifth:
  *
  * 1. **Header card** — identifier, `status` as a colour-coded `CBadge`, and
  *    scope/approach/staffing/schedule as labelled read-only text blocks. Its
@@ -43,26 +43,45 @@
  *    visible field list, exactly as `editConfig` above does for
  *    `TestPlan.project_id`. Unlike the Test Suites section, this one gets
  *    `PATCH` too — criteria are freestanding rows, not join-table membership.
+ * 5. **Test Cycles** (PLAN-3, ADR-0033, UI Design Document
+ *    `docs/ui-design/2026-09-06-plan-3-test-cycle-creation-ui-design.md`) —
+ *    placed directly below Entry/Exit Criteria, per that document. The plan's
+ *    own cycles (`GET /test-cycles?test_plan_id=<id>`, the generic factory
+ *    list route) plus a bespoke "Create Cycle" modal submitting
+ *    `POST /test-plans/{id}/test-cycles`. Create-and-view only: `TestCycle`'s
+ *    edit/delete already exist on the generic admin surface, so each row links
+ *    there ("View in Admin") rather than duplicating them here (§1).
+ *    **As of EXEC-1 (ADR-0034) each row's *name* is additionally a link to
+ *    that cycle's own `TestCycleDetail` screen** (execution history + live
+ *    dashboard) — PLAN-3 left these rows as deliberate dead ends only because
+ *    that screen did not exist yet. "View in Admin" is unchanged and still
+ *    points at the generic edit form; the two links go to different places on
+ *    purpose.
  *
  * All membership and criteria writes re-fetch rather than splicing local state
  * — same "always reflects the server's own current state" posture REQ-4
  * established.
  *
  * No permission-based hide/disable on the Edit/Include/Remove buttons (§5), nor
- * on PLAN-2's Add/Edit/Delete criteria buttons (ADR-0032): this is a bespoke
- * workflow screen, so it keeps the attempt-then-error convention every other
- * one uses, not the generic admin surface's ADR-0027 hide/disable rule. A
- * `403` simply surfaces as the same inline `CAlert` a `422`/`409` does.
+ * on PLAN-2's Add/Edit/Delete criteria buttons (ADR-0032) or PLAN-3's Create
+ * Cycle button (ADR-0033): this is a bespoke workflow screen, so it keeps the
+ * attempt-then-error convention every other one uses, not the generic admin
+ * surface's ADR-0027 hide/disable rule. A `403` simply surfaces as the same
+ * inline `CAlert` a `422`/`409` does.
  *
  * Non-goals (§6): no Approve/Supersede buttons (GOV-1's own `/approve` route),
- * no TestCycle/execution UI (PLAN-3), no bulk-include, and — per PLAN-2's own
- * UI Design Document §5 — no bulk-add/bulk-edit or type-grouping of criteria
- * rows.
+ * no bulk-include, and — per PLAN-2's own UI Design Document §5 — no
+ * bulk-add/bulk-edit or type-grouping of criteria rows. PLAN-3's own
+ * non-goals hold too: no execution-recording UI and no pass/fail dashboard
+ * (EXEC-1).
  *
  * Built with CoreUI (ADR-0012).
  */
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import {
   CAlert,
   CBadge,
@@ -72,8 +91,11 @@ import {
   CCol,
   CContainer,
   CForm,
+  CFormFeedback,
+  CFormInput,
   CFormLabel,
   CFormSelect,
+  CFormText,
   CModal,
   CModalBody,
   CModalFooter,
@@ -96,19 +118,93 @@ import {
 } from "../../lib/api/testPlans";
 import { listTestSuites, type TestSuiteSummary } from "../../lib/api/testSuites";
 import type { TestCaseSummary } from "../../lib/api/testCases";
+import { createTestCycle, type TestCycleSummary } from "../../lib/api/testCycles";
 import type { EntryExitCriteriaSummary } from "../../lib/api/releases";
+import { listReleases } from "../../lib/api/releases";
 import {
   createEntity,
   deleteEntity,
   listEntities,
   updateEntity,
+  type EntityRow,
 } from "../../lib/api/entityCrud";
 import EntityForm from "../../components/crud/EntityForm";
+import FkAutocomplete from "../../components/crud/FkAutocomplete";
 import testPlanConfig from "../../entityConfigs/test-plan";
+import testCycleConfig from "../../entityConfigs/test-cycle";
+import environmentConfig from "../../entityConfigs/environment";
 import entryExitCriteriaConfig from "../../entityConfigs/entry-exit-criteria";
 import type { EntityConfig } from "../../entityConfigs/types";
 
 const GENERIC_ERROR = "Something went wrong. Please try again.";
+
+/**
+ * PLAN-3 "Create Cycle" form (UI Design Document §2). Its own schema, *not*
+ * `entityConfigs/test-cycle.ts`'s field list — that config describes the
+ * generic-admin list/edit surface, which has no `create` at all (ADR-0033
+ * keeps `TestCycle` creation bespoke-only).
+ *
+ * `releaseId`/`environmentId` are `FkAutocomplete`-driven, so "required" here
+ * means "a selection was made" — the same posture `ProjectDetail`'s
+ * select-driven `testLevelId`/`testTypeId` take.
+ *
+ * `newEnvironment` is the inline "+ New Environment" toggle. It lives in the
+ * form state rather than beside it precisely so the conditional requirement it
+ * controls can be expressed here, in one place: with the toggle on,
+ * `newEnvironmentName` becomes required and `environmentId` is not needed at
+ * all (it doesn't exist yet); with it off, the reverse.
+ *
+ * No cross-field `endDate >= startDate` rule — §4 explicitly rules it out as
+ * validation no acceptance criterion asks for.
+ */
+const newTestCycleSchema = z
+  .object({
+    releaseId: z.string().trim().min(1, "Release is required"),
+    environmentId: z.string().trim().optional(),
+    name: z.string().trim().min(1, "Name is required"),
+    startDate: z.string().trim().optional(),
+    endDate: z.string().trim().optional(),
+    newEnvironment: z.boolean(),
+    newEnvironmentName: z.string().trim().optional(),
+    newEnvironmentConfigNotes: z.string().trim().optional(),
+  })
+  .superRefine((values, ctx) => {
+    if (values.newEnvironment) {
+      if (!values.newEnvironmentName) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["newEnvironmentName"],
+          message: "Environment name is required",
+        });
+      }
+      return;
+    }
+    if (!values.environmentId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["environmentId"],
+        message: "Environment is required",
+      });
+    }
+  });
+
+type NewTestCycleFormValues = z.infer<typeof newTestCycleSchema>;
+
+const EMPTY_CYCLE_FORM: NewTestCycleFormValues = {
+  releaseId: "",
+  environmentId: "",
+  name: "",
+  startDate: "",
+  endDate: "",
+  newEnvironment: false,
+  newEnvironmentName: "",
+  newEnvironmentConfigNotes: "",
+};
+
+/** `start_date`–`end_date`, either side possibly null (both columns are nullable). */
+function cycleDateRange(cycle: TestCycleSummary): string {
+  return `${cycle.start_date ?? "—"} – ${cycle.end_date ?? "—"}`;
+}
 
 /**
  * The generic admin `TestPlan` config minus its `project_id` field — the same
@@ -253,6 +349,37 @@ function TestPlanDetail() {
     Record<string, string> | undefined
   >(undefined);
 
+  // --- PLAN-3 (ADR-0033): Test Cycles section -------------------------------
+  const [cycles, setCycles] = useState<TestCycleSummary[]>([]);
+  const [cyclesLoading, setCyclesLoading] = useState(true);
+  const [cyclesLoadError, setCyclesLoadError] = useState<string | null>(null);
+  // `422` (cross-project release/environment) / `403`, rendered as a
+  // dismissible `CAlert` directly under the section header (§1), same
+  // convention as `membershipError` above.
+  const [cycleError, setCycleError] = useState<string | null>(null);
+  // Label lookups for the list's FK columns: the project's own releases and
+  // environments, fetched once each and indexed by id (§1 — resolved
+  // client-side, not by a denormalized server response).
+  const [releaseLabels, setReleaseLabels] = useState<Record<string, string>>({});
+  const [environmentLabels, setEnvironmentLabels] = useState<Record<string, string>>({});
+  const [showCycleModal, setShowCycleModal] = useState(false);
+
+  const {
+    register: registerCycle,
+    handleSubmit: handleSubmitCycle,
+    reset: resetCycle,
+    setValue: setCycleValue,
+    watch: watchCycle,
+    formState: { errors: cycleErrors, isSubmitting: isSubmittingCycle },
+  } = useForm<NewTestCycleFormValues>({
+    resolver: zodResolver(newTestCycleSchema),
+    defaultValues: EMPTY_CYCLE_FORM,
+  });
+
+  const newEnvironmentActive = watchCycle("newEnvironment");
+  const selectedReleaseId = watchCycle("releaseId");
+  const selectedEnvironmentId = watchCycle("environmentId");
+
   const fetchPlan = useCallback(async () => {
     if (!testPlanId) {
       return;
@@ -340,6 +467,70 @@ function TestPlanDetail() {
     }
   }, [projectId]);
 
+  /**
+   * The plan's own cycles — `GET /test-cycles?test_plan_id=<id>`, the existing
+   * generic factory list route via `entityCrud.ts`'s generic helper (§1: no
+   * bespoke API-lib call is needed for *reading*, only for creating).
+   */
+  const fetchCycles = useCallback(async () => {
+    if (!testPlanId) {
+      return;
+    }
+    setCyclesLoading(true);
+    setCyclesLoadError(null);
+    try {
+      const response = await listEntities<TestCycleSummary>(
+        testCycleConfig,
+        {},
+        { params: { test_plan_id: testPlanId } },
+      );
+      setCycles(response.items);
+    } catch (err) {
+      setCyclesLoadError(errorMessage(err));
+    } finally {
+      setCyclesLoading(false);
+    }
+  }, [testPlanId]);
+
+  /**
+   * The project's releases, indexed `id -> version_label` for the cycle list's
+   * own FK column. A failed fetch degrades to showing the raw id rather than
+   * taking the whole section down — the labels are decoration on rows that are
+   * already loaded.
+   */
+  const fetchReleaseLabels = useCallback(async () => {
+    if (!projectId) {
+      return;
+    }
+    try {
+      const response = await listReleases(projectId);
+      setReleaseLabels(
+        Object.fromEntries(response.items.map((release) => [release.id, release.version_label])),
+      );
+    } catch {
+      setReleaseLabels({});
+    }
+  }, [projectId]);
+
+  /** Same, for `id -> name` over the project's `Environment` rows. */
+  const fetchEnvironmentLabels = useCallback(async () => {
+    if (!projectId) {
+      return;
+    }
+    try {
+      const response = await listEntities<EntityRow>(
+        environmentConfig,
+        {},
+        { params: { project_id: projectId } },
+      );
+      setEnvironmentLabels(
+        Object.fromEntries(response.items.map((row) => [String(row.id), String(row.name ?? row.id)])),
+      );
+    } catch {
+      setEnvironmentLabels({});
+    }
+  }, [projectId]);
+
   useEffect(() => {
     fetchPlan();
   }, [fetchPlan]);
@@ -359,6 +550,18 @@ function TestPlanDetail() {
   useEffect(() => {
     fetchProjectSuites();
   }, [fetchProjectSuites]);
+
+  useEffect(() => {
+    fetchCycles();
+  }, [fetchCycles]);
+
+  useEffect(() => {
+    fetchReleaseLabels();
+  }, [fetchReleaseLabels]);
+
+  useEffect(() => {
+    fetchEnvironmentLabels();
+  }, [fetchEnvironmentLabels]);
 
   function openEditModal() {
     setEditApiError(null);
@@ -542,6 +745,84 @@ function TestPlanDetail() {
       setCriteriaError(errorMessage(err));
     }
     await fetchCriteria();
+  }
+
+  // --- PLAN-3 "Create Cycle" -------------------------------------------------
+
+  function openCycleModal() {
+    resetCycle(EMPTY_CYCLE_FORM);
+    setShowCycleModal(true);
+  }
+
+  function closeCycleModal() {
+    setShowCycleModal(false);
+  }
+
+  /**
+   * §3: toggling the inline "+ New Environment" affordance either way
+   * **discards** whatever was on the side being left — a typed-then-abandoned
+   * environment name doesn't survive a round trip back to the autocomplete,
+   * and a previously-picked `environment_id` doesn't survive switching to
+   * inline create. No draft persistence, in either direction.
+   */
+  function toggleNewEnvironment() {
+    setCycleValue("newEnvironment", !newEnvironmentActive);
+    setCycleValue("environmentId", "");
+    setCycleValue("newEnvironmentName", "");
+    setCycleValue("newEnvironmentConfigNotes", "");
+  }
+
+  /**
+   * Create the cycle — in **two sequential requests** when the inline
+   * environment toggle is active (ADR-0033 Decision #4): `POST /environments`
+   * first, then `POST /test-plans/{id}/test-cycles` with the id it returned.
+   * Not one atomic call: `environment_id` is a plain FK with no link-table
+   * side effect, so there's no atomicity property the two calls lose.
+   *
+   * The `await` ordering is load-bearing, not incidental — if the first call
+   * rejects (e.g. `403`, caller lacks `environment.create`), control leaves
+   * this `try` before `createTestCycle` is ever reached, and that first
+   * failure is the only one surfaced (§1). §3's converse case — the
+   * environment is created and *then* the cycle create fails — deliberately
+   * leaves the new `Environment` row in place; it simply becomes selectable
+   * through the plain autocomplete on the next attempt, which is why the
+   * environment labels are re-fetched on the failure path too.
+   */
+  async function onSubmitCycle(values: NewTestCycleFormValues) {
+    if (!testPlanId || !projectId) {
+      return;
+    }
+    setCycleError(null);
+    try {
+      let environmentId = values.environmentId ?? "";
+      if (values.newEnvironment) {
+        const created = await createEntity<EntityRow>(
+          environmentConfig,
+          {},
+          {
+            project_id: projectId,
+            name: values.newEnvironmentName,
+            config_notes: values.newEnvironmentConfigNotes ? values.newEnvironmentConfigNotes : null,
+          },
+        );
+        environmentId = String(created.id);
+      }
+      await createTestCycle(testPlanId, {
+        release_id: values.releaseId,
+        environment_id: environmentId,
+        name: values.name,
+        start_date: values.startDate ? values.startDate : null,
+        end_date: values.endDate ? values.endDate : null,
+      });
+      setShowCycleModal(false);
+      // Re-fetch, never a local splice (§1) — and re-fetch the environment
+      // labels too, so an inline-created one resolves to its name immediately.
+      await Promise.all([fetchCycles(), fetchEnvironmentLabels()]);
+    } catch (err) {
+      setShowCycleModal(false);
+      setCycleError(errorMessage(err));
+      await fetchEnvironmentLabels();
+    }
   }
 
   if (!projectId || !testPlanId) {
@@ -803,6 +1084,94 @@ function TestPlanDetail() {
                 )}
               </CCardBody>
             </CCard>
+
+            {/* --- Test Cycles (PLAN-3, ADR-0033) ------------------------- */}
+            <CCard className="mt-4">
+              <CCardBody className="p-4">
+                <div className="d-flex justify-content-between align-items-center mb-3">
+                  <h2 className="fs-5 mb-0">Test Cycles</h2>
+                  {/* §1: no permission-based hide/disable — attempt, then error. */}
+                  <CButton color="primary" data-testid="create-cycle-btn" onClick={openCycleModal}>
+                    Create Cycle
+                  </CButton>
+                </div>
+
+                {/* §1: a `422` (cross-project release/environment) or `403`
+                    renders here, directly under the section header. */}
+                {cycleError && (
+                  <CAlert
+                    color="danger"
+                    role="alert"
+                    dismissible
+                    data-testid="cycle-error"
+                    onClose={() => setCycleError(null)}
+                  >
+                    {cycleError}
+                  </CAlert>
+                )}
+
+                {cyclesLoadError && (
+                  <CAlert color="danger" role="alert" data-testid="test-cycles-load-error">
+                    {cyclesLoadError}
+                  </CAlert>
+                )}
+
+                {cyclesLoading ? (
+                  <div className="d-flex justify-content-center py-3">
+                    <CSpinner color="primary" />
+                  </div>
+                ) : !cyclesLoadError && cycles.length === 0 ? (
+                  <p className="text-body-secondary mb-0">No test cycles yet.</p>
+                ) : (
+                  !cyclesLoadError && (
+                    /* Flat <ul>/<li>, same nesting-avoidance reasoning as above. */
+                    <ul className="list-unstyled mb-0" data-testid="test-cycle-list">
+                      {cycles.map((cycle) => (
+                        <li
+                          key={cycle.id}
+                          className="d-flex justify-content-between align-items-center border-bottom py-2 gap-2"
+                          data-testid={`test-cycle-${cycle.id}`}
+                        >
+                          <span>
+                            {/*
+                              EXEC-1 (ADR-0034): each cycle row's name is now a
+                              link to that cycle's own detail screen — its
+                              execution history and live dashboard. PLAN-3 left
+                              these rows as documented dead ends precisely
+                              because this screen didn't exist yet.
+                            */}
+                            <Link
+                              to={`/projects/${projectId}/test-plans/${testPlanId}/test-cycles/${cycle.id}`}
+                              data-testid={`open-test-cycle-${cycle.id}`}
+                            >
+                              {cycle.name}
+                            </Link>{" "}
+                            <span className="text-body-secondary small">{cycleDateRange(cycle)}</span>{" "}
+                            <CBadge color="info">
+                              {releaseLabels[cycle.release_id] ?? cycle.release_id}
+                            </CBadge>{" "}
+                            <CBadge color="secondary">
+                              {environmentLabels[cycle.environment_id] ?? cycle.environment_id}
+                            </CBadge>
+                          </span>
+                          {/*
+                            §1: no Edit/Delete here — `TestCycle`'s PATCH/DELETE
+                            already have a home on the generic admin surface, so
+                            this section links there instead of duplicating them.
+                          */}
+                          <Link
+                            to={`/projects/${projectId}/admin/test-cycles/${cycle.id}/edit`}
+                            data-testid={`view-in-admin-${cycle.id}`}
+                          >
+                            View in Admin
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  )
+                )}
+              </CCardBody>
+            </CCard>
           </CCol>
         </CRow>
       </CContainer>
@@ -912,6 +1281,149 @@ function TestPlanDetail() {
             />
           )}
         </CModalBody>
+      </CModal>
+
+      {/* --- "Create Cycle" modal (PLAN-3, UI Design Document §2) ---------- */}
+      <CModal visible={showCycleModal} onClose={closeCycleModal} data-testid="create-cycle-modal">
+        <CModalHeader>
+          <CModalTitle>Create Cycle</CModalTitle>
+        </CModalHeader>
+        <CForm onSubmit={handleSubmitCycle(onSubmitCycle)} noValidate>
+          <CModalBody>
+            {/*
+              `FkAutocomplete` takes no `data-testid` of its own (it's the
+              generic-admin widget, not this screen's), so each is wrapped in a
+              stable testid container for e2e to scope into.
+
+              `routeParams` matters for `release` specifically: its config's
+              `listPath` is `/projects/:projectId/releases`, the one placeholder
+              path in the registry.
+            */}
+            <div data-testid="create-cycle-release">
+              <FkAutocomplete
+                id="cycleReleaseId"
+                label="Release"
+                refEntity="release"
+                labelField="version_label"
+                value={selectedReleaseId || undefined}
+                routeParams={{ projectId }}
+                extraParams={{ project_id: projectId }}
+                onChange={(id) => setCycleValue("releaseId", id ?? "", { shouldValidate: true })}
+                error={cycleErrors.releaseId?.message}
+              />
+            </div>
+
+            {newEnvironmentActive ? (
+              /*
+                §1: the toggle replaces *this one field* with the inline
+                Environment create inputs — the rest of the form is untouched.
+              */
+              <>
+                <div className="mb-3">
+                  <CFormLabel htmlFor="newEnvironmentName">New environment name</CFormLabel>
+                  <CFormInput
+                    id="newEnvironmentName"
+                    type="text"
+                    data-testid="new-environment-name"
+                    invalid={!!cycleErrors.newEnvironmentName}
+                    {...registerCycle("newEnvironmentName")}
+                  />
+                  {cycleErrors.newEnvironmentName && (
+                    <CFormFeedback invalid>{cycleErrors.newEnvironmentName.message}</CFormFeedback>
+                  )}
+                </div>
+                <div className="mb-3">
+                  <CFormLabel htmlFor="newEnvironmentConfigNotes">Config notes</CFormLabel>
+                  <CFormInput
+                    id="newEnvironmentConfigNotes"
+                    type="text"
+                    data-testid="new-environment-config-notes"
+                    {...registerCycle("newEnvironmentConfigNotes")}
+                  />
+                  <CFormText>Optional.</CFormText>
+                </div>
+              </>
+            ) : (
+              <div data-testid="create-cycle-environment">
+                <FkAutocomplete
+                  id="cycleEnvironmentId"
+                  label="Environment"
+                  refEntity="environment"
+                  labelField="name"
+                  value={selectedEnvironmentId || undefined}
+                  extraParams={{ project_id: projectId }}
+                  onChange={(id) =>
+                    setCycleValue("environmentId", id ?? "", { shouldValidate: true })
+                  }
+                  error={cycleErrors.environmentId?.message}
+                />
+              </div>
+            )}
+
+            <CButton
+              color="link"
+              size="sm"
+              className="p-0 mb-3"
+              type="button"
+              data-testid="new-environment-toggle"
+              onClick={toggleNewEnvironment}
+            >
+              {newEnvironmentActive ? "Use an existing environment" : "+ New Environment"}
+            </CButton>
+
+            <div className="mb-3">
+              <CFormLabel htmlFor="cycleName">Name</CFormLabel>
+              <CFormInput
+                id="cycleName"
+                type="text"
+                data-testid="cycle-name"
+                invalid={!!cycleErrors.name}
+                {...registerCycle("name")}
+              />
+              {cycleErrors.name && <CFormFeedback invalid>{cycleErrors.name.message}</CFormFeedback>}
+            </div>
+
+            <div className="mb-3">
+              <CFormLabel htmlFor="cycleStartDate">Start date</CFormLabel>
+              <CFormInput
+                id="cycleStartDate"
+                type="date"
+                data-testid="cycle-start-date"
+                {...registerCycle("startDate")}
+              />
+              <CFormText>Optional.</CFormText>
+            </div>
+
+            <div className="mb-3">
+              <CFormLabel htmlFor="cycleEndDate">End date</CFormLabel>
+              <CFormInput
+                id="cycleEndDate"
+                type="date"
+                data-testid="cycle-end-date"
+                {...registerCycle("endDate")}
+              />
+              <CFormText>Optional.</CFormText>
+            </div>
+          </CModalBody>
+          <CModalFooter>
+            <CButton
+              color="secondary"
+              variant="outline"
+              data-testid="create-cycle-cancel"
+              onClick={closeCycleModal}
+            >
+              Cancel
+            </CButton>
+            <CButton
+              type="submit"
+              color="primary"
+              data-testid="create-cycle-submit"
+              disabled={isSubmittingCycle}
+            >
+              {isSubmittingCycle ? "Creating..." : "Create"}
+            </CButton>
+          </CModalFooter>
+        </CForm>
       </CModal>
     </div>
   );

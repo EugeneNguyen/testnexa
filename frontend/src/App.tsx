@@ -9,6 +9,7 @@ import OrgMembers from "./pages/workflows/OrgMembers";
 import OrgPicker from "./pages/workflows/OrgPicker";
 import ProjectDetail from "./pages/workflows/ProjectDetail";
 import Signup from "./pages/workflows/Signup";
+import TestCycleDetail from "./pages/workflows/TestCycleDetail";
 import TestPlanDetail from "./pages/workflows/TestPlanDetail";
 import Colors from "./pages/ui-elements/Colors";
 import Icons from "./pages/ui-elements/Icons";
@@ -82,7 +83,9 @@ function App() {
           expand-in-place section, since PLAN-2's entry/exit criteria and
           PLAN-3's TestCycle view are known, imminent extensions of this same
           object. PLAN-2 (ADR-0032) has since landed on this same route, as
-          predicted; PLAN-3's TestCycle view is still outstanding. Sits above
+          predicted; PLAN-3's TestCycle *creation* landed here too, and EXEC-1
+          (ADR-0034) has now given the cycle itself its own nested route
+          below (see the next Route). Sits above
           the generic `/projects/:projectId/admin/:entity`
           routes below only for readability — react-router ranks the static
           `test-plans` segment over the `:entity` param either way.
@@ -92,6 +95,24 @@ function App() {
           element={
             <ProtectedRoute>
               <TestPlanDetail />
+            </ProtectedRoute>
+          }
+        />
+        {/*
+          EXEC-1 (ADR-0034, UI Design Document §1): the sitemap's reserved
+          `TestExecutionRunner` path, partially resolved (FR-EXEC-1 only —
+          FR-EXEC-2's TestLog timeline and FR-EXEC-3's defect flow stay
+          reserved). Nested under the TestPlan route above for the same reason
+          that one is nested under the project: a TestCycle's execution history
+          plus its live pass/fail dashboard is enough surface to need its own
+          addressable URL rather than an expand-in-place section of
+          `TestPlanDetail`, whose "Test Cycles" rows now link here.
+        */}
+        <Route
+          path="/projects/:projectId/test-plans/:testPlanId/test-cycles/:testCycleId"
+          element={
+            <ProtectedRoute>
+              <TestCycleDetail />
             </ProtectedRoute>
           }
         />

@@ -20,14 +20,19 @@ import { expect, test } from "@playwright/test";
  * landing straight on `OrgHome` through real UI navigation — no raw
  * `page.goto("/orgs/...")` needed.
  *
- * `OrgHome.tsx`'s Project list is local component state, not a fetched list
- * (no `GET /orgs/{org_id}/projects` route exists in PROJ-1's scope, per that
- * component's own docstring) — a page reload would lose the list entirely,
- * so this spec proves the inline `standards_profile` edit *actually
- * persisted server-side* (not just React state) via a direct
+ * **Project-list fix (2026-09-07):** `OrgHome.tsx`'s Project list used to be
+ * local component state only, populated purely from `createProject`'s own
+ * response — any unmount (not just a reload; navigating into a project and
+ * back unmounts `OrgHome` too) silently lost the whole list even though the
+ * rows still existed server-side. Fixed by fetching real data via
+ * `GET /projects?org_id=` (the generic-CRUD factory route ADR-0022 already
+ * shipped). This spec now proves both persistence claims directly: the
+ * inline `standards_profile` edit persisted server-side via a direct
  * `GET /api/v1/projects/{id}` re-fetch through Playwright's `request`
  * context (a fresh `POST /api/v1/auth/login` call, independent of the
- * browser's own in-memory token store) rather than a UI reload.
+ * browser's own in-memory token store), **and** the literal reported bug —
+ * navigate into the project's own detail page, then back — no longer empties
+ * the list.
  *
  * Target environment: the isolated `testnexa-proj1-test` Compose project
  * (`E2E_BASE_URL`, set externally per this task's brief), never the main
@@ -229,6 +234,19 @@ test.describe("PROJ-1: create a Project via OrgHome's New Project modal", () => 
       const persisted = await getResponse.json();
       expect(persisted.name).toBe(projectName);
       expect(persisted.standards_profile).toBe(updatedProfile);
+
+      // --- The literal reported bug: navigate into the project, then back --------------
+      // Before the fix, OrgHome's list was local-only state — navigating away
+      // unmounted it, and coming back rendered an empty list even though the
+      // project still existed. Reproduced here exactly as reported: click
+      // into the project's own detail page, then browser-back to OrgHome.
+      await row.getByRole("link", { name: projectName }).click();
+      await expect(page).toHaveURL(new RegExp(`/projects/${createdProject.id}$`));
+
+      await page.goBack();
+      await expect(page).toHaveURL(new RegExp(`/orgs/${admin.orgId}$`));
+      await expect(page.getByRole("row", { name: new RegExp(projectName) })).toBeVisible();
+      await expect(page.getByText(/no projects yet/i)).not.toBeVisible();
     } finally {
       cleanup(admin, projectIds);
     }

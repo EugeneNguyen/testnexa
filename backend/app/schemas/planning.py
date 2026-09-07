@@ -3,8 +3,12 @@
 Source: API Document §3 (generic CRUD routes, ADR-0022), Database Document
 §3.7 (`TestPlan`/`EntryExitCriteria`/`Environment`/`TestCycle`).
 
-`TestCycle` has no `Create*Request` — its `create` is FR-PLAN-3's own scope,
-not built by this pass (ADR-0022), never registered via the factory.
+`TestCycle`'s `Create*Request` is **not** a factory create schema (ADR-0033):
+`_TEST_CYCLE_CONFIG` still passes `create_schema=None` and never registers a
+generic `POST /test-cycles`. `CreateTestCycleRequest` below is the body of the
+*bespoke* `POST /test-plans/{id}/test-cycles` route
+(`app/api/routes/test_cycle_creation.py`) — same posture
+`CreateTestCaseForTestConditionRequest` already has in `app/schemas/assets.py`.
 `created_by_actor_id` is never a client-supplied field on `TestPlan` — the
 factory auto-stamps it from the authenticated actor
 (`app/api/crud_factory.py`'s `_ACTOR_STAMPED_FIELDS`).
@@ -130,8 +134,34 @@ class EnvironmentListResponse(BaseModel):
 
 
 # --- TestCycle -------------------------------------------------------------------------------
-#
-# No `Create*Request` — see module docstring.
+
+
+class CreateTestCycleRequest(BaseModel):
+    """Body of the bespoke `POST /test-plans/{id}/test-cycles` (ADR-0033, FR-PLAN-3 AC1).
+
+    `test_plan_id` is deliberately **absent**: it comes from the path segment,
+    not the body — same shape every other bespoke create route in this codebase
+    uses for its parent id (`POST /requirements/{id}/test-conditions`,
+    `POST /test-conditions/{id}/test-cases`). Accepting it in the body too
+    would create a second, contradictable source of truth for the one thing the
+    route's own 404/403 gate is computed from.
+
+    `release_id`/`environment_id` are both required and both independently
+    validated by the route against the target `TestPlan`'s own `project_id`
+    (ADR-0033 §Decision step 3): a different org -> `404`, the same org but a
+    different project -> `422`.
+
+    `start_date`/`end_date` are optional, matching the columns' own
+    nullability. No cross-field `end_date >= start_date` validator — no
+    acceptance criterion asks for one, and this codebase does not invent
+    validation beyond what a story states (PLAN-3 UI Design Document §2/§4).
+    """
+
+    release_id: UUID
+    environment_id: UUID
+    name: str
+    start_date: date | None = None
+    end_date: date | None = None
 
 
 class UpdateTestCycleRequest(BaseModel):
@@ -167,6 +197,7 @@ class TestCycleListResponse(BaseModel):
 __all__ = [
     "CreateEntryExitCriteriaRequest",
     "CreateEnvironmentRequest",
+    "CreateTestCycleRequest",
     "CreateTestPlanRequest",
     "EntryExitCriteriaListResponse",
     "EntryExitCriteriaSummary",

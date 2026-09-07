@@ -19,6 +19,7 @@ import { useEffect, useRef, useState } from "react";
 import { CFormFeedback, CFormInput, CFormLabel, CListGroup, CListGroupItem, CSpinner } from "@coreui/react";
 import { EntityRow, getEntity, listEntities } from "../../lib/api/entityCrud";
 import { entityConfigByKey } from "../../pages/admin/registry";
+import type { EntityConfig } from "../../entityConfigs/types";
 
 const DEBOUNCE_MS = 300;
 
@@ -34,6 +35,37 @@ export interface FkAutocompleteProps {
   disabled?: boolean;
   /** Extra fixed query params merged into the ref entity's own list call (e.g. an already-known `project_id`). */
   extraParams?: Record<string, string | undefined>;
+  /**
+   * Route params for interpolating a `listPath` placeholder (PLAN-3).
+   * Only `Release` has one today (`/projects/:projectId/releases`,
+   * `entityConfigs/release.ts`) — every other config's `listPath` is a literal,
+   * so omitting this (the default) is correct for all of them. Without it a
+   * `release` autocomplete would request the literal `:projectId` segment.
+   */
+  routeParams?: Record<string, string | undefined>;
+  /**
+   * EXEC-1 (ADR-0034): use this `EntityConfig` instead of the registry's own
+   * entry for `refEntity`. Additive and optional — every existing call site
+   * omits it and keeps the registry lookup unchanged.
+   *
+   * The one real use today is `TestCycleDetail`'s "Record Result" picker,
+   * which must list from `GET /test-plans/{id}/test-cases` (PLAN-1's coverage
+   * query) rather than a project-wide `TestCase` list. The registry's own
+   * `test-case` config deliberately has **no `list` method at all** — there is
+   * no `GET /test-cases` route (`entityConfigs/test-case.ts`) — so without an
+   * override this widget would correctly render its disabled "search
+   * unavailable" state and the scoped picker would be impossible to express.
+   *
+   * Deliberately a whole config rather than a bare `listPath` string: the
+   * config is what `getEntity` (the selected-value label lookup) and the
+   * `methods.includes("list")` capability check already read, so overriding
+   * one field in isolation would leave those two reading the registry's
+   * config and the search reading another — two sources of truth for one
+   * widget. Callers derive the override from the registry config with a
+   * spread, the same `{...config, ...}` derivation `TestPlanDetail`'s own
+   * `editConfig`/`criteriaConfig` already use.
+   */
+  config?: EntityConfig;
 }
 
 function labelFor(row: EntityRow, labelField: string | undefined): string {
@@ -54,8 +86,12 @@ function FkAutocomplete({
   error,
   disabled,
   extraParams,
+  routeParams,
+  config,
 }: FkAutocompleteProps) {
-  const refConfig = entityConfigByKey[refEntity];
+  // An explicit `config` wins over the registry lookup (EXEC-1/ADR-0034); with
+  // it omitted this is the original `entityConfigByKey[refEntity]` behavior.
+  const refConfig = config ?? entityConfigByKey[refEntity];
   const canSearch = Boolean(refConfig) && refConfig.methods.includes("list");
 
   const [query, setQuery] = useState("");
@@ -104,7 +140,7 @@ function FkAutocomplete({
     }
     debounceRef.current = setTimeout(() => {
       setIsLoading(true);
-      listEntities(refConfig, {}, { q: query, params: extraParams })
+      listEntities(refConfig, routeParams ?? {}, { q: query, params: extraParams })
         .then((response) => {
           setResults(response.items);
           setIsOpen(true);

@@ -1,8 +1,12 @@
 """API-1: generic-CRUD factory routes for the planning cluster (ADR-0022).
 
 `TestPlan`/`EntryExitCriteria`/`Environment` get all 5 methods. `TestCycle`
-gets `GET`/`PATCH`/`DELETE` only — its own `create` is FR-PLAN-3's scope, not
-built by this pass.
+gets `list`/`GET`/`PATCH`/`DELETE` only — its `create` is **bespoke**, not
+generic: `POST /test-plans/{id}/test-cycles` in `test_cycle_creation.py`
+(PLAN-3/ADR-0033). The factory has no hook for a create that must fetch and
+validate two *other* rows (`Release`, `Environment`) beyond the entity's own
+scope field, so `create_schema` stays `None` here permanently — this is now a
+deliberate, closed decision, no longer "FR-PLAN-3's scope, not built yet."
 
 Resolver depths: `TestPlan`/`Environment` are direct (`project_id` ->
 `Project.org_id`); `EntryExitCriteria`/`TestCycle` are one hop
@@ -138,7 +142,7 @@ _ENVIRONMENT_CONFIG = CrudEntityConfig(
     resolve_org_id=chain_resolver([]),
 )
 
-# No `create` — see module docstring.
+# No `create` — bespoke instead (`test_cycle_creation.py`), see module docstring.
 _TEST_CYCLE_CONFIG = CrudEntityConfig(
     model=TestCycle,
     resource="test_cycle",
