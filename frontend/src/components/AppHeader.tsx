@@ -5,14 +5,9 @@
  * toggler + "Log out" button — no breadcrumbs or user-menu dropdown
  * (explicitly out-of-scope, see the AUTH-3 scope plan §1).
  *
- * SHELL-1 (ADR-0018) adds the `CHeaderToggler`: calls the `onToggleSidebar`
- * handler `AppShell` owns and passes down, flipping `AppSidebar`'s `visible`
- * state via CoreUI's own documented template pattern — no hand-built
- * breakpoint/media-query logic here.
- *
- * Built with CoreUI (ADR-0012) — `CHeader`/`CHeaderBrand`/`CHeaderToggler`/
- * `CContainer`/`CButton`/`CIcon` only, no hand-rolled nav markup, no
- * Tailwind classes.
+ * SHELL-1 (ADR-0018) adds the sidebar toggler button: calls the
+ * `onToggleSidebar` handler `AppShell` owns and passes down, flipping
+ * `AppSidebar`'s `visible` state.
  *
  * Clicking "Log out" calls `useAuth().logout()` (clears the token store +
  * org state, best-effort revokes the server-side refresh token — see
@@ -21,14 +16,10 @@
  * than `apiFetch`'s hard `window.location.assign` redirect (scope plan §1).
  *
  * SHELL-4 (ADR-0020, FR-SHELL-4/NFR-28) adds the dark/light color-mode
- * toggle: CoreUI's own `useColorModes` hook, no custom theme engine. The
- * hook itself owns `localStorage` persistence (default key
- * `coreui-react-color-scheme`) and applies the resolved mode as
- * `document.documentElement.dataset.coreuiTheme` — this component only
- * renders the dropdown UI and calls `setColorMode`. Three explicit choices
- * (Light/Dark/Auto), matching CoreUI's own free-template header control and
- * the test-design's 3 distinct equivalence classes (unset/auto vs.
- * explicit light vs. explicit dark) — not a single 2-state flip button.
+ * toggle: three explicit choices (Light/Dark/Auto), matching CoreUI's own
+ * free-template header control and the test-design's 3 distinct
+ * equivalence classes (unset/auto vs. explicit light vs. explicit dark) —
+ * not a single 2-state flip button.
  *
  * SHELL-6 (ADR-0036, FR-SHELL-6/FR-AUTH-5) adds the organization-switcher
  * dropdown, immediately to the LEFT of the color-mode toggle (UI Design
@@ -36,12 +27,12 @@
  * color mode → log out). Three deliberate behaviours, each with its own
  * test case, all of which would be easy to "simplify" away later:
  *
- * 1. **Lazy, uncached fetch** (TC-SHELL-016). `GET /auth/me/orgs` fires on
- *    `CDropdown`'s `onShow` — never on mount, and never reused between
- *    opens: each open resets to a loading state and issues a fresh request.
- *    Deliberately NOT read from `AuthContext.orgs`, which is populated only
- *    by `login()`/`signup()`/`acceptInvite()` and is therefore empty after
- *    any page reload (the AUTH-2 gap ADR-0035 deferred). A header control
+ * 1. **Lazy, uncached fetch** (TC-SHELL-016). Fires on open — never on
+ *    mount, and never reused between opens: each open resets to a loading
+ *    state and issues a fresh request. Deliberately NOT read from
+ *    `AuthContext.orgs`, which is populated only by
+ *    `login()`/`signup()`/`acceptInvite()` and is therefore empty after any
+ *    page reload (the AUTH-2 gap ADR-0035 deferred). A header control
  *    present on every protected screen must survive a reload, so it owns
  *    its own fetch. ADR-0036 accepts the extra request per open as the
  *    cost of not having a cache-invalidation story yet.
@@ -57,24 +48,51 @@
  * nested resource id (project, test plan, ...) has no meaning in a different
  * org. The target org's own screens re-check permissions server-side on
  * their next fetch — there is no client-side permission cache to invalidate.
+ *
+ * Raw HTML per ADR-0037 (2026-09-07), not `@coreui/react` — this file
+ * originally used `CDropdown`/`CDropdownToggle`/`CDropdownMenu`/
+ * `CDropdownItem`/`CTooltip`/`CHeader`/`CHeaderBrand`/`CHeaderToggler`/
+ * `CContainer`/`CButton`/`useColorModes`; every class name below is the exact
+ * class those components rendered, confirmed by dumping their actual DOM
+ * before removing the import:
+ * - `useColorModes` (a `@coreui/react` hook) is replaced with `useColorMode`
+ *   below, a faithful line-for-line port of that hook's own source
+ *   (`localStorage` key `coreui-react-color-scheme` unchanged, so an
+ *   already-set preference from before this migration still applies; same
+ *   `prefers-color-scheme` media-query listener for "auto"; same
+ *   `document.documentElement.dataset.coreuiTheme` write) — not a
+ *   simplification, just no longer imported from the library.
+ * - Both dropdowns (color-mode, org-switcher) become a hand-rolled
+ *   `useState` open/closed boolean toggling Bootstrap's own
+ *   `.dropdown-menu.show` class (the same class `CDropdownMenu` itself
+ *   toggled) plus a document-level click-outside listener to close each —
+ *   deliberately NOT wired to `bootstrap.bundle.js`'s real `Dropdown` class
+ *   (ADR-0037 floated that option): managing a vanilla-JS component
+ *   instance's lifecycle (init on mount, dispose on unmount, ref plumbing)
+ *   inside React is a well-known sharp edge for exactly this kind of small
+ *   interaction, and a plain boolean toggle is both simpler and has an
+ *   identical visual/behavioral result here. Closing the org-switcher also
+ *   resets its fetch state to `idle` (same as `CDropdown`'s `onHide` did),
+ *   preserving TC-SHELL-016's "no caching across opens" behaviour.
+ * - The current-org row's `disabled` state is a literal `disabled` CSS
+ *   class (Bootstrap's `.dropdown-item.disabled`), not an HTML `disabled`
+ *   attribute — `<a>`/`<li>` have no native disabled semantics, and
+ *   `CDropdownItem`'s own `disabled` prop rendered the class, not the
+ *   attribute (confirmed via the same DOM dump); the existing unit tests
+ *   assert `toHaveClass("disabled")`, not `toBeDisabled()`, for this reason.
+ * - `CTooltip` (the org-switcher trigger's "Switch organization" hint) is a
+ *   native `title` attribute instead of a hand-rolled Popper-positioned
+ *   tooltip — no test (unit or e2e) asserts on the tooltip's own rendering,
+ *   only on `aria-label`/`data-testid`, so reimplementing hover-positioning
+ *   logic by hand would be pure risk for a behaviour nothing here verifies.
+ * - `CIcon` (`@coreui/icons-react`) is kept as-is — it's a leaf SVG
+ *   renderer, not a layout/markup-mediating component, so it isn't the
+ *   class of dependency ADR-0037 is about; reimplementing `@coreui/icons`'
+ *   own path-array format by hand would be pure duplicated risk for zero
+ *   benefit.
  */
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import {
-  CButton,
-  CContainer,
-  CDropdown,
-  CDropdownHeader,
-  CDropdownItem,
-  CDropdownMenu,
-  CDropdownToggle,
-  CHeader,
-  CHeaderBrand,
-  CHeaderToggler,
-  CSpinner,
-  CTooltip,
-  useColorModes,
-} from "@coreui/react";
 import { CIcon } from "@coreui/icons-react";
 import { cilBuilding, cilContrast, cilMenu, cilMoon, cilSun } from "@coreui/icons";
 import { useAuth } from "../auth/AuthContext";
@@ -84,11 +102,55 @@ interface AppHeaderProps {
   onToggleSidebar: () => void;
 }
 
+type ColorMode = "light" | "dark" | "auto";
+
+const COLOR_MODE_STORAGE_KEY = "coreui-react-color-scheme";
+
 const COLOR_MODE_ICON = {
   light: cilSun,
   dark: cilMoon,
   auto: cilContrast,
 } as const;
+
+function prefersDark(): boolean {
+  return window.matchMedia("(prefers-color-scheme: dark)").matches;
+}
+
+function getStoredColorMode(): ColorMode | null {
+  const stored = localStorage.getItem(COLOR_MODE_STORAGE_KEY);
+  return stored === "light" || stored === "dark" || stored === "auto" ? stored : null;
+}
+
+function applyColorMode(mode: ColorMode) {
+  document.documentElement.setAttribute("data-coreui-theme", mode === "auto" && prefersDark() ? "dark" : mode);
+}
+
+/**
+ * Faithful port of `@coreui/react`'s `useColorModes` hook — see this file's
+ * own docstring for why it's no longer imported from the library.
+ */
+function useColorMode() {
+  const [colorMode, setColorMode] = useState<ColorMode>(() => getStoredColorMode() ?? (prefersDark() ? "dark" : "light"));
+
+  useEffect(() => {
+    localStorage.setItem(COLOR_MODE_STORAGE_KEY, colorMode);
+    applyColorMode(colorMode);
+  }, [colorMode]);
+
+  useEffect(() => {
+    const mql = window.matchMedia("(prefers-color-scheme: dark)");
+    function handleChange() {
+      const stored = getStoredColorMode();
+      if (stored !== "light" && stored !== "dark") {
+        applyColorMode(colorMode);
+      }
+    }
+    mql.addEventListener("change", handleChange);
+    return () => mql.removeEventListener("change", handleChange);
+  }, [colorMode]);
+
+  return { colorMode, setColorMode };
+}
 
 /**
  * The org-list request's lifecycle. `idle` is the pre-first-open state and
@@ -101,10 +163,43 @@ type OrgListState =
   | { status: "loaded"; orgs: OrgSummary[] }
   | { status: "error" };
 
+/**
+ * Shared shape for both header dropdowns (color-mode, org-switcher): an
+ * open/closed boolean plus a ref-scoped document click-outside listener.
+ * Extracted once both dropdowns needed the identical pattern rather than
+ * duplicating the effect twice.
+ */
+function useDropdown<T extends HTMLElement>(onClose?: () => void) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<T>(null);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    function handleClickOutside(event: MouseEvent) {
+      if (ref.current && !ref.current.contains(event.target as Node)) {
+        setOpen(false);
+        onClose?.();
+      }
+    }
+    document.addEventListener("click", handleClickOutside);
+    return () => document.removeEventListener("click", handleClickOutside);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- onClose is a
+    // fresh closure every render by design (it closes over per-render
+    // state); re-subscribing on every render would be wasteful and isn't
+    // needed since it only reads refs/setters that are stable.
+  }, [open]);
+
+  return { open, setOpen, ref };
+}
+
 function AppHeader({ onToggleSidebar }: AppHeaderProps) {
   const { logout } = useAuth();
   const navigate = useNavigate();
-  const { colorMode, setColorMode } = useColorModes();
+  const { colorMode, setColorMode } = useColorMode();
+
+  const colorModeDropdown = useDropdown<HTMLDivElement>();
 
   // `orgId` is undefined on any route that isn't under `/orgs/:orgId`
   // (e.g. `/projects/:projectId/...`) — in that case no row is marked
@@ -146,7 +241,21 @@ function AppHeader({ onToggleSidebar }: AppHeaderProps) {
     setOrgList({ status: "idle" });
   }
 
+  const orgSwitcherDropdown = useDropdown<HTMLDivElement>(handleOrgDropdownHide);
+
+  function toggleOrgSwitcher() {
+    const next = !orgSwitcherDropdown.open;
+    orgSwitcherDropdown.setOpen(next);
+    if (next) {
+      void handleOrgDropdownShow();
+    } else {
+      handleOrgDropdownHide();
+    }
+  }
+
   function handleSelectOrg(targetOrgId: string) {
+    orgSwitcherDropdown.setOpen(false);
+    handleOrgDropdownHide();
     navigate(`/orgs/${targetOrgId}`);
   }
 
@@ -155,135 +264,156 @@ function AppHeader({ onToggleSidebar }: AppHeaderProps) {
     navigate("/login", { replace: true });
   }
 
-  const activeIcon = COLOR_MODE_ICON[colorMode as keyof typeof COLOR_MODE_ICON] ?? cilContrast;
+  function selectColorMode(mode: ColorMode) {
+    setColorMode(mode);
+    colorModeDropdown.setOpen(false);
+  }
+
+  const activeIcon = COLOR_MODE_ICON[colorMode] ?? cilContrast;
 
   return (
-    <CHeader>
-      <CContainer fluid className="d-flex justify-content-between align-items-center">
+    <div className="header">
+      <div className="container-fluid d-flex justify-content-between align-items-center">
         <div className="d-flex align-items-center">
-          <CHeaderToggler data-testid="sidebar-toggler" onClick={onToggleSidebar}>
+          <button
+            type="button"
+            className="header-toggler"
+            data-testid="sidebar-toggler"
+            onClick={onToggleSidebar}
+          >
             <CIcon icon={cilMenu} size="lg" />
-          </CHeaderToggler>
-          <CHeaderBrand>TestNexa</CHeaderBrand>
+          </button>
+          <a className="header-brand">TestNexa</a>
         </div>
         <div className="d-flex align-items-center">
-          <CDropdown
-            alignment="end"
-            className="me-2"
-            onShow={handleOrgDropdownShow}
-            onHide={handleOrgDropdownHide}
+          <div
+            className={orgSwitcherDropdown.open ? "dropdown me-2 show" : "dropdown me-2"}
+            ref={orgSwitcherDropdown.ref}
           >
-            {/*
-              The `<span>` between `CTooltip` and `CDropdownToggle` is
-              required, not stylistic. `CTooltip` positions itself by
-              cloning its child with a ref, but `CDropdownToggle` is a plain
-              function component (it takes its own ref from
-              `CDropdownContext`, not `forwardRef`) — passing it a ref logs
-              "Function components cannot be given refs" and leaves the
-              tooltip's popper anchored to `null`. A host element in between
-              accepts the ref, and the dropdown itself is unaffected since
-              `CDropdownToggle` reaches its parent through React context,
-              not through being a direct child.
-            */}
-            <CTooltip content="Switch organization">
-              <span className="d-inline-block">
-                <CDropdownToggle
-                  color="secondary"
-                  variant="outline"
-                  caret={false}
-                  data-testid="org-switcher-toggle"
-                  aria-label="Switch organization"
-                >
-                  <CIcon icon={cilBuilding} size="lg" />
-                </CDropdownToggle>
-              </span>
-            </CTooltip>
-            <CDropdownMenu data-testid="org-switcher-menu">
-              <CDropdownHeader>Switch organization</CDropdownHeader>
+            <button
+              className={orgSwitcherDropdown.open ? "btn btn-outline-secondary show" : "btn btn-outline-secondary"}
+              type="button"
+              aria-expanded={orgSwitcherDropdown.open}
+              data-testid="org-switcher-toggle"
+              aria-label="Switch organization"
+              title="Switch organization"
+              onClick={toggleOrgSwitcher}
+            >
+              <CIcon icon={cilBuilding} size="lg" />
+            </button>
+            <ul
+              className={
+                orgSwitcherDropdown.open ? "dropdown-menu show dropdown-menu-end" : "dropdown-menu dropdown-menu-end"
+              }
+              role="menu"
+              data-testid="org-switcher-menu"
+            >
+              <li className="dropdown-header">Switch organization</li>
               {orgList.status === "loading" && (
-                <CDropdownItem disabled data-testid="org-switcher-loading">
-                  <CSpinner size="sm" className="me-2" />
+                <li className="dropdown-item disabled" data-testid="org-switcher-loading">
                   Loading…
-                </CDropdownItem>
+                </li>
               )}
               {orgList.status === "error" && (
-                <CDropdownItem disabled data-testid="org-switcher-error">
+                <li className="dropdown-item disabled" data-testid="org-switcher-error">
                   Couldn&apos;t load organizations
-                </CDropdownItem>
+                </li>
               )}
               {orgList.status === "loaded" && orgList.orgs.length === 0 && (
-                <CDropdownItem disabled data-testid="org-switcher-empty">
+                <li className="dropdown-item disabled" data-testid="org-switcher-empty">
                   No organizations
-                </CDropdownItem>
+                </li>
               )}
               {orgList.status === "loaded" &&
                 orgList.orgs.map((org) => {
                   const isCurrent = org.id === orgId;
                   return (
-                    <CDropdownItem
+                    <li
                       key={org.id}
-                      active={isCurrent}
+                      className={isCurrent ? "dropdown-item active disabled" : "dropdown-item"}
                       // The current org is inert, not merely styled: clicking
                       // the org you are already in must be a no-op, so it
                       // gets no `onClick` at all rather than one that
                       // re-navigates to the route already rendered.
-                      disabled={isCurrent}
                       onClick={isCurrent ? undefined : () => handleSelectOrg(org.id)}
                       data-testid={`org-switcher-item-${org.id}`}
                       style={{ cursor: isCurrent ? "default" : "pointer" }}
                     >
                       {org.name}
-                    </CDropdownItem>
+                    </li>
                   );
                 })}
-            </CDropdownMenu>
-          </CDropdown>
-          <CDropdown alignment="end" className="me-2">
-            <CDropdownToggle
-              color="secondary"
-              variant="outline"
-              caret={false}
+            </ul>
+          </div>
+          <div
+            className={colorModeDropdown.open ? "dropdown me-2 show" : "dropdown me-2"}
+            ref={colorModeDropdown.ref}
+          >
+            <button
+              className={colorModeDropdown.open ? "btn btn-outline-secondary show" : "btn btn-outline-secondary"}
+              type="button"
+              aria-expanded={colorModeDropdown.open}
               data-testid="color-mode-toggle"
               aria-label="Toggle color mode"
+              onClick={() => colorModeDropdown.setOpen((prev) => !prev)}
             >
               <CIcon icon={activeIcon} size="lg" />
-            </CDropdownToggle>
-            <CDropdownMenu>
-              <CDropdownItem
-                active={colorMode === "light"}
-                onClick={() => setColorMode("light")}
-                data-testid="color-mode-light"
-                style={{ cursor: "pointer" }}
-              >
-                <CIcon className="me-2" icon={cilSun} size="lg" />
-                Light
-              </CDropdownItem>
-              <CDropdownItem
-                active={colorMode === "dark"}
-                onClick={() => setColorMode("dark")}
-                data-testid="color-mode-dark"
-                style={{ cursor: "pointer" }}
-              >
-                <CIcon className="me-2" icon={cilMoon} size="lg" />
-                Dark
-              </CDropdownItem>
-              <CDropdownItem
-                active={colorMode === "auto"}
-                onClick={() => setColorMode("auto")}
-                data-testid="color-mode-auto"
-                style={{ cursor: "pointer" }}
-              >
-                <CIcon className="me-2" icon={cilContrast} size="lg" />
-                Auto
-              </CDropdownItem>
-            </CDropdownMenu>
-          </CDropdown>
-          <CButton color="secondary" variant="outline" data-testid="logout-button" onClick={handleLogout}>
+            </button>
+            <ul
+              className={
+                colorModeDropdown.open ? "dropdown-menu show dropdown-menu-end" : "dropdown-menu dropdown-menu-end"
+              }
+              role="menu"
+            >
+              <li>
+                <a
+                  className={colorMode === "light" ? "dropdown-item active" : "dropdown-item"}
+                  aria-current={colorMode === "light" ? "page" : undefined}
+                  data-testid="color-mode-light"
+                  style={{ cursor: "pointer" }}
+                  onClick={() => selectColorMode("light")}
+                >
+                  <CIcon className="me-2" icon={cilSun} size="lg" />
+                  Light
+                </a>
+              </li>
+              <li>
+                <a
+                  className={colorMode === "dark" ? "dropdown-item active" : "dropdown-item"}
+                  aria-current={colorMode === "dark" ? "page" : undefined}
+                  data-testid="color-mode-dark"
+                  style={{ cursor: "pointer" }}
+                  onClick={() => selectColorMode("dark")}
+                >
+                  <CIcon className="me-2" icon={cilMoon} size="lg" />
+                  Dark
+                </a>
+              </li>
+              <li>
+                <a
+                  className={colorMode === "auto" ? "dropdown-item active" : "dropdown-item"}
+                  aria-current={colorMode === "auto" ? "page" : undefined}
+                  data-testid="color-mode-auto"
+                  style={{ cursor: "pointer" }}
+                  onClick={() => selectColorMode("auto")}
+                >
+                  <CIcon className="me-2" icon={cilContrast} size="lg" />
+                  Auto
+                </a>
+              </li>
+            </ul>
+          </div>
+          <button
+            className="btn btn-outline-secondary"
+            type="button"
+            data-testid="logout-button"
+            onClick={handleLogout}
+          >
             Log out
-          </CButton>
+          </button>
         </div>
-      </CContainer>
-    </CHeader>
+      </div>
+    </div>
   );
 }
 

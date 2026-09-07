@@ -45,6 +45,24 @@
  * breadcrumb sits between the header and page content, footer sits below
  * it, both inside the same `flex-column` content column as the header so
  * they scroll with the page rather than pin to the sidebar's own height.
+ *
+ * Pixel-parity note (2026-09-07): this component does NOT itself wrap
+ * `{children}` in a container — each page owns its own `<CContainer fluid
+ * className="px-4">` (see `AppBreadcrumb.tsx`'s own docstring for why
+ * `fluid` matters and each page's own diff for the fix). `{children}`
+ * can't be wrapped here because several pages (`OrgHome`, `OrgMembers`,
+ * `ProjectDetail`, `TestPlanDetail`, `TestCycleDetail`) render their own
+ * full-bleed `min-vh-100 bg-body-secondary` background *outside* their
+ * `CContainer` — wrapping `{children}` in a container at this level would
+ * nest that background inside the padding too, shrinking the painted area
+ * instead of just the content, a regression this component must not
+ * introduce.
+ *
+ * Note (ADR-0037, 2026-09-07): this file already had zero `@coreui/react`
+ * imports before that ADR's migration — it was always a raw `<div>`
+ * composition. No change needed here beyond this note; `AppHeader`/
+ * `AppSidebar`/`AppFooter`/`AppBreadcrumb` (its 4 children) are the ones
+ * that moved off the library.
  */
 import { ReactNode, useState } from "react";
 import AppBreadcrumb from "./AppBreadcrumb";

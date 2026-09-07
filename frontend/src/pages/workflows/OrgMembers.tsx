@@ -271,7 +271,7 @@ function OrgMembers() {
 
   return (
     <div className="bg-body-secondary min-vh-100 py-4">
-      <CContainer>
+      <CContainer fluid className="px-4">
         <CRow className="justify-content-center">
           <CCol xs={12} lg={9}>
             <h1 className="fs-4 mb-4">Members</h1>

@@ -5,16 +5,18 @@
  * `ProtectedRoute` screen (TC-SHELL-009) — smoke-level, static content only,
  * no per-route/dynamic behavior to branch on.
  *
- * Built with CoreUI (ADR-0012) — `CFooter` only.
+ * Raw HTML per ADR-0037, not `@coreui/react` — `CFooter` rendered a single
+ * `<div class="footer">` with no other behavior, so this is a direct,
+ * lossless port: same markup, same CSS (`@coreui/coreui`, unchanged),
+ * confirmed by dumping `CFooter`'s actual rendered DOM before removing the
+ * import.
  */
-import { CFooter } from "@coreui/react";
-
 function AppFooter() {
   return (
-    <CFooter>
+    <div className="footer">
       <div>TestNexa</div>
       <div className="ms-auto">Self-hosted, ISTQB/IEEE 829-aligned test management</div>
-    </CFooter>
+    </div>
   );
 }
 

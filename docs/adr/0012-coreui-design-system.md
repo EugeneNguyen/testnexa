@@ -1,7 +1,7 @@
 # ADR-0012: CoreUI for React as the project's design system
 
 **Date:** 2026-09-03
-**Status:** Accepted
+**Status:** Accepted (Partially superseded by [ADR-0037](0037-shell-components-raw-html-not-coreui-react.md) for the 5 shell-chrome files only — CSS/design-token layer unaffected, "build UI from CoreUI's React components first" clause lifted for `AppShell`/`AppHeader`/`AppSidebar`/`AppFooter`/`AppBreadcrumb`)
 **Deciders:** xuanbinh91@gmail.com (CTO)
 **Related:** [ADR-0009](0009-frontend-stack.md) (frontend stack — partially superseded by this ADR), [CoreUI for React docs](https://coreui.io/react/docs/getting-started/introduction/)
 

@@ -31,9 +31,80 @@
  * instead.
  *
  * Built with CoreUI (ADR-0012) — `CBreadcrumb`/`CBreadcrumbItem` only.
+ *
+ * Coverage extended (2026-09-07) to the remaining routed screens
+ * (`ProjectDetail`/`TestPlanDetail`/`TestCycleDetail`, generic admin
+ * list/edit) that had no table entry at all — they silently rendered no
+ * breadcrumb (same as any unmapped route, per the graceful-degradation
+ * paragraph above) rather than anything visibly broken, which is what let
+ * the gap go unnoticed. Two things worth noting about the entries added:
+ *
+ * - `/projects/:projectId` carries no `orgId` route param (org is only
+ *   resolvable via a `GET /projects/{id}` fetch, which this component
+ *   deliberately does not do), so the Project/TestPlan/TestCycle chain
+ *   below nests under `projectId`/`testPlanId` only — no "Org Home" parent
+ *   link, same posture as `/orgs/:orgId`'s own single, unlinked crumb.
+ * - Admin list/edit routes label the `:entity` segment via
+ *   `entityConfigByKey`/`allEntities` (`pages/admin/registry.ts`) — the
+ *   same registry `AppSidebar`/routing already use — rather than a second,
+ *   hand-maintained slug->label table.
+ *
+ * Alignment fix (2026-09-07): this originally wrapped `CBreadcrumb` in a
+ * raw `px-3` flush-padding div, then in a plain (non-fluid, centered)
+ * `<CContainer>` — both wrong. The literal CoreUI free-template markup for
+ * this exact element (`docs`'s own reference, confirmed against the
+ * template source) is:
+ *
+ *   <div class="container-fluid px-4">
+ *     <nav aria-label="breadcrumb">
+ *       <ol class="breadcrumb my-0">...</ol>
+ *     </nav>
+ *   </div>
+ *
+ * i.e. `container-fluid` (Bootstrap's 100%-width container — padding only,
+ * no centering/max-width), not a plain `container` (which centers with a
+ * per-breakpoint max-width). Every bespoke page's own content wrapper
+ * (`OrgHome`, `OrgMembers`, `ProjectDetail`, `TestPlanDetail`,
+ * `TestCycleDetail`) is fixed to match in the same pass — see each file's
+ * own `<CContainer fluid className="px-4">`. `container-fluid`'s box is a
+ * pure function of its parent's width, so any two instances at the same
+ * width land at the same left/right edge without either side needing to
+ * know about the other — confirmed via `getBoundingClientRect()` against a
+ * running page post-fix.
+ *
+ * Vertical-gap fix (2026-09-07): `px-4 pt-3` (top-only padding) left the
+ * breadcrumb text's bottom edge pixel-identical to where page content
+ * started right below it — confirmed via `getBoundingClientRect()`: both
+ * were `y: 97` on a running page, i.e. zero gap. The demo's own bar isn't
+ * plain padding at all (it's `display: flex; align-items: center;
+ * min-height: 48px`, vertically centering the text inside a fixed-height
+ * bar that's itself a second row inside the same `<header>` as the
+ * icon/search bar above it), which doesn't map 1:1 onto this app's
+ * `AppBreadcrumb`/`AppHeader` being separate sibling components — `py-3`
+ * (symmetric top+bottom padding) is the pragmatic equivalent: it stops the
+ * text from being flush against whatever sits below it without adopting
+ * the demo's fixed-height-bar structure wholesale.
+ *
+ * Raw HTML per ADR-0037 (2026-09-07), not `@coreui/react` — this is the
+ * component whose three rounds of `@coreui/react`-vs-demo pixel mismatches
+ * (above) drove that ADR in the first place. Only the returned JSX changed
+ * (`<CContainer>`/`<CBreadcrumb>`/`<CBreadcrumbItem>` -> raw `<div
+ * class="container-fluid px-4 py-3">`/`<nav aria-label="breadcrumb">`/`<ol
+ * class="breadcrumb my-0">`/`<li class="breadcrumb-item">`) — the
+ * `ROUTE_BREADCRUMBS` table and `matchPath` resolution logic above are
+ * byte-for-byte unchanged. `aria-current="page"` on the active `<li>`
+ * replaces what `CBreadcrumbItem`'s own `active` prop set automatically.
  */
 import { Link, matchPath, useLocation } from "react-router-dom";
-import { CBreadcrumb, CBreadcrumbItem } from "@coreui/react";
+import { allEntities } from "../pages/admin/registry";
+
+const entityLabelByKey: Record<string, string> = Object.fromEntries(
+  allEntities.map((e) => [e.key, e.label]),
+);
+
+function entityLabel(entity: string | undefined): string {
+  return entity && entityLabelByKey[entity] ? entityLabelByKey[entity] : "Admin";
+}
 
 interface BreadcrumbSegment {
   label: string;
@@ -85,6 +156,58 @@ const ROUTE_BREADCRUMBS: RouteBreadcrumbConfig[] = [
     pattern: "/orgs/:orgId",
     segments: () => [{ label: "Org Home" }],
   },
+  {
+    pattern: "/orgs/:orgId/admin/:entity/:id/edit",
+    segments: (params) => [
+      { label: "Org Home", to: `/orgs/${params.orgId}` },
+      { label: entityLabel(params.entity), to: `/orgs/${params.orgId}/admin/${params.entity}` },
+      { label: "Edit" },
+    ],
+  },
+  {
+    pattern: "/orgs/:orgId/admin/:entity",
+    segments: (params) => [
+      { label: "Org Home", to: `/orgs/${params.orgId}` },
+      { label: entityLabel(params.entity) },
+    ],
+  },
+  {
+    pattern: "/projects/:projectId/test-plans/:testPlanId/test-cycles/:testCycleId",
+    segments: (params) => [
+      { label: "Project", to: `/projects/${params.projectId}` },
+      {
+        label: "Test Plan",
+        to: `/projects/${params.projectId}/test-plans/${params.testPlanId}`,
+      },
+      { label: "Test Cycle" },
+    ],
+  },
+  {
+    pattern: "/projects/:projectId/test-plans/:testPlanId",
+    segments: (params) => [
+      { label: "Project", to: `/projects/${params.projectId}` },
+      { label: "Test Plan" },
+    ],
+  },
+  {
+    pattern: "/projects/:projectId/admin/:entity/:id/edit",
+    segments: (params) => [
+      { label: "Project", to: `/projects/${params.projectId}` },
+      { label: entityLabel(params.entity), to: `/projects/${params.projectId}/admin/${params.entity}` },
+      { label: "Edit" },
+    ],
+  },
+  {
+    pattern: "/projects/:projectId/admin/:entity",
+    segments: (params) => [
+      { label: "Project", to: `/projects/${params.projectId}` },
+      { label: entityLabel(params.entity) },
+    ],
+  },
+  {
+    pattern: "/projects/:projectId",
+    segments: () => [{ label: "Project" }],
+  },
 ];
 
 function AppBreadcrumb() {
@@ -101,16 +224,24 @@ function AppBreadcrumb() {
   }
 
   return (
-    <CBreadcrumb className="my-0 px-3 pt-3">
-      {segments.map((segment, index) => {
-        const isActive = index === segments.length - 1;
-        return (
-          <CBreadcrumbItem key={`${segment.label}-${index}`} active={isActive}>
-            {!isActive && segment.to ? <Link to={segment.to}>{segment.label}</Link> : segment.label}
-          </CBreadcrumbItem>
-        );
-      })}
-    </CBreadcrumb>
+    <div className="container-fluid px-4 py-3">
+      <nav aria-label="breadcrumb">
+        <ol className="breadcrumb my-0">
+          {segments.map((segment, index) => {
+            const isActive = index === segments.length - 1;
+            return (
+              <li
+                key={`${segment.label}-${index}`}
+                className={isActive ? "breadcrumb-item active" : "breadcrumb-item"}
+                aria-current={isActive ? "page" : undefined}
+              >
+                {!isActive && segment.to ? <Link to={segment.to}>{segment.label}</Link> : segment.label}
+              </li>
+            );
+          })}
+        </ol>
+      </nav>
+    </div>
   );
 }
 
