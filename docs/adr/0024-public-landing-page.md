@@ -1,7 +1,7 @@
 # ADR-0024: Public landing page replaces root scaffold-verification page
 
 **Date:** 2026-09-05
-**Status:** Accepted
+**Status:** Superseded by [ADR-0035](0035-dash-1-root-redirect-and-dashboard-placeholder.md) (2026-09-07) — `/` no longer shows a public landing page to anyone; a logged-out visitor is redirected straight to `/login` instead. This ADR's decision to delete `ScaffoldVerificationPage` outright (rather than relocate it) is unaffected and stands. Kept for history, do not implement against this ADR.
 **Deciders:** xuanbinh91@gmail.com (CTO)
 **Related:** [ADR-0012](0012-coreui-design-system.md) (CoreUI design system), [ADR-0003](0003-auth-token-strategy.md) (auth/token strategy — `AuthContext`'s `orgContext`/`orgs` state this ADR reuses), [LANDING-1 user story](../user-stories/2026-09-05-landing-page-stories.md#story-landing-1-public-landing-page-for-logged-out-visitors)
 

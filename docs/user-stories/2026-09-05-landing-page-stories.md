@@ -1,5 +1,7 @@
 # User Stories — Landing Page
 
+**Superseded 2026-09-07:** [DASH-1](2026-09-07-dashboard-root-redirect-stories.md) ([ADR-0035](../adr/0035-dash-1-root-redirect-and-dashboard-placeholder.md)) removes the public landing page this story describes — `/` no longer shows marketing content to anyone, logged in or out. Kept below for history; do not implement against this file.
+
 **Date:** 2026-09-05
 **Feature area:** Landing (public, unauthenticated entry point)
 **Context:** [Business case](../business-case/2026-09-03-sovereign-ai-testing-business-case.md), [Auth stories](2026-09-03-auth-stories.md), [ADR-0024](../adr/0024-public-landing-page.md)

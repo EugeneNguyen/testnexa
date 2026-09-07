@@ -18,7 +18,9 @@ This document is the implementation-level schema, refined from the [07 ERD](../p
 
 **DS-1** ([ADR-0023](../adr/0023-frontend-shared-component-location.md), FR-DS-1) — reviewed, no schema impact. `FormField` is a pure presentational component; `Login.tsx`/`Signup.tsx`'s migration onto React Hook Form + Zod changes client-side validation only, not the request payload shape either route already accepts.
 
-**LANDING-1** ([ADR-0024](../adr/0024-public-landing-page.md), FR-LANDING-1) — reviewed, no schema impact. The public landing page is frontend-only: no new table, column, or index, and it makes no API call at all (authenticated or otherwise). Deleting `ScaffoldVerificationPage` likewise has no schema impact — it never wrote to or read from any table itself, only `GET /api/health`.
+**LANDING-1** ([ADR-0024](../adr/0024-public-landing-page.md), FR-LANDING-1, superseded by DASH-1 below) — reviewed, no schema impact. The public landing page is frontend-only: no new table, column, or index, and it makes no API call at all (authenticated or otherwise). Deleting `ScaffoldVerificationPage` likewise has no schema impact — it never wrote to or read from any table itself, only `GET /api/health`.
+
+**DASH-1** ([ADR-0035](../adr/0035-dash-1-root-redirect-and-dashboard-placeholder.md), FR-DASH-1) — reviewed, no schema impact. The `/` root guard reads only `AuthContext`'s existing client-side `accessToken`/`isInitializing` state (no new table/column/index); the new `Dashboard` screen makes no API call at all — it is an empty placeholder with no data of its own to query.
 
 **REQ-1** ([ADR-0025](../adr/0025-requirement-title-field.md), FR-REQ-1) — one column added: `Requirement.title` (§3.6), closing a gap between the schema and FR-REQ-1/TC-REQ-001's always-specified `title` field. No other schema impact — `Requirement`'s create/read/update/delete/list routes, permission gating, and tenant-scoping were already fully delivered by ADMIN-2's generic CRUD factory before this story.
 

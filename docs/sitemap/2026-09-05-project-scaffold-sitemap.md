@@ -2,8 +2,10 @@
 
 **Date:** 2026-09-05 (last content update 2026-09-07)
 **Owner:** xuanbinh91@gmail.com (CTO)
-**Sources:** `frontend/src/App.tsx` (route source of truth — this document tracks it, not the reverse), [Generic Admin CRUD UI Design Document](../ui-design/2026-09-05-generic-admin-crud-ui-design.md), [ADR-0027](../adr/0027-generic-admin-crud-ui-and-backend-completion.md), [REQ-3 UI Design Document](../ui-design/2026-09-06-req-3-test-condition-rigor-path-ui-design.md), [ADR-0028](../adr/0028-req3-test-condition-rigor-path-bespoke-routes.md), [ADR-0029](../adr/0029-testcase-resolver-direct-link-fallback.md), [REQ-4 UI Design Document](../ui-design/2026-09-06-req-4-test-suite-membership-ui-design.md), [ADR-0030](../adr/0030-req4-test-suite-membership-bespoke-routes.md), [PLAN-1 UI Design Document](../ui-design/2026-09-06-plan-1-test-plan-membership-ui-design.md), [ADR-0031](../adr/0031-plan1-test-plan-membership-and-status-transition-routes.md), [PLAN-2 UI Design Document](../ui-design/2026-09-06-plan-2-entry-exit-criteria-visibility-ui-design.md), [ADR-0032](../adr/0032-plan2-entry-exit-criteria-visibility.md), [ADR-0033](../adr/0033-mcp-server-architecture.md)
-**Sources:** `frontend/src/App.tsx` (route source of truth — this document tracks it, not the reverse), [Generic Admin CRUD UI Design Document](../ui-design/2026-09-05-generic-admin-crud-ui-design.md), [ADR-0027](../adr/0027-generic-admin-crud-ui-and-backend-completion.md), [REQ-3 UI Design Document](../ui-design/2026-09-06-req-3-test-condition-rigor-path-ui-design.md), [ADR-0028](../adr/0028-req3-test-condition-rigor-path-bespoke-routes.md), [ADR-0029](../adr/0029-testcase-resolver-direct-link-fallback.md), [REQ-4 UI Design Document](../ui-design/2026-09-06-req-4-test-suite-membership-ui-design.md), [ADR-0030](../adr/0030-req4-test-suite-membership-bespoke-routes.md), [PLAN-1 UI Design Document](../ui-design/2026-09-06-plan-1-test-plan-membership-ui-design.md), [ADR-0031](../adr/0031-plan1-test-plan-membership-and-status-transition-routes.md), [PLAN-2 UI Design Document](../ui-design/2026-09-06-plan-2-entry-exit-criteria-visibility-ui-design.md), [ADR-0032](../adr/0032-plan2-entry-exit-criteria-visibility.md), [PLAN-3 UI Design Document](../ui-design/2026-09-06-plan-3-test-cycle-creation-ui-design.md), [ADR-0033](../adr/0033-plan3-test-cycle-creation-and-execution-scope-check.md), [EXEC-1 UI Design Document](../ui-design/2026-09-07-exec-1-test-execution-recording-ui-design.md), [ADR-0034](../adr/0034-exec-1-test-execution-recording-dashboard.md)
+**Sources:** `frontend/src/App.tsx` (route source of truth — this document tracks it, not the reverse), [Generic Admin CRUD UI Design Document](../ui-design/2026-09-05-generic-admin-crud-ui-design.md), [ADR-0027](../adr/0027-generic-admin-crud-ui-and-backend-completion.md), [REQ-3 UI Design Document](../ui-design/2026-09-06-req-3-test-condition-rigor-path-ui-design.md), [ADR-0028](../adr/0028-req3-test-condition-rigor-path-bespoke-routes.md), [ADR-0029](../adr/0029-testcase-resolver-direct-link-fallback.md), [REQ-4 UI Design Document](../ui-design/2026-09-06-req-4-test-suite-membership-ui-design.md), [ADR-0030](../adr/0030-req4-test-suite-membership-bespoke-routes.md), [PLAN-1 UI Design Document](../ui-design/2026-09-06-plan-1-test-plan-membership-ui-design.md), [ADR-0031](../adr/0031-plan1-test-plan-membership-and-status-transition-routes.md), [PLAN-2 UI Design Document](../ui-design/2026-09-06-plan-2-entry-exit-criteria-visibility-ui-design.md), [ADR-0032](../adr/0032-plan2-entry-exit-criteria-visibility.md), [PLAN-3 UI Design Document](../ui-design/2026-09-06-plan-3-test-cycle-creation-ui-design.md), [ADR-0033](../adr/0033-plan3-test-cycle-creation-and-execution-scope-check.md), [EXEC-1 UI Design Document](../ui-design/2026-09-07-exec-1-test-execution-recording-ui-design.md), [ADR-0034](../adr/0034-exec-1-test-execution-recording-dashboard.md), [DASH-1 UI Design Document](../ui-design/2026-09-07-dash-1-root-redirect-dashboard-ui-design.md), [ADR-0035](../adr/0035-dash-1-root-redirect-and-dashboard-placeholder.md)
+
+<!-- Merge note (redirect-if-not-login, 2026-09-07): main's incoming version of this line was itself corrupted (tripled, one copy citing the colliding `docs/adr/0033-mcp-server-architecture.md` — see this PR's description for the ADR-0033 numbering-collision flag). Resolved to one clean line rather than perpetuating the duplication; MCP-1's own ADR is intentionally not re-added here until the numbering collision is fixed, same reasoning `docs/CLAUDE.md`'s asterisk-footnote note already gives for not guessing at a broken numbering scheme. -->
+
 
 First sitemap for this repo — no prior one existed; routes accreted story-by-story directly into `App.tsx`. Written now because the generic admin surface adds routes generated from a registry rather than one literal `<Route>` per entity, which is worth documenting as a pattern rather than 28 individual rows would otherwise obscure.
 
@@ -11,9 +13,10 @@ First sitemap for this repo — no prior one existed; routes accreted story-by-s
 
 ## Public (unauthenticated)
 
+**Correction (2026-09-07, DASH-1):** `/` is no longer a screen. `LandingPage` is deleted ([ADR-0035](../adr/0035-dash-1-root-redirect-and-dashboard-placeholder.md), supersedes [ADR-0024](../adr/0024-public-landing-page.md)) — `/` is now a pure redirect guard (spinner while `isInitializing`, else `/login` or `/dashboard` on `accessToken` alone, never `orgContext`). See the Route tree below and the Protected table's new `/dashboard` row.
+
 | Route | Screen | Notes |
 |---|---|---|
-| `/` | `LandingPage` | FR-LANDING-1; redirects to `/orgs/{id}` or `/orgs/pick` if already authenticated |
 | `/login` | `Login` | FR-AUTH-1 |
 | `/signup` | `Signup` | FR-RBAC-1, bootstrap-only (closes after the first `Organization` exists) |
 | `/invites/:token/accept` | `AcceptInvite` | RBAC-2/ADR-0017, token-gated not `Authorization`-gated |
@@ -22,6 +25,7 @@ First sitemap for this repo — no prior one existed; routes accreted story-by-s
 
 | Route | Screen | Notes |
 |---|---|---|
+| `/dashboard` | `Dashboard` | FR-DASH-1, [ADR-0035](../adr/0035-dash-1-root-redirect-and-dashboard-placeholder.md), [DASH-1 UI Design Document](../ui-design/2026-09-07-dash-1-root-redirect-dashboard-ui-design.md) — empty placeholder, no data fetch; `/` redirects here when `accessToken` is present |
 | `/orgs/pick` | `OrgPicker` | multi-org account, no org selected yet |
 | `/orgs/:orgId` | `OrgHome` | project list (fetched via `GET /projects?org_id=`, ADR-0022 — fixed 2026-09-07 from a local-`useState`-only list that lost its contents on any unmount, TC-PROJ-018), dashboard stat widgets (FR-SHELL-3) |
 | `/orgs/:orgId/members` | `OrgMembers` | RBAC-2 |
@@ -37,6 +41,8 @@ First sitemap for this repo — no prior one existed; routes accreted story-by-s
 **Departure (2026-09-06, PLAN-1):** unlike every REQ-* story above, PLAN-1 does **not** extend `ProjectDetail` in place — it opens `/projects/:projectId/test-plans/:testPlanId` as `TestPlan`'s own dedicated route, on direct CTO direction, anticipating PLAN-2/PLAN-3's further extensions of the same object (see [PLAN-1 UI Design Document](../ui-design/2026-09-06-plan-1-test-plan-membership-ui-design.md) §1 for the full reasoning). `ProjectDetail` itself only gains a thin "Test Plans" list section whose rows link out to this new route, rather than expanding in place.
 
 **Correction (2026-09-07, EXEC-1):** `TestExecutionRunner` above is now **partially** built as `TestCycleDetail` (FR-EXEC-1 only — see the route row above). The reservation stays in the "not yet built" list below only for FR-EXEC-2/3's own remaining scope (append-only `TestLog` timeline UI, raise-a-`Defect` flow) — neither has a screen yet, and neither is stubbed on `TestCycleDetail`.
+
+**Correction (2026-09-07, DASH-1):** `LandingPage` (previously the sole entry in the "Public (unauthenticated)" table's `/` row) is deleted outright — see the "Public (unauthenticated)" section's own correction note above. `Dashboard` is new, added to the Protected table above; it is not org-scoped and carries no data of its own as of this pass (deliberate — see [DASH-1 UI Design Document](../ui-design/2026-09-07-dash-1-root-redirect-dashboard-ui-design.md) §4).
 
 **Not yet built** (scoped by other, not-yet-implemented stories — listed here as reserved paths so a future generic-admin config never collides with them): `TestExecutionRunner`'s remaining FR-EXEC-2/3 surface (append-only log timeline, raise-Defect flow — no dedicated screen name reserved yet, may land on `TestCycleDetail` itself rather than a separate page), `TraceabilityMatrix` (FR-TRACE-1..2).
 
@@ -87,7 +93,8 @@ Two page components (`EntityListPage`, `EntityFormPage`), routed generically off
 ## Route tree (visual)
 
 ```
-/                                        LandingPage (public)
+/                                        (redirect guard, not a screen — DASH-1: /login or /dashboard)
+/dashboard                               Dashboard (empty placeholder, DASH-1)
 /login                                   Login (public)
 /signup                                  Signup (public)
 /invites/:token/accept                   AcceptInvite (public, token-gated)
