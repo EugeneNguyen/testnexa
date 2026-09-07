@@ -1,6 +1,14 @@
 /**
- * Shared featured-card primitive: a CoreUI card with a header line, a
+ * Shared featured-card primitive: a card with a header line, a
  * title+body-text+CTA-button block, and a secondary footer line.
+ *
+ * Raw HTML/JSX against CoreUI's Bootstrap-family CSS classes
+ * (`coreui.min.css`, imported once in `main.tsx`) rather than
+ * `@coreui/react` components — same "hand-roll the markup, keep the CSS"
+ * pattern ADR-0037 established for `AppSidebar`/`AppBreadcrumb`. Class
+ * names below are exactly Bootstrap's documented card markup (the
+ * originating task's own source HTML), not reconstructed from
+ * `@coreui/react`'s rendered output.
  *
  * Location/reuse scope: same convention as `FormField` (see its own
  * doc comment) — `frontend/src/components/shared/` holds cross-screen UI
@@ -11,11 +19,7 @@
  * until more screens show duplication beyond what's evidenced — this
  * component is a single flat file for the same reason `FormField` is,
  * not split into atom/molecule/organism sub-directories.
- *
- * Composes CoreUI's `CCard`/`CCardHeader`/`CCardBody`/`CCardTitle`/
- * `CCardText`/`CCardFooter`/`CButton` (ADR-0012) — no bespoke markup.
  */
-import { CButton, CCard, CCardBody, CCardFooter, CCardHeader, CCardText, CCardTitle } from "@coreui/react";
 
 export interface FeaturedCardProps {
   /** Text shown in the card header (e.g. "Featured"). */
@@ -43,19 +47,19 @@ export function FeaturedCard({
   footerText,
   className,
 }: FeaturedCardProps) {
-  const cardClassName = className ? `text-center ${className}` : "text-center";
+  const cardClassName = className ? `card text-center ${className}` : "card text-center";
 
   return (
-    <CCard className={cardClassName}>
-      <CCardHeader>{headerText}</CCardHeader>
-      <CCardBody>
-        <CCardTitle>{title}</CCardTitle>
-        <CCardText>{bodyText}</CCardText>
-        <CButton color="primary" href={ctaHref}>
+    <div className={cardClassName}>
+      <div className="card-header">{headerText}</div>
+      <div className="card-body">
+        <h5 className="card-title">{title}</h5>
+        <p className="card-text">{bodyText}</p>
+        <a href={ctaHref} className="btn btn-primary">
           {ctaLabel}
-        </CButton>
-      </CCardBody>
-      <CCardFooter className="text-body-secondary">{footerText}</CCardFooter>
-    </CCard>
+        </a>
+      </div>
+      <div className="card-footer text-body-secondary">{footerText}</div>
+    </div>
   );
 }
