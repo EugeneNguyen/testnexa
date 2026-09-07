@@ -51,6 +51,12 @@
  *    `POST /test-plans/{id}/test-cycles`. Create-and-view only: `TestCycle`'s
  *    edit/delete already exist on the generic admin surface, so each row links
  *    there ("View in Admin") rather than duplicating them here (§1).
+ *    **As of EXEC-1 (ADR-0034) each row's *name* is additionally a link to
+ *    that cycle's own `TestCycleDetail` screen** (execution history + live
+ *    dashboard) — PLAN-3 left these rows as deliberate dead ends only because
+ *    that screen did not exist yet. "View in Admin" is unchanged and still
+ *    points at the generic edit form; the two links go to different places on
+ *    purpose.
  *
  * All membership and criteria writes re-fetch rather than splicing local state
  * — same "always reflects the server's own current state" posture REQ-4
@@ -1127,7 +1133,19 @@ function TestPlanDetail() {
                           data-testid={`test-cycle-${cycle.id}`}
                         >
                           <span>
-                            {cycle.name}{" "}
+                            {/*
+                              EXEC-1 (ADR-0034): each cycle row's name is now a
+                              link to that cycle's own detail screen — its
+                              execution history and live dashboard. PLAN-3 left
+                              these rows as documented dead ends precisely
+                              because this screen didn't exist yet.
+                            */}
+                            <Link
+                              to={`/projects/${projectId}/test-plans/${testPlanId}/test-cycles/${cycle.id}`}
+                              data-testid={`open-test-cycle-${cycle.id}`}
+                            >
+                              {cycle.name}
+                            </Link>{" "}
                             <span className="text-body-secondary small">{cycleDateRange(cycle)}</span>{" "}
                             <CBadge color="info">
                               {releaseLabels[cycle.release_id] ?? cycle.release_id}
