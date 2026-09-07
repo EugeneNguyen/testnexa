@@ -146,6 +146,8 @@ FR-SHELL-2/3/4 extend the shell to full parity with [CoreUI's free Bootstrap adm
 
 FR-SHELL-5 (ADR-0026) adds one further visual prop to the already-built ADR-0018 sidebar — no structural or nav-item change, and it does not lift or alter ADR-0018/ADR-0020's scope boundaries.
 
+**Correction (2026-09-07):** `AppBreadcrumb`'s route table covered only 6 of the app's 15 routes as of ADR-0020's ship date — `ProjectDetail`, `TestPlanDetail`, `TestCycleDetail`, and all 4 generic admin list/edit routes had no table entry and silently rendered no breadcrumb (same as any unmapped route, per the component's own graceful-degradation design — nothing visibly broke, which is why the gap went unnoticed). Closed by extending the table to all 15 routes. No FR wording change: FR-SHELL-2's text already scoped this as "route-derived breadcrumb ... completes the persistent shell," implying every shell-wrapped route, not a named subset — this was an implementation gap against existing scope, not a scope change. See TC-SHELL-016..019 (Test Cases).
+
 **Not an FR** (explicitly, per ADR-0020): the CoreUI free-template's UI-element reference pages (Colors, Typography, Icons), added as a "UI Elements" nav group for template-parity only. No business case, story, or acceptance criteria backs them — they are not product scope, and carry no FR ID.
 
 ### 2.12 Design system / shared components — [design-system-component-stories.md](../user-stories/2026-09-04-design-system-component-stories.md)

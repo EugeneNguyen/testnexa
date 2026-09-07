@@ -10,6 +10,8 @@ First sitemap for this repo — no prior one existed; routes accreted story-by-s
 
 **MCP-1** ([ADR-0033](../adr/0033-mcp-server-architecture.md), FR-MCP-1) — reviewed, no Sitemap impact. The MCP server is an AI-agent-only surface (Claude Code / Cursor clients, not browser traffic); its endpoint (`POST /mcp`) is a backend-asgi mount, not a React Router route in `frontend/src/App.tsx` — this document's stated scope is the frontend route source of truth, so backend API endpoints (REST or MCP) are out of scope by definition. Noted here explicitly so the absence isn't mistaken for an oversight.
 
+**Correction (2026-09-07):** `AppBreadcrumb` (ADR-0020, FR-SHELL-2) rendered no breadcrumb at all on 9 of this document's routes — `ProjectDetail`, `TestPlanDetail`, `TestCycleDetail`, and the 4 generic admin list/edit routes had no entry in its route table. Closed by extending the table to every route below; no route itself changed, so no row edits follow. See Requirements Document's FR-SHELL-2 correction note and Test Cases TC-SHELL-016..019.
+
 ## Public (unauthenticated)
 
 **Correction (2026-09-07, DASH-1):** `/` is no longer a screen. `LandingPage` is deleted ([ADR-0035](../adr/0035-dash-1-root-redirect-and-dashboard-placeholder.md), supersedes [ADR-0024](../adr/0024-public-landing-page.md)) — `/` is now a pure redirect guard (spinner while `isInitializing`, else `/login` or `/dashboard` on `accessToken` alone, never `orgContext`). See the Route tree below and the Protected table's new `/dashboard` row.
