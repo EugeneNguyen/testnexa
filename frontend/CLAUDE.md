@@ -33,3 +33,17 @@ An entity's generic-admin `methods` array and its backend `_<ENTITY>_CONFIG.meth
 ## `FkAutocomplete` supports a `:paramName`-shaped `listPath` via an optional `routeParams` prop
 
 Added by PLAN-3 (2026-09-06) — before this, a ref-entity config whose `listPath` contained a path placeholder (`release`'s config is the one example today, `:projectId`) had no way to have that placeholder filled in, a latent pre-existing gap on the generic admin surface that just happened not to matter until a bespoke screen (`TestPlanDetail`'s new Test Cycles section) needed a `release_id` autocomplete scoped to the current project. If you hit a `FkAutocomplete` requesting the literal string `:someParam` instead of a real id, this prop is the fix — pass `routeParams={{ projectId: currentProjectId }}` (or whatever the placeholder names) — not a one-off inline workaround in the page component.
+
+## `CTooltip` wrapping a `CDropdownToggle` needs a plain host element in between, or the tooltip silently anchors to nothing
+
+`CTooltip` positions itself by cloning its child and attaching a ref to it — but `CDropdownToggle` is a plain function component (it reads its own ref from `CDropdownContext`, not via `forwardRef`), so passing it a ref logs "Function components cannot be given refs" and the tooltip's popper ends up anchored to `null` (renders, but never positions correctly, or never shows). SHELL-6 (2026-09-07, `AppHeader.tsx`'s org-switcher trigger) hit this directly. Fix: put a plain host element (a `<span className="d-inline-block">` works) between `CTooltip` and `CDropdownToggle` — it accepts the ref `CTooltip` needs, and `CDropdownToggle` still reaches its parent `CDropdown` through context, not through being `CTooltip`'s direct child, so the dropdown itself is unaffected:
+
+```tsx
+<CTooltip content="...">
+  <span className="d-inline-block">
+    <CDropdownToggle>...</CDropdownToggle>
+  </span>
+</CTooltip>
+```
+
+Same fix applies to any other CoreUI trigger component that resolves its own ref via context instead of `forwardRef` — check for the same console warning before assuming a `CTooltip` that "isn't showing" is a CSS/z-index problem.
