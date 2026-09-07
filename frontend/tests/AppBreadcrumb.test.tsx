@@ -2,9 +2,11 @@ import { render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 import AppBreadcrumb from "../src/components/AppBreadcrumb";
+import { allEntities } from "../src/pages/admin/registry";
 
 /**
- * SHELL-2 (ADR-0020) breadcrumb unit tests, TC-SHELL-007/008.
+ * SHELL-2 (ADR-0020) breadcrumb unit tests, TC-SHELL-007/008 and
+ * TC-SHELL-016/017/018/019 (the 2026-09-07 coverage correction).
  *
  * Same per-route-pattern render approach as `AppSidebar.test.tsx`: mount
  * `AppBreadcrumb` as a `Route`'s element so `useLocation()`/`matchPath`
@@ -69,14 +71,17 @@ describe("AppBreadcrumb", () => {
     expect(screen.queryByText("pick")).not.toBeInTheDocument();
   });
 
-  it("renders a single, non-linked segment on /projects/:projectId (no orgId param available)", () => {
+  it("TC-SHELL-016: renders a single unlinked crumb on /projects/:projectId, no Org Home ancestor", () => {
     renderBreadcrumb("/projects/proj-1");
 
     expect(screen.getByText("Project")).toBeInTheDocument();
     expect(screen.getByText("Project").closest("a")).toBeNull();
+    // The TC's own title says "no Org Home ancestor" — the route carries no
+    // `orgId` param to link back with, so the trail must be exactly one crumb.
+    expect(screen.queryByText("Org Home")).not.toBeInTheDocument();
   });
 
-  it("resolves the TestPlan/TestCycle chain nested under Project, not Org Home", () => {
+  it("TC-SHELL-017: resolves the TestPlan/TestCycle chain nested under Project, not Org Home", () => {
     renderBreadcrumb("/projects/proj-1/test-plans/plan-1/test-cycles/cycle-1");
 
     expect(screen.getByText("Project")).toBeInTheDocument();
@@ -91,15 +96,20 @@ describe("AppBreadcrumb", () => {
     expect(screen.queryByText("Org Home")).not.toBeInTheDocument();
   });
 
-  it("resolves an org-scoped admin list route's entity label from the registry", () => {
+  it("TC-SHELL-018: resolves an org-scoped admin list route's entity label from the registry", () => {
     renderBreadcrumb("/orgs/org-1/admin/roles");
 
     expect(screen.getByText("Org Home")).toBeInTheDocument();
+    // The TC says "Org Home" links — assert the href, not just its presence.
+    expect(screen.getByText("Org Home").closest("a")).toHaveAttribute("href", "/orgs/org-1");
+    // "Roles" is the registry's own label for the `roles` key, not a
+    // hardcoded string in this component.
+    expect(allEntities.find((e) => e.key === "roles")?.label).toBe("Roles");
     expect(screen.getByText("Roles")).toBeInTheDocument();
     expect(screen.getByText("Roles").closest("a")).toBeNull();
   });
 
-  it("resolves a project-scoped admin edit route as Project -> entity label -> Edit", () => {
+  it("TC-SHELL-019: resolves a project-scoped admin edit route as Project -> entity label -> Edit", () => {
     renderBreadcrumb("/projects/proj-1/admin/test-cases/tc-1/edit");
 
     expect(screen.getByText("Project")).toBeInTheDocument();
