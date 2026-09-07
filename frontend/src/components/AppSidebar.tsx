@@ -38,7 +38,7 @@
  * flat list above is (absent entirely on `/orgs/pick`, not disabled
  * controls) for the same reasoning: there is no org context to link into.
  *
- * Raw HTML per ADR-0036 (2026-09-07), not `@coreui/react`. Every class name
+ * Raw HTML per ADR-0037 (2026-09-07), not `@coreui/react`. Every class name
  * below (`sidebar`, `sidebar-dark`, `sidebar-header`, `sidebar-brand`,
  * `sidebar-nav`, `nav-item`, `nav-link`, `nav-group`, `nav-group-toggle`,
  * `nav-group-items`) is the exact class `CSidebar`/`CSidebarHeader`/
@@ -49,7 +49,7 @@
  * own rendered class exactly.
  *
  * Two accepted, explicitly-documented gaps against `CSidebar`'s original
- * behavior (both flagged in ADR-0036, not silently dropped):
+ * behavior (both flagged in ADR-0037, not silently dropped):
  * - `CSidebar`'s `isInViewport`-geometry-based auto-collapse on a mobile
  *   breakpoint transition is NOT reproduced — this component only handles
  *   the manual toggle (`AppShell`'s toggler button), which is what

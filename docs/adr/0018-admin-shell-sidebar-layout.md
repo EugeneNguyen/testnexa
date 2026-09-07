@@ -1,7 +1,7 @@
 # ADR-0018: Admin shell layout — CoreUI sidebar+navbar template
 
 **Date:** 2026-09-04
-**Status:** Accepted (Partially superseded by [ADR-0036](0036-shell-components-raw-html-not-coreui-react.md) — `CSidebar`'s React component is replaced with hand-rolled markup, with an accepted fidelity gap on its geometry-check mobile auto-collapse behavior; this ADR's own nav-item-list/active-highlighting decisions are unchanged)
+**Status:** Accepted (Partially superseded by [ADR-0037](0037-shell-components-raw-html-not-coreui-react.md) — `CSidebar`'s React component is replaced with hand-rolled markup, with an accepted fidelity gap on its geometry-check mobile auto-collapse behavior; this ADR's own nav-item-list/active-highlighting decisions are unchanged)
 **Deciders:** xuanbinh91@gmail.com (CTO)
 **Related:** [ADR-0012](0012-coreui-design-system.md) (CoreUI design system — this ADR applies its own template components), [ADR-0009](0009-frontend-stack.md) (frontend stack, unchanged)
 

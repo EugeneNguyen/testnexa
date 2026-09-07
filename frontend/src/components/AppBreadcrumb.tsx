@@ -85,7 +85,7 @@
  * text from being flush against whatever sits below it without adopting
  * the demo's fixed-height-bar structure wholesale.
  *
- * Raw HTML per ADR-0036 (2026-09-07), not `@coreui/react` — this is the
+ * Raw HTML per ADR-0037 (2026-09-07), not `@coreui/react` — this is the
  * component whose three rounds of `@coreui/react`-vs-demo pixel mismatches
  * (above) drove that ADR in the first place. Only the returned JSX changed
  * (`<CContainer>`/`<CBreadcrumb>`/`<CBreadcrumbItem>` -> raw `<div

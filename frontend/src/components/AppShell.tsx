@@ -58,7 +58,7 @@
  * instead of just the content, a regression this component must not
  * introduce.
  *
- * Note (ADR-0036, 2026-09-07): this file already had zero `@coreui/react`
+ * Note (ADR-0037, 2026-09-07): this file already had zero `@coreui/react`
  * imports before that ADR's migration — it was always a raw `<div>`
  * composition. No change needed here beyond this note; `AppHeader`/
  * `AppSidebar`/`AppFooter`/`AppBreadcrumb` (its 4 children) are the ones

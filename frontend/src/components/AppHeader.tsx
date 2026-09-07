@@ -21,7 +21,7 @@
  * equivalence classes (unset/auto vs. explicit light vs. explicit dark) —
  * not a single 2-state flip button.
  *
- * Raw HTML per ADR-0036 (2026-09-07), not `@coreui/react`:
+ * Raw HTML per ADR-0037 (2026-09-07), not `@coreui/react`:
  * - `CHeader`/`CHeaderBrand`/`CHeaderToggler`/`CContainer`/`CButton` become
  *   raw `<div class="header">`/`<a class="header-brand">`/
  *   `<button class="header-toggler">`/`<div class="container-fluid ...">`/
@@ -39,14 +39,14 @@
  *   toggling Bootstrap's own `.dropdown-menu.show` class (the same class
  *   `CDropdownMenu` itself toggled) plus a document-level click-outside
  *   listener to close it — deliberately NOT wired to `bootstrap.bundle.js`'s
- *   real `Dropdown` class (ADR-0036 floated that option): managing a
+ *   real `Dropdown` class (ADR-0037 floated that option): managing a
  *   vanilla-JS component instance's lifecycle (init on mount, dispose on
  *   unmount, ref plumbing) inside React is a well-known sharp edge for
  *   exactly this kind of small interaction, and a plain boolean toggle is
  *   both simpler and has an identical visual/behavioral result here.
  * - `CIcon` (`@coreui/icons-react`) is kept as-is — it's a leaf SVG
  *   renderer, not a layout/markup-mediating component, so it isn't the
- *   class of dependency ADR-0036 is about; reimplementing `@coreui/icons`'
+ *   class of dependency ADR-0037 is about; reimplementing `@coreui/icons`'
  *   own path-array format by hand would be pure duplicated risk for zero
  *   benefit.
  */

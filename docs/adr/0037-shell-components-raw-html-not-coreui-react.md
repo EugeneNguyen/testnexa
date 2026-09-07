@@ -1,4 +1,4 @@
-# ADR-0036: Shell components use raw HTML/Bootstrap classes, not `@coreui/react`
+# ADR-0037: Shell components use raw HTML/Bootstrap classes, not `@coreui/react`
 
 **Date:** 2026-09-07
 **Status:** Accepted

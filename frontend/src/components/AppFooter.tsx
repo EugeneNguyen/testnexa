@@ -5,7 +5,7 @@
  * `ProtectedRoute` screen (TC-SHELL-009) — smoke-level, static content only,
  * no per-route/dynamic behavior to branch on.
  *
- * Raw HTML per ADR-0036, not `@coreui/react` — `CFooter` rendered a single
+ * Raw HTML per ADR-0037, not `@coreui/react` — `CFooter` rendered a single
  * `<div class="footer">` with no other behavior, so this is a direct,
  * lossless port: same markup, same CSS (`@coreui/coreui`, unchanged),
  * confirmed by dumping `CFooter`'s actual rendered DOM before removing the
