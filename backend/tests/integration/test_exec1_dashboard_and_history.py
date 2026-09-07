@@ -14,14 +14,23 @@ in both directions, the `executed_by_actor_id` stamping class, the
 generic-route-removal regression) stays in `test_plan3_test_cycle_execution.py`
 and is deliberately **not** duplicated here.
 
-In particular **TC-EXEC-001 is already covered** and is not re-implemented
-below: its literal wording — "`201`; row created with `executed_by_actor_id` =
-caller's own `actor_id`, `executed_at` set, immediately readable via
-`GET /test-executions/{id}`" — is asserted end to end by that module's
-`test_executed_by_actor_id_is_stamped_from_the_authenticated_caller` (stamping
-+ the stored row) together with `test_execution_scope_enforced_in_both
-_directions` (the `201` for an in-scope case). Writing a third near-identical
-test would add maintenance surface and no coverage.
+**Correction (coverage audit, 2026-09-07): TC-EXEC-001 was *not* actually
+covered end to end, despite an earlier version of this docstring claiming it
+was.** Its literal wording is "`POST` with `result=pass`, `actual_result`
+notes" -> "`201`; row created with `executed_by_actor_id`/`executed_at`,
+**immediately readable via `GET /test-executions/{id}`**". The two tests this
+docstring previously pointed at each cover half the claim and neither closes
+it: `test_executed_by_actor_id_is_stamped_from_the_authenticated_caller` posts
+`result=blocked` (not `pass`), no `actual_result`, and reads the row back via
+`session.get()` (a direct ORM fetch, not the `GET /test-executions/{id}` HTTP
+route the TC literally names); `test_execution_scope_enforced_in_both
+_directions` posts `result=pass` with `actual_result` but never calls
+`GET /test-executions/{id}` at all. Root `CLAUDE.md`'s own standing rule —
+"match a TC's literal wording, not a semantically-adjacent assertion" — is
+exactly what this gap violates: both tests are adjacent to TC-EXEC-001's claim,
+neither is it. `test_record_execution_result_then_read_it_back_immediately`
+below closes it directly, as its own dedicated test rather than further
+overloading either existing one.
 
 Seeding/cleanup helpers are **imported** from
 `test_plan3_test_cycle_execution.py` rather than copied. That module already
@@ -138,6 +147,123 @@ async def _seed_executions(session, cycle, test_case, actor_id, result_value: st
             )
         )
     await session.flush()
+
+
+# --- TC-EXEC-001: record a result, then read it straight back -----------------------------------
+
+
+@pytest.mark.asyncio
+async def test_record_execution_result_then_read_it_back_immediately() -> None:  # TC-EXEC-001
+    """TC-EXEC-001 literally: "TestCase in scope for active cycle, caller holds
+    `test_execution.create`" -> "`POST /test-cycles/{id}/executions` with
+    `result=pass`, `actual_result` notes" -> "`201`; row created with
+    `executed_by_actor_id` = caller's own `actor_id`, `executed_at` set,
+    immediately readable via `GET /test-executions/{id}`".
+
+    Deliberately one test doing exactly what the TC's own Steps column says,
+    word for word — `result=pass` (not some other value), `actual_result` set
+    to real notes text (not omitted), and the read-back is a genuine HTTP
+    `GET /test-executions/{id}` (not a `session.get()` ORM fetch, which cannot
+    tell you the *route* works, only that the *row* does — the exact
+    resolver-completeness distinction `backend/CLAUDE.md` draws for every other
+    create-then-read class in this codebase, ADR-0029's own precedent).
+    """
+    user_ids: list = []
+    org_ids: list = []
+    project_ids: list = []
+    requirement_ids: list = []
+    test_suite_ids: list = []
+    test_condition_ids: list = []
+    test_case_ids: list = []
+    test_level_ids: list = []
+    test_type_ids: list = []
+    try:
+        async with AsyncSessionLocal() as session:
+            admin, org = await _create_org_admin(session, "tcexec001")
+            project = await _create_project(session, org, "tcexec001")
+            requirement = await _create_requirement(session, project, "tcexec001")
+            condition = await _create_test_condition(session, requirement, "tcexec001")
+            level = await _create_test_level(session, "tcexec001")
+            test_type = await _create_test_type(session, "tcexec001")
+            case = await _create_condition_path_test_case(
+                session, condition, admin.actor_id, level, test_type, "tcexec001"
+            )
+            plan = await _create_test_plan(session, project, admin.actor_id, "tcexec001")
+            suite = await _create_test_suite(session, project, "tcexec001")
+            # "TestCase in scope for active cycle" — must genuinely be covered,
+            # or the POST 422s on ADR-0033's scope check and proves nothing.
+            await _include_suite_in_plan(session, plan, suite)
+            await _add_case_to_suite(session, suite, case)
+            release = await _create_release(session, project, "tcexec001")
+            environment = await _create_environment(session, project, "tcexec001")
+            cycle = await _create_test_cycle(session, plan, release, environment, "tcexec001")
+            await session.commit()
+            user_ids = [admin.actor_id]
+            org_ids = [org.id]
+            project_ids = [project.id]
+            requirement_ids = [requirement.id]
+            test_condition_ids = [condition.id]
+            test_case_ids = [case.id]
+            test_suite_ids = [suite.id]
+            test_level_ids = [level.id]
+            test_type_ids = [test_type.id]
+            # "caller holds test_execution.create" — org_admin holds every
+            # code, satisfying the precondition without a bespoke role fixture.
+            admin_id, cycle_id, case_id = admin.actor_id, cycle.id, case.id
+
+        headers = {"Authorization": f"Bearer {_access_token_for(admin_id)}"}
+        executed_at = datetime(2026, 9, 7, 9, 30, 0, tzinfo=UTC).isoformat()
+        notes = _unique_name("TC-EXEC-001 actual result notes")
+
+        async with httpx.AsyncClient(base_url=TEST_API_BASE_URL) as client:
+            created = await client.post(
+                _cycle_executions_path(cycle_id),
+                headers=headers,
+                json={
+                    "test_case_id": str(case_id),
+                    "result": "pass",
+                    "actual_result": notes,
+                    "executed_at": executed_at,
+                },
+            )
+            assert created.status_code == 201, created.text
+            body = created.json()
+            assert body["result"] == "pass"
+            assert body["actual_result"] == notes
+            assert body["executed_by_actor_id"] == str(admin_id), (
+                "executed_by_actor_id must be the caller's own actor_id"
+            )
+            assert body["executed_at"] is not None
+            execution_id = body["id"]
+
+            # "immediately readable via GET /test-executions/{id}" — a real
+            # HTTP round trip, not a direct DB fetch.
+            read_back = await client.get(
+                _test_execution_item_path(execution_id), headers=headers
+            )
+            assert read_back.status_code == 200, (
+                f"the newly created row must be immediately readable via "
+                f"GET /test-executions/{{id}} — a 404 here is the resolver-gap "
+                f"class ADR-0029 warns about, not a tenant boundary: {read_back.text}"
+            )
+            read_body = read_back.json()
+            assert read_body["id"] == execution_id
+            assert read_body["result"] == "pass"
+            assert read_body["actual_result"] == notes
+            assert read_body["executed_by_actor_id"] == str(admin_id)
+            assert read_body == body, "the read-back row must match the create response exactly"
+    finally:
+        await _cleanup(
+            user_ids=user_ids,
+            org_ids=org_ids,
+            project_ids=project_ids,
+            requirement_ids=requirement_ids,
+            test_suite_ids=test_suite_ids,
+            test_condition_ids=test_condition_ids,
+            test_case_ids=test_case_ids,
+            test_level_ids=test_level_ids,
+            test_type_ids=test_type_ids,
+        )
 
 
 # --- TC-EXEC-002: live dashboard aggregation ---------------------------------------------------
