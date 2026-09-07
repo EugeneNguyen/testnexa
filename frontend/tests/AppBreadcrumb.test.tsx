@@ -19,6 +19,16 @@ function renderBreadcrumb(initialEntry: string) {
         <Route path="/orgs/:orgId" element={<AppBreadcrumb />} />
         <Route path="/orgs/:orgId/members" element={<AppBreadcrumb />} />
         <Route path="/orgs/:orgId/ui-elements/colors" element={<AppBreadcrumb />} />
+        <Route path="/orgs/:orgId/admin/:entity" element={<AppBreadcrumb />} />
+        <Route path="/orgs/:orgId/admin/:entity/:id/edit" element={<AppBreadcrumb />} />
+        <Route path="/projects/:projectId" element={<AppBreadcrumb />} />
+        <Route path="/projects/:projectId/test-plans/:testPlanId" element={<AppBreadcrumb />} />
+        <Route
+          path="/projects/:projectId/test-plans/:testPlanId/test-cycles/:testCycleId"
+          element={<AppBreadcrumb />}
+        />
+        <Route path="/projects/:projectId/admin/:entity" element={<AppBreadcrumb />} />
+        <Route path="/projects/:projectId/admin/:entity/:id/edit" element={<AppBreadcrumb />} />
       </Routes>
     </MemoryRouter>,
   );
@@ -57,5 +67,49 @@ describe("AppBreadcrumb", () => {
     expect(container.querySelector(".breadcrumb")).not.toBeInTheDocument();
     expect(screen.queryByText("undefined")).not.toBeInTheDocument();
     expect(screen.queryByText("pick")).not.toBeInTheDocument();
+  });
+
+  it("renders a single, non-linked segment on /projects/:projectId (no orgId param available)", () => {
+    renderBreadcrumb("/projects/proj-1");
+
+    expect(screen.getByText("Project")).toBeInTheDocument();
+    expect(screen.getByText("Project").closest("a")).toBeNull();
+  });
+
+  it("resolves the TestPlan/TestCycle chain nested under Project, not Org Home", () => {
+    renderBreadcrumb("/projects/proj-1/test-plans/plan-1/test-cycles/cycle-1");
+
+    expect(screen.getByText("Project")).toBeInTheDocument();
+    expect(screen.getByText("Project").closest("a")).toHaveAttribute("href", "/projects/proj-1");
+    expect(screen.getByText("Test Plan")).toBeInTheDocument();
+    expect(screen.getByText("Test Plan").closest("a")).toHaveAttribute(
+      "href",
+      "/projects/proj-1/test-plans/plan-1",
+    );
+    expect(screen.getByText("Test Cycle")).toBeInTheDocument();
+    expect(screen.getByText("Test Cycle").closest("a")).toBeNull();
+    expect(screen.queryByText("Org Home")).not.toBeInTheDocument();
+  });
+
+  it("resolves an org-scoped admin list route's entity label from the registry", () => {
+    renderBreadcrumb("/orgs/org-1/admin/roles");
+
+    expect(screen.getByText("Org Home")).toBeInTheDocument();
+    expect(screen.getByText("Roles")).toBeInTheDocument();
+    expect(screen.getByText("Roles").closest("a")).toBeNull();
+  });
+
+  it("resolves a project-scoped admin edit route as Project -> entity label -> Edit", () => {
+    renderBreadcrumb("/projects/proj-1/admin/test-cases/tc-1/edit");
+
+    expect(screen.getByText("Project")).toBeInTheDocument();
+    expect(screen.getByText("Project").closest("a")).toHaveAttribute("href", "/projects/proj-1");
+    expect(screen.getByText("Test cases")).toBeInTheDocument();
+    expect(screen.getByText("Test cases").closest("a")).toHaveAttribute(
+      "href",
+      "/projects/proj-1/admin/test-cases",
+    );
+    expect(screen.getByText("Edit")).toBeInTheDocument();
+    expect(screen.getByText("Edit").closest("a")).toBeNull();
   });
 });

@@ -31,9 +31,35 @@
  * instead.
  *
  * Built with CoreUI (ADR-0012) — `CBreadcrumb`/`CBreadcrumbItem` only.
+ *
+ * Coverage extended (2026-09-07) to the remaining routed screens
+ * (`ProjectDetail`/`TestPlanDetail`/`TestCycleDetail`, generic admin
+ * list/edit) that had no table entry at all — they silently rendered no
+ * breadcrumb (same as any unmapped route, per the graceful-degradation
+ * paragraph above) rather than anything visibly broken, which is what let
+ * the gap go unnoticed. Two things worth noting about the entries added:
+ *
+ * - `/projects/:projectId` carries no `orgId` route param (org is only
+ *   resolvable via a `GET /projects/{id}` fetch, which this component
+ *   deliberately does not do), so the Project/TestPlan/TestCycle chain
+ *   below nests under `projectId`/`testPlanId` only — no "Org Home" parent
+ *   link, same posture as `/orgs/:orgId`'s own single, unlinked crumb.
+ * - Admin list/edit routes label the `:entity` segment via
+ *   `entityConfigByKey`/`allEntities` (`pages/admin/registry.ts`) — the
+ *   same registry `AppSidebar`/routing already use — rather than a second,
+ *   hand-maintained slug->label table.
  */
 import { Link, matchPath, useLocation } from "react-router-dom";
 import { CBreadcrumb, CBreadcrumbItem } from "@coreui/react";
+import { allEntities } from "../pages/admin/registry";
+
+const entityLabelByKey: Record<string, string> = Object.fromEntries(
+  allEntities.map((e) => [e.key, e.label]),
+);
+
+function entityLabel(entity: string | undefined): string {
+  return entity && entityLabelByKey[entity] ? entityLabelByKey[entity] : "Admin";
+}
 
 interface BreadcrumbSegment {
   label: string;
@@ -84,6 +110,58 @@ const ROUTE_BREADCRUMBS: RouteBreadcrumbConfig[] = [
   {
     pattern: "/orgs/:orgId",
     segments: () => [{ label: "Org Home" }],
+  },
+  {
+    pattern: "/orgs/:orgId/admin/:entity/:id/edit",
+    segments: (params) => [
+      { label: "Org Home", to: `/orgs/${params.orgId}` },
+      { label: entityLabel(params.entity), to: `/orgs/${params.orgId}/admin/${params.entity}` },
+      { label: "Edit" },
+    ],
+  },
+  {
+    pattern: "/orgs/:orgId/admin/:entity",
+    segments: (params) => [
+      { label: "Org Home", to: `/orgs/${params.orgId}` },
+      { label: entityLabel(params.entity) },
+    ],
+  },
+  {
+    pattern: "/projects/:projectId/test-plans/:testPlanId/test-cycles/:testCycleId",
+    segments: (params) => [
+      { label: "Project", to: `/projects/${params.projectId}` },
+      {
+        label: "Test Plan",
+        to: `/projects/${params.projectId}/test-plans/${params.testPlanId}`,
+      },
+      { label: "Test Cycle" },
+    ],
+  },
+  {
+    pattern: "/projects/:projectId/test-plans/:testPlanId",
+    segments: (params) => [
+      { label: "Project", to: `/projects/${params.projectId}` },
+      { label: "Test Plan" },
+    ],
+  },
+  {
+    pattern: "/projects/:projectId/admin/:entity/:id/edit",
+    segments: (params) => [
+      { label: "Project", to: `/projects/${params.projectId}` },
+      { label: entityLabel(params.entity), to: `/projects/${params.projectId}/admin/${params.entity}` },
+      { label: "Edit" },
+    ],
+  },
+  {
+    pattern: "/projects/:projectId/admin/:entity",
+    segments: (params) => [
+      { label: "Project", to: `/projects/${params.projectId}` },
+      { label: entityLabel(params.entity) },
+    ],
+  },
+  {
+    pattern: "/projects/:projectId",
+    segments: () => [{ label: "Project" }],
   },
 ];
 
