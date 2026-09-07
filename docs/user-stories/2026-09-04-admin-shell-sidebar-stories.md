@@ -28,3 +28,23 @@
 **Traceability:** implements the [admin-shell business case](../business-case/2026-09-04-coreui-admin-shell-sidebar-business-case.md)'s GO recommendation. No FR/NFR in `docs/requirements/2026-09-03-project-scaffold-requirements.md` currently covers authenticated-app layout — flag for whoever picks this up: add a requirements entry (e.g. an FR under a new "Layout/Navigation" heading) once this is scoped for implementation, consistent with how other ADR-driven changes have propagated across docs in this repo's history (per CLAUDE.md).
 
 **Scope note (2026-09-04, [ADR-0019](../adr/0019-admin-shell-full-template-parity.md)):** this story's own scope boundary above (shell-only, no extras) is superseded — direction is now full parity with CoreUI's free admin template as the site's structural base, not just the sidebar/navbar piece. Breadcrumb, footer, dashboard widgets, dark/light mode toggle, and a set of UI-element reference pages (Colors/Typography/Icons) are added under ADR-0019. The UI-element reference pages are template scaffolding only — no FR/NFR/business case backs them; don't read them as product scope.
+
+---
+
+## Story SHELL-6: Organization switcher in the header
+
+**As** Priya (QA Lead who belongs to more than one Organization),
+**I want** a dropdown in the top header that lists every org I belong to and lets me switch into any of them,
+**so that** I'm not stuck re-navigating through `/orgs/pick` (which only ever shows right after login, and goes blank on a reload) or hand-editing the `/orgs/:orgId` URL every time I need to move between orgs mid-session.
+
+**Acceptance criteria:**
+
+- Given an authenticated user is on any `ProtectedRoute` screen, when the page renders, then the header (`AppHeader`) shows an org-switcher icon/dropdown, visible unconditionally — including for an account with exactly one Organization.
+- Given the user opens the dropdown, when it renders its contents, then it fetches the caller's org list on that open (`GET /auth/me/orgs`, [ADR-0036](../adr/0036-shell-6-organization-switcher-header-dropdown.md)) — not a value cached at login time — so the list is correct even after a page reload.
+- Given the dropdown is open and the user is currently on a route under `/orgs/:orgId`, when the list renders, then the org matching the current `:orgId` is visually indicated as the active one.
+- Given the user clicks a different org in the list, when the navigation completes, then they land on that org's root, `/orgs/{id}` — never an attempt to preserve whatever nested sub-route (members, admin, a project) they were previously on, since a nested resource ID has no meaning in a different org.
+- Given the user's target org grants them a different (or no) role compared to their current org, when they land on the new org's screens, then each screen's own existing server-side permission check governs what's visible/actionable there — no separate client-side permission cache to go stale.
+- Given the dropdown is open, it contains no "create new organization" action — org creation stays exclusively on `/orgs/pick`'s existing modal.
+- Given a user with zero Organizations somehow reaches an authenticated screen (should not happen post-login, direct-nav edge case only), when the dropdown opens, then it renders an empty state, not an error or crash.
+
+**Traceability:** [FR-SHELL-6](../requirements/2026-09-03-project-scaffold-requirements.md), [FR-AUTH-5](../requirements/2026-09-03-project-scaffold-requirements.md), [ADR-0036](../adr/0036-shell-6-organization-switcher-header-dropdown.md), [UI Design Document](../ui-design/2026-09-07-shell-6-org-switcher-ui-design.md). Closes, for this one surface only, the AUTH-2 gap [ADR-0035](../adr/0035-dash-1-root-redirect-and-dashboard-placeholder.md) explicitly deferred ("revisit if/when a future org-scoped feature needs it") — `AuthContext`'s login-time-only `orgs`/`orgContext` fields are otherwise unchanged.
