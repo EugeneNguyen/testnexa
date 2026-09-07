@@ -221,7 +221,9 @@ All four link tables and `TestLog` are never directly `POST`ed/`PATCH`ed/`DELETE
 
 ## 6. MCP server tool surface
 
-Thin client over the **same service layer** as the REST routes above — no separate, weaker validation/permission path (MCP-1's explicit requirement).
+Thin client over the **same service layer** as the REST routes above — no separate, weaker validation/permission path (MCP-1's explicit requirement). See [ADR-0033](../adr/0033-mcp-server-architecture.md) for the architecture decision (streamable-HTTP transport, ASGI sub-app mount on the existing FastAPI under `/mcp`, direct-call tool dispatch reusing the existing route handler functions).
+
+**Mount point:** the MCP server is exposed by the same FastAPI backend at `POST /mcp` over Streamable HTTP transport (stateless, JSON response). `nginx/nginx.dev.conf` proxies `/mcp/` to `backend:8000/mcp/` unchanged — same passthrough convention as `/api/`. **Auth:** every tool request carries `Authorization: Bearer tnx_agent_<prefix>_<secret>` (the same AIAgent API key AUTH-4/ADR-0015 issues for the REST surface), and the per-request agent resolution reuses `_resolve_agent_actor` from `app/core/rbac.py` — same `key_prefix` lookup, same `revoked_at IS NULL` filter, same `last_used_at` write-through.
 
 | Tool | Backing route/permission | Maps to |
 |---|---|---|
@@ -231,7 +233,7 @@ Thin client over the **same service layer** as the REST routes above — no sepa
 | `create_test_execution` | `POST /test-cycles/{id}/executions`, `test_execution.create` | FR-MCP-3 — route built [ADR-0033](../adr/0033-plan3-test-cycle-creation-and-execution-scope-check.md); the same PLAN-3 scope-check applies to MCP-originated calls, no separate/weaker validation path (MCP-1) |
 | `read_requirement` | `GET /requirements/{id}`, `requirement.read` | FR-MCP-3 — read-only, no requirement-write/approval/membership tools in this scaffold, matching 26's MVP-scoped MCP surface |
 
-Every MCP-originated write records `created_by_actor_id`/`executed_by_actor_id` pointing at the calling `AIAgent`, with `AIAgent.acting_on_behalf_of_user_id` carried through for accountability (MCP-1).
+Every MCP-originated write records `created_by_actor_id`/`executed_by_actor_id` pointing at the calling `AIAgent`, with `AIAgent.acting_on_behalf_of_user_id` carried through for accountability (MCP-1). Tool error responses surface the API Document §1 `{code, message, field_errors}` envelope verbatim (see ADR-0033's decision 4) — an MCP client's pattern-match on `code`/`field_errors` works identically to the frontend's RHF/Zod layer against the REST surface.
 
 ## 7. Cross-cutting error examples
 
