@@ -74,7 +74,7 @@ from app.models.assets import (
     TestSuiteTestCase,
 )
 from app.models.auth import AuthIdentity, AuthProvider
-from app.models.execution import TestExecution, TestExecutionResult
+from app.models.execution import TestExecution, TestExecutionResult, TestLog
 from app.models.planning import Environment, TestCycle, TestPlan, TestPlanTestSuite
 from app.models.project import Project, Release
 from app.models.rbac import Permission, Role, RoleAssignment, RolePermission
@@ -518,7 +518,23 @@ async def _cleanup(
             )
             test_cycle_ids = [row[0] for row in result.all()]
 
-        # Executions first — every one of their three FKs is RESTRICT.
+        # EXEC-2: `TestLog.test_execution_id` is RESTRICT too, and every
+        # `TestExecution` now gets at least one `TestLog` row appended
+        # (create route + any `PATCH` that changes `result`) — logs must go
+        # before the executions they reference, or the `DELETE` below fails
+        # with a FK violation instead of a clean cleanup.
+        if test_cycle_ids or test_case_ids:
+            conditions = []
+            if test_cycle_ids:
+                conditions.append(TestExecution.test_cycle_id.in_(test_cycle_ids))
+            if test_case_ids:
+                conditions.append(TestExecution.test_case_id.in_(test_case_ids))
+            execution_id_subquery = select(TestExecution.id).where(or_(*conditions))
+            await session.execute(
+                delete(TestLog).where(TestLog.test_execution_id.in_(execution_id_subquery))
+            )
+
+        # Executions next — every one of their three FKs is RESTRICT.
         if test_cycle_ids or test_case_ids:
             conditions = []
             if test_cycle_ids:
@@ -1074,7 +1090,14 @@ async def test_generic_test_execution_create_route_removed_rest_unaffected() -> 
     generic `POST` gone, that is now the only way to obtain one outside the
     bespoke cycle-scoped route.
 
-    `DELETE` is exercised last, on the same row, since it consumes it.
+    `DELETE` is exercised last -- **updated for EXEC-2**: the `PATCH` above
+    changes `result` (`pass` -> `fail`), which appends a `TestLog` row
+    (`RESTRICT` FK on `test_execution_id`). `DELETE` is therefore still
+    "unaffected" in the sense this TC cares about (the route is reachable,
+    not accidentally removed along with generic `create`) but no longer
+    consumes the row -- a `TestExecution` with any audit-trail entries can't
+    actually be deleted once real logs exist (see
+    `test_admin2_execution_trace.py`'s own note on the same consequence).
     """
     user_ids: list = []
     org_ids: list = []
@@ -1163,14 +1186,20 @@ async def test_generic_test_execution_create_route_removed_rest_unaffected() -> 
             listed_body = listed.json()
             assert [item["id"] for item in listed_body["items"]] == [str(execution_id)], listed_body
 
-            # "...DELETE /test-executions/{id} ... unaffected" — last, since it
-            # consumes the row.
+            # "...DELETE /test-executions/{id} ... unaffected" — the route is
+            # still reachable (not removed along with generic `create`), but
+            # EXEC-2's `PATCH`-appended `TestLog` row above now blocks it from
+            # actually succeeding (`RESTRICT` FK) — see this test's own
+            # docstring.
             deleted = await client.delete(
                 _test_execution_item_path(execution_id), headers=headers
             )
-            assert deleted.status_code == 204, deleted.text
+            assert deleted.status_code == 409, deleted.text
+            assert deleted.json()["code"] == "restrict_blocked"
 
-        assert await _execution_ids_in_cycle(cycle_id) == set()
+        assert await _execution_ids_in_cycle(cycle_id) == {execution_id}, (
+            "the blocked DELETE must not have removed the row"
+        )
     finally:
         await _cleanup(
             user_ids=user_ids,

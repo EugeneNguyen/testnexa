@@ -374,7 +374,12 @@ def _patch_execution_route(
     async def _resolve_case(_db, _row):
         return test_case_org
 
-    async def _membership(_db, _org_id, _actor_id):
+    # EXEC-2: this route now uses `_actor_membership_exists(db, org_id,
+    # actor)` (the whole `User | AIAgent` actor, not just its id) --
+    # `backend/CLAUDE.md`'s standing rule for any route gated on org
+    # membership that takes a `User | AIAgent` actor. Signature updated to
+    # match; every caller in this file still only cares about `is_member`.
+    async def _membership(_db, _org_id, _actor):
         return is_member
 
     async def _permission(_actor_id, _org_id, _code):
@@ -385,7 +390,7 @@ def _patch_execution_route(
 
     monkeypatch.setattr(execution_authoring, "_resolve_test_cycle_org_id", _resolve_cycle)
     monkeypatch.setattr(execution_authoring, "resolve_test_case_org_id", _resolve_case)
-    monkeypatch.setattr(execution_authoring, "_org_membership_exists", _membership)
+    monkeypatch.setattr(execution_authoring, "_actor_membership_exists", _membership)
     monkeypatch.setattr(execution_authoring, "has_permission", _permission)
     monkeypatch.setattr(execution_authoring, "_test_case_is_in_plan_scope", _scope)
 
@@ -455,8 +460,19 @@ async def test_execution_in_scope_test_case_is_201_and_stamps_the_caller(
     )
 
     assert not isinstance(response, JSONResponse), getattr(response, "body", response)
-    assert len(session.added) == 1
+    # EXEC-2: the create route now also appends a `TestLog` row in the same
+    # transaction (`build_status_change_log`) -- `session.added` holds both.
+    assert len(session.added) == 2
     assert session.added[0].executed_by_actor_id == actor.actor_id
+    log = session.added[1]
+    assert log.event_type.value == "status_change"
+    assert log.payload == {
+        "kind": "status_change",
+        "from": None,
+        "to": "pass",
+        "actor_id": str(actor.actor_id),
+        "actor_type": "user",
+    }
     assert response.executed_by_actor_id == actor.actor_id
     assert response.result == "pass"
     assert session.committed is True

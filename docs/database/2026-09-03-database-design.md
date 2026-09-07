@@ -425,6 +425,8 @@ Composite index: `(test_cycle_id, test_case_id)` — dashboard aggregation (EXEC
 
 Index: `(test_execution_id, logged_at)` — ordered timeline reads (EXEC-2).
 
+**EXEC-2 ([ADR-0036](../adr/0036-exec-2-append-only-test-log.md)) introduces no schema change to this table.** The `(test_execution_id, logged_at)` index above already anticipated the ordered-timeline read this story adds (`GET /executions/{id}/logs`); the write side (`POST /test-cycles/{id}/executions`, `PATCH /test-executions/{id}`, and the new `POST /executions/{id}/comments`) is a plain `INSERT` into columns already specified above, no new column/index/constraint. One real, previously-untested consequence of `test_execution_id`'s existing `ON DELETE RESTRICT`, worth stating explicitly now that rows are actually being written: once any `TestLog` row references a `TestExecution`, that `TestExecution` can no longer be deleted through the still-registered generic `DELETE /test-executions/{id}` route — `409 restrict_blocked`, not `204`. This is the correct behavior for an append-only audit log (the schema-level immutability note above is only meaningful if the parent row can't be deleted out from under it), not a regression to fix.
+
 **Defect**
 | Column | Type | Constraints |
 |---|---|---|
