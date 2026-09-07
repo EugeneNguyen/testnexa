@@ -16,7 +16,18 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CAlert, CButton, CCard, CCardBody, CModal, CModalBody, CModalFooter, CModalHeader, CModalTitle } from "@coreui/react";
+import {
+  CAlert,
+  CButton,
+  CCard,
+  CCardBody,
+  CContainer,
+  CModal,
+  CModalBody,
+  CModalFooter,
+  CModalHeader,
+  CModalTitle,
+} from "@coreui/react";
 import { usePermissions } from "../../auth/usePermissions";
 import EntityForm from "../../components/crud/EntityForm";
 import EntityTable from "../../components/crud/EntityTable";
@@ -101,20 +112,23 @@ function EntityListPage() {
 
   if (!config) {
     return (
-      <CCard>
-        <CCardBody>
-          <CAlert color="danger" role="alert">
-            Unknown admin entity &quot;{entityKey}&quot;.
-          </CAlert>
-        </CCardBody>
-      </CCard>
+      <CContainer fluid className="px-4 py-4">
+        <CCard>
+          <CCardBody>
+            <CAlert color="danger" role="alert">
+              Unknown admin entity &quot;{entityKey}&quot;.
+            </CAlert>
+          </CCardBody>
+        </CCard>
+      </CContainer>
     );
   }
 
   const canCreate = config.methods.includes("create") && permissions.has(`${config.resource}.create`, projectId);
 
   return (
-    <CCard>
+    <CContainer fluid className="px-4 py-4">
+      <CCard>
       <CCardBody>
         <div className="d-flex justify-content-between align-items-center mb-3">
           <h1 className="fs-4 mb-0">{entityKey.replace(/-/g, " ")}</h1>
@@ -211,7 +225,8 @@ function EntityListPage() {
           </CButton>
         </CModalFooter>
       </CModal>
-    </CCard>
+      </CCard>
+    </CContainer>
   );
 }
 

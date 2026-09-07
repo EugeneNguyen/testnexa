@@ -14,6 +14,11 @@
  * 401-interceptor redirect, which uses a hard `window.location.assign`
  * (full page reload). Do not conflate the two mechanisms.
  *
+ * DASH-1 (ADR-0035) extracted the `isInitializing` spinner into the shared
+ * `components/AuthLoadingSpinner` — the new root guard (`RootRedirect.tsx`)
+ * needs the same indicator for the same reason, and its UI Design Document
+ * asks for reuse over a second copy of the markup. Behavior here is unchanged.
+ *
  * AUTH-3 originally rendered a bare `<AppHeader />` above `children`; SHELL-1
  * (ADR-0018) replaces that with `<AppShell>{children}</AppShell>`, which
  * wraps `children` in the persistent sidebar+navbar shell instead (still
@@ -22,8 +27,8 @@
  */
 import { ReactNode } from "react";
 import { Navigate } from "react-router-dom";
-import { CSpinner } from "@coreui/react";
 import AppShell from "../components/AppShell";
+import AuthLoadingSpinner from "../components/AuthLoadingSpinner";
 import { useAuth } from "./AuthContext";
 
 interface ProtectedRouteProps {
@@ -34,11 +39,7 @@ function ProtectedRoute({ children }: ProtectedRouteProps) {
   const { isInitializing, accessToken } = useAuth();
 
   if (isInitializing) {
-    return (
-      <div className="min-vh-100 d-flex align-items-center justify-content-center">
-        <CSpinner color="primary" />
-      </div>
-    );
+    return <AuthLoadingSpinner />;
   }
 
   if (!accessToken) {

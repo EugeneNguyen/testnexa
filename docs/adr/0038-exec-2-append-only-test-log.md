@@ -1,4 +1,4 @@
-# ADR-0036: EXEC-2 append-only TestLog (write hook + two new bespoke routes)
+# ADR-0038: EXEC-2 append-only TestLog (write hook + two new bespoke routes)
 
 **Status:** Accepted
 **Date:** 2026-09-07

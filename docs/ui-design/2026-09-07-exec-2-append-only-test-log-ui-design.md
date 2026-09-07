@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-07
 **Owner:** xuanbinh91@gmail.com (CTO)
-**Sources:** [ADR-0036](../adr/0036-exec-2-append-only-test-log.md), [ADR-0034](../adr/0034-exec-1-test-execution-recording-dashboard.md)/[EXEC-1 UI Design Document](2026-09-07-exec-1-test-execution-recording-ui-design.md) (`TestCycleDetail`, this story's host screen), [Sitemap](../sitemap/2026-09-05-project-scaffold-sitemap.md).
+**Sources:** [ADR-0038](../adr/0038-exec-2-append-only-test-log.md), [ADR-0034](../adr/0034-exec-1-test-execution-recording-dashboard.md)/[EXEC-1 UI Design Document](2026-09-07-exec-1-test-execution-recording-ui-design.md) (`TestCycleDetail`, this story's host screen), [Sitemap](../sitemap/2026-09-05-project-scaffold-sitemap.md).
 
 ## 1. Screen identity
 

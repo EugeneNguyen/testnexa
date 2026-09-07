@@ -46,8 +46,9 @@
  * that module's own docstring for the exact endpoints and a flagged
  * backend-not-shipped-yet deviation). Each widget is its own `useQuery`,
  * matching this codebase's original inline-`useQuery` precedent (the
- * now-deleted `App.tsx`'s `ScaffoldVerificationPage`, replaced by
- * `LandingPage.tsx` per ADR-0024/LANDING-1) rather than a bespoke generic
+ * now-deleted `App.tsx`'s `ScaffoldVerificationPage`, replaced at `/` by
+ * `LandingPage.tsx` per ADR-0024/LANDING-1 and since replaced again by
+ * DASH-1/ADR-0035's `RootRedirect`) rather than a bespoke generic
  * list-hook (`useEntityList` etc. is WBS task 6.2 scope, not built yet).
  * Loading/error/success are three distinct rendered states — a failed or
  * still-in-flight fetch never renders "0", only a real `total: 0` response
@@ -287,7 +288,7 @@ function OrgHome() {
 
   return (
     <div className="min-vh-100 bg-body-secondary py-4">
-      <CContainer>
+      <CContainer fluid className="px-4">
         <CRow className="justify-content-center mb-4">
           <CCol md={10} lg={8}>
             <CRow>

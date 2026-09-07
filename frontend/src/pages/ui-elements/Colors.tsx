@@ -23,7 +23,7 @@ const THEME_COLORS = [
 
 function Colors() {
   return (
-    <CContainer className="py-4">
+    <CContainer fluid className="px-4 py-4">
       <h1 className="fs-4 mb-3">Colors</h1>
       <CRow>
         {THEME_COLORS.map((color) => (

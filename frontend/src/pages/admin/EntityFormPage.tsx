@@ -8,7 +8,7 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { CAlert, CCard, CCardBody, CSpinner } from "@coreui/react";
+import { CAlert, CCard, CCardBody, CContainer, CSpinner } from "@coreui/react";
 import EntityForm from "../../components/crud/EntityForm";
 import { ApiError } from "../../lib/api/client";
 import { EntityRow, getEntity, updateEntity } from "../../lib/api/entityCrud";
@@ -54,46 +54,50 @@ function EntityFormPage() {
 
   if (!config) {
     return (
-      <CCard>
-        <CCardBody>
-          <CAlert color="danger" role="alert">
-            Unknown admin entity &quot;{entityKey}&quot;.
-          </CAlert>
-        </CCardBody>
-      </CCard>
+      <CContainer fluid className="px-4 py-4">
+        <CCard>
+          <CCardBody>
+            <CAlert color="danger" role="alert">
+              Unknown admin entity &quot;{entityKey}&quot;.
+            </CAlert>
+          </CCardBody>
+        </CCard>
+      </CContainer>
     );
   }
 
   return (
-    <CCard>
-      <CCardBody>
-        <h1 className="fs-4 mb-3">Edit {entityKey.replace(/-/g, " ")}</h1>
+    <CContainer fluid className="px-4 py-4">
+      <CCard>
+        <CCardBody>
+          <h1 className="fs-4 mb-3">Edit {entityKey.replace(/-/g, " ")}</h1>
 
-        {itemQuery.isLoading ? (
-          <div className="d-flex justify-content-center py-4">
-            <CSpinner color="primary" />
-          </div>
-        ) : itemQuery.isError ? (
-          <CAlert color="danger" role="alert">
-            Something went wrong loading this record.
-          </CAlert>
-        ) : (
-          <EntityForm
-            config={config}
-            mode="edit"
-            initialValues={itemQuery.data}
-            submitError={submitError}
-            serverFieldErrors={fieldErrors}
-            onCancel={() => navigate(-1)}
-            onSubmit={async (values) => {
-              setSubmitError(null);
-              setFieldErrors(undefined);
-              await updateMutation.mutateAsync(values);
-            }}
-          />
-        )}
-      </CCardBody>
-    </CCard>
+          {itemQuery.isLoading ? (
+            <div className="d-flex justify-content-center py-4">
+              <CSpinner color="primary" />
+            </div>
+          ) : itemQuery.isError ? (
+            <CAlert color="danger" role="alert">
+              Something went wrong loading this record.
+            </CAlert>
+          ) : (
+            <EntityForm
+              config={config}
+              mode="edit"
+              initialValues={itemQuery.data}
+              submitError={submitError}
+              serverFieldErrors={fieldErrors}
+              onCancel={() => navigate(-1)}
+              onSubmit={async (values) => {
+                setSubmitError(null);
+                setFieldErrors(undefined);
+                await updateMutation.mutateAsync(values);
+              }}
+            />
+          )}
+        </CCardBody>
+      </CCard>
+    </CContainer>
   );
 }
 

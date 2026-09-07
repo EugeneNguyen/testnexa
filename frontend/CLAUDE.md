@@ -33,3 +33,29 @@ An entity's generic-admin `methods` array and its backend `_<ENTITY>_CONFIG.meth
 ## `FkAutocomplete` supports a `:paramName`-shaped `listPath` via an optional `routeParams` prop
 
 Added by PLAN-3 (2026-09-06) — before this, a ref-entity config whose `listPath` contained a path placeholder (`release`'s config is the one example today, `:projectId`) had no way to have that placeholder filled in, a latent pre-existing gap on the generic admin surface that just happened not to matter until a bespoke screen (`TestPlanDetail`'s new Test Cycles section) needed a `release_id` autocomplete scoped to the current project. If you hit a `FkAutocomplete` requesting the literal string `:someParam` instead of a real id, this prop is the fix — pass `routeParams={{ projectId: currentProjectId }}` (or whatever the placeholder names) — not a one-off inline workaround in the page component.
+
+## `CTooltip` wrapping a `CDropdownToggle` needs a plain host element in between, or the tooltip silently anchors to nothing
+
+`CTooltip` positions itself by cloning its child and attaching a ref to it — but `CDropdownToggle` is a plain function component (it reads its own ref from `CDropdownContext`, not via `forwardRef`), so passing it a ref logs "Function components cannot be given refs" and the tooltip's popper ends up anchored to `null` (renders, but never positions correctly, or never shows). SHELL-6 (2026-09-07, `AppHeader.tsx`'s org-switcher trigger) hit this directly. Fix: put a plain host element (a `<span className="d-inline-block">` works) between `CTooltip` and `CDropdownToggle` — it accepts the ref `CTooltip` needs, and `CDropdownToggle` still reaches its parent `CDropdown` through context, not through being `CTooltip`'s direct child, so the dropdown itself is unaffected:
+
+```tsx
+<CTooltip content="...">
+  <span className="d-inline-block">
+    <CDropdownToggle>...</CDropdownToggle>
+  </span>
+</CTooltip>
+```
+
+Same fix applies to any other CoreUI trigger component that resolves its own ref via context instead of `forwardRef` — check for the same console warning before assuming a `CTooltip` that "isn't showing" is a CSS/z-index problem.
+
+## CoreUI ships both `container` (centered, max-width) and `container-fluid` (100%-width, padding-only) — confirm which one a reference actually uses, don't assume
+
+Matching the CoreUI free-template demo's breadcrumb pixel-for-pixel (SHELL-2, 2026-09-07) got the wrong one twice before landing on the right one: first a raw `px-3` div, then a plain `<CContainer>` (which renders `.container` — centered, per-breakpoint max-width), when the demo's actual markup is `.container-fluid` (100% width, `px-4` only, no centering). The two look identical in a narrow viewport or a small example and diverge hard at real desktop widths — exactly the kind of mismatch a screenshot alone won't explain (see root `CLAUDE.md`'s Testing section on this). `<CContainer>` defaults to non-fluid; `<CContainer fluid>` is the `container-fluid` variant. **Before wrapping anything in `<CContainer>` to match a CoreUI-template reference, check the reference's actual rendered class (view-source, or a real browser's computed style/`className`) for whether it says `container` or `container-fluid`** — never assume the default prop shape matches what a specific template element uses.
+
+## Dumping a component's actual rendered DOM (RTL) is the fastest, most reliable way to know what a UI library really renders — faster than reading its source
+
+Before removing a `@coreui/react` (or any UI library) import to hand-roll the same markup, render the current component with React Testing Library and `console.log(container.innerHTML)` (or a target element's `outerHTML`) rather than guessing from the library's prop docs or reading its source for the expected output. Used for the SHELL-2 raw-HTML migration (ADR-0037, 2026-09-07): every hand-rolled component's classes/attributes were copied from an actual dump of what `@coreui/react` was rendering moments before its import was deleted, not reconstructed from memory or docs — the resulting raw HTML needed zero test-assertion changes across 24 existing tests because the DOM shape was byte-for-byte identical. This is strictly more reliable than reading the library's source for the same purpose — see root `CLAUDE.md`'s Testing section for a case where reading `CSidebar`'s own source produced an actively wrong prediction that only a live, empirical test caught.
+
+## CoreUI signals its own responsive/breakpoint state to JS via a CSS custom property (`--cui-is-mobile`), not a hand-picked pixel value
+
+`coreui.min.css` sets `--cui-is-mobile: true` on `.sidebar` inside its own `@media (max-width: 991.98px)` rule; `CSidebar`'s real implementation reads it back via `getComputedStyle(element).getPropertyValue('--cui-is-mobile')` rather than duplicating the breakpoint number in JS. When hand-rolling equivalent responsive behavior (the SHELL-2 sidebar migration's mobile show/hide, ADR-0037), reading the same custom property off your own element (`getComputedStyle(ref.current).getPropertyValue("--cui-is-mobile")`, re-checked on a `resize` listener) is the correct technique — it stays in sync with CoreUI's own CSS forever, and doesn't reintroduce the "no custom breakpoint logic" hand-rolled-media-query smell ADR-0018 originally chose CoreUI specifically to avoid. Grep `coreui.min.css` for any other `--cui-is-*` custom property before assuming a piece of CoreUI's responsive behavior needs a bespoke `window.matchMedia` breakpoint of your own invention.
