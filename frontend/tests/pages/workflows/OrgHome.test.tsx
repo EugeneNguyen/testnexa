@@ -4,18 +4,24 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import OrgHome from "../../../src/pages/workflows/OrgHome";
 import { ApiError } from "../../../src/lib/api/client";
-import { createProject, updateProject } from "../../../src/lib/api/projects";
+import { createProject, listProjects, updateProject } from "../../../src/lib/api/projects";
 import { listRoleAssignments, listRoles } from "../../../src/lib/api/roleAssignments";
 
 // Same partial-mock pattern as Signup.test.tsx: keep the real module shape,
-// replace only `createProject`/`updateProject` with `vi.fn()`s so the "New
-// Project" modal / inline edit can be driven without a real network call.
+// replace only `createProject`/`updateProject`/`listProjects` with `vi.fn()`s
+// so the "New Project" modal / inline edit / initial list fetch can all be
+// driven without a real network call. `listProjects` defaults to an empty
+// list below (every existing test in this file starts from "no projects yet"
+// and adds one via `createProject`'s own optimistic cache write, per
+// `OrgHome.tsx`'s docstring) — the fix's own dedicated persistence test
+// further down overrides this per-test.
 vi.mock("../../../src/lib/api/projects", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../../src/lib/api/projects")>();
   return {
     ...actual,
     createProject: vi.fn(),
     updateProject: vi.fn(),
+    listProjects: vi.fn(),
   };
 });
 
@@ -48,11 +54,13 @@ vi.mock("../../../src/lib/api/dashboard", () => ({
 
 const mockCreateProject = vi.mocked(createProject);
 const mockUpdateProject = vi.mocked(updateProject);
+const mockListProjects = vi.mocked(listProjects);
 const mockListRoleAssignments = vi.mocked(listRoleAssignments);
 const mockListRoles = vi.mocked(listRoles);
 
 mockListRoleAssignments.mockResolvedValue([]);
 mockListRoles.mockResolvedValue([]);
+mockListProjects.mockResolvedValue([]);
 
 const ORG_ID = "11111111-1111-1111-1111-111111111111";
 
@@ -81,12 +89,14 @@ describe("OrgHome — New Project modal", () => {
     vi.clearAllMocks();
   });
 
-  it("renders the org page with a New Project action and no projects initially", () => {
+  it("renders the org page with a New Project action and no projects initially", async () => {
     renderOrgHome();
 
     expect(screen.getByText(`Org: ${ORG_ID}`)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^new project$/i })).toBeInTheDocument();
-    expect(screen.getByText(/no projects yet/i)).toBeInTheDocument();
+    // `listProjects` resolves asynchronously (a real fetch, mocked to `[]`) —
+    // the empty state only renders once that settles, not synchronously.
+    expect(await screen.findByText(/no projects yet/i)).toBeInTheDocument();
   });
 
   it("opens the modal with name and standards profile fields", () => {
@@ -215,5 +225,49 @@ describe("OrgHome — New Project modal", () => {
 
     await waitFor(() => expect(mockUpdateProject).toHaveBeenCalledWith("proj-3", { standards_profile: "IEEE-829" }));
     expect(await screen.findByText("IEEE-829")).toBeInTheDocument();
+  });
+});
+
+describe("OrgHome — project list persists across a remount (bug fix, 2026-09-07)", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  /**
+   * Reproduces the reported bug directly: create a project, then unmount
+   * `OrgHome` (navigating into a project's detail page and back does exactly
+   * this — it's a route change, not a page reload) and remount it. Before
+   * this fix, the list was local `useState` with no fetch on mount, so a
+   * remount always started from an empty list even though the project still
+   * existed server-side. `listProjects` is mocked to actually return the
+   * project on the second mount, proving the list is now sourced from a real
+   * fetch, not carried over via component state that a remount would reset.
+   */
+  it("re-fetches and shows an existing project after the component unmounts and remounts", async () => {
+    mockListProjects.mockResolvedValueOnce([
+      { id: "proj-9", org_id: ORG_ID, name: "Persisted Project", standards_profile: null },
+    ]);
+
+    const { unmount } = renderOrgHome();
+    expect(await screen.findByText("Persisted Project")).toBeInTheDocument();
+
+    unmount();
+    mockListProjects.mockResolvedValueOnce([
+      { id: "proj-9", org_id: ORG_ID, name: "Persisted Project", standards_profile: null },
+    ]);
+    renderOrgHome();
+
+    expect(await screen.findByText("Persisted Project")).toBeInTheDocument();
+    expect(mockListProjects).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows a loading state, then an error alert, on a failed fetch — never a false empty list", async () => {
+    mockListProjects.mockRejectedValueOnce(new ApiError("Server error.", 500, null));
+
+    renderOrgHome();
+
+    expect(screen.getByText(/loading projects/i)).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toHaveTextContent(/unable to load projects/i);
+    expect(screen.queryByText(/no projects yet/i)).not.toBeInTheDocument();
   });
 });
