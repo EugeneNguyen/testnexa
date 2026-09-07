@@ -89,3 +89,51 @@ If an entity already has a hand-written `resolve_org_id` function in `app/api/cr
 ## Gate completeness when nesting a new resource onto an existing bespoke read route (ADR-0032 precedent)
 
 The create-route version of this class of gap is the resolver-completeness note above; the read-route version is the *permission-gate*. `GET /releases/{id}/test-cycles` (ADR-0019) was already an unusual multi-permission-gated route (`release.read` AND `test_cycle.read` AND `test_execution.read`) precisely because it exposes data from more than one resource without any of their ids in the request path. PLAN-2 (ADR-0032) nested a fourth resource's rows (`EntryExitCriteria`) onto that same response — the permission list had to widen to a quadruple (`+ entry_exit_criteria.read`) in the same change, or the route would silently start returning a resource's data to callers never granted read on it. **If you're nesting an existing entity's rows onto a route that already gates on 2+ permissions for the resources it *already* exposes, adding that entity's own `.read` code to the gate is part of the same change, not a follow-up** — write the negative test (grant everything except the new code, assert `403`) in the same commit, since none of the existing tests for the pre-existing permissions can catch a gate that was never widened.
+
+## `OrgMembership` existence check must accept AIAgent actors, not just User
+
+`OrgMembership.user_id` FKs `user.actor_id` specifically (Database Document §3.1) — an `AIAgent` caller has no row in the `user` table at all. The legacy `_org_membership_exists(db, org_id, actor.actor_id)` check passes for a `User` actor (whose `actor_id` IS the `user.actor_id` the FK targets) but always returns `false` for an `AIAgent` caller, so any route that uses it as its NFR-1 existence boundary silently 404s *every* MCP-originated request as "no membership in this org" — even when the agent's `acting_on_behalf_of_user_id` has a perfectly valid `OrgMembership` in `org_id`. MCP-1/ADR-0033 introduced the `_actor_membership_exists(db, org_id, actor)` variant in `app/api/routes/assets.py` (for `create_test_case_for_requirement` / `list_test_cases_for_requirement`); the new helper resolves the actual user-id-to-check as `actor.acting_on_behalf_of_user_id` when `actor` is an `AIAgent`, otherwise `actor.actor_id` (same as before). **Whenever you write a new resource-gating route that takes a `User | AIAgent` actor and uses an `OrgMembership` check for the NFR-1 boundary, use `_actor_membership_exists` — not the older `_org_membership_exists` helper.** Future route additions (MCP-2, MCP-3, etc.) that route through an `AIAgent` will hit this exact 404 otherwise.
+
+## MCP mount path and SDK transport defaults
+
+The MCP server (ADR-0033) is mounted on the FastAPI app at `/mcp` via `app.mount("/mcp", mcp.streamable_http_app())`; `nginx/nginx.dev.conf`'s `location /mcp/` proxies the path through. Two non-obvious gotchas hit during MCP-1 wiring and are easy to repeat:
+
+- **Default `streamable_http_path = "/mcp"` produces `/mcp/mcp` external URL.** The SDK defaults to mounting its handler at `/mcp` *of its own internal app*; combined with the FastAPI `/mcp` mount, the full URL becomes `/mcp/mcp`. Set `mcp.settings.streamable_http_path = "/"` so the sub-app serves at the mount root → URL becomes `/mcp` (matches API Doc §6 + nginx's `location /mcp/` block).
+- **The SDK's Host-validation middleware rejects the nginx-proxied Host header.** SDK default `enable_dns_rebinding_protection=True` with `allowed_hosts=["localhost:*", ...]`. nginx's `proxy_set_header Host $host;` passes *just* the hostname (no port) — the SDK's `localhost:*` wildcard requires a literal `:` separator, so it never matches `Host: localhost` from behind nginx. The SDK has middleware specifically for this (set `mcp.settings.transport_security = TransportSecuritySettings(enable_dns_rebinding_protection=False, ...)`), and disabling the check is the right call for a self-hosted, single-tenant deployment behind a controlled reverse proxy — the bearer-key check (`app/mcp/auth.py`) is the actual auth boundary, the proxy's access controls cover the rest.
+- **Test/MCP calls need a trailing slash.** `tests/integration/test_mcp_test_cases.py` uses `MCP_PATH = "/mcp/"` because nginx's `location /mcp/` 301-redirects `/mcp` (no trailing slash), and the 301 response doesn't carry the original POST body — every subsequent `tools/call` then fails as "no JSON envelope in error text." Real MCP clients (Claude Code, Cursor) handle this via their own URL normalization; bare `httpx.AsyncClient.post("/mcp/...")` does too.
+
+## FastAPI `Depends(...)` defaults can be bypassed by passing explicit args (the MCP-1 dispatch pattern)
+
+A FastAPI handler signature like `async def create_x(id: UUID, payload: PydanticModel, actor: User | AIAgent = Depends(get_current_actor), db: AsyncSession = Depends(get_db))` is just a normal Python function: `Depends(...)` is the default-value thunk for the parameter, not a property of the function. Calling the handler directly with explicit `actor=resolved_actor, db=my_session` arguments **replaces the defaults without invoking the dependency bodies** — the dep resolution doesn't run, and the rest of the handler's business logic (org-membership gate, permission check, ORM flush, response materialization) runs unchanged.
+
+This is the architectural keystone of MCP-1's "no parallel, weaker code path for MCP" claim (ADR-0033 decision 2): an MCP tool can directly invoke the existing REST route handler with the resolved AIAgent and a fresh AsyncSession, and the route's body — the same one a REST caller exercises — runs identically. No ASGI in-process dispatch, no re-implementation, no copy-paste. **The pattern is reusable** for any future "thin client over the existing REST surface" feature (MCP-2/3, CLI tools, internal job runners) — anywhere you want one canonical business-logic path while serving multiple transports. **The pitfall** is that you must `await` the result if the handler is `async def` (calling without `await` returns a coroutine object — `'coroutine' has no .model_dump'` if you try to use it as a Pydantic model); see `app/mcp/tools/test_cases.py`'s `_dispatch` helper for the `asyncio.iscoroutine` guard that makes the pattern uniform across sync and async handlers.
+
+## FastMCP `ToolError` text gets a `Error executing tool <name>: ` prefix — strip it before parsing
+
+When a tool raises `ToolError("...")`, the SDK wraps it in an `isError=True` response with `content=[{"type": "text", "text": "Error executing tool <tool_name>: <your text>"}]`. If your text is JSON-encoded (the MCP-1 pattern — we serialize the API Doc §1 envelope verbatim so clients pattern-match on `code`/`field_errors` uniformly with REST), a naive `json.loads(item["text"])` crashes on the `Error executing tool ...:` prefix. The fix: locate the first `{` in `item["text"]` and slice from there (`json.loads(text[text.find("{"):])`), or use the SDK's `structuredContent` field for the success path and reserve `text` for tool error unwrap only. See `tests/integration/test_mcp_test_cases.py`'s `_extract_tool_error` helper.
+
+## MCP Python SDK v1.x client API for E2E tests (the `streamable_http_client` + `ClientSession` pattern)
+
+The MCP Python SDK's `mcp.client` package exposes (v1.28+ / v1.29.x, the `<2` line — `pip install "mcp[cli]<2"`):
+
+```python
+from mcp import ClientSession
+from mcp.client.streamable_http import streamable_http_client
+import httpx
+
+async with streamable_http_client(
+    url,
+    http_client=httpx.AsyncClient(headers={"Authorization": f"Bearer {raw_key}"}),
+) as (read, write, _):
+    async with ClientSession(read, write) as session:
+        await session.initialize()
+        tools = await session.list_tools()
+        result = await session.call_tool("create_test_case", {...})
+        # result.structuredContent — Pydantic-shaped success body
+        # result.isError, result.content[].text — error envelope (prefixed!)
+```
+
+- `ClientSession` (not `Client`) is the v1.x class name.
+- Bearer-key auth: there's no built-in `BearerAuth` helper in v1.x. Pass `http_client=httpx.AsyncClient(headers=...)` into `streamable_http_client`; the SDK uses that client for the wire and the headers ride on every request.
+- v2.0 changed the API surface (per the v2 release notes); pin `mcp[cli]>=1.28,<2` to stay on the documented path.
+- See `tests/integration/test_mcp_e2e_client.py` for the full pattern (handshake + `list_tools` + create/list + auth-failure modes + LAN-IP handshake test).

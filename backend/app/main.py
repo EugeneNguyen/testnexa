@@ -54,6 +54,7 @@ from app.api.routes import (
     test_suite_membership,
     trace,
 )
+from app.mcp.server import mcp as _mcp_server, mcp_lifespan
 
 app = FastAPI(title="TestNexa API", version="0.1.0")
 
@@ -182,3 +183,9 @@ app.include_router(test_suite_membership.router, prefix="/api/v1", tags=["assets
 # story makes there is the `status`-transition guard wired into
 # `_TEST_PLAN_CONFIG`, not a route.
 app.include_router(test_plan_membership.router, prefix="/api/v1", tags=["planning"])
+
+# MCP-1/ADR-0033: first-party MCP server at `/mcp` over Streamable HTTP. ASGI
+# sub-app on this same FastAPI process — no separate runtime, `tnx_agent_`
+# API keys work identically across the MCP and REST surfaces.
+app.mount("/mcp", _mcp_server.streamable_http_app())
+app.router.lifespan_context = mcp_lifespan
