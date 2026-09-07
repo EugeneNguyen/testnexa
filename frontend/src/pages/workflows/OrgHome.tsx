@@ -36,8 +36,9 @@
  * codebase yet to gate a nav link on instead).
  *
  * SHELL-3 (ADR-0020, FR-SHELL-3/NFR-27) adds two dashboard stat widgets —
- * Project count (`CWidgetStatsA`) and active Org Member count
- * (`CWidgetStatsB`) — above the project list, sourced from
+ * Project count (`WidgetStatsTile` A-variant, with a leading `cilFolder`
+ * icon block) and active Org Member count (`WidgetStatsTile` B-variant,
+ * no leading icon) — above the project list, sourced from
  * `lib/api/dashboard.ts`'s `getProjectsTotal`/`getActiveMemberTotal` (see
  * that module's own docstring for the exact endpoints and a flagged
  * backend-not-shipped-yet deviation). Each widget is its own `useQuery`,
@@ -104,13 +105,12 @@ import {
   CTableHead,
   CTableHeaderCell,
   CTableRow,
-  CWidgetStatsA,
-  CWidgetStatsB,
 } from "@coreui/react";
 import { ApiError } from "../../lib/api/client";
 import { getActiveMemberTotal, getProjectsTotal } from "../../lib/api/dashboard";
 import { createProject, deleteProject, listProjects, ProjectSummary, updateProject } from "../../lib/api/projects";
 import RoleAssignmentsPanel from "../../components/RoleAssignmentsPanel";
+import { WidgetStatsTile } from "../../components/shared/widget-stats-tile";
 
 const PAGE_SIZE = 10;
 
@@ -178,11 +178,12 @@ function ProjectCountWidget({ orgId }: { orgId: string }) {
   });
 
   return (
-    <CWidgetStatsA
-      data-testid="widget-project-count"
+    <WidgetStatsTile
       color="primary"
-      value={widgetValue(isLoading, isError, data)}
       title="Projects"
+      value={widgetValue(isLoading, isError, data)}
+      icon="cilFolder"
+      testId="widget-project-count"
     />
   );
 }
@@ -200,12 +201,11 @@ function ActiveMemberCountWidget({ orgId }: { orgId: string }) {
   });
 
   return (
-    <CWidgetStatsB
-      data-testid="widget-active-member-count"
+    <WidgetStatsTile
       color="info"
-      value={widgetValue(isLoading, isError, data)}
       title="Active org members"
-      text=""
+      value={widgetValue(isLoading, isError, data)}
+      testId="widget-active-member-count"
     />
   );
 }
