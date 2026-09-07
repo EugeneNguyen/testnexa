@@ -97,6 +97,7 @@ import { CIcon } from "@coreui/icons-react";
 import { cilBuilding, cilContrast, cilMenu, cilMoon, cilSun } from "@coreui/icons";
 import { useAuth } from "../auth/AuthContext";
 import { getMyOrgs, type OrgSummary } from "../lib/api/auth";
+import { Button } from "./atoms/button";
 
 interface AppHeaderProps {
   onToggleSidebar: () => void;
@@ -290,9 +291,10 @@ function AppHeader({ onToggleSidebar }: AppHeaderProps) {
             className={orgSwitcherDropdown.open ? "dropdown me-2 show" : "dropdown me-2"}
             ref={orgSwitcherDropdown.ref}
           >
-            <button
-              className={orgSwitcherDropdown.open ? "btn btn-outline-secondary show" : "btn btn-outline-secondary"}
-              type="button"
+            <Button
+              color="secondary"
+              outline
+              className={orgSwitcherDropdown.open ? "show" : undefined}
               aria-expanded={orgSwitcherDropdown.open}
               data-testid="org-switcher-toggle"
               aria-label="Switch organization"
@@ -300,7 +302,7 @@ function AppHeader({ onToggleSidebar }: AppHeaderProps) {
               onClick={toggleOrgSwitcher}
             >
               <CIcon icon={cilBuilding} size="lg" />
-            </button>
+            </Button>
             <ul
               className={
                 orgSwitcherDropdown.open ? "dropdown-menu show dropdown-menu-end" : "dropdown-menu dropdown-menu-end"
@@ -349,16 +351,17 @@ function AppHeader({ onToggleSidebar }: AppHeaderProps) {
             className={colorModeDropdown.open ? "dropdown me-2 show" : "dropdown me-2"}
             ref={colorModeDropdown.ref}
           >
-            <button
-              className={colorModeDropdown.open ? "btn btn-outline-secondary show" : "btn btn-outline-secondary"}
-              type="button"
+            <Button
+              color="secondary"
+              outline
+              className={colorModeDropdown.open ? "show" : undefined}
               aria-expanded={colorModeDropdown.open}
               data-testid="color-mode-toggle"
               aria-label="Toggle color mode"
               onClick={() => colorModeDropdown.setOpen((prev) => !prev)}
             >
               <CIcon icon={activeIcon} size="lg" />
-            </button>
+            </Button>
             <ul
               className={
                 colorModeDropdown.open ? "dropdown-menu show dropdown-menu-end" : "dropdown-menu dropdown-menu-end"
@@ -403,14 +406,9 @@ function AppHeader({ onToggleSidebar }: AppHeaderProps) {
               </li>
             </ul>
           </div>
-          <button
-            className="btn btn-outline-secondary"
-            type="button"
-            data-testid="logout-button"
-            onClick={handleLogout}
-          >
+          <Button color="secondary" outline data-testid="logout-button" onClick={handleLogout}>
             Log out
-          </button>
+          </Button>
         </div>
       </div>
     </div>
