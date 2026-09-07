@@ -5,11 +5,18 @@
  * full project-management screen — same posture RBAC-1 took for
  * `OrgPicker.tsx`'s "New Organization" modal).
  *
- * Project list is local component state, not a fetched list: there is no
- * `GET /orgs/{org_id}/projects` route in this story's scope (API Document §2
- * only ships `POST /orgs/{org_id}/projects` and `GET/PATCH /projects/{id}`),
- * so this page can only know about projects it created itself this session.
- * A page reload loses the list — accepted PROJ-1 scope limitation, not a bug.
+ * **Project list fix (2026-09-07):** originally local `useState`, populated
+ * only by `createProject`'s own response — any unmount (not just a page
+ * reload; navigating into a project's own detail page and back unmounts this
+ * component too) silently lost the list, even though the rows still existed
+ * server-side. Fixed by fetching real data via `lib/api/projects.ts`'s
+ * `listProjects` (`GET /projects?org_id=`, the generic-CRUD factory route
+ * ADR-0022 already shipped and `getProjectsTotal` already calls for the
+ * dashboard widget below) through a `useQuery`, same pattern the two widgets
+ * already use. `createProject`/`updateProject` still write straight into the
+ * query cache (`queryClient.setQueryData`) for an instant UI update without
+ * waiting on a refetch — the `useQuery` is what makes the list durable across
+ * a remount, not what every single edit round-trips through.
  *
  * The "New Project" modal is React Hook Form + Zod (ADR-0009's form-state
  * convention, unchanged by ADR-0012's CoreUI swap) bound to CoreUI's input
@@ -52,7 +59,7 @@ import { ReactNode, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import {
   CAlert,
@@ -83,7 +90,7 @@ import {
 } from "@coreui/react";
 import { ApiError } from "../../lib/api/client";
 import { getActiveMemberTotal, getProjectsTotal } from "../../lib/api/dashboard";
-import { createProject, ProjectSummary, updateProject } from "../../lib/api/projects";
+import { createProject, listProjects, ProjectSummary, updateProject } from "../../lib/api/projects";
 import RoleAssignmentsPanel from "../../components/RoleAssignmentsPanel";
 
 const newProjectSchema = z.object({
@@ -174,7 +181,17 @@ function ActiveMemberCountWidget({ orgId }: { orgId: string }) {
 
 function OrgHome() {
   const { orgId } = useParams<{ orgId: string }>();
-  const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const queryClient = useQueryClient();
+  const projectsQueryKey = ["projects", orgId] as const;
+  const {
+    data: projects = [],
+    isLoading: projectsLoading,
+    isError: projectsIsError,
+  } = useQuery({
+    queryKey: projectsQueryKey,
+    queryFn: () => listProjects(orgId as string),
+    enabled: !!orgId,
+  });
   const [showModal, setShowModal] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
 
@@ -218,7 +235,7 @@ function OrgHome() {
         // an explicit empty string would instead be stored as-is.
         ...(values.standardsProfile ? { standards_profile: values.standardsProfile } : {}),
       });
-      setProjects((prev) => [...prev, project]);
+      queryClient.setQueryData<ProjectSummary[]>(projectsQueryKey, (prev = []) => [...prev, project]);
       closeModal();
     } catch (err) {
       if (err instanceof ApiError) {
@@ -253,7 +270,9 @@ function OrgHome() {
       const updated = await updateProject(project.id, {
         standards_profile: trimmed === "" ? null : trimmed,
       });
-      setProjects((prev) => prev.map((existing) => (existing.id === updated.id ? updated : existing)));
+      queryClient.setQueryData<ProjectSummary[]>(projectsQueryKey, (prev = []) =>
+        prev.map((existing) => (existing.id === updated.id ? updated : existing)),
+      );
       setEditingId(null);
     } catch (err) {
       setEditError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
@@ -303,7 +322,13 @@ function OrgHome() {
                   </div>
                 </div>
 
-                {projects.length === 0 ? (
+                {projectsLoading ? (
+                  <p className="text-body-secondary mb-0">Loading projects…</p>
+                ) : projectsIsError ? (
+                  <CAlert color="danger" role="alert">
+                    Unable to load projects. Please try reloading the page.
+                  </CAlert>
+                ) : projects.length === 0 ? (
                   <p className="text-body-secondary mb-0">No projects yet.</p>
                 ) : (
                   <CTable hover responsive>
