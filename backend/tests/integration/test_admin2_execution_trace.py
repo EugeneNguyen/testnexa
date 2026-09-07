@@ -160,6 +160,15 @@ async def _cleanup_extra(
         if test_log_ids:
             await session.execute(delete(TestLog).where(TestLog.id.in_(test_log_ids)))
         if test_execution_ids:
+            # EXEC-2: every `TestExecution` now gets at least one `TestLog`
+            # row appended automatically (create route + any `PATCH` that
+            # changes `result`) — sweep by `test_execution_id` too, not just
+            # the explicit `test_log_ids` a caller may separately pass, or
+            # the `DELETE` below FK-violates on a log row this cleanup never
+            # knew existed.
+            await session.execute(
+                delete(TestLog).where(TestLog.test_execution_id.in_(test_execution_ids))
+            )
             await session.execute(delete(TestExecution).where(TestExecution.id.in_(test_execution_ids)))
         if test_cycle_ids:
             await session.execute(delete(TestCycle).where(TestCycle.id.in_(test_cycle_ids)))
@@ -287,12 +296,24 @@ async def test_test_execution_full_crud_happy_path() -> None:
             assert patch_response.status_code == 200
             assert patch_response.json()["result"] == "fail"
 
+            # EXEC-2: the create leg + the `result`-changing `PATCH` above each
+            # appended a `TestLog` row (RESTRICT FK on `test_execution_id`) —
+            # a `TestExecution` with any audit-trail entries can no longer be
+            # deleted through the generic route once real logs exist, which is
+            # the correct consequence of an append-only log, not a bug: erasing
+            # the parent would otherwise erase the evidence the log exists to
+            # preserve. `test_execution_ids` stays populated so `_cleanup_extra`
+            # still tears the row (and its logs) down below.
             delete_response = await client.delete(f"{API_PREFIX}/test-executions/{execution_id}", headers=headers)
-            assert delete_response.status_code == 204
-            test_execution_ids = []  # already gone
+            assert delete_response.status_code == 409, delete_response.text
+            assert delete_response.json()["code"] == "restrict_blocked"
 
-            get_after_delete = await client.get(f"{API_PREFIX}/test-executions/{execution_id}", headers=headers)
-            assert get_after_delete.status_code == 404
+            get_after_blocked_delete = await client.get(
+                f"{API_PREFIX}/test-executions/{execution_id}", headers=headers
+            )
+            assert get_after_blocked_delete.status_code == 200, (
+                "row must still exist -- the DELETE above was blocked, not applied"
+            )
     finally:
         await _cleanup_extra(
             test_execution_ids=test_execution_ids,

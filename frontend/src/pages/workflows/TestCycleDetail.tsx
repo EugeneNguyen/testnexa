@@ -120,6 +120,11 @@ import {
   type TestExecutionSummary,
 } from "../../lib/api/testExecutions";
 import { listPlanTestCases } from "../../lib/api/testPlans";
+import {
+  addTestExecutionComment,
+  listTestExecutionLogs,
+  type TestLogSummary,
+} from "../../lib/api/testLogs";
 import { getProject } from "../../lib/api/projects";
 import { listMembers } from "../../lib/api/members";
 import { listEntities, getEntity, type EntityRow } from "../../lib/api/entityCrud";
@@ -190,6 +195,61 @@ const recordResultSchema = z.object({
 });
 
 type RecordResultFormValues = z.infer<typeof recordResultSchema>;
+
+const commentSchema = z.object({
+  text: z.string().trim().min(1, "Comment text is required"),
+  attachmentUrl: z.string().trim().optional(),
+  fileName: z.string().trim().optional(),
+});
+
+type CommentFormValues = z.infer<typeof commentSchema>;
+
+/**
+ * `TestLog.payload`'s per-`event_type` shape (`app/api/routes/execution.py`'s
+ * `build_status_change_log`/`add_test_execution_comment`) rendered as one
+ * short human-readable line — EXEC-2's timeline is read-only, so this is
+ * display formatting only, not a typed contract the frontend depends on.
+ */
+function logSummaryLine(log: TestLogSummary): string {
+  const payload = log.payload;
+  switch (log.event_type === "agent_action" ? String(payload.kind) : log.event_type) {
+    case "status_change": {
+      const from = payload.from ? String(payload.from) : "(none)";
+      const to = payload.to ? String(payload.to) : "(none)";
+      return `Result changed: ${from} → ${to}`;
+    }
+    case "comment":
+      return payload.text ? String(payload.text) : "(comment)";
+    case "attachment": {
+      const name = payload.file_name ? String(payload.file_name) : "attachment";
+      const text = payload.text ? String(payload.text) : "";
+      return text ? `${text} (${name})` : `Attachment: ${name}`;
+    }
+    default:
+      return JSON.stringify(payload);
+  }
+}
+
+/**
+ * `agent_action` (an `AIAgent`-originated status change/comment/attachment,
+ * `app/api/routes/execution.py`'s `_event_type_for_actor`) shows its own
+ * badge color, distinct from the human-triggered event it wraps — the
+ * `payload.kind` line above already names which one it was.
+ */
+function logEventColor(eventType: TestLogSummary["event_type"]): string {
+  switch (eventType) {
+    case "status_change":
+      return "primary";
+    case "comment":
+      return "secondary";
+    case "attachment":
+      return "info";
+    case "agent_action":
+      return "dark";
+    default:
+      return "secondary";
+  }
+}
 
 /**
  * `datetime-local` wants `YYYY-MM-DDTHH:mm` in **local** time with no zone
@@ -315,6 +375,24 @@ function TestCycleDetail() {
   });
 
   const selectedTestCaseId = watchRecord("testCaseId");
+
+  // --- EXEC-2: execution history timeline modal --------------------------
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [historyExecutionId, setHistoryExecutionId] = useState<string | null>(null);
+  const [logs, setLogs] = useState<TestLogSummary[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
+  const [logsLoadError, setLogsLoadError] = useState<string | null>(null);
+  const [commentError, setCommentError] = useState<string | null>(null);
+
+  const {
+    register: registerComment,
+    handleSubmit: handleSubmitComment,
+    reset: resetComment,
+    formState: { errors: commentErrors, isSubmitting: isSubmittingComment },
+  } = useForm<CommentFormValues>({
+    resolver: zodResolver(commentSchema),
+    defaultValues: { text: "", attachmentUrl: "", fileName: "" },
+  });
 
   /** `GET /test-cycles/{id}` — the generic factory item route. */
   const fetchCycle = useCallback(async () => {
@@ -583,6 +661,60 @@ function TestCycleDetail() {
     }
   }
 
+  /** `GET /executions/{id}/logs` — the ordered timeline (FR-EXEC-2 AC3). */
+  const fetchLogs = useCallback(async (executionId: string) => {
+    setLogsLoading(true);
+    setLogsLoadError(null);
+    try {
+      const items = await listTestExecutionLogs(executionId);
+      setLogs(items);
+    } catch (err) {
+      setLogsLoadError(errorMessage(err));
+    } finally {
+      setLogsLoading(false);
+    }
+  }, []);
+
+  function openHistoryModal(executionId: string) {
+    setHistoryExecutionId(executionId);
+    setCommentError(null);
+    resetComment({ text: "", attachmentUrl: "", fileName: "" });
+    setShowHistoryModal(true);
+    void fetchLogs(executionId);
+  }
+
+  function closeHistoryModal() {
+    setShowHistoryModal(false);
+    setHistoryExecutionId(null);
+    setLogs([]);
+  }
+
+  /**
+   * `POST /executions/{id}/comments` — appends a `TestLog` row (AC1's
+   * comment/attachment triggers). On success the timeline re-fetches (the
+   * same "never a local splice, always re-read the server" posture
+   * `refreshAfterRecord` already takes for the dashboard/history) and the
+   * form clears; on failure the modal stays open with the reason inline,
+   * same convention `onSubmitRecord` established.
+   */
+  async function onSubmitComment(values: CommentFormValues) {
+    if (!historyExecutionId) {
+      return;
+    }
+    setCommentError(null);
+    try {
+      await addTestExecutionComment(historyExecutionId, {
+        text: values.text,
+        attachment_url: values.attachmentUrl ? values.attachmentUrl : null,
+        file_name: values.fileName ? values.fileName : null,
+      });
+      resetComment({ text: "", attachmentUrl: "", fileName: "" });
+      await fetchLogs(historyExecutionId);
+    } catch (err) {
+      setCommentError(errorMessage(err));
+    }
+  }
+
   const cycleName = useMemo(
     () => (cycle && cycle.name ? String(cycle.name) : "Test cycle"),
     [cycle],
@@ -762,6 +894,16 @@ function TestCycleDetail() {
                               {actorLabels[execution.executed_by_actor_id] ??
                                 execution.executed_by_actor_id}
                             </span>
+                            <CButton
+                              size="sm"
+                              color="secondary"
+                              variant="outline"
+                              className="ms-auto"
+                              data-testid={`execution-${execution.id}-view-history`}
+                              onClick={() => openHistoryModal(execution.id)}
+                            >
+                              History
+                            </CButton>
                           </div>
                           {execution.actual_result && (
                             <div className="small" data-testid={`execution-${execution.id}-notes`}>
@@ -896,6 +1038,139 @@ function TestCycleDetail() {
             </CButton>
           </CModalFooter>
         </CForm>
+      </CModal>
+
+      {/* --- "Execution history" timeline modal (EXEC-2, FR-EXEC-2) -------- */}
+      <CModal
+        visible={showHistoryModal}
+        onClose={closeHistoryModal}
+        alignment="center"
+        data-testid="execution-history-modal"
+      >
+        <CModalHeader>
+          <CModalTitle>Execution history</CModalTitle>
+        </CModalHeader>
+        <CModalBody>
+          {logsLoadError && (
+            <CAlert color="danger" role="alert" data-testid="execution-log-load-error">
+              {logsLoadError}
+            </CAlert>
+          )}
+
+          {logsLoading ? (
+            <div className="d-flex justify-content-center py-3">
+              <CSpinner color="primary" />
+            </div>
+          ) : (
+            !logsLoadError && (
+              /* Flat <ul>/<li>, never a <CTable> — frontend/CLAUDE.md. Ordered
+                 oldest-first exactly as `GET /executions/{id}/logs` returns it
+                 (AC3's "ordered TestLog timeline"). */
+              <ul className="list-unstyled mb-3" data-testid="execution-log-timeline">
+                {logs.length === 0 && (
+                  <li className="text-body-secondary">No log entries yet.</li>
+                )}
+                {logs.map((log) => (
+                  <li
+                    key={log.id}
+                    className="border-bottom py-2"
+                    data-testid={`execution-log-entry-${log.id}`}
+                  >
+                    <div className="d-flex align-items-center gap-2 flex-wrap">
+                      <CBadge
+                        color={logEventColor(log.event_type)}
+                        data-testid={`execution-log-entry-${log.id}-type`}
+                      >
+                        {log.event_type}
+                      </CBadge>
+                      <span
+                        className="text-body-secondary small"
+                        data-testid={`execution-log-entry-${log.id}-logged-at`}
+                      >
+                        {formatExecutedAt(log.logged_at)}
+                      </span>
+                    </div>
+                    <div
+                      className="small"
+                      data-testid={`execution-log-entry-${log.id}-summary`}
+                    >
+                      {logSummaryLine(log)}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )
+          )}
+
+          <CForm onSubmit={handleSubmitComment(onSubmitComment)} noValidate>
+            <h2 className="fs-6 mb-2">Add a comment</h2>
+
+            {commentError && (
+              <CAlert color="danger" role="alert" data-testid="add-comment-error">
+                {commentError}
+              </CAlert>
+            )}
+
+            <div className="mb-2">
+              <CFormLabel htmlFor="comment-text">Comment</CFormLabel>
+              <CFormTextarea
+                id="comment-text"
+                rows={2}
+                data-testid="add-comment-text"
+                invalid={Boolean(commentErrors.text)}
+                {...registerComment("text")}
+              />
+              {commentErrors.text && (
+                <CFormFeedback invalid>{commentErrors.text.message}</CFormFeedback>
+              )}
+            </div>
+
+            <div className="mb-2">
+              <CFormLabel htmlFor="comment-attachment-url">
+                Attachment URL (optional)
+              </CFormLabel>
+              <CFormInput
+                id="comment-attachment-url"
+                data-testid="add-comment-attachment-url"
+                {...registerComment("attachmentUrl")}
+              />
+              <CFormText>
+                A plain link/reference, not a file upload (v1) — supplying one logs this
+                entry as an attachment rather than a plain comment.
+              </CFormText>
+            </div>
+
+            <div className="mb-3">
+              <CFormLabel htmlFor="comment-file-name">File name (optional)</CFormLabel>
+              <CFormInput
+                id="comment-file-name"
+                data-testid="add-comment-file-name"
+                {...registerComment("fileName")}
+              />
+            </div>
+
+            <div className="d-flex justify-content-end">
+              <CButton
+                type="submit"
+                color="primary"
+                data-testid="add-comment-submit"
+                disabled={isSubmittingComment}
+              >
+                {isSubmittingComment ? "Adding..." : "Add comment"}
+              </CButton>
+            </div>
+          </CForm>
+        </CModalBody>
+        <CModalFooter>
+          <CButton
+            color="secondary"
+            variant="outline"
+            data-testid="execution-history-close"
+            onClick={closeHistoryModal}
+          >
+            Close
+          </CButton>
+        </CModalFooter>
       </CModal>
     </div>
   );

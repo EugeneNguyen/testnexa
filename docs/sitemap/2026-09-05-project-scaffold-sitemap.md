@@ -43,9 +43,11 @@ First sitemap for this repo — no prior one existed; routes accreted story-by-s
 
 **Correction (2026-09-07, EXEC-1):** `TestExecutionRunner` above is now **partially** built as `TestCycleDetail` (FR-EXEC-1 only — see the route row above). The reservation stays in the "not yet built" list below only for FR-EXEC-2/3's own remaining scope (append-only `TestLog` timeline UI, raise-a-`Defect` flow) — neither has a screen yet, and neither is stubbed on `TestCycleDetail`.
 
+**Correction (2026-09-07, EXEC-2):** FR-EXEC-2's own remaining surface is now built too, landing on `TestCycleDetail` itself exactly as this file's own "not yet built" note below anticipated — no new route, no new screen name. A "History" button per execution-history row opens a modal showing the ordered `TestLog` timeline plus a comment/attachment form ([EXEC-2 UI Design Document](../ui-design/2026-09-07-exec-2-append-only-test-log-ui-design.md), [ADR-0038](../adr/0038-exec-2-append-only-test-log.md)). Only FR-EXEC-3 (raise-a-`Defect` flow) remains in the "not yet built" list below.
+
 **Correction (2026-09-07, DASH-1):** `LandingPage` (previously the sole entry in the "Public (unauthenticated)" table's `/` row) is deleted outright — see the "Public (unauthenticated)" section's own correction note above. `Dashboard` is new, added to the Protected table above; it is not org-scoped and carries no data of its own as of this pass (deliberate — see [DASH-1 UI Design Document](../ui-design/2026-09-07-dash-1-root-redirect-dashboard-ui-design.md) §4).
 
-**Not yet built** (scoped by other, not-yet-implemented stories — listed here as reserved paths so a future generic-admin config never collides with them): `TestExecutionRunner`'s remaining FR-EXEC-2/3 surface (append-only log timeline, raise-Defect flow — no dedicated screen name reserved yet, may land on `TestCycleDetail` itself rather than a separate page), `TraceabilityMatrix` (FR-TRACE-1..2).
+**Not yet built** (scoped by other, not-yet-implemented stories — listed here as reserved paths so a future generic-admin config never collides with them): `TestExecutionRunner`'s remaining FR-EXEC-3 surface (raise-Defect flow — no dedicated screen name reserved yet), `TraceabilityMatrix` (FR-TRACE-1..2).
 
 ## Protected — generic admin CRUD surface (ADR-0027)
 
