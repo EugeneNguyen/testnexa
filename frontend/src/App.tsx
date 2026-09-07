@@ -2,12 +2,13 @@ import { Route, Routes } from "react-router-dom";
 import { AuthProvider } from "./auth/AuthContext";
 import ProtectedRoute from "./auth/ProtectedRoute";
 import AcceptInvite from "./pages/workflows/AcceptInvite";
-import LandingPage from "./pages/workflows/LandingPage";
+import Dashboard from "./pages/workflows/Dashboard";
 import Login from "./pages/workflows/Login";
 import OrgHome from "./pages/workflows/OrgHome";
 import OrgMembers from "./pages/workflows/OrgMembers";
 import OrgPicker from "./pages/workflows/OrgPicker";
 import ProjectDetail from "./pages/workflows/ProjectDetail";
+import RootRedirect from "./pages/workflows/RootRedirect";
 import Signup from "./pages/workflows/Signup";
 import TestCycleDetail from "./pages/workflows/TestCycleDetail";
 import TestPlanDetail from "./pages/workflows/TestPlanDetail";
@@ -22,14 +23,33 @@ function App() {
     <AuthProvider>
       <Routes>
         {/*
-          LANDING-1 (ADR-0024) public landing page: replaces the deleted
-          scaffold-verification health-check widget that used to sit at `/`.
-          Public route, same tier as `/login`/`/signup` — see
-          `LandingPage.tsx`'s own docstring.
+          DASH-1 (ADR-0035): `/` is a pure auth-state redirect, not a screen.
+          It supersedes LANDING-1's public `LandingPage` (ADR-0024), which is
+          deleted outright — no marketing/pitch page exists anywhere in the
+          product now, by explicit decision. Logged out -> `/login`, logged in
+          -> `/dashboard`, boot refresh still in flight -> a spinner. The guard
+          reads `accessToken` only, never `orgContext`/`orgs`; see
+          `RootRedirect.tsx`'s docstring for why that is the fix, not a
+          shortcut.
         */}
-        <Route path="/" element={<LandingPage />} />
+        <Route path="/" element={<RootRedirect />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
+        {/*
+          DASH-1 (ADR-0035) dashboard placeholder — the authenticated
+          destination of the root guard above. Deliberately empty this pass;
+          `ProtectedRoute`-wrapped like every other authenticated screen, which
+          is also what makes a logged-out direct hit on `/dashboard` redirect
+          to `/login` without a second bespoke guard.
+        */}
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute>
+              <Dashboard />
+            </ProtectedRoute>
+          }
+        />
         {/*
           RBAC-2 (ADR-0017) public accept-invite route: the invitee has no
           account/credentials yet (new-email invite path), so this must sit
