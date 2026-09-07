@@ -140,6 +140,21 @@ describe("OrgHome — New Project modal", () => {
     expect(screen.queryByRole("heading", { name: /^new project$/i })).not.toBeInTheDocument();
   });
 
+  it("renders the full ID/Name/Standards profile/Actions column set (TC-PROJ-019)", async () => {
+    mockListProjects.mockResolvedValueOnce([
+      { id: "proj-cols", org_id: ORG_ID, name: "Column Check", standards_profile: null },
+    ]);
+    renderOrgHome();
+    await screen.findByText("Column Check");
+
+    // Name is the default active sort (ascending) — its header carries a "▲"
+    // decoration, same as any other sortable-header render; the column
+    // *labels* are still exactly this set, decoration aside.
+    const headers = screen.getAllByRole("columnheader");
+    expect(headers.map((h) => h.textContent)).toEqual(["ID", "Name ▲", "Standards profile", ""]);
+    expect(headers[3]).toHaveAccessibleName("Actions");
+  });
+
   it("submits with standards_profile included when filled in", async () => {
     mockCreateProject.mockResolvedValue({
       id: "proj-2",
@@ -263,6 +278,53 @@ describe("OrgHome — New Project modal", () => {
 
     await waitFor(() => expect(mockDeleteProject).toHaveBeenCalledWith("proj-4"));
     await waitFor(() => expect(screen.queryByText("To Delete")).not.toBeInTheDocument());
+  });
+
+  /**
+   * TC-PROJ-021's negative half. The positive half is the test directly above;
+   * this closes the gap the Test Cases doc's own DASH-2 coverage-recompute note
+   * flagged as "no automated test yet" (2026-09-07).
+   *
+   * `DELETE /projects/{id}` is gated on `project.delete` (ADR-0022's generic
+   * factory), which only `org_admin` holds today — a `test_manager`/
+   * `test_engineer` caller gets a `403`. Per the UI Design Document §5, that
+   * `403` surfaces as a `CAlert` *inside the still-open confirm modal*, and the
+   * row must NOT be removed, so the user isn't left wondering whether the
+   * delete silently no-op'd.
+   */
+  it("keeps the confirm modal open with a 403 alert and does NOT remove the row when the caller lacks project.delete", async () => {
+    mockListProjects.mockResolvedValueOnce([
+      { id: "proj-5", org_id: ORG_ID, name: "Undeletable", standards_profile: null },
+    ]);
+    mockDeleteProject.mockRejectedValue(
+      new ApiError("You do not have permission to delete this project.", 403, {
+        code: "permission_denied",
+        message: "You do not have permission to delete this project.",
+        field_errors: null,
+      }),
+    );
+
+    renderOrgHome();
+    await screen.findByText("Undeletable");
+
+    fireEvent.click(screen.getByRole("button", { name: /^delete$/i }));
+    expect(screen.getByRole("heading", { name: /^delete project$/i })).toBeInTheDocument();
+
+    const confirmButtons = screen.getAllByRole("button", { name: /^delete$/i });
+    fireEvent.click(confirmButtons[confirmButtons.length - 1]);
+
+    await waitFor(() => expect(mockDeleteProject).toHaveBeenCalledWith("proj-5"));
+
+    // The 403 surfaces inline as an alert...
+    expect(await screen.findByRole("alert")).toHaveTextContent(/do not have permission to delete/i);
+    // ...the modal stays open...
+    expect(screen.getByRole("heading", { name: /^delete project$/i })).toBeInTheDocument();
+    // ...and the row is still in the table. Asserted via the row's own link
+    // (not `getByText`): the name deliberately appears twice at this point —
+    // once in the surviving table row, once in the still-open modal's "Are you
+    // sure you want to delete <name>?" copy — so a bare text query is
+    // ambiguous. The link is unique to the table row.
+    expect(screen.getByRole("link", { name: "Undeletable" })).toBeInTheDocument();
   });
 
   it("filters the list by name via the search box", async () => {

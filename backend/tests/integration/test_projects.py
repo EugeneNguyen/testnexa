@@ -1056,3 +1056,138 @@ async def test_project_creator_own_project_scoped_role_now_works() -> None:  # T
             assert patch_response.json()["name"] == "TC-RBAC-035 Project Renamed"
     finally:
         await _cleanup(user_ids=user_ids, org_ids=org_ids, project_ids=project_ids)
+
+
+# --- TC-PROJ-021: DELETE /projects/{id} permission gate (DASH-2/ADR-0039) --------------------
+# `DELETE /projects/{id}` shipped with ADR-0022's generic factory but had zero
+# frontend callers and — confirmed by grep during DASH-2's verification pass —
+# zero integration coverage of its own until now. DASH-2 wires it to a UI
+# Delete button, so the gate needs a real test on both sides.
+
+
+@pytest.mark.asyncio
+async def test_delete_project_403_without_permission_then_204_with_it() -> None:  # TC-PROJ-021
+    """Negative half first, then the positive half on the SAME project row.
+
+    Ordering matters: asserting the 403 leg *before* the successful delete
+    proves the row genuinely survived the denied attempt (a 403 that had
+    silently deleted anyway would fail the subsequent GET), which is exactly
+    the claim TC-PROJ-021's negative half makes and which a delete-only test
+    structurally cannot check.
+
+    The project is seeded via a **direct ORM insert**, not `POST /orgs/{id}/
+    projects`, on purpose: that route unconditionally creates a project-scoped
+    `test_manager` RoleAssignment for its creator (`app/api/routes/
+    projects.py` step 5, ADR-0017), and `role_assignment.project_id` FKs
+    `project.id` with `ON DELETE RESTRICT` — so a project created through the
+    app's own create route can never be deleted through this route at all
+    (409 `restrict_blocked`). That interaction is a real product gap flagged
+    separately by DASH-2's verification pass; this test deliberately isolates
+    the *permission gate*, which is what TC-PROJ-021 is actually about.
+    """
+    user_ids: list = []
+    org_ids: list = []
+    project_ids: list = []
+    try:
+        async with AsyncSessionLocal() as session:
+            admin, org = await _create_org_admin(session, "tc021")
+            # `tester`'s seeded bundle holds no `project.delete`.
+            member = await _create_member_with_role(session, "tc021-member", org, "tester")
+            project = Project(org_id=org.id, name="TC-PROJ-021 Deletable", standards_profile=None)
+            session.add(project)
+            await session.flush()
+            await session.commit()
+            user_ids = [admin.actor_id, member.actor_id]
+            org_ids = [org.id]
+            project_ids = [project.id]
+            admin_id, member_id, project_id = admin.actor_id, member.actor_id, project.id
+
+        admin_token = _access_token_for(admin_id)
+        member_token = _access_token_for(member_id)
+
+        async with httpx.AsyncClient(base_url=TEST_API_BASE_URL) as client:
+            # Negative half: caller lacking `project.delete` gets 403...
+            denied = await client.delete(
+                _project_path(project_id),
+                headers={"Authorization": f"Bearer {member_token}"},
+            )
+            assert denied.status_code == 403
+            assert denied.json()["code"] == "permission_denied"
+
+            # ...and the row is genuinely still there afterwards.
+            still_there = await client.get(
+                _project_path(project_id),
+                headers={"Authorization": f"Bearer {admin_token}"},
+            )
+            assert still_there.status_code == 200
+            assert still_there.json()["name"] == "TC-PROJ-021 Deletable"
+
+            # Positive half: org_admin holds `project.delete` -> 204, row gone.
+            allowed = await client.delete(
+                _project_path(project_id),
+                headers={"Authorization": f"Bearer {admin_token}"},
+            )
+            assert allowed.status_code == 204
+
+            gone = await client.get(
+                _project_path(project_id),
+                headers={"Authorization": f"Bearer {admin_token}"},
+            )
+            assert gone.status_code == 404
+    finally:
+        await _cleanup(user_ids=user_ids, org_ids=org_ids, project_ids=project_ids)
+
+
+@pytest.mark.asyncio
+async def test_delete_project_created_via_api_is_blocked_by_creator_role_assignment() -> None:
+    """Characterization test for the DASH-2 blocker: a project created through
+    the app's own create route CANNOT be deleted through `DELETE /projects/
+    {id}`, because that route auto-creates a project-scoped `test_manager`
+    RoleAssignment (ADR-0017 step 5) and `role_assignment.project_id` is
+    `ON DELETE RESTRICT`.
+
+    This asserts today's ACTUAL behavior (409 `restrict_blocked`), not the
+    desired behavior — it is deliberately written so that whichever fix a
+    future story chooses (cascade the creator grant, cascade-delete in a
+    bespoke route, or change the FK) will fail this test loudly and force it
+    to be updated alongside the decision, rather than letting the gap sit
+    silently. See DASH-2's verification report.
+    """
+    user_ids: list = []
+    org_ids: list = []
+    project_ids: list = []
+    try:
+        async with AsyncSessionLocal() as session:
+            admin, org = await _create_org_admin(session, "tc021b")
+            await session.commit()
+            user_ids = [admin.actor_id]
+            org_ids = [org.id]
+            admin_id, org_id = admin.actor_id, org.id
+
+        admin_token = _access_token_for(admin_id)
+
+        async with httpx.AsyncClient(base_url=TEST_API_BASE_URL) as client:
+            created = await client.post(
+                _projects_path(org_id),
+                json={"name": "TC-PROJ-021b Undeletable"},
+                headers={"Authorization": f"Bearer {admin_token}"},
+            )
+            assert created.status_code == 201
+            project_id = created.json()["id"]
+            project_ids = [project_id]
+
+            blocked = await client.delete(
+                _project_path(project_id),
+                headers={"Authorization": f"Bearer {admin_token}"},
+            )
+            assert blocked.status_code == 409
+            assert blocked.json()["code"] == "restrict_blocked"
+
+            # The project is still there — the delete really did not happen.
+            survived = await client.get(
+                _project_path(project_id),
+                headers={"Authorization": f"Bearer {admin_token}"},
+            )
+            assert survived.status_code == 200
+    finally:
+        await _cleanup(user_ids=user_ids, org_ids=org_ids, project_ids=project_ids)
