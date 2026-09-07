@@ -102,8 +102,18 @@ class RoleAssignment(Base):
         Uuid(as_uuid=True), ForeignKey("organization.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     # nullable: null = org-wide role, non-null = project-scoped role.
+    #
+    # `ondelete="CASCADE"` (DASH-2/ADR-0040, 2026-09-07 — was `RESTRICT`):
+    # `POST /orgs/{org_id}/projects` (ADR-0017 step 5) unconditionally grants
+    # the creator a project-scoped `test_manager` RoleAssignment, so a
+    # `RESTRICT` here meant `DELETE /projects/{id}` 409'd for literally every
+    # Project ever created through the app's own UI — the only kind a real
+    # user can create. A project-scoped RoleAssignment has no meaning once
+    # its own Project is gone (there's no "orphaned scope" state worth
+    # preserving, unlike an org-wide grant), so cascading it away on delete
+    # is the correct semantics, not just a workaround. See ADR-0040.
     project_id: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("project.id", ondelete="RESTRICT"), nullable=True
+        Uuid(as_uuid=True), ForeignKey("project.id", ondelete="CASCADE"), nullable=True
     )
     role_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("role.id", ondelete="RESTRICT"), nullable=False

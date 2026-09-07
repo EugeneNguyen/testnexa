@@ -39,7 +39,7 @@ are unique per test.
 
 import os
 from datetime import UTC, datetime
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import httpx
 import pytest
@@ -1139,19 +1139,20 @@ async def test_delete_project_403_without_permission_then_204_with_it() -> None:
 
 
 @pytest.mark.asyncio
-async def test_delete_project_created_via_api_is_blocked_by_creator_role_assignment() -> None:
-    """Characterization test for the DASH-2 blocker: a project created through
-    the app's own create route CANNOT be deleted through `DELETE /projects/
-    {id}`, because that route auto-creates a project-scoped `test_manager`
-    RoleAssignment (ADR-0017 step 5) and `role_assignment.project_id` is
-    `ON DELETE RESTRICT`.
+async def test_delete_project_created_via_api_cascades_the_creator_role_assignment() -> None:
+    """DASH-2/ADR-0040 fix, proven end to end.
 
-    This asserts today's ACTUAL behavior (409 `restrict_blocked`), not the
-    desired behavior — it is deliberately written so that whichever fix a
-    future story chooses (cascade the creator grant, cascade-delete in a
-    bespoke route, or change the FK) will fail this test loudly and force it
-    to be updated alongside the decision, rather than letting the gap sit
-    silently. See DASH-2's verification report.
+    A project created through the app's own create route now CAN be deleted
+    through `DELETE /projects/{id}` — `POST /orgs/{org_id}/projects` (ADR-0017
+    step 5) auto-creates a project-scoped `test_manager` RoleAssignment for
+    the creator, and `role_assignment.project_id`'s FK is `ON DELETE CASCADE`
+    as of migration `6a11a6a1d803` (was `RESTRICT`, the exact gap DASH-2's own
+    verification pass found: every real, UI-created Project 409'd on delete).
+
+    Asserts the CASCADE actually fired, not just that the delete "succeeded"
+    — a route that silently swallowed the FK error some other way could
+    return `204` without the RoleAssignment row genuinely being gone, and a
+    delete-only assertion cannot distinguish the two.
     """
     user_ids: list = []
     org_ids: list = []
@@ -1169,25 +1170,35 @@ async def test_delete_project_created_via_api_is_blocked_by_creator_role_assignm
         async with httpx.AsyncClient(base_url=TEST_API_BASE_URL) as client:
             created = await client.post(
                 _projects_path(org_id),
-                json={"name": "TC-PROJ-021b Undeletable"},
+                json={"name": "TC-PROJ-021b Deletable"},
                 headers={"Authorization": f"Bearer {admin_token}"},
             )
             assert created.status_code == 201
             project_id = created.json()["id"]
             project_ids = [project_id]
 
-            blocked = await client.delete(
-                _project_path(project_id),
-                headers={"Authorization": f"Bearer {admin_token}"},
-            )
-            assert blocked.status_code == 409
-            assert blocked.json()["code"] == "restrict_blocked"
+            async with AsyncSessionLocal() as session:
+                grant_before = await session.scalar(
+                    select(RoleAssignment).where(RoleAssignment.project_id == UUID(project_id))
+                )
+                assert grant_before is not None  # the auto-grant genuinely exists first
 
-            # The project is still there — the delete really did not happen.
-            survived = await client.get(
+            allowed = await client.delete(
                 _project_path(project_id),
                 headers={"Authorization": f"Bearer {admin_token}"},
             )
-            assert survived.status_code == 200
+            assert allowed.status_code == 204
+
+            gone = await client.get(
+                _project_path(project_id),
+                headers={"Authorization": f"Bearer {admin_token}"},
+            )
+            assert gone.status_code == 404
+
+            async with AsyncSessionLocal() as session:
+                grant_after = await session.scalar(
+                    select(RoleAssignment).where(RoleAssignment.project_id == UUID(project_id))
+                )
+                assert grant_after is None  # cascaded away, not orphaned
     finally:
         await _cleanup(user_ids=user_ids, org_ids=org_ids, project_ids=project_ids)
