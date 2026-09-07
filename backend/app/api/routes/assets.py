@@ -91,6 +91,26 @@ async def _org_membership_exists(db: AsyncSession, org_id: UUID, user_id: UUID) 
     return result is not None
 
 
+async def _actor_membership_exists(
+    db: AsyncSession, org_id: UUID, actor: User | AIAgent
+) -> bool:
+    """Any-status OrgMembership existence for the gate, AIAgent-correct.
+
+    `OrgMembership.user_id` FKs `user.actor_id` specifically (Database
+    Document §3.1) — an `AIAgent` caller has no `user` row of its own,
+    so the existing `_org_membership_exists(org_id, actor.actor_id)`
+    shape never finds a row for an agent caller and 404s the request as
+    "no membership in this org" per NFR-1. The agent's org relationship
+    is transitive, via `acting_on_behalf_of_user_id`'s own `OrgMembership`
+    rows (the same pattern `agents.py` established for the agent-route
+    404-vs-403 boundary, ADR-0015). For a `User` actor this is the same
+    `_org_membership_exists(db, org_id, actor.actor_id)` check the
+    existing route has always done.
+    """
+    target_user_id = actor.acting_on_behalf_of_user_id if isinstance(actor, AIAgent) else actor.actor_id
+    return await _org_membership_exists(db, org_id, target_user_id)
+
+
 def _test_case_summary(test_case: TestCase) -> TestCaseSummary:
     return TestCaseSummary(
         id=test_case.id,
@@ -203,7 +223,7 @@ async def create_test_case_for_requirement(
         return _error(404, "not_found", "Requirement not found.")
 
     project = await db.get(Project, requirement.project_id)
-    if project is None or not await _org_membership_exists(db, project.org_id, actor.actor_id):
+    if project is None or not await _actor_membership_exists(db, project.org_id, actor):
         return _error(404, "not_found", "Requirement not found.")
 
     if not await has_permission(str(actor.actor_id), str(project.org_id), "test_case.create"):
@@ -259,7 +279,7 @@ async def list_test_cases_for_requirement(
         return _error(404, "not_found", "Requirement not found.")
 
     project = await db.get(Project, requirement.project_id)
-    if project is None or not await _org_membership_exists(db, project.org_id, actor.actor_id):
+    if project is None or not await _actor_membership_exists(db, project.org_id, actor):
         return _error(404, "not_found", "Requirement not found.")
 
     if not await has_permission(str(actor.actor_id), str(project.org_id), "test_case.read"):

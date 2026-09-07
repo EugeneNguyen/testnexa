@@ -56,6 +56,7 @@ from app.api.routes import (
     test_suite_membership,
     trace,
 )
+from app.mcp.server import mcp as _mcp_server, mcp_lifespan
 
 app = FastAPI(title="TestNexa API", version="0.1.0")
 
@@ -195,3 +196,8 @@ app.include_router(test_cycle_creation.router, prefix="/api/v1", tags=["planning
 # `POST /test-executions` reachable alongside this route would let any caller
 # bypass the scope check entirely by using the unrestricted path.
 app.include_router(execution_authoring.router, prefix="/api/v1", tags=["execution"])
+# MCP-1/ADR-0033: first-party MCP server at `/mcp` over Streamable HTTP. ASGI
+# sub-app on this same FastAPI process — no separate runtime, `tnx_agent_`
+# API keys work identically across the MCP and REST surfaces.
+app.mount("/mcp", _mcp_server.streamable_http_app())
+app.router.lifespan_context = mcp_lifespan
