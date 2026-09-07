@@ -48,9 +48,25 @@
  *   `entityConfigByKey`/`allEntities` (`pages/admin/registry.ts`) — the
  *   same registry `AppSidebar`/routing already use — rather than a second,
  *   hand-maintained slug->label table.
+ *
+ * Alignment fix (2026-09-07): this used to wrap `CBreadcrumb` in a raw
+ * `px-3` flush-padding div, while every bespoke page (`OrgHome`,
+ * `OrgMembers`, `ProjectDetail`, `TestPlanDetail`, `TestCycleDetail`) wraps
+ * its own content in a plain, default `<CContainer>` (Bootstrap's centered,
+ * max-width container — auto side margins, not flush). At any viewport
+ * wider than the container's current breakpoint, `px-3`'s flush left edge
+ * and `CContainer`'s centered left edge land at different x-positions, so
+ * the breadcrumb visibly didn't line up with the page content below it
+ * (confirmed via `getBoundingClientRect()` against a real running page:
+ * breadcrumb text left edge at x=256, first content card at x=438). Fixed
+ * by wrapping in the same plain `<CContainer>` the pages already use —
+ * Bootstrap's container math is a pure function of viewport width, so two
+ * separate `<CContainer>` instances at the same width always compute the
+ * same left/right position, without either side needing to know about the
+ * other.
  */
 import { Link, matchPath, useLocation } from "react-router-dom";
-import { CBreadcrumb, CBreadcrumbItem } from "@coreui/react";
+import { CBreadcrumb, CBreadcrumbItem, CContainer } from "@coreui/react";
 import { allEntities } from "../pages/admin/registry";
 
 const entityLabelByKey: Record<string, string> = Object.fromEntries(
@@ -179,16 +195,18 @@ function AppBreadcrumb() {
   }
 
   return (
-    <CBreadcrumb className="my-0 px-3 pt-3">
-      {segments.map((segment, index) => {
-        const isActive = index === segments.length - 1;
-        return (
-          <CBreadcrumbItem key={`${segment.label}-${index}`} active={isActive}>
-            {!isActive && segment.to ? <Link to={segment.to}>{segment.label}</Link> : segment.label}
-          </CBreadcrumbItem>
-        );
-      })}
-    </CBreadcrumb>
+    <CContainer className="pt-3">
+      <CBreadcrumb className="my-0">
+        {segments.map((segment, index) => {
+          const isActive = index === segments.length - 1;
+          return (
+            <CBreadcrumbItem key={`${segment.label}-${index}`} active={isActive}>
+              {!isActive && segment.to ? <Link to={segment.to}>{segment.label}</Link> : segment.label}
+            </CBreadcrumbItem>
+          );
+        })}
+      </CBreadcrumb>
+    </CContainer>
   );
 }
 
