@@ -27,10 +27,6 @@
  * modal *structure* (`CModal`/`CModalHeader`/`CModalBody`/`CModalFooter`
  * layout, inline `CAlert` for a non-field API error).
  *
- * Inline `standards_profile` edit is a simple click-to-edit text field, not
- * a second form — functional and CoreUI-styled per the task scope, not
- * gold-plated with its own validation library wiring.
- *
  * RBAC-2 (ADR-0017) adds a "Members" link to the new `/orgs/:orgId/members`
  * screen — the only nav entry point into it beyond a direct URL, since this
  * scaffold has no sidebar/nav-menu yet (AUTH-3 scope plan explicitly
@@ -54,13 +50,33 @@
  * still-in-flight fetch never renders "0", only a real `total: 0` response
  * does (NFR-27, TC-SHELL-011).
  *
+ * **DASH-2 (2026-09-07):** this page is relabeled "Dashboard" (heading text
+ * only — route stays `/orgs/:orgId`, same as the sidebar's own label change
+ * in `AppSidebar.tsx`). This is a distinct page from the separate, unrelated
+ * global `/dashboard` placeholder (ADR-0035/DASH-1) — see this story's own
+ * ADR for the naming-collision call and why that route is untouched.
+ *
+ * The Project table gains an ID column, a dedicated "Edit" modal (replacing
+ * the old click-to-edit-in-place `standards_profile` field — now edits
+ * `name` + `standards_profile` together, same RHF+Zod pattern as "New
+ * Project"), a "Delete" button + confirm modal (`deleteProject`, wired to
+ * the generic factory's `DELETE /projects/{id}` — already shipped under
+ * ADR-0022, just never called from any frontend screen until now), and
+ * client-side search/sort/pagination over the already-fully-fetched list
+ * (`listProjects` pages through every row up front — see that function's own
+ * docstring — so there's no server round-trip per search/sort/page change).
+ * Client-side, not server-side, because the backend generic factory has no
+ * `order_by`/sort support at all today (confirmed: adding one is out of
+ * scope for this story) and the list is already fetched in full; revisit if
+ * an org's project count ever grows large enough for this to matter.
+ *
  * Built with CoreUI (ADR-0012).
  */
-import { ReactNode, useState } from "react";
+import { ReactNode, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import {
   CAlert,
@@ -79,6 +95,8 @@ import {
   CModalFooter,
   CModalHeader,
   CModalTitle,
+  CPagination,
+  CPaginationItem,
   CRow,
   CTable,
   CTableBody,
@@ -91,8 +109,10 @@ import {
 } from "@coreui/react";
 import { ApiError } from "../../lib/api/client";
 import { getActiveMemberTotal, getProjectsTotal } from "../../lib/api/dashboard";
-import { createProject, listProjects, ProjectSummary, updateProject } from "../../lib/api/projects";
+import { createProject, deleteProject, listProjects, ProjectSummary, updateProject } from "../../lib/api/projects";
 import RoleAssignmentsPanel from "../../components/RoleAssignmentsPanel";
+
+const PAGE_SIZE = 10;
 
 const newProjectSchema = z.object({
   name: z.string().trim().min(1, "Name is required"),
@@ -100,6 +120,16 @@ const newProjectSchema = z.object({
 });
 
 type NewProjectFormValues = z.infer<typeof newProjectSchema>;
+
+const editProjectSchema = z.object({
+  name: z.string().trim().min(1, "Name is required"),
+  standardsProfile: z.string().trim().optional(),
+});
+
+type EditProjectFormValues = z.infer<typeof editProjectSchema>;
+
+type SortField = "id" | "name";
+type SortDir = "asc" | "desc";
 
 /**
  * Pulls a `422` field-level message out of an `ApiError`'s body
@@ -180,6 +210,34 @@ function ActiveMemberCountWidget({ orgId }: { orgId: string }) {
   );
 }
 
+/** Sortable column header — click toggles asc/desc, a second field click resets to asc. */
+function SortableHeader({
+  field,
+  label,
+  sortField,
+  sortDir,
+  onSort,
+}: {
+  field: SortField;
+  label: string;
+  sortField: SortField;
+  sortDir: SortDir;
+  onSort: (field: SortField) => void;
+}) {
+  const isActive = sortField === field;
+  return (
+    <CTableHeaderCell
+      role="columnheader"
+      aria-sort={isActive ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
+      style={{ cursor: "pointer", userSelect: "none" }}
+      onClick={() => onSort(field)}
+    >
+      {label}
+      {isActive ? (sortDir === "asc" ? " ▲" : " ▼") : ""}
+    </CTableHeaderCell>
+  );
+}
+
 function OrgHome() {
   const { orgId } = useParams<{ orgId: string }>();
   const queryClient = useQueryClient();
@@ -193,13 +251,20 @@ function OrgHome() {
     queryFn: () => listProjects(orgId as string),
     enabled: !!orgId,
   });
+
   const [showModal, setShowModal] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
 
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editValue, setEditValue] = useState("");
-  const [editError, setEditError] = useState<string | null>(null);
-  const [editSubmitting, setEditSubmitting] = useState(false);
+  const [editingProject, setEditingProject] = useState<ProjectSummary | null>(null);
+  const [editApiError, setEditApiError] = useState<string | null>(null);
+
+  const [rowPendingDelete, setRowPendingDelete] = useState<ProjectSummary | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const [search, setSearch] = useState("");
+  const [sortField, setSortField] = useState<SortField>("name");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [page, setPage] = useState(1);
 
   const {
     register,
@@ -209,6 +274,17 @@ function OrgHome() {
     formState: { errors, isSubmitting },
   } = useForm<NewProjectFormValues>({
     resolver: zodResolver(newProjectSchema),
+    defaultValues: { name: "", standardsProfile: "" },
+  });
+
+  const {
+    register: registerEdit,
+    handleSubmit: handleEditSubmit,
+    reset: resetEdit,
+    setError: setEditFieldError,
+    formState: { errors: editErrors, isSubmitting: isEditSubmitting },
+  } = useForm<EditProjectFormValues>({
+    resolver: zodResolver(editProjectSchema),
     defaultValues: { name: "", standardsProfile: "" },
   });
 
@@ -252,35 +328,86 @@ function OrgHome() {
     }
   }
 
-  function startEdit(project: ProjectSummary) {
-    setEditingId(project.id);
-    setEditValue(project.standards_profile ?? "");
-    setEditError(null);
+  function openEditModal(project: ProjectSummary) {
+    setEditApiError(null);
+    resetEdit({ name: project.name, standardsProfile: project.standards_profile ?? "" });
+    setEditingProject(project);
   }
 
-  function cancelEdit() {
-    setEditingId(null);
-    setEditError(null);
+  function closeEditModal() {
+    setEditingProject(null);
   }
 
-  async function saveEdit(project: ProjectSummary) {
-    setEditSubmitting(true);
-    setEditError(null);
+  async function onEditSubmit(values: EditProjectFormValues) {
+    if (!editingProject) {
+      return;
+    }
+    setEditApiError(null);
     try {
-      const trimmed = editValue.trim();
-      const updated = await updateProject(project.id, {
-        standards_profile: trimmed === "" ? null : trimmed,
+      const trimmedProfile = (values.standardsProfile ?? "").trim();
+      const updated = await updateProject(editingProject.id, {
+        name: values.name,
+        standards_profile: trimmedProfile === "" ? null : trimmedProfile,
       });
       queryClient.setQueryData<ProjectSummary[]>(projectsQueryKey, (prev = []) =>
         prev.map((existing) => (existing.id === updated.id ? updated : existing)),
       );
-      setEditingId(null);
+      closeEditModal();
     } catch (err) {
-      setEditError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
-    } finally {
-      setEditSubmitting(false);
+      if (err instanceof ApiError) {
+        const nameError = fieldError(err, "name");
+        if (nameError) {
+          setEditFieldError("name", { type: "server", message: nameError });
+        } else {
+          setEditApiError(err.message);
+        }
+      } else {
+        setEditApiError("Something went wrong. Please try again.");
+      }
     }
   }
+
+  const deleteMutation = useMutation({
+    mutationFn: (project: ProjectSummary) => deleteProject(project.id),
+    onSuccess: (_data, project) => {
+      queryClient.setQueryData<ProjectSummary[]>(projectsQueryKey, (prev = []) =>
+        prev.filter((existing) => existing.id !== project.id),
+      );
+      setRowPendingDelete(null);
+    },
+    onError: (err: unknown) => {
+      setDeleteError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
+    },
+  });
+
+  function requestDelete(project: ProjectSummary) {
+    setDeleteError(null);
+    setRowPendingDelete(project);
+  }
+
+  function handleSort(field: SortField) {
+    setPage(1);
+    if (field === sortField) {
+      setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortDir("asc");
+    }
+  }
+
+  const filteredSortedProjects = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    const filtered = term ? projects.filter((project) => project.name.toLowerCase().includes(term)) : projects;
+    const sorted = [...filtered].sort((a, b) => {
+      const cmp = a[sortField].localeCompare(b[sortField]);
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+    return sorted;
+  }, [projects, search, sortField, sortDir]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredSortedProjects.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const pageProjects = filteredSortedProjects.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   if (!orgId) {
     return null;
@@ -306,7 +433,7 @@ function OrgHome() {
             <CCard>
               <CCardBody className="p-4">
                 <div className="d-flex justify-content-between align-items-center mb-3">
-                  <h1 className="fs-4 mb-0">Org: {orgId}</h1>
+                  <h1 className="fs-4 mb-0">Dashboard</h1>
                   <div>
                     <CButton
                       as={Link}
@@ -332,61 +459,103 @@ function OrgHome() {
                 ) : projects.length === 0 ? (
                   <p className="text-body-secondary mb-0">No projects yet.</p>
                 ) : (
-                  <CTable hover responsive>
-                    <CTableHead>
-                      <CTableRow>
-                        <CTableHeaderCell>Name</CTableHeaderCell>
-                        <CTableHeaderCell>Standards profile</CTableHeaderCell>
-                        <CTableHeaderCell aria-label="Actions" />
-                      </CTableRow>
-                    </CTableHead>
-                    <CTableBody>
-                      {projects.map((project) => (
-                        <CTableRow key={project.id}>
-                          <CTableDataCell>
-                            <Link to={`/projects/${project.id}`}>{project.name}</Link>
-                          </CTableDataCell>
-                          <CTableDataCell>
-                            {editingId === project.id ? (
-                              <>
-                                <CFormInput
-                                  aria-label={`Standards profile for ${project.name}`}
-                                  size="sm"
-                                  value={editValue}
-                                  onChange={(event) => setEditValue(event.target.value)}
-                                />
-                                {editError && <div className="text-danger small mt-1">{editError}</div>}
-                              </>
-                            ) : (
-                              project.standards_profile ?? <span className="text-body-secondary">—</span>
-                            )}
-                          </CTableDataCell>
-                          <CTableDataCell className="text-end">
-                            {editingId === project.id ? (
-                              <>
-                                <CButton
-                                  size="sm"
-                                  color="primary"
-                                  className="me-2"
-                                  disabled={editSubmitting}
-                                  onClick={() => saveEdit(project)}
-                                >
-                                  {editSubmitting ? "Saving..." : "Save"}
-                                </CButton>
-                                <CButton size="sm" color="secondary" variant="outline" onClick={cancelEdit}>
-                                  Cancel
-                                </CButton>
-                              </>
-                            ) : (
-                              <CButton size="sm" color="secondary" variant="outline" onClick={() => startEdit(project)}>
-                                Edit
-                              </CButton>
-                            )}
-                          </CTableDataCell>
-                        </CTableRow>
-                      ))}
-                    </CTableBody>
-                  </CTable>
+                  <>
+                    <div className="mb-3" style={{ maxWidth: "20rem" }}>
+                      <CFormInput
+                        type="search"
+                        placeholder="Search by name…"
+                        aria-label="Search projects"
+                        value={search}
+                        onChange={(event) => {
+                          setPage(1);
+                          setSearch(event.target.value);
+                        }}
+                      />
+                    </div>
+
+                    {filteredSortedProjects.length === 0 ? (
+                      <p className="text-body-secondary mb-0">No projects match your search.</p>
+                    ) : (
+                      <>
+                        <CTable hover responsive>
+                          <CTableHead>
+                            <CTableRow>
+                              <SortableHeader
+                                field="id"
+                                label="ID"
+                                sortField={sortField}
+                                sortDir={sortDir}
+                                onSort={handleSort}
+                              />
+                              <SortableHeader
+                                field="name"
+                                label="Name"
+                                sortField={sortField}
+                                sortDir={sortDir}
+                                onSort={handleSort}
+                              />
+                              <CTableHeaderCell>Standards profile</CTableHeaderCell>
+                              <CTableHeaderCell aria-label="Actions" />
+                            </CTableRow>
+                          </CTableHead>
+                          <CTableBody>
+                            {pageProjects.map((project) => (
+                              <CTableRow key={project.id}>
+                                <CTableDataCell className="text-body-secondary small">{project.id}</CTableDataCell>
+                                <CTableDataCell>
+                                  <Link to={`/projects/${project.id}`}>{project.name}</Link>
+                                </CTableDataCell>
+                                <CTableDataCell>
+                                  {project.standards_profile ?? <span className="text-body-secondary">—</span>}
+                                </CTableDataCell>
+                                <CTableDataCell className="text-end">
+                                  <CButton
+                                    size="sm"
+                                    color="secondary"
+                                    variant="outline"
+                                    className="me-2"
+                                    onClick={() => openEditModal(project)}
+                                  >
+                                    Edit
+                                  </CButton>
+                                  <CButton
+                                    size="sm"
+                                    color="danger"
+                                    variant="outline"
+                                    onClick={() => requestDelete(project)}
+                                  >
+                                    Delete
+                                  </CButton>
+                                </CTableDataCell>
+                              </CTableRow>
+                            ))}
+                          </CTableBody>
+                        </CTable>
+
+                        {totalPages > 1 && (
+                          <CPagination aria-label="Project list pages">
+                            <CPaginationItem
+                              disabled={currentPage <= 1}
+                              onClick={() => setPage(currentPage - 1)}
+                            >
+                              Previous
+                            </CPaginationItem>
+                            {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                              <CPaginationItem key={p} active={p === currentPage} onClick={() => setPage(p)}>
+                                {p}
+                              </CPaginationItem>
+                            ))}
+                            <CPaginationItem
+                              disabled={currentPage >= totalPages}
+                              onClick={() => setPage(currentPage + 1)}
+                            >
+                              Next
+                            </CPaginationItem>
+                          </CPagination>
+                        )}
+                      </>
+                    )}
+                  </>
                 )}
               </CCardBody>
             </CCard>
@@ -427,6 +596,71 @@ function OrgHome() {
             </CButton>
           </CModalFooter>
         </CForm>
+      </CModal>
+
+      <CModal visible={Boolean(editingProject)} onClose={closeEditModal}>
+        <CModalHeader>
+          <CModalTitle>Edit Project</CModalTitle>
+        </CModalHeader>
+        <CForm onSubmit={handleEditSubmit(onEditSubmit)} noValidate>
+          <CModalBody>
+            <div className="mb-3">
+              <CFormLabel htmlFor="editProjectName">Name</CFormLabel>
+              <CFormInput
+                id="editProjectName"
+                type="text"
+                invalid={!!editErrors.name}
+                {...registerEdit("name")}
+              />
+              {editErrors.name && <CFormFeedback invalid>{editErrors.name.message}</CFormFeedback>}
+            </div>
+            <div className="mb-3">
+              <CFormLabel htmlFor="editProjectStandardsProfile">Standards profile</CFormLabel>
+              <CFormInput id="editProjectStandardsProfile" type="text" {...registerEdit("standardsProfile")} />
+              <CFormText>Leave blank to clear it.</CFormText>
+            </div>
+            {editApiError && (
+              <CAlert color="danger" role="alert">
+                {editApiError}
+              </CAlert>
+            )}
+          </CModalBody>
+          <CModalFooter>
+            <CButton color="secondary" variant="outline" onClick={closeEditModal}>
+              Cancel
+            </CButton>
+            <CButton type="submit" color="primary" disabled={isEditSubmitting}>
+              {isEditSubmitting ? "Saving..." : "Save"}
+            </CButton>
+          </CModalFooter>
+        </CForm>
+      </CModal>
+
+      <CModal visible={Boolean(rowPendingDelete)} onClose={() => setRowPendingDelete(null)}>
+        <CModalHeader>
+          <CModalTitle>Delete Project</CModalTitle>
+        </CModalHeader>
+        <CModalBody>
+          {deleteError && (
+            <CAlert color="danger" role="alert">
+              {deleteError}
+            </CAlert>
+          )}
+          Are you sure you want to delete{" "}
+          <strong>{rowPendingDelete?.name}</strong>? This cannot be undone.
+        </CModalBody>
+        <CModalFooter>
+          <CButton color="secondary" variant="outline" onClick={() => setRowPendingDelete(null)}>
+            Cancel
+          </CButton>
+          <CButton
+            color="danger"
+            disabled={deleteMutation.isPending}
+            onClick={() => rowPendingDelete && deleteMutation.mutate(rowPendingDelete)}
+          >
+            {deleteMutation.isPending ? "Deleting..." : "Delete"}
+          </CButton>
+        </CModalFooter>
       </CModal>
     </div>
   );

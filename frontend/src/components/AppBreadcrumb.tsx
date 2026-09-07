@@ -42,7 +42,7 @@
  * - `/projects/:projectId` carries no `orgId` route param (org is only
  *   resolvable via a `GET /projects/{id}` fetch, which this component
  *   deliberately does not do), so the Project/TestPlan/TestCycle chain
- *   below nests under `projectId`/`testPlanId` only — no "Org Home" parent
+ *   below nests under `projectId`/`testPlanId` only — no "Dashboard" parent
  *   link, same posture as `/orgs/:orgId`'s own single, unlinked crumb.
  * - Admin list/edit routes label the `:entity` segment via
  *   `entityConfigByKey`/`allEntities` (`pages/admin/registry.ts`) — the
@@ -126,12 +126,12 @@ const ROUTE_BREADCRUMBS: RouteBreadcrumbConfig[] = [
   },
   {
     pattern: "/orgs/:orgId/members",
-    segments: (params) => [{ label: "Org Home", to: `/orgs/${params.orgId}` }, { label: "Members" }],
+    segments: (params) => [{ label: "Dashboard", to: `/orgs/${params.orgId}` }, { label: "Members" }],
   },
   {
     pattern: "/orgs/:orgId/ui-elements/colors",
     segments: (params) => [
-      { label: "Org Home", to: `/orgs/${params.orgId}` },
+      { label: "Dashboard", to: `/orgs/${params.orgId}` },
       { label: "UI Elements" },
       { label: "Colors" },
     ],
@@ -139,7 +139,7 @@ const ROUTE_BREADCRUMBS: RouteBreadcrumbConfig[] = [
   {
     pattern: "/orgs/:orgId/ui-elements/typography",
     segments: (params) => [
-      { label: "Org Home", to: `/orgs/${params.orgId}` },
+      { label: "Dashboard", to: `/orgs/${params.orgId}` },
       { label: "UI Elements" },
       { label: "Typography" },
     ],
@@ -147,19 +147,19 @@ const ROUTE_BREADCRUMBS: RouteBreadcrumbConfig[] = [
   {
     pattern: "/orgs/:orgId/ui-elements/icons",
     segments: (params) => [
-      { label: "Org Home", to: `/orgs/${params.orgId}` },
+      { label: "Dashboard", to: `/orgs/${params.orgId}` },
       { label: "UI Elements" },
       { label: "Icons" },
     ],
   },
   {
     pattern: "/orgs/:orgId",
-    segments: () => [{ label: "Org Home" }],
+    segments: () => [{ label: "Dashboard" }],
   },
   {
     pattern: "/orgs/:orgId/admin/:entity/:id/edit",
     segments: (params) => [
-      { label: "Org Home", to: `/orgs/${params.orgId}` },
+      { label: "Dashboard", to: `/orgs/${params.orgId}` },
       { label: entityLabel(params.entity), to: `/orgs/${params.orgId}/admin/${params.entity}` },
       { label: "Edit" },
     ],
@@ -167,7 +167,7 @@ const ROUTE_BREADCRUMBS: RouteBreadcrumbConfig[] = [
   {
     pattern: "/orgs/:orgId/admin/:entity",
     segments: (params) => [
-      { label: "Org Home", to: `/orgs/${params.orgId}` },
+      { label: "Dashboard", to: `/orgs/${params.orgId}` },
       { label: entityLabel(params.entity) },
     ],
   },

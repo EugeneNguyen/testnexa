@@ -176,7 +176,7 @@ test.describe("SHELL-1 persistent sidebar + navbar shell", () => {
       // TC-SHELL-001 (part 2/3): shell renders on /orgs/:orgId (org home).
       await expect(page.locator(".sidebar")).toBeVisible();
       await expect(page.locator(".header")).toBeVisible();
-      await expect(page.getByRole("heading", { name: `Org: ${user.orgAId}` })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
       await expect(page.getByTestId("sidebar-nav-org-home")).toBeVisible();
       await expect(page.getByTestId("sidebar-nav-org-members")).toBeVisible();
 
@@ -189,7 +189,7 @@ test.describe("SHELL-1 persistent sidebar + navbar shell", () => {
       await expect(page.locator(".sidebar")).toBeVisible();
       await expect(page.locator(".header")).toBeVisible();
 
-      // TC-SHELL-002: both nav items present; "Members" active, "Org home"
+      // TC-SHELL-002: both nav items present; "Members" active, "Dashboard"
       // not (prefix-match regression check — AppSidebar.tsx's `end` prop on
       // the org-home NavLink is what this asserts against a regression of).
       await expect(page.getByTestId("sidebar-nav-org-home")).toBeVisible();
@@ -203,7 +203,7 @@ test.describe("SHELL-1 persistent sidebar + navbar shell", () => {
       await page.getByTestId("sidebar-nav-org-home").click();
       await page.waitForURL(new RegExp(`/orgs/${user.orgAId}$`));
       await expect(page).not.toHaveURL(/\/members$/);
-      await expect(page.getByRole("heading", { name: `Org: ${user.orgAId}` })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
     } finally {
       cleanup(user);
     }

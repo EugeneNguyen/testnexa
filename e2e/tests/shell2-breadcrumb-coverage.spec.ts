@@ -24,16 +24,16 @@ import { expect, test } from "@playwright/test";
  *
  * - TC-SHELL-016 ("Renders 'Project' only, not a link"): exactly ONE crumb on
  *   `/projects/:projectId`, its text `Project`, and it is not a link. The
- *   "no Org Home ancestor" half of the TC title is asserted as its own claim —
+ *   "no Dashboard ancestor" half of the TC title is asserted as its own claim —
  *   `/projects/:projectId` carries no `orgId` route param to link back with.
  * - TC-SHELL-017 ("'Project' and 'Test Plan' are links (to their own routes),
- *   'Test Cycle' is active text; no 'Org Home' segment anywhere in the trail"):
+ *   'Test Cycle' is active text; no 'Dashboard' segment anywhere in the trail"):
  *   all three crumbs in order, both links asserted by `href` *and* actually
  *   clicked — a link that renders the right `href` but is not wired for
  *   client-side navigation would still pass an href-only assertion.
- * - TC-SHELL-018 ("Renders 'Org Home / Roles' ('Roles' sourced from
+ * - TC-SHELL-018 ("Renders 'Dashboard / Roles' ('Roles' sourced from
  *   `pages/admin/registry.ts`'s `allEntities` map, not a hardcoded string);
- *   'Org Home' links, 'Roles' is active text"): the trail on
+ *   'Dashboard' links, 'Roles' is active text"): the trail on
  *   `/orgs/:orgId/admin/roles`, plus a second visit to a *different* entity
  *   slug (`test-levels` -> "Test levels") from the same registry, which is what
  *   distinguishes a registry lookup from a hardcoded "Roles" string.
@@ -341,7 +341,7 @@ test.describe("SHELL-2: breadcrumb coverage for the previously unmapped routes",
 
       // =======================================================================
       // TC-SHELL-016 — /projects/:projectId
-      // Expected: "Renders 'Project' only, not a link"; no Org Home ancestor.
+      // Expected: "Renders 'Project' only, not a link"; no Dashboard ancestor.
       // =======================================================================
       await gotoProtected(page, `/projects/${fixture.projectId}`);
       await expect(breadcrumb).toBeVisible();
@@ -349,8 +349,8 @@ test.describe("SHELL-2: breadcrumb coverage for the previously unmapped routes",
       await expect(crumbs.nth(0)).toHaveText("Project");
       // "not a link" — the route carries no `orgId` to link back with.
       await expect(breadcrumb.getByRole("link")).toHaveCount(0);
-      // "no Org Home ancestor", the other half of the TC's own title.
-      await expect(breadcrumb.getByText("Org Home")).toHaveCount(0);
+      // "no Dashboard ancestor", the other half of the TC's own title.
+      await expect(breadcrumb.getByText("Dashboard")).toHaveCount(0);
       // Active text, per CoreUI's own rendered contract.
       await expect(activeCrumb).toHaveText("Project");
       await expect(activeCrumb).toHaveAttribute("aria-current", "page");
@@ -360,7 +360,7 @@ test.describe("SHELL-2: breadcrumb coverage for the previously unmapped routes",
       //                /test-cycles/:testCycleId
       // Expected: "Project / Test Plan / Test Cycle"; "Project" and "Test Plan"
       // are links (to their own routes), "Test Cycle" is active text; no
-      // "Org Home" segment anywhere in the trail.
+      // "Dashboard" segment anywhere in the trail.
       // =======================================================================
       const cyclePath = `/projects/${fixture.projectId}/test-plans/${fixture.testPlanId}/test-cycles/${fixture.testCycleId}`;
       await gotoProtected(page, cyclePath);
@@ -380,8 +380,8 @@ test.describe("SHELL-2: breadcrumb coverage for the previously unmapped routes",
       await expect(crumbs.nth(2).getByRole("link")).toHaveCount(0);
       await expect(activeCrumb).toHaveText("Test Cycle");
       await expect(activeCrumb).toHaveAttribute("aria-current", "page");
-      // "no 'Org Home' segment anywhere in the trail".
-      await expect(breadcrumb.getByText("Org Home")).toHaveCount(0);
+      // "no 'Dashboard' segment anywhere in the trail".
+      await expect(breadcrumb.getByText("Dashboard")).toHaveCount(0);
 
       // The TC says the two earlier crumbs are links **to their own routes** —
       // assert that by actually following them, not by `href` alone. An `href`
@@ -401,15 +401,15 @@ test.describe("SHELL-2: breadcrumb coverage for the previously unmapped routes",
 
       // =======================================================================
       // TC-SHELL-018 — /orgs/:orgId/admin/roles
-      // Expected: "Org Home / Roles" ("Roles" sourced from the registry's
-      // `allEntities` map, not a hardcoded string); "Org Home" links, "Roles"
+      // Expected: "Dashboard / Roles" ("Roles" sourced from the registry's
+      // `allEntities` map, not a hardcoded string); "Dashboard" links, "Roles"
       // is active text.
       // =======================================================================
       await gotoProtected(page, `/orgs/${fixture.orgId}/admin/roles`);
       await expect(crumbs).toHaveCount(2);
-      await expect(crumbs.nth(0)).toHaveText("Org Home");
+      await expect(crumbs.nth(0)).toHaveText("Dashboard");
       await expect(crumbs.nth(1)).toHaveText("Roles");
-      await expect(breadcrumb.getByRole("link", { name: "Org Home", exact: true })).toHaveAttribute(
+      await expect(breadcrumb.getByRole("link", { name: "Dashboard", exact: true })).toHaveAttribute(
         "href",
         `/orgs/${fixture.orgId}`,
       );
@@ -422,7 +422,7 @@ test.describe("SHELL-2: breadcrumb coverage for the previously unmapped routes",
       // distinct label. A hardcoded "Roles" could not produce "Test levels".
       await gotoProtected(page, `/orgs/${fixture.orgId}/admin/test-levels`);
       await expect(crumbs).toHaveCount(2);
-      await expect(crumbs.nth(0)).toHaveText("Org Home");
+      await expect(crumbs.nth(0)).toHaveText("Dashboard");
       await expect(crumbs.nth(1)).toHaveText("Test levels");
 
       // =======================================================================

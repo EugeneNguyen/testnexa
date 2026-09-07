@@ -3,9 +3,12 @@ import { expect, test } from "@playwright/test";
 
 /**
  * PROJ-1 E2E (ADR-0017): real browser, full stack, exercising
- * `OrgHome.tsx`'s "New Project" modal + inline `standards_profile` edit —
- * an already-authenticated org_admin creating a Project via the UI and then
- * editing it, mirroring `org-create-second.spec.ts`'s conventions exactly
+ * `OrgHome.tsx`'s "New Project" modal + "Edit Project" modal (DASH-2,
+ * 2026-09-07 — replaced the original inline click-to-edit
+ * `standards_profile` field with a dedicated modal editing `name` +
+ * `standards_profile` together) — an already-authenticated org_admin
+ * creating a Project via the UI and then editing it, mirroring
+ * `org-create-second.spec.ts`'s conventions exactly
  * (fixture seeding via `docker exec ... python -` against the target env's
  * own backend container, FK-safe cleanup script, page-object-free
  * role/label selectors).
@@ -27,7 +30,7 @@ import { expect, test } from "@playwright/test";
  * rows still existed server-side. Fixed by fetching real data via
  * `GET /projects?org_id=` (the generic-CRUD factory route ADR-0022 already
  * shipped). This spec now proves both persistence claims directly: the
- * inline `standards_profile` edit persisted server-side via a direct
+ * Edit-modal `standards_profile` change persisted server-side via a direct
  * `GET /api/v1/projects/{id}` re-fetch through Playwright's `request`
  * context (a fresh `POST /api/v1/auth/login` call, independent of the
  * browser's own in-memory token store), **and** the literal reported bug —
@@ -158,7 +161,13 @@ function cleanup(admin: SeededOrgAdmin, projectIds: string[]): void {
 }
 
 test.describe("PROJ-1: create a Project via OrgHome's New Project modal", () => {
-  test("create, list, and inline-edit standards_profile persists server-side", async ({ page, request }) => {
+  test("create, list, and edit standards_profile via the Edit modal persists server-side", async ({ page, request }) => {
+    // DASH-2's Edit modal adds a real mount/transition round trip on top of
+    // an already-long multi-step flow (create, edit, independent GET
+    // re-fetch, navigate-away-and-back) — the default 30s test timeout was
+    // already close to the edge before this, and the extra modal
+    // open/close pushed one run over it.
+    test.setTimeout(60_000);
     const admin = seedOrgAdmin();
     const projectIds: string[] = [];
     try {
@@ -170,7 +179,7 @@ test.describe("PROJ-1: create a Project via OrgHome's New Project modal", () => 
       // Single active OrgMembership -> org_context "auto" -> Login.tsx's own
       // redirect effect lands here automatically.
       await page.waitForURL(new RegExp(`/orgs/${admin.orgId}`));
-      await expect(page.getByRole("heading", { name: `Org: ${admin.orgId}` })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
       await expect(page.getByText(/no projects yet/i)).toBeVisible();
 
       // --- Create a Project via the "New Project" modal ---------------------------------
@@ -201,17 +210,19 @@ test.describe("PROJ-1: create a Project via OrgHome's New Project modal", () => 
       await expect(row).toBeVisible();
       await expect(row.getByText(initialProfile)).toBeVisible();
 
-      // --- Inline-edit standards_profile ------------------------------------------------
+      // --- Edit standards_profile via the "Edit Project" modal --------------------------
       const updatedProfile = "ISO29119-3 only";
       await row.getByRole("button", { name: /^edit$/i }).click();
 
-      const editInput = row.getByLabel(`Standards profile for ${projectName}`);
-      await expect(editInput).toBeVisible();
-      await editInput.fill(updatedProfile);
-      await row.getByRole("button", { name: /^save$/i }).click();
+      await expect(page.getByRole("heading", { name: /^edit project$/i })).toBeVisible();
+      // Pre-filled with the current name/profile — only the profile field changes here.
+      await expect(page.getByLabel(/^name$/i)).toHaveValue(projectName);
+      const profileField = page.getByLabel(/standards profile/i);
+      await profileField.fill(updatedProfile);
+      await page.getByRole("button", { name: /^save$/i }).click();
 
-      // Save completes -> back to display mode, showing the new value.
-      await expect(row.getByRole("button", { name: /^edit$/i })).toBeVisible();
+      // Modal closes -> row shows the new value.
+      await expect(page.getByRole("heading", { name: /^edit project$/i })).not.toBeVisible();
       await expect(row.getByText(updatedProfile)).toBeVisible();
       await expect(row.getByText(initialProfile)).not.toBeVisible();
 

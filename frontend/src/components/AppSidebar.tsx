@@ -62,9 +62,21 @@
  *   original implementation had. Purely cosmetic (open/closed state and
  *   the resulting reachable links are identical either way), not something
  *   any existing TC or test asserts on.
+ *
+ * **DASH-2 (2026-09-07):** "Org home" relabeled "Dashboard" (label text
+ * only — `key`/`testId`/`to` all stay `org-home`/`sidebar-nav-org-home`/
+ * `/orgs/:orgId`, so no test needs updating for those, only the visible
+ * string). This is a distinct page from the separate, unrelated global
+ * `/dashboard` placeholder (ADR-0035/DASH-1) — that route is untouched, see
+ * this story's own ADR for the naming-collision call. `CIcon` (still a
+ * real `@coreui/icons-react` component, independent of the `CSidebar`
+ * removal above) added to this one nav item only, per this story's literal
+ * ask — no icon added to any other nav item.
  */
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useParams } from "react-router-dom";
+import { CIcon } from "@coreui/icons-react";
+import { cilSpeedometer } from "@coreui/icons";
 import { orgScopedEntities } from "../pages/admin/registry";
 
 /**
@@ -111,6 +123,7 @@ interface SidebarNavItem {
   to: string;
   end: boolean;
   testId: string;
+  icon?: string[];
 }
 
 interface SidebarNavGroup {
@@ -144,10 +157,11 @@ function AppSidebar({ visible }: AppSidebarProps) {
     ? [
         {
           key: "org-home",
-          label: "Org home",
+          label: "Dashboard",
           to: `/orgs/${orgId}`,
           end: true,
           testId: "sidebar-nav-org-home",
+          icon: cilSpeedometer,
         },
         {
           key: "org-members",
@@ -219,6 +233,7 @@ function AppSidebar({ visible }: AppSidebarProps) {
         {navItems.map((item) => (
           <li className="nav-item" key={item.key}>
             <NavLink to={item.to} end={item.end} className="nav-link" data-testid={item.testId}>
+              {item.icon && <CIcon icon={item.icon} customClassName="nav-icon" />}
               {item.label}
             </NavLink>
           </li>

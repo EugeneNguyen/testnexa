@@ -136,7 +136,7 @@ test.describe("AUTH-3 logout", () => {
       // Single active OrgMembership -> org_context "auto" -> straight to
       // /orgs/{orgId}, never the picker (same rationale as auth-refresh.spec.ts).
       await page.waitForURL(new RegExp(`/orgs/${user.orgId}`));
-      await expect(page.getByRole("heading", { name: `Org: ${user.orgId}` })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
 
       // AppHeader (AUTH-3) is mounted by ProtectedRoute above every protected
       // page's content -- confirm it's actually there before driving it.

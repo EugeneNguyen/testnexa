@@ -40,25 +40,25 @@ describe("AppBreadcrumb", () => {
   it("TC-SHELL-007: resolves known route segments on /orgs/:orgId/members", () => {
     renderBreadcrumb("/orgs/org-1/members");
 
-    expect(screen.getByText("Org Home")).toBeInTheDocument();
+    expect(screen.getByText("Dashboard")).toBeInTheDocument();
     expect(screen.getByText("Members")).toBeInTheDocument();
     // The active (final) segment is plain text, not a link — only the
-    // earlier "Org Home" segment is clickable.
-    expect(screen.getByText("Org Home").closest("a")).toHaveAttribute("href", "/orgs/org-1");
+    // earlier "Dashboard" segment is clickable.
+    expect(screen.getByText("Dashboard").closest("a")).toHaveAttribute("href", "/orgs/org-1");
     expect(screen.getByText("Members").closest("a")).toBeNull();
   });
 
   it("renders a single, non-linked segment on /orgs/:orgId", () => {
     renderBreadcrumb("/orgs/org-1");
 
-    expect(screen.getByText("Org Home")).toBeInTheDocument();
-    expect(screen.getByText("Org Home").closest("a")).toBeNull();
+    expect(screen.getByText("Dashboard")).toBeInTheDocument();
+    expect(screen.getByText("Dashboard").closest("a")).toBeNull();
   });
 
   it("resolves a nested UI-elements route with 3 segments", () => {
     renderBreadcrumb("/orgs/org-1/ui-elements/colors");
 
-    expect(screen.getByText("Org Home")).toBeInTheDocument();
+    expect(screen.getByText("Dashboard")).toBeInTheDocument();
     expect(screen.getByText("UI Elements")).toBeInTheDocument();
     expect(screen.getByText("Colors")).toBeInTheDocument();
   });
@@ -71,17 +71,17 @@ describe("AppBreadcrumb", () => {
     expect(screen.queryByText("pick")).not.toBeInTheDocument();
   });
 
-  it("TC-SHELL-016: renders a single unlinked crumb on /projects/:projectId, no Org Home ancestor", () => {
+  it("TC-SHELL-016: renders a single unlinked crumb on /projects/:projectId, no Dashboard ancestor", () => {
     renderBreadcrumb("/projects/proj-1");
 
     expect(screen.getByText("Project")).toBeInTheDocument();
     expect(screen.getByText("Project").closest("a")).toBeNull();
-    // The TC's own title says "no Org Home ancestor" — the route carries no
+    // The TC's own title says "no Dashboard ancestor" — the route carries no
     // `orgId` param to link back with, so the trail must be exactly one crumb.
-    expect(screen.queryByText("Org Home")).not.toBeInTheDocument();
+    expect(screen.queryByText("Dashboard")).not.toBeInTheDocument();
   });
 
-  it("TC-SHELL-017: resolves the TestPlan/TestCycle chain nested under Project, not Org Home", () => {
+  it("TC-SHELL-017: resolves the TestPlan/TestCycle chain nested under Project, not Dashboard", () => {
     renderBreadcrumb("/projects/proj-1/test-plans/plan-1/test-cycles/cycle-1");
 
     expect(screen.getByText("Project")).toBeInTheDocument();
@@ -93,15 +93,15 @@ describe("AppBreadcrumb", () => {
     );
     expect(screen.getByText("Test Cycle")).toBeInTheDocument();
     expect(screen.getByText("Test Cycle").closest("a")).toBeNull();
-    expect(screen.queryByText("Org Home")).not.toBeInTheDocument();
+    expect(screen.queryByText("Dashboard")).not.toBeInTheDocument();
   });
 
   it("TC-SHELL-018: resolves an org-scoped admin list route's entity label from the registry", () => {
     renderBreadcrumb("/orgs/org-1/admin/roles");
 
-    expect(screen.getByText("Org Home")).toBeInTheDocument();
-    // The TC says "Org Home" links — assert the href, not just its presence.
-    expect(screen.getByText("Org Home").closest("a")).toHaveAttribute("href", "/orgs/org-1");
+    expect(screen.getByText("Dashboard")).toBeInTheDocument();
+    // The TC says "Dashboard" links — assert the href, not just its presence.
+    expect(screen.getByText("Dashboard").closest("a")).toHaveAttribute("href", "/orgs/org-1");
     // "Roles" is the registry's own label for the `roles` key, not a
     // hardcoded string in this component.
     expect(allEntities.find((e) => e.key === "roles")?.label).toBe("Roles");
