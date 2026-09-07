@@ -243,6 +243,8 @@ Unique: `(org_id, name)`.
 
 **DASH-2** ([ADR-0039](../adr/0039-dash-2-org-home-dashboard-relabel-and-project-table.md)) — reviewed, no schema impact of its own. The `OrgHome`→"Dashboard" relabel is frontend-only (heading/sidebar/breadcrumb text). The Project table's new Edit modal reuses `PATCH /projects/{id}` unchanged; Delete wires the already-shipped `DELETE /projects/{id}` (ADR-0022's factory, `_PROJECT_FACTORY_CONFIG`) to a UI action for the first time — no route/schema change, no new column. Search/sort/pagination are client-side over the existing `GET /projects?org_id=` response — no new query parameter. **DASH-2's own verification of that Delete wiring is what found the `role_assignment.project_id` `RESTRICT` defect — the actual schema fix is [ADR-0040](../adr/0040-role-assignment-project-cascade-delete.md)'s own separate FK change, documented above under §3.3's `RoleAssignment` entry, not this section.**
 
+**DS-2** ([ADR-0041](../adr/0041-ds-2-table-container-shared-pagination.md)) — reviewed, no schema impact. The shared `Table` container, the `page_size` ceiling change (25→100), and adding pagination to `GET /orgs/{org_id}/role-assignments` are all API/frontend-layer changes — no new column, no new table, no FK/constraint change. `role_assignment`'s columns (including `project_id`'s `ON DELETE CASCADE`, [ADR-0040](../adr/0040-role-assignment-project-cascade-delete.md) above) are unaffected; the route's response envelope changes shape, not the underlying query's `WHERE`/join.
+
 **Release**
 | Column | Type | Constraints |
 |---|---|---|
