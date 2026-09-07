@@ -15,11 +15,26 @@ import { getActiveMemberTotal, getProjectsTotal } from "../../../src/lib/api/das
  * loading/error/success branching is what's under test here, not the real
  * HTTP call (that's the E2E suite's job against a live, seeded backend,
  * TC-SHELL-010).
+ *
+ * `listProjects` (the project-list fix, 2026-09-07) is mocked to an empty,
+ * resolved list too — this file's own tests are about the widgets, not the
+ * list section below them, and an unmocked call would otherwise fail against
+ * jsdom's absent backend and render this page's own "unable to load
+ * projects" alert, irrelevant noise here (mirrors this file's own existing
+ * treatment of `RoleAssignmentsPanel` in `OrgHome.test.tsx`).
  */
 vi.mock("../../../src/lib/api/dashboard", () => ({
   getProjectsTotal: vi.fn(),
   getActiveMemberTotal: vi.fn(),
 }));
+
+vi.mock("../../../src/lib/api/projects", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../src/lib/api/projects")>();
+  return {
+    ...actual,
+    listProjects: vi.fn().mockResolvedValue([]),
+  };
+});
 
 const mockGetProjectsTotal = vi.mocked(getProjectsTotal);
 const mockGetActiveMemberTotal = vi.mocked(getActiveMemberTotal);
