@@ -71,6 +71,19 @@
  * width land at the same left/right edge without either side needing to
  * know about the other — confirmed via `getBoundingClientRect()` against a
  * running page post-fix.
+ *
+ * Vertical-gap fix (2026-09-07): `px-4 pt-3` (top-only padding) left the
+ * breadcrumb text's bottom edge pixel-identical to where page content
+ * started right below it — confirmed via `getBoundingClientRect()`: both
+ * were `y: 97` on a running page, i.e. zero gap. The demo's own bar isn't
+ * plain padding at all (it's `display: flex; align-items: center;
+ * min-height: 48px`, vertically centering the text inside a fixed-height
+ * bar that's itself a second row inside the same `<header>` as the
+ * icon/search bar above it), which doesn't map 1:1 onto this app's
+ * `AppBreadcrumb`/`AppHeader` being separate sibling components — `py-3`
+ * (symmetric top+bottom padding) is the pragmatic equivalent: it stops the
+ * text from being flush against whatever sits below it without adopting
+ * the demo's fixed-height-bar structure wholesale.
  */
 import { Link, matchPath, useLocation } from "react-router-dom";
 import { CBreadcrumb, CBreadcrumbItem, CContainer } from "@coreui/react";
@@ -202,7 +215,7 @@ function AppBreadcrumb() {
   }
 
   return (
-    <CContainer fluid className="px-4 pt-3">
+    <CContainer fluid className="px-4 py-3">
       <CBreadcrumb className="my-0">
         {segments.map((segment, index) => {
           const isActive = index === segments.length - 1;
