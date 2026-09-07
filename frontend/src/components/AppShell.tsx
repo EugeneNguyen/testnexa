@@ -57,6 +57,12 @@
  * nest that background inside the padding too, shrinking the painted area
  * instead of just the content, a regression this component must not
  * introduce.
+ *
+ * Note (ADR-0036, 2026-09-07): this file already had zero `@coreui/react`
+ * imports before that ADR's migration — it was always a raw `<div>`
+ * composition. No change needed here beyond this note; `AppHeader`/
+ * `AppSidebar`/`AppFooter`/`AppBreadcrumb` (its 4 children) are the ones
+ * that moved off the library.
  */
 import { ReactNode, useState } from "react";
 import AppBreadcrumb from "./AppBreadcrumb";

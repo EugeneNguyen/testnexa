@@ -84,9 +84,18 @@
  * (symmetric top+bottom padding) is the pragmatic equivalent: it stops the
  * text from being flush against whatever sits below it without adopting
  * the demo's fixed-height-bar structure wholesale.
+ *
+ * Raw HTML per ADR-0036 (2026-09-07), not `@coreui/react` — this is the
+ * component whose three rounds of `@coreui/react`-vs-demo pixel mismatches
+ * (above) drove that ADR in the first place. Only the returned JSX changed
+ * (`<CContainer>`/`<CBreadcrumb>`/`<CBreadcrumbItem>` -> raw `<div
+ * class="container-fluid px-4 py-3">`/`<nav aria-label="breadcrumb">`/`<ol
+ * class="breadcrumb my-0">`/`<li class="breadcrumb-item">`) — the
+ * `ROUTE_BREADCRUMBS` table and `matchPath` resolution logic above are
+ * byte-for-byte unchanged. `aria-current="page"` on the active `<li>`
+ * replaces what `CBreadcrumbItem`'s own `active` prop set automatically.
  */
 import { Link, matchPath, useLocation } from "react-router-dom";
-import { CBreadcrumb, CBreadcrumbItem, CContainer } from "@coreui/react";
 import { allEntities } from "../pages/admin/registry";
 
 const entityLabelByKey: Record<string, string> = Object.fromEntries(
@@ -215,18 +224,24 @@ function AppBreadcrumb() {
   }
 
   return (
-    <CContainer fluid className="px-4 py-3">
-      <CBreadcrumb className="my-0">
-        {segments.map((segment, index) => {
-          const isActive = index === segments.length - 1;
-          return (
-            <CBreadcrumbItem key={`${segment.label}-${index}`} active={isActive}>
-              {!isActive && segment.to ? <Link to={segment.to}>{segment.label}</Link> : segment.label}
-            </CBreadcrumbItem>
-          );
-        })}
-      </CBreadcrumb>
-    </CContainer>
+    <div className="container-fluid px-4 py-3">
+      <nav aria-label="breadcrumb">
+        <ol className="breadcrumb my-0">
+          {segments.map((segment, index) => {
+            const isActive = index === segments.length - 1;
+            return (
+              <li
+                key={`${segment.label}-${index}`}
+                className={isActive ? "breadcrumb-item active" : "breadcrumb-item"}
+                aria-current={isActive ? "page" : undefined}
+              >
+                {!isActive && segment.to ? <Link to={segment.to}>{segment.label}</Link> : segment.label}
+              </li>
+            );
+          })}
+        </ol>
+      </nav>
+    </div>
   );
 }
 
