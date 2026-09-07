@@ -45,7 +45,7 @@ const SAMPLE_ICONS: Array<{ name: string; icon: string[] }> = [
 
 function Icons() {
   return (
-    <CContainer className="py-4">
+    <CContainer fluid className="px-4 py-4">
       <h1 className="fs-4 mb-3">Icons</h1>
       <CRow>
         {SAMPLE_ICONS.map(({ name, icon }) => (

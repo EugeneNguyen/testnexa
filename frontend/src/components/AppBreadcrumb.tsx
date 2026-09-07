@@ -49,21 +49,28 @@
  *   same registry `AppSidebar`/routing already use — rather than a second,
  *   hand-maintained slug->label table.
  *
- * Alignment fix (2026-09-07): this used to wrap `CBreadcrumb` in a raw
- * `px-3` flush-padding div, while every bespoke page (`OrgHome`,
- * `OrgMembers`, `ProjectDetail`, `TestPlanDetail`, `TestCycleDetail`) wraps
- * its own content in a plain, default `<CContainer>` (Bootstrap's centered,
- * max-width container — auto side margins, not flush). At any viewport
- * wider than the container's current breakpoint, `px-3`'s flush left edge
- * and `CContainer`'s centered left edge land at different x-positions, so
- * the breadcrumb visibly didn't line up with the page content below it
- * (confirmed via `getBoundingClientRect()` against a real running page:
- * breadcrumb text left edge at x=256, first content card at x=438). Fixed
- * by wrapping in the same plain `<CContainer>` the pages already use —
- * Bootstrap's container math is a pure function of viewport width, so two
- * separate `<CContainer>` instances at the same width always compute the
- * same left/right position, without either side needing to know about the
- * other.
+ * Alignment fix (2026-09-07): this originally wrapped `CBreadcrumb` in a
+ * raw `px-3` flush-padding div, then in a plain (non-fluid, centered)
+ * `<CContainer>` — both wrong. The literal CoreUI free-template markup for
+ * this exact element (`docs`'s own reference, confirmed against the
+ * template source) is:
+ *
+ *   <div class="container-fluid px-4">
+ *     <nav aria-label="breadcrumb">
+ *       <ol class="breadcrumb my-0">...</ol>
+ *     </nav>
+ *   </div>
+ *
+ * i.e. `container-fluid` (Bootstrap's 100%-width container — padding only,
+ * no centering/max-width), not a plain `container` (which centers with a
+ * per-breakpoint max-width). Every bespoke page's own content wrapper
+ * (`OrgHome`, `OrgMembers`, `ProjectDetail`, `TestPlanDetail`,
+ * `TestCycleDetail`) is fixed to match in the same pass — see each file's
+ * own `<CContainer fluid className="px-4">`. `container-fluid`'s box is a
+ * pure function of its parent's width, so any two instances at the same
+ * width land at the same left/right edge without either side needing to
+ * know about the other — confirmed via `getBoundingClientRect()` against a
+ * running page post-fix.
  */
 import { Link, matchPath, useLocation } from "react-router-dom";
 import { CBreadcrumb, CBreadcrumbItem, CContainer } from "@coreui/react";
@@ -195,7 +202,7 @@ function AppBreadcrumb() {
   }
 
   return (
-    <CContainer className="pt-3">
+    <CContainer fluid className="px-4 pt-3">
       <CBreadcrumb className="my-0">
         {segments.map((segment, index) => {
           const isActive = index === segments.length - 1;

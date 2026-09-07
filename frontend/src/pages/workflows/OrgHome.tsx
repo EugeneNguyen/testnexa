@@ -287,7 +287,7 @@ function OrgHome() {
 
   return (
     <div className="min-vh-100 bg-body-secondary py-4">
-      <CContainer>
+      <CContainer fluid className="px-4">
         <CRow className="justify-content-center mb-4">
           <CCol md={10} lg={8}>
             <CRow>
