@@ -11,10 +11,25 @@
  *
  * `string`/`date` fields reuse `FormField` (`components/shared/`) directly,
  * per ADR-0023's error-display convention; `enum`/`boolean` fields hand-roll
- * the same `CFormLabel` + input + `CFormFeedback`/`invalid` shape inline
- * (not a second convention — just not promoted to their own
- * `components/shared/` component, since DS-1's own scope names `FormField`
- * as the only inhabitant there today).
+ * the same label + input + invalid-feedback shape inline (not a second
+ * convention — just not promoted to their own `components/shared/` component,
+ * since DS-1's own scope names `FormField` as the only inhabitant there
+ * today).
+ *
+ * **ADR-0042 (CoreUI -> AdminLTE v4):** the markup is raw Bootstrap 5 now —
+ * `CForm` -> `<form>`, `CFormLabel` -> `<label class="form-label">`,
+ * `CFormInput` -> `<input class="form-control">`, `CFormSelect` ->
+ * `<select class="form-select">` (`invalid` -> the `is-invalid` class),
+ * `CFormSwitch` -> Bootstrap's `form-check form-switch` block, `CFormFeedback
+ * invalid` -> `<div class="invalid-feedback d-block">`, `CAlert` -> `<div
+ * class="alert alert-danger" role="alert">`, `CButton` -> `<button
+ * class="btn btn-*">`. **React Hook Form + Zod are untouched** — every
+ * `register(field.name)` spread lands on the same native element CoreUI was
+ * forwarding it to, so `name`/`onChange`/`onBlur`/`ref` wiring, the Zod
+ * resolver, and `serverFieldErrors` mapping all behave identically. The
+ * `d-block` on the feedback div is load-bearing: Bootstrap only reveals a
+ * bare `.invalid-feedback` as the adjacent sibling of an `.is-invalid`
+ * control, and these render conditionally in a separate position.
  *
  * Fields marked `readOnly` (`entityConfigs/types.ts`) or present in
  * `lockedValues` (a scope field already fixed by route/scope-selector
@@ -28,7 +43,6 @@ import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z, ZodTypeAny } from "zod";
-import { CAlert, CButton, CForm, CFormFeedback, CFormInput, CFormLabel, CFormSelect, CFormSwitch } from "@coreui/react";
 import FormField from "../shared/FormField";
 import { EntityConfig, FieldConfig } from "../../entityConfigs/types";
 import FkAutocomplete from "./FkAutocomplete";
@@ -41,7 +55,7 @@ export interface EntityFormProps {
   lockedValues?: Record<string, string>;
   onSubmit: (values: Record<string, unknown>) => Promise<void>;
   onCancel?: () => void;
-  /** Non-field API error (network failure, unexpected 4xx/5xx) — same `CAlert` posture every other form in this codebase uses. */
+  /** Non-field API error (network failure, unexpected 4xx/5xx) — same inline-alert posture every other form in this codebase uses. */
   submitError?: string | null;
   /** `422 error.body.field_errors`, mapped onto the matching RHF field. */
   serverFieldErrors?: Record<string, string>;
@@ -146,26 +160,43 @@ function EntityForm({
       case "enum":
         return (
           <div className="mb-3" key={field.name}>
-            <CFormLabel htmlFor={field.name}>{field.label}</CFormLabel>
-            <CFormSelect id={field.name} invalid={Boolean(error)} {...register(field.name)}>
+            <label className="form-label" htmlFor={field.name}>
+              {field.label}
+            </label>
+            <select
+              className={`form-select${error ? " is-invalid" : ""}`}
+              id={field.name}
+              {...register(field.name)}
+            >
               <option value="">Select...</option>
               {(field.values ?? []).map((value) => (
                 <option key={value} value={value}>
                   {value}
                 </option>
               ))}
-            </CFormSelect>
+            </select>
             {error && (
-              <CFormFeedback invalid role="alert">
+              <div className="invalid-feedback d-block" role="alert">
                 {error}
-              </CFormFeedback>
+              </div>
             )}
           </div>
         );
       case "boolean":
         return (
           <div className="mb-3" key={field.name}>
-            <CFormSwitch id={field.name} label={field.label} {...register(field.name)} />
+            <div className="form-check form-switch">
+              <input
+                className="form-check-input"
+                type="checkbox"
+                role="switch"
+                id={field.name}
+                {...register(field.name)}
+              />
+              <label className="form-check-label" htmlFor={field.name}>
+                {field.label}
+              </label>
+            </div>
           </div>
         );
       case "fk":
@@ -204,8 +235,16 @@ function EntityForm({
     }
     return (
       <div className="mb-3" key={field.name}>
-        <CFormLabel htmlFor={`${field.name}-readonly`}>{field.label}</CFormLabel>
-        <CFormInput id={`${field.name}-readonly`} value={value === null || value === undefined ? "" : String(value)} disabled />
+        <label className="form-label" htmlFor={`${field.name}-readonly`}>
+          {field.label}
+        </label>
+        <input
+          className="form-control"
+          type="text"
+          id={`${field.name}-readonly`}
+          value={value === null || value === undefined ? "" : String(value)}
+          disabled
+        />
       </div>
     );
   }
@@ -224,25 +263,25 @@ function EntityForm({
   }
 
   return (
-    <CForm onSubmit={handleSubmit(handleFormSubmit)} noValidate>
+    <form onSubmit={handleSubmit(handleFormSubmit)} noValidate>
       {displayOnlyFields.map(renderDisplayOnly)}
       {editableFields.map(renderEditable)}
       {submitError && (
-        <CAlert color="danger" role="alert">
+        <div className="alert alert-danger" role="alert">
           {submitError}
-        </CAlert>
+        </div>
       )}
       <div className="d-flex gap-2 justify-content-end">
         {onCancel && (
-          <CButton color="secondary" variant="outline" onClick={onCancel} type="button">
+          <button type="button" className="btn btn-outline-secondary" onClick={onCancel}>
             Cancel
-          </CButton>
+          </button>
         )}
-        <CButton type="submit" color="primary" disabled={isSubmitting}>
+        <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
           {isSubmitting ? "Saving..." : mode === "create" ? "Create" : "Save"}
-        </CButton>
+        </button>
       </div>
-    </CForm>
+    </form>
   );
 }
 

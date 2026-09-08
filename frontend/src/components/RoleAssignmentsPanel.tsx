@@ -27,33 +27,19 @@
  * pagination at all), now uses the shared `container/Table.tsx` in server
  * mode, against `listRoleAssignments`'s newly-paginated route.
  *
- * Built with CoreUI (ADR-0012).
+ * **ADR-0042 (2026-09-08):** originally built with CoreUI (ADR-0012); the
+ * `@coreui/react` components are now raw Bootstrap 5 / AdminLTE v4 markup.
+ * The RHF+Zod wiring (including the `CFormSelect` → `<select>` `register()`
+ * spread) and every behavior above are unchanged — only elements and classes
+ * are. The `CModal` becomes the local `Modal` helper below, and the shared
+ * `container/Table.tsx`'s `columns`/`renderRow` slots now take raw
+ * `<tr>`/`<th>`/`<td>` rather than `<CTableRow>`/`<CTableHeaderCell>`/
+ * `<CTableDataCell>`.
  */
-import { useCallback, useEffect, useState } from "react";
+import { ReactNode, useCallback, useEffect, useId, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import {
-  CAlert,
-  CButton,
-  CCard,
-  CCardBody,
-  CForm,
-  CFormFeedback,
-  CFormInput,
-  CFormLabel,
-  CFormSelect,
-  CFormText,
-  CModal,
-  CModalBody,
-  CModalFooter,
-  CModalHeader,
-  CModalTitle,
-  CSpinner,
-  CTableDataCell,
-  CTableHeaderCell,
-  CTableRow,
-} from "@coreui/react";
 import Table from "../container/Table";
 import { ApiError } from "../lib/api/client";
 import {
@@ -84,6 +70,79 @@ type NewRoleAssignmentFormValues = z.infer<typeof newRoleAssignmentSchema>;
 function fieldError(error: ApiError, field: string): string | undefined {
   const body = error.body as { field_errors?: Record<string, string[]> } | undefined;
   return body?.field_errors?.[field]?.[0];
+}
+
+/**
+ * Hand-rolled Bootstrap 5 modal (ADR-0042 §2.3), replacing `CModal` +
+ * `CModalHeader` + `CModalTitle`.
+ *
+ * Renders **nothing at all when closed** — `CModal` unmounted its content, and
+ * this file's own tests assert `queryByRole("heading", …)` is null once the
+ * modal closes after a successful grant.
+ *
+ * ESC closes (CoreUI's `keyboard` default). No focus trap — an accepted,
+ * documented gap in ADR-0042.
+ *
+ * Deliberately duplicated from `pages/workflows/OrgHome.tsx`'s own local
+ * `Modal` rather than shared: `components/shared/` is a different agent's
+ * surface in this migration, and ADR-0023's bucket rules mean promoting this
+ * is its own decision, not a side effect of a markup swap. Worth extracting
+ * in a follow-up once every screen's modal has landed.
+ */
+function Modal({
+  visible,
+  onClose,
+  title,
+  children,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  title: string;
+  children: ReactNode;
+}) {
+  const titleId = useId();
+
+  useEffect(() => {
+    if (!visible) {
+      return;
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [visible, onClose]);
+
+  if (!visible) {
+    return null;
+  }
+
+  return (
+    <>
+      <div
+        className="modal fade show d-block"
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+      >
+        <div className="modal-dialog">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h5 className="modal-title" id={titleId}>
+                {title}
+              </h5>
+              <button type="button" className="btn-close" aria-label="Close" onClick={onClose} />
+            </div>
+            {children}
+          </div>
+        </div>
+      </div>
+      <div className="modal-backdrop fade show" />
+    </>
+  );
 }
 
 interface RoleAssignmentsPanelProps {
@@ -189,21 +248,24 @@ function RoleAssignmentsPanel({ orgId }: RoleAssignmentsPanelProps) {
   }
 
   return (
-    <CCard className="mt-4">
-      <CCardBody className="p-4">
+    <div className="card mt-4">
+      <div className="card-body p-4">
         <div className="d-flex justify-content-between align-items-center mb-3">
           <h2 className="fs-5 mb-0">Role Assignments</h2>
-          <CButton color="primary" onClick={openModal}>
+          <button type="button" className="btn btn-primary" onClick={openModal}>
             New Role Assignment
-          </CButton>
+          </button>
         </div>
 
         {loading ? (
-          <CSpinner size="sm" />
+          // `CSpinner` carried `role="status"` implicitly (ADR-0042 §4.5.5) — a raw div must say so.
+          <div className="spinner-border spinner-border-sm" role="status">
+            <span className="visually-hidden">Loading...</span>
+          </div>
         ) : loadError ? (
-          <CAlert color="danger" role="alert">
+          <div className="alert alert-danger" role="alert">
             {loadError}
-          </CAlert>
+          </div>
         ) : assignments.length === 0 ? (
           <p className="text-body-secondary mb-0">No role assignments yet.</p>
         ) : (
@@ -218,54 +280,62 @@ function RoleAssignmentsPanel({ orgId }: RoleAssignmentsPanelProps) {
             rowKey={(assignment) => assignment.id}
             testIdPrefix="role-assignment-table"
             columns={
-              <CTableRow>
-                <CTableHeaderCell>Actor</CTableHeaderCell>
-                <CTableHeaderCell>Role</CTableHeaderCell>
-                <CTableHeaderCell>Scope</CTableHeaderCell>
-              </CTableRow>
+              <tr>
+                <th scope="col">Actor</th>
+                <th scope="col">Role</th>
+                <th scope="col">Scope</th>
+              </tr>
             }
             renderRow={(assignment) => (
-              <CTableRow key={assignment.id}>
-                <CTableDataCell className="font-monospace small">{assignment.actor_id}</CTableDataCell>
-                <CTableDataCell>{roleName(assignment.role_id)}</CTableDataCell>
-                <CTableDataCell>
+              <tr key={assignment.id}>
+                <td className="font-monospace small">{assignment.actor_id}</td>
+                <td>{roleName(assignment.role_id)}</td>
+                <td>
                   {assignment.project_id ? (
                     <span className="font-monospace small">Project {assignment.project_id}</span>
                   ) : (
                     "Org-wide"
                   )}
-                </CTableDataCell>
-              </CTableRow>
+                </td>
+              </tr>
             )}
           />
         )}
-      </CCardBody>
+      </div>
 
-      <CModal visible={showModal} onClose={closeModal}>
-        <CModalHeader>
-          <CModalTitle>New Role Assignment</CModalTitle>
-        </CModalHeader>
-        <CForm onSubmit={handleSubmit(onSubmit)} noValidate>
-          <CModalBody>
+      <Modal visible={showModal} onClose={closeModal} title="New Role Assignment">
+        <form onSubmit={handleSubmit(onSubmit)} noValidate>
+          <div className="modal-body">
             <div className="mb-3">
-              <CFormLabel htmlFor="actorId">Actor id</CFormLabel>
-              <CFormInput
+              <label className="form-label" htmlFor="actorId">
+                Actor id
+              </label>
+              <input
                 id="actorId"
                 type="text"
+                className={`form-control${errors.actorId ? " is-invalid" : ""}`}
                 placeholder="00000000-0000-0000-0000-000000000000"
-                invalid={!!errors.actorId}
                 {...register("actorId")}
               />
-              {errors.actorId && <CFormFeedback invalid>{errors.actorId.message}</CFormFeedback>}
-              <CFormText>
+              {/* No `role="alert"` on these feedback blocks — `CFormFeedback` had none, and adding one here would multiply alert-role nodes. */}
+              {errors.actorId && (
+                <div className="invalid-feedback d-block">{errors.actorId.message}</div>
+              )}
+              <div className="form-text">
                 The User or AIAgent id to grant this role to — no member/agent picker exists yet, paste the id
                 directly.
-              </CFormText>
+              </div>
             </div>
 
             <div className="mb-3">
-              <CFormLabel htmlFor="roleId">Role</CFormLabel>
-              <CFormSelect id="roleId" invalid={!!errors.roleId} {...register("roleId")}>
+              <label className="form-label" htmlFor="roleId">
+                Role
+              </label>
+              <select
+                id="roleId"
+                className={`form-select${errors.roleId ? " is-invalid" : ""}`}
+                {...register("roleId")}
+              >
                 <option value="">Select a role…</option>
                 {roles.map((role) => (
                   <option key={role.id} value={role.id}>
@@ -273,49 +343,57 @@ function RoleAssignmentsPanel({ orgId }: RoleAssignmentsPanelProps) {
                     {role.is_system_role ? "" : " (custom)"}
                   </option>
                 ))}
-              </CFormSelect>
-              {errors.roleId && <CFormFeedback invalid>{errors.roleId.message}</CFormFeedback>}
+              </select>
+              {errors.roleId && (
+                <div className="invalid-feedback d-block">{errors.roleId.message}</div>
+              )}
             </div>
 
             <div className="mb-3">
-              <CFormLabel htmlFor="scope">Scope</CFormLabel>
-              <CFormSelect id="scope" {...register("scope")}>
+              <label className="form-label" htmlFor="scope">
+                Scope
+              </label>
+              <select id="scope" className="form-select" {...register("scope")}>
                 <option value="org-wide">Org-wide (every project)</option>
                 <option value="project-scoped">Project-scoped</option>
-              </CFormSelect>
+              </select>
             </div>
 
             {scope === "project-scoped" && (
               <div className="mb-3">
-                <CFormLabel htmlFor="projectId">Project id</CFormLabel>
-                <CFormInput
+                <label className="form-label" htmlFor="projectId">
+                  Project id
+                </label>
+                <input
                   id="projectId"
                   type="text"
+                  className={`form-control${errors.projectId ? " is-invalid" : ""}`}
                   placeholder="00000000-0000-0000-0000-000000000000"
-                  invalid={!!errors.projectId}
                   {...register("projectId")}
                 />
-                {errors.projectId && <CFormFeedback invalid>{errors.projectId.message}</CFormFeedback>}
+                {errors.projectId && (
+                  <div className="invalid-feedback d-block">{errors.projectId.message}</div>
+                )}
               </div>
             )}
 
             {apiError && (
-              <CAlert color="danger" role="alert">
+              <div className="alert alert-danger" role="alert">
                 {apiError}
-              </CAlert>
+              </div>
             )}
-          </CModalBody>
-          <CModalFooter>
-            <CButton color="secondary" variant="outline" onClick={closeModal}>
+          </div>
+          <div className="modal-footer">
+            <button type="button" className="btn btn-outline-secondary" onClick={closeModal}>
               Cancel
-            </CButton>
-            <CButton type="submit" color="primary" disabled={isSubmitting}>
+            </button>
+            <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
               {isSubmitting ? "Granting..." : "Grant"}
-            </CButton>
-          </CModalFooter>
-        </CForm>
-      </CModal>
-    </CCard>
+            </button>
+          </div>
+        </form>
+      </Modal>
+    </div>
   );
 }
 

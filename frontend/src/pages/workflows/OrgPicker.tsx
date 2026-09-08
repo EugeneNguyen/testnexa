@@ -5,7 +5,7 @@
  * `/orgs/{org.id}`. If `orgs` is empty — e.g. a direct navigation to this
  * route without having logged in first — redirects back to `/login`.
  *
- * RBAC-1/ADR-0016 AC2: adds a small "New Organization" action — a CoreUI
+ * RBAC-1/ADR-0016 AC2: adds a small "New Organization" action — a Bootstrap
  * modal with `name`/`slug` inputs calling `createOrg` (`POST /orgs`). This
  * is the already-authenticated-org_admin path (distinct from `Signup.tsx`'s
  * bootstrap-only `POST /auth/signup`). On success, navigates straight to
@@ -18,30 +18,17 @@
  * `403 permission_denied` (no `organization.create` grant anywhere) or
  * `422` (slug collision) is shown inline in the modal.
  *
- * Built with CoreUI (ADR-0012) — CListGroup/CListGroupItem/CModal/CForm.
+ * Built with raw Bootstrap 5 / AdminLTE markup (ADR-0042, superseding the
+ * CoreUI build of ADR-0012) — `list-group`/`list-group-item-action` for the
+ * org list, and a hand-rolled `.modal` for the create dialog. The modal is
+ * rendered only while open (matching `CModal`'s own unmount-when-hidden
+ * behavior, which the negative `queryBy*` assertions in this screen's e2e
+ * coverage rely on) and closes on ESC, which was `CModal`'s default
+ * `keyboard` behavior. Focus trapping is a deliberate, accepted gap
+ * (ADR-0042).
  */
 import { FormEvent, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  CAlert,
-  CButton,
-  CCard,
-  CCardBody,
-  CCol,
-  CContainer,
-  CForm,
-  CFormInput,
-  CFormLabel,
-  CFormText,
-  CListGroup,
-  CListGroupItem,
-  CModal,
-  CModalBody,
-  CModalFooter,
-  CModalHeader,
-  CModalTitle,
-  CRow,
-} from "@coreui/react";
 import { useAuth } from "../../auth/AuthContext";
 import { ApiError } from "../../lib/api/client";
 import { createOrg } from "../../lib/api/organizations";
@@ -62,6 +49,19 @@ function OrgPicker() {
       navigate("/login", { replace: true });
     }
   }, [orgs, navigate]);
+
+  // CoreUI's `CModal` closed on ESC by default (its `keyboard` prop); the
+  // hand-rolled replacement has to wire that up itself.
+  useEffect(() => {
+    if (!showModal) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setShowModal(false);
+      }
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [showModal]);
 
   function openModal() {
     setNewOrgName("");
@@ -97,77 +97,117 @@ function OrgPicker() {
 
   return (
     <div className="min-vh-100 d-flex align-items-center bg-body-secondary">
-      <CContainer>
-        <CRow className="justify-content-center">
-          <CCol md={8} lg={5}>
-            <CCard>
-              <CCardBody className="p-4">
+      <div className="container">
+        <div className="row justify-content-center">
+          <div className="col-md-8 col-lg-5">
+            <div className="card">
+              <div className="card-body p-4">
                 <h1 className="mb-3 fs-4">Choose an organization</h1>
-                <CListGroup className="mb-3">
+                {/*
+                 * Bootstrap's own documented markup for an *actionable* list
+                 * group is `div.list-group` wrapping `button.list-group-item`
+                 * — not `ul`/`li`, which cannot legally contain a `<button>`
+                 * as a direct child. This matches what `CListGroup` rendered
+                 * for `CListGroupItem as="button"` children.
+                 */}
+                <div className="list-group mb-3">
                   {orgs.map((org) => (
-                    <CListGroupItem
+                    <button
                       key={org.id}
-                      as="button"
+                      type="button"
                       onClick={() => navigate(`/orgs/${org.id}`)}
-                      className="text-start"
+                      className="list-group-item list-group-item-action text-start"
                     >
                       <div className="fw-semibold">{org.name}</div>
                       <div className="text-body-secondary small">{org.slug}</div>
-                    </CListGroupItem>
+                    </button>
                   ))}
-                </CListGroup>
-                <CButton color="secondary" variant="outline" className="w-100" onClick={openModal}>
+                </div>
+                <button type="button" className="btn btn-outline-secondary w-100" onClick={openModal}>
                   New Organization
-                </CButton>
-              </CCardBody>
-            </CCard>
-          </CCol>
-        </CRow>
-      </CContainer>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
-      <CModal visible={showModal} onClose={() => setShowModal(false)}>
-        <CModalHeader>
-          <CModalTitle>New Organization</CModalTitle>
-        </CModalHeader>
-        <CForm onSubmit={handleCreateOrg}>
-          <CModalBody>
-            <div className="mb-3">
-              <CFormLabel htmlFor="newOrgName">Name</CFormLabel>
-              <CFormInput
-                id="newOrgName"
-                type="text"
-                required
-                value={newOrgName}
-                onChange={(event) => setNewOrgName(event.target.value)}
-              />
+      {showModal && (
+        <>
+          <div
+            className="modal fade show d-block"
+            tabIndex={-1}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="newOrgModalTitle"
+          >
+            <div className="modal-dialog">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h5 className="modal-title" id="newOrgModalTitle">
+                    New Organization
+                  </h5>
+                  <button
+                    type="button"
+                    className="btn-close"
+                    aria-label="Close"
+                    onClick={() => setShowModal(false)}
+                  />
+                </div>
+                <form onSubmit={handleCreateOrg}>
+                  <div className="modal-body">
+                    <div className="mb-3">
+                      <label className="form-label" htmlFor="newOrgName">
+                        Name
+                      </label>
+                      <input
+                        className="form-control"
+                        id="newOrgName"
+                        type="text"
+                        required
+                        value={newOrgName}
+                        onChange={(event) => setNewOrgName(event.target.value)}
+                      />
+                    </div>
+                    <div className="mb-3">
+                      <label className="form-label" htmlFor="newOrgSlug">
+                        Slug
+                      </label>
+                      <input
+                        className="form-control"
+                        id="newOrgSlug"
+                        type="text"
+                        required
+                        value={newOrgSlug}
+                        onChange={(event) => setNewOrgSlug(event.target.value)}
+                      />
+                      <div className="form-text">Lowercase letters, numbers, and hyphens only.</div>
+                    </div>
+                    {createError && (
+                      <div className="alert alert-danger" role="alert">
+                        {createError}
+                      </div>
+                    )}
+                  </div>
+                  <div className="modal-footer">
+                    <button
+                      type="button"
+                      className="btn btn-outline-secondary"
+                      onClick={() => setShowModal(false)}
+                    >
+                      Cancel
+                    </button>
+                    <button type="submit" className="btn btn-primary" disabled={creating}>
+                      {creating ? "Creating..." : "Create"}
+                    </button>
+                  </div>
+                </form>
+              </div>
             </div>
-            <div className="mb-3">
-              <CFormLabel htmlFor="newOrgSlug">Slug</CFormLabel>
-              <CFormInput
-                id="newOrgSlug"
-                type="text"
-                required
-                value={newOrgSlug}
-                onChange={(event) => setNewOrgSlug(event.target.value)}
-              />
-              <CFormText>Lowercase letters, numbers, and hyphens only.</CFormText>
-            </div>
-            {createError && (
-              <CAlert color="danger" role="alert">
-                {createError}
-              </CAlert>
-            )}
-          </CModalBody>
-          <CModalFooter>
-            <CButton color="secondary" variant="outline" onClick={() => setShowModal(false)}>
-              Cancel
-            </CButton>
-            <CButton type="submit" color="primary" disabled={creating}>
-              {creating ? "Creating..." : "Create"}
-            </CButton>
-          </CModalFooter>
-        </CForm>
-      </CModal>
+          </div>
+          <div className="modal-backdrop fade show" />
+        </>
+      )}
     </div>
   );
 }

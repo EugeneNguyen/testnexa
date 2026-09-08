@@ -240,7 +240,11 @@ test.describe("REQ-2: author a TestCase directly from a Requirement via ProjectD
       await expect(page.getByText("Submit credentials")).toBeVisible();
 
       // Ordered: "Open login page" (sequence 1) renders before "Submit credentials" (sequence 2).
-      const stepItems = page.locator("ol li");
+      // Scoped to `ol.mb-2` (ProjectDetail's own TestSteps list), not a bare
+      // `ol li` — AdminLTE's breadcrumb (AppBreadcrumb.tsx, raw HTML since
+      // ADR-0037) is also a real `<ol class="breadcrumb my-0"><li>`, so an
+      // unscoped locator picks up "Project" as a spurious third match.
+      const stepItems = page.locator("ol.mb-2 li");
       await expect(stepItems).toHaveCount(2);
       await expect(stepItems.nth(0)).toContainText("Open login page");
       await expect(stepItems.nth(1)).toContainText("Submit credentials");

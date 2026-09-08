@@ -10,7 +10,7 @@
  *
  * - `components/shared/` — **stateless markup-composition primitives**.
  *   `FormField` is the archetype: it owns no state and no actions, it just
- *   composes `CFormLabel` + `CFormInput` + `CFormFeedback` around props the
+ *   composes a `<label>` + `<input>` + invalid-feedback block around props the
  *   caller fully controls. `Table` is deliberately *not* here: it owns
  *   `page`/`pageSize` state and the actions that mutate them, which is
  *   exactly the axis that bucket's boundary excludes.
@@ -71,17 +71,42 @@
  *   aggregate the inner rows' text, breaking `getByRole("row", {name})`
  *   strict-mode lookups). TC-DS-017 asserts this boundary still holds.
  *
- * The `CPagination`/`CPaginationItem` markup below is copied verbatim from
- * `EntityTable`'s pre-DS-2 implementation, not reinvented — that's what keeps
- * the 24 generic-admin list screens' existing assertions passing unmodified
- * (TC-DS-016).
+ * ## Markup: raw Bootstrap 5 / AdminLTE (ADR-0042), was CoreUI (ADR-0012)
  *
- * Built with CoreUI (ADR-0012).
+ * DS-2 originally shipped this container on `@coreui/react`
+ * (`CTable`/`CPagination`/`CPaginationItem`/`CFormSelect`), with the
+ * pagination block copied verbatim from `EntityTable`'s pre-DS-2
+ * implementation so the 24 generic-admin list screens' assertions passed
+ * unmodified (TC-DS-016). ADR-0042 replaces CoreUI with AdminLTE v4, which
+ * *is* Bootstrap 5 plus layout classes, so every one of those components maps
+ * to the stock Bootstrap markup CoreUI was rendering anyway:
+ * `<div class="table-responsive"><table class="table table-hover">`,
+ * `<nav><ul class="pagination"><li class="page-item"><button class="page-link">`,
+ * `<select class="form-select form-select-sm">`. The rendered class contract
+ * (`page-item`/`active`/`disabled`, `columnheader`/`row`/`cell` roles, every
+ * `data-testid`) is unchanged, so TC-DS-016 still holds.
+ *
+ * **Caller-visible consequence of ADR-0042:** `columns` and `renderRow` now
+ * receive **raw `<tr>`/`<th scope="col">`/`<td>` elements**, not
+ * `<CTableRow>`/`<CTableHeaderCell>`/`<CTableDataCell>`. The prop *types*
+ * (`ReactNode` / `(item: T) => ReactNode`) are unchanged — it is the JSX
+ * callers hand in that changed. Header cells must carry `scope="col"`
+ * themselves: `CTableHeaderCell` defaulted it, a bare `<th>` does not, and
+ * `getByRole("columnheader")`/row-name computation depend on the real
+ * `<thead>`/`<th>` semantics.
+ *
+ * One deliberate behavior change: `CPaginationItem` rendered the *active* page
+ * as a `<span>` with `onClick` silently dropped (see `frontend/CLAUDE.md`), so
+ * clicking the current page did nothing. It is now a real `<button>` carrying
+ * `aria-current="page"`, so clicking it fires `onPageChange(currentPage)` — a
+ * harmless no-op navigation to the page you are already on, and the disabled
+ * Previous/Next buttons now carry a real `disabled` attribute rather than only
+ * a `disabled` class.
  *
  * [ADR-0041]: docs/adr/0041-ds-2-table-container-shared-pagination.md
+ * ADR-0042: the CoreUI -> AdminLTE v4 migration (`docs/adr/`).
  */
 import { ReactNode, useEffect, useState } from "react";
-import { CFormSelect, CPagination, CPaginationItem, CTable, CTableBody, CTableHead } from "@coreui/react";
 
 /**
  * The page-size options offered by every retrofitted screen (ADR-0041).
@@ -108,9 +133,16 @@ export interface TableProps<T> {
   total?: number;
   /** Stable React key per row. */
   rowKey: (item: T) => string;
-  /** `<CTableRow>`s of `<CTableHeaderCell>`s — the caller owns column definitions. */
+  /**
+   * The `<thead>`'s contents: a `<tr>` of `<th scope="col">`s — the caller
+   * owns column definitions. Raw elements since ADR-0042 (was `<CTableRow>` /
+   * `<CTableHeaderCell>`); `scope="col"` is the caller's responsibility now.
+   */
   columns: ReactNode;
-  /** One `<CTableRow>` per item — the caller owns cell rendering. */
+  /**
+   * One `<tr>` of `<td>`s per item — the caller owns cell rendering. Raw
+   * elements since ADR-0042 (was `<CTableRow>` / `<CTableDataCell>`).
+   */
   renderRow: (item: T) => ReactNode;
   /** Optional toolbar/search/title slot, rendered above the table. */
   header?: ReactNode;
@@ -150,7 +182,13 @@ export interface TableProps<T> {
    * `page` there and resets it directly.
    */
   resetPageKey?: string;
-  /** Props forwarded to the underlying `CTable` (e.g. `small`, `className`). */
+  /**
+   * Props forwarded to the underlying `<table>` element. Since ADR-0042 this
+   * is a raw DOM element, so pass real HTML/React attributes — Bootstrap
+   * modifier classes go through `className` (`"table-sm"`, `"align-middle"`,
+   * `"table-striped"`), not CoreUI's old boolean props (`small`, `align`).
+   * A `className` here is appended to the container's own `table table-hover`.
+   */
   tableProps?: Record<string, unknown>;
   /** Accessible name for the pagination nav. Defaults to "Page navigation". */
   paginationLabel?: string;
@@ -250,18 +288,32 @@ function Table<T>({
   // selector lives inside that row, so it follows the same rule.
   const showPaginationRow = totalPages > 1;
 
+  // `tableProps.className` is merged with (not allowed to clobber) the
+  // container's own `table table-hover` — CoreUI's `CTable` did the same
+  // merge internally for its `hover`/`small`/`className` props.
+  const { className: extraTableClassName, ...restTableProps } = (tableProps ?? {}) as {
+    className?: string;
+  } & Record<string, unknown>;
+  const tableClassName = ["table", "table-hover", extraTableClassName].filter(Boolean).join(" ");
+
+  const isPreviousDisabled = currentPage <= 1;
+  const isNextDisabled = currentPage >= totalPages;
+
   return (
     <div>
       {header}
 
-      <CTable hover responsive {...tableProps}>
-        <CTableHead>{columns}</CTableHead>
-        <CTableBody>
-          {visibleItems.map((item) => (
-            <TableRowSlot key={rowKey(item)}>{renderRow(item)}</TableRowSlot>
-          ))}
-        </CTableBody>
-      </CTable>
+      {/* `responsive` on the old CTable = this wrapper (ADR-0042 spec §2.1). */}
+      <div className="table-responsive">
+        <table className={tableClassName} {...restTableProps}>
+          <thead>{columns}</thead>
+          <tbody>
+            {visibleItems.map((item) => (
+              <TableRowSlot key={rowKey(item)}>{renderRow(item)}</TableRowSlot>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
       {showPaginationRow && (
         <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -269,9 +321,9 @@ function Table<T>({
             <label className="mb-0 text-body-secondary small" htmlFor={`${testIdPrefix}-page-size`}>
               Rows per page
             </label>
-            <CFormSelect
+            <select
+              className="form-select form-select-sm"
               id={`${testIdPrefix}-page-size`}
-              size="sm"
               style={{ width: "auto" }}
               aria-label="Rows per page"
               data-testid={`${testIdPrefix}-page-size`}
@@ -283,22 +335,45 @@ function Table<T>({
                   {option}
                 </option>
               ))}
-            </CFormSelect>
+            </select>
           </div>
 
-          <CPagination aria-label={paginationLabel} data-testid={`${testIdPrefix}-pagination`}>
-            <CPaginationItem disabled={currentPage <= 1} onClick={() => goToPage(currentPage - 1)}>
-              Previous
-            </CPaginationItem>
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-              <CPaginationItem key={p} active={p === currentPage} onClick={() => goToPage(p)}>
-                {p}
-              </CPaginationItem>
-            ))}
-            <CPaginationItem disabled={currentPage >= totalPages} onClick={() => goToPage(currentPage + 1)}>
-              Next
-            </CPaginationItem>
-          </CPagination>
+          <nav aria-label={paginationLabel} data-testid={`${testIdPrefix}-pagination`}>
+            <ul className="pagination">
+              <li className={`page-item${isPreviousDisabled ? " disabled" : ""}`}>
+                <button
+                  type="button"
+                  className="page-link"
+                  disabled={isPreviousDisabled}
+                  onClick={() => goToPage(currentPage - 1)}
+                >
+                  Previous
+                </button>
+              </li>
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                <li key={p} className={`page-item${p === currentPage ? " active" : ""}`}>
+                  <button
+                    type="button"
+                    className="page-link"
+                    aria-current={p === currentPage ? "page" : undefined}
+                    onClick={() => goToPage(p)}
+                  >
+                    {p}
+                  </button>
+                </li>
+              ))}
+              <li className={`page-item${isNextDisabled ? " disabled" : ""}`}>
+                <button
+                  type="button"
+                  className="page-link"
+                  disabled={isNextDisabled}
+                  onClick={() => goToPage(currentPage + 1)}
+                >
+                  Next
+                </button>
+              </li>
+            </ul>
+          </nav>
         </div>
       )}
     </div>

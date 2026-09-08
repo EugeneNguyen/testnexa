@@ -1,9 +1,9 @@
 # ADR-0020: Full CoreUI free-admin-template parity for the authenticated shell
 
 **Date:** 2026-09-04
-**Status:** Accepted
+**Status:** Accepted (Partially superseded by [ADR-0042](0042-adminlte-design-system.md), 2026-09-08 — **the reference template changes from CoreUI's free Bootstrap admin template to AdminLTE v4**, so every CoreUI-specific mechanism named below is obsolete: `CBreadcrumb`/`CFooter`/`CWidgetStatsA`/`CWidgetStatsB` are raw markup (`WidgetStatsTile` had already replaced the widget pair, PR #41), and `useColorModes` + `data-coreui-theme` + the `coreui-react-color-scheme` localStorage key become a plain React `useState`/`useEffect` pair writing `data-bs-theme` under the `lte-theme` key — see ADR-0042's Consequences for the one-time orphaning of every saved user preference. This ADR's own *scope* decisions all stand: breadcrumb + footer complete the shell, the dashboard shows only honestly-sourced counts with the trend chart still deferred (NFR-27), color-mode preference stays client-side only (NFR-28), and the UI-element reference pages remain template-parity scaffolding with no FR/NFR backing.)
 **Deciders:** xuanbinh91@gmail.com (CTO)
-**Related:** [ADR-0018](0018-admin-shell-sidebar-layout.md) (admin shell sidebar+navbar — this ADR extends its scope, does not reverse its core decision), [ADR-0012](0012-coreui-design-system.md) (CoreUI design system)
+**Related:** [ADR-0018](0018-admin-shell-sidebar-layout.md) (admin shell sidebar+navbar — this ADR extends its scope, does not reverse its core decision), [ADR-0012](0012-coreui-design-system.md) (CoreUI design system), [ADR-0042](0042-adminlte-design-system.md) (AdminLTE v4 design system — partially supersedes this ADR)
 
 ## Context
 

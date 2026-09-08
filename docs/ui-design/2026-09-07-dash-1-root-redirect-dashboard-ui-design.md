@@ -42,7 +42,7 @@ Content, this pass only:
 └─────────────────────────────────────────┘
 ```
 
-- CoreUI-only (`CCard`/`CCardBody`/`CContainer`, matching every other bespoke screen's shell pattern).
+- ~~CoreUI-only (`CCard`/`CCardBody`/`CContainer`~~ **revised 2026-09-08, [ADR-0042](../adr/0042-adminlte-design-system.md): raw AdminLTE/Bootstrap markup — `div.card`/`div.card-body`/`div.container-fluid`**), matching every other bespoke screen's shell pattern.
 - A single heading ("Dashboard") and, optionally, one line of placeholder copy (e.g. "Nothing here yet.") — no features grid, no stat tiles, no chart, nothing borrowed from `OrgHome`'s widget pattern. This is intentionally barer than LANDING-1's old pitch content ever was.
 - **No `apiFetch`/`useQuery` call of any kind.** This is a hard requirement (NFR-47), not a temporary stub that happens not to call anything yet — a future story adding content here needs its own ADR/UI-Design update if it introduces org-scoping or a data source.
 - Not org-scoped (`/dashboard`, not `/orgs/:orgId/dashboard`) — deferred decision, see ADR-0035 Consequences.

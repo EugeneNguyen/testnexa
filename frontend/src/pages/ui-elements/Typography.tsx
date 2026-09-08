@@ -6,18 +6,18 @@
  * text, and a couple of common inline/list elements, no content-correctness
  * assertions expected.
  *
- * Built with CoreUI (ADR-0012) — `CCard`/`CContainer` plus plain semantic
- * HTML (headings/paragraph/list/code), styled by CoreUI's own Bootstrap-
- * family base CSS (not Tailwind).
+ * Built with raw Bootstrap 5 / AdminLTE markup (ADR-0042, superseding the
+ * CoreUI build of ADR-0012) — `card`/`container-fluid` plus plain semantic
+ * HTML (headings/paragraph/list/code), styled by Bootstrap's own base CSS
+ * (not Tailwind).
  */
-import { CCard, CCardBody, CContainer } from "@coreui/react";
 
 function Typography() {
   return (
-    <CContainer fluid className="px-4 py-4 h-100 d-flex flex-column">
+    <div className="container-fluid px-4 py-4 h-100 d-flex flex-column">
       <h1 className="fs-4 mb-3">Typography</h1>
-      <CCard className="flex-grow-1">
-        <CCardBody>
+      <div className="card flex-grow-1">
+        <div className="card-body">
           <h1>Heading 1</h1>
           <h2>Heading 2</h2>
           <h3>Heading 3</h3>
@@ -25,7 +25,7 @@ function Typography() {
           <h5>Heading 5</h5>
           <h6>Heading 6</h6>
           <p>
-            This is a body paragraph, styled by CoreUI&apos;s base typography rules — no bespoke font-size or
+            This is a body paragraph, styled by Bootstrap&apos;s base typography rules — no bespoke font-size or
             line-height overrides.
           </p>
           <p>
@@ -36,11 +36,11 @@ function Typography() {
             <li>Unordered list item two</li>
           </ul>
           <blockquote className="blockquote">
-            <p className="mb-0">A blockquote example, CoreUI-styled.</p>
+            <p className="mb-0">A blockquote example, Bootstrap-styled.</p>
           </blockquote>
-        </CCardBody>
-      </CCard>
-    </CContainer>
+        </div>
+      </div>
+    </div>
   );
 }
 

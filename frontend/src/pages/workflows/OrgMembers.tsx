@@ -3,11 +3,25 @@
  * invite a new one by email, suspend/reactivate an active/suspended member,
  * revoke a still-pending invite.
  *
- * Built with CoreUI (ADR-0012) — CTable/CCard/CForm/CFormInput/CButton/
- * CAlert/CBadge only, no hand-rolled table/badge markup. React Hook Form +
- * Zod own the invite form's state/validation, binding to CoreUI's
- * `CFormInput` the same way every other form in this codebase does its
- * client-side validation.
+ * Originally built with CoreUI (ADR-0012) — CTable/CCard/CForm/CFormInput/
+ * CButton/CAlert/CBadge only, no hand-rolled table/badge markup. **ADR-0042
+ * (2026-09-08)** replaces CoreUI with AdminLTE v4, so those components are
+ * now raw Bootstrap 5 markup written out directly (`table.table` inside a
+ * `div.table-responsive`, `div.card`, `input.form-control`, `button.btn`,
+ * `div.alert[role=alert]`, `span.badge.bg-*`). React Hook Form + Zod still
+ * own the invite form's state/validation, binding to the raw `<input>` the
+ * same way every other form in this codebase does its client-side
+ * validation — only the rendered element changed, not the wiring.
+ *
+ * Two deliberate markup details here, both load-bearing:
+ * - the members `<table>` gets **no `table-hover`** — the CoreUI original
+ *   passed `responsive` only, so only the `div.table-responsive` wrapper
+ *   carries over;
+ * - the two invite-success `div.alert-success` blocks carry **no
+ *   `role="alert"`**, matching the `CAlert`s they replace (which were
+ *   written without one). Adding one would give this screen two
+ *   alert-role nodes at once and turn a singular `getByRole("alert")` into
+ *   a strict-mode multiple-match failure.
  *
  * Permission gating: unlike `Login`/`Signup`/`OrgPicker`, this repo has no
  * existing client-side signal of the current actor's *permissions* to reuse
@@ -33,26 +47,6 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useParams } from "react-router-dom";
-import {
-  CAlert,
-  CBadge,
-  CButton,
-  CCard,
-  CCardBody,
-  CCol,
-  CContainer,
-  CForm,
-  CFormInput,
-  CFormLabel,
-  CRow,
-  CSpinner,
-  CTable,
-  CTableBody,
-  CTableDataCell,
-  CTableHead,
-  CTableHeaderCell,
-  CTableRow,
-} from "@coreui/react";
 import { ApiError } from "../../lib/api/client";
 import {
   InviteMemberResponse,
@@ -271,77 +265,82 @@ function OrgMembers() {
 
   return (
     <div className="bg-body-secondary min-vh-100 py-4">
-      <CContainer fluid className="px-4">
-        <CRow className="justify-content-center">
-          <CCol xs={12} lg={9}>
+      <div className="container-fluid px-4">
+        <div className="row justify-content-center">
+          <div className="col-12 col-lg-9">
             <h1 className="fs-4 mb-4">Members</h1>
 
             {isLoading && (
               <div className="d-flex align-items-center gap-2">
-                <CSpinner size="sm" color="primary" />
+                {/* `CSpinner` carried `role="status"` implicitly (ADR-0042 §4.5.5) — a raw div must say so. */}
+                <div className="spinner-border spinner-border-sm text-primary" role="status">
+                  <span className="visually-hidden">Loading...</span>
+                </div>
                 <span>Loading members...</span>
               </div>
             )}
 
             {!isLoading && loadError && (
-              <CAlert color="danger" role="alert">
+              <div className="alert alert-danger" role="alert">
                 {loadError}
-              </CAlert>
+              </div>
             )}
 
             {!isLoading && !loadError && (
               <>
-                <CCard className="mb-4">
-                  <CCardBody>
+                <div className="card mb-4">
+                  <div className="card-body">
                     <h2 className="fs-6 mb-3">Invite by email</h2>
-                    <CForm
+                    <form
                       noValidate
                       onSubmit={(event: ReactFormEvent<HTMLFormElement>) => {
                         void handleSubmit(onInviteSubmit)(event);
                       }}
                     >
-                      <CRow className="g-2 align-items-start">
-                        <CCol xs={12} sm={8}>
-                          <CFormLabel htmlFor="invite-email">Invite by email</CFormLabel>
-                          <CFormInput
+                      <div className="row g-2 align-items-start">
+                        <div className="col-12 col-sm-8">
+                          <label className="form-label" htmlFor="invite-email">
+                            Invite by email
+                          </label>
+                          <input
                             id="invite-email"
                             type="email"
-                            invalid={Boolean(errors.email)}
+                            className={`form-control${errors.email ? " is-invalid" : ""}`}
                             {...register("email")}
                           />
                           {errors.email && (
                             <div className="invalid-feedback d-block">{errors.email.message}</div>
                           )}
-                        </CCol>
-                        <CCol xs={12} sm={4} className="d-flex align-items-end">
-                          <CButton type="submit" color="primary" disabled={isInviting} className="w-100">
+                        </div>
+                        <div className="col-12 col-sm-4 d-flex align-items-end">
+                          <button type="submit" className="btn btn-primary w-100" disabled={isInviting}>
                             {isInviting ? "Sending..." : "Send invite"}
-                          </CButton>
-                        </CCol>
-                      </CRow>
-                    </CForm>
+                          </button>
+                        </div>
+                      </div>
+                    </form>
 
                     {inviteError && (
-                      <CAlert color="danger" role="alert" className="mt-3 mb-0">
+                      <div className="alert alert-danger mt-3 mb-0" role="alert">
                         {inviteError}
-                      </CAlert>
+                      </div>
                     )}
 
+                    {/* No `role="alert"` on either success block — see this file's docstring. */}
                     {inviteResult && inviteResult.invite_link && (
-                      <CAlert color="success" className="mt-3 mb-0">
+                      <div className="alert alert-success mt-3 mb-0">
                         <p className="mb-2">
                           Invite created. Share this link with the invitee — it is shown only once.
                         </p>
                         <div className="d-flex gap-2">
-                          <CFormInput readOnly value={inviteResult.invite_link} />
-                          <CButton
+                          <input className="form-control" readOnly value={inviteResult.invite_link} />
+                          <button
                             type="button"
-                            color="secondary"
-                            variant="outline"
+                            className="btn btn-outline-secondary"
                             onClick={() => void handleCopyLink(inviteResult.invite_link as string)}
                           >
                             {copied ? "Copied!" : "Copy"}
-                          </CButton>
+                          </button>
                         </div>
                         {copyError && (
                           <div className="text-danger small mt-2">
@@ -349,122 +348,123 @@ function OrgMembers() {
                             (Ctrl/Cmd+C).
                           </div>
                         )}
-                      </CAlert>
+                      </div>
                     )}
 
                     {inviteResult && !inviteResult.invite_link && (
-                      <CAlert color="success" className="mt-3 mb-0">
+                      <div className="alert alert-success mt-3 mb-0">
                         Invite sent to {inviteResult.email} — this email already has an account and
                         can accept it directly from within the app.
-                      </CAlert>
+                      </div>
                     )}
-                  </CCardBody>
-                </CCard>
+                  </div>
+                </div>
 
                 {actionError && (
-                  <CAlert color="danger" role="alert">
+                  <div className="alert alert-danger" role="alert">
                     {actionError}
-                  </CAlert>
+                  </div>
                 )}
 
-                <CCard>
-                  <CCardBody>
-                    <CTable responsive>
-                      <CTableHead>
-                        <CTableRow>
-                          <CTableHeaderCell>Email</CTableHeaderCell>
-                          <CTableHeaderCell>Status</CTableHeaderCell>
-                          <CTableHeaderCell>Joined</CTableHeaderCell>
-                          <CTableHeaderCell>Actions</CTableHeaderCell>
-                        </CTableRow>
-                      </CTableHead>
-                      <CTableBody>
-                        {members.map((member) => (
-                          <CTableRow key={member.membership_id}>
-                            <CTableDataCell>{member.email}</CTableDataCell>
-                            <CTableDataCell>
-                              <CBadge color={statusColor(member.status)}>{member.status}</CBadge>
-                            </CTableDataCell>
-                            <CTableDataCell>{formatJoinedAt(member.joined_at)}</CTableDataCell>
-                            <CTableDataCell>
-                              {member.status === "active" && (
-                                <CButton
-                                  size="sm"
-                                  color="warning"
-                                  variant="outline"
-                                  disabled={pendingMembershipId === member.membership_id}
-                                  onClick={() => void handleSuspend(member)}
-                                >
-                                  Suspend
-                                </CButton>
-                              )}
-                              {member.status === "suspended" && (
-                                <CButton
-                                  size="sm"
-                                  color="success"
-                                  variant="outline"
-                                  disabled={pendingMembershipId === member.membership_id}
-                                  onClick={() => void handleReactivate(member)}
-                                >
-                                  Reactivate
-                                </CButton>
-                              )}
-                              {member.status === "invited" && (
-                                <>
-                                  <CButton
-                                    size="sm"
-                                    color="secondary"
-                                    variant="outline"
-                                    className="me-2"
+                <div className="card">
+                  <div className="card-body">
+                    {/* `responsive` only on the old CTable — no `table-hover` here (ADR-0042 §4.5.11). */}
+                    <div className="table-responsive">
+                      <table className="table">
+                        <thead>
+                          <tr>
+                            <th scope="col">Email</th>
+                            <th scope="col">Status</th>
+                            <th scope="col">Joined</th>
+                            <th scope="col">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {members.map((member) => (
+                            <tr key={member.membership_id}>
+                              <td>{member.email}</td>
+                              <td>
+                                {/* `bg-*`, not Bootstrap 5.3's `text-bg-*` — CoreUI emitted `bg-*` and assertions check it. */}
+                                <span className={`badge bg-${statusColor(member.status)}`}>
+                                  {member.status}
+                                </span>
+                              </td>
+                              <td>{formatJoinedAt(member.joined_at)}</td>
+                              <td>
+                                {member.status === "active" && (
+                                  <button
+                                    type="button"
+                                    className="btn btn-outline-warning btn-sm"
                                     disabled={pendingMembershipId === member.membership_id}
-                                    onClick={() => void handleCopyRowLink(member)}
+                                    onClick={() => void handleSuspend(member)}
                                   >
-                                    {rowCopyStatus[member.membership_id] === "copied"
-                                      ? "Copied!"
-                                      : "Copy link"}
-                                  </CButton>
-                                  <CButton
-                                    size="sm"
-                                    color="danger"
-                                    variant="outline"
+                                    Suspend
+                                  </button>
+                                )}
+                                {member.status === "suspended" && (
+                                  <button
+                                    type="button"
+                                    className="btn btn-outline-success btn-sm"
                                     disabled={pendingMembershipId === member.membership_id}
-                                    onClick={() => void handleRevoke(member)}
+                                    onClick={() => void handleReactivate(member)}
                                   >
-                                    Revoke
-                                  </CButton>
-                                  {rowCopyStatus[member.membership_id] === "error" && (
-                                    <div className="text-danger small mt-1">
-                                      Couldn't copy automatically — try again or ask them to request
-                                      a new invite.
-                                    </div>
-                                  )}
-                                  {rowCopyStatus[member.membership_id] === "no-link" && (
-                                    <div className="text-body-secondary small mt-1">
-                                      This email already has an account — no link to copy, they can
-                                      accept from within the app.
-                                    </div>
-                                  )}
-                                </>
-                              )}
-                            </CTableDataCell>
-                          </CTableRow>
-                        ))}
-                        {members.length === 0 && (
-                          <CTableRow>
-                            <CTableDataCell colSpan={4} className="text-body-secondary">
-                              No members yet.
-                            </CTableDataCell>
-                          </CTableRow>
-                        )}
-                      </CTableBody>
-                    </CTable>
-                  </CCardBody>
-                </CCard>
+                                    Reactivate
+                                  </button>
+                                )}
+                                {member.status === "invited" && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      className="btn btn-outline-secondary btn-sm me-2"
+                                      disabled={pendingMembershipId === member.membership_id}
+                                      onClick={() => void handleCopyRowLink(member)}
+                                    >
+                                      {rowCopyStatus[member.membership_id] === "copied"
+                                        ? "Copied!"
+                                        : "Copy link"}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="btn btn-outline-danger btn-sm"
+                                      disabled={pendingMembershipId === member.membership_id}
+                                      onClick={() => void handleRevoke(member)}
+                                    >
+                                      Revoke
+                                    </button>
+                                    {rowCopyStatus[member.membership_id] === "error" && (
+                                      <div className="text-danger small mt-1">
+                                        Couldn't copy automatically — try again or ask them to
+                                        request a new invite.
+                                      </div>
+                                    )}
+                                    {rowCopyStatus[member.membership_id] === "no-link" && (
+                                      <div className="text-body-secondary small mt-1">
+                                        This email already has an account — no link to copy, they
+                                        can accept from within the app.
+                                      </div>
+                                    )}
+                                  </>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                          {members.length === 0 && (
+                            <tr>
+                              <td colSpan={4} className="text-body-secondary">
+                                No members yet.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
               </>
             )}
-          </CCol>
-        </CRow>
-      </CContainer>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

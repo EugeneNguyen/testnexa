@@ -28,7 +28,7 @@ export interface IconInputGroupProps
   id: string;
   /** Visually-hidden `<label>` text — still required for accessible name. */
   label: string;
-  /** Bootstrap Icons name suffix shown in the `.input-group-text` slot, e.g. "envelope". */
+  /** Font Awesome name suffix shown in the `.input-group-text` slot, e.g. "envelope" (ADR-0042). */
   icon: string;
   /** Validation message (e.g. Zod's `errors.email?.message`) — also sets `invalid`. */
   error?: string;

@@ -1,13 +1,30 @@
 /**
- * `Button` atom — CoreUI Buttons (https://coreui.io/bootstrap/docs/components/buttons/).
+ * `Button` atom — Bootstrap 5 buttons, as shipped inside AdminLTE v4's own
+ * stylesheet (ADR-0042; originally modelled on CoreUI's Buttons page under
+ * ADR-0012).
  *
- * Raw HTML/JSX against `coreui.min.css`'s own Bootstrap-family classes (no
- * `@coreui/react` `CButton` import), same "hand-roll the markup, keep the
- * CSS" pattern ADR-0037 established for `AppSidebar`/`AppBreadcrumb` and
- * `FeaturedCard` repeated from a plain product ask. Class names below are
- * copied verbatim from the doc page's own rendered `docs-example` markup
- * (fetched via `curl`, not a screenshot/WebFetch — see this story's
- * Decomposition-stage comment for why), not reconstructed from memory.
+ * Raw HTML/JSX against the design system's Bootstrap-family classes (never a
+ * component-library `CButton`/equivalent import) — the "hand-roll the markup,
+ * keep the CSS" pattern ADR-0037 established for `AppSidebar`/`AppBreadcrumb`
+ * and `FeaturedCard`, which ADR-0042 has since made the repo-wide rule. Class
+ * names below were copied verbatim from the source doc page's own rendered
+ * `docs-example` markup (fetched via `curl`, not a screenshot/WebFetch — see
+ * this story's Decomposition-stage comment for why), not reconstructed from
+ * memory.
+ *
+ * Two ADR-0042 notes:
+ * - The toggle hook is now `data-bs-toggle="button"` (was
+ *   `data-coreui-toggle`), matching Bootstrap's own attribute namespace.
+ *   Nothing in this app reads it — no Bootstrap JS is loaded (ADR-0042
+ *   reimplements interactive behavior in React) — so it is markup-parity
+ *   only; `aria-pressed` is what actually conveys the state.
+ * - **`ghost` has no Bootstrap/AdminLTE equivalent.** `btn-ghost-*` was a
+ *   CoreUI-only variant. The prop and its classes are kept (removing a public
+ *   prop from a shared atom is a breaking API change, out of scope for a
+ *   design-system swap, and `Button.test.tsx` asserts on `btn-ghost-info`),
+ *   and `frontend/src/index.css` now carries a small compatibility rule set
+ *   that reproduces the ghost look on top of Bootstrap's own `--bs-btn-*`
+ *   variables so it still tracks the active light/dark theme.
  *
  * `atoms/` is a new tier in this repo (previously only flat `shared/`/`crud/`
  * dirs existed) — first component built against it, per this story's
@@ -95,7 +112,7 @@ export interface ButtonProps {
   /** Forces the `.active` class regardless of `toggle` state. */
   active?: boolean;
   disabled?: boolean;
-  /** Enables toggle-button behavior (`data-coreui-toggle="button"` + `aria-pressed`). */
+  /** Enables toggle-button behavior (`data-bs-toggle="button"` + `aria-pressed`). */
   toggle?: boolean;
   /** Controlled pressed state for a toggle button; omit to let the button manage its own state. */
   pressed?: boolean;
@@ -191,7 +208,7 @@ export function Button({
         aria-disabled={isAnchorDisabled || undefined}
         tabIndex={isAnchorDisabled ? -1 : undefined}
         aria-pressed={toggle ? isPressed : undefined}
-        data-coreui-toggle={toggle ? "button" : undefined}
+        data-bs-toggle={toggle ? "button" : undefined}
         onClick={handleClick}
         {...passthroughAttrs}
       >
@@ -219,7 +236,7 @@ export function Button({
       className={classNames}
       disabled={disabled}
       aria-pressed={toggle ? isPressed : undefined}
-      data-coreui-toggle={toggle ? "button" : undefined}
+      data-bs-toggle={toggle ? "button" : undefined}
       onClick={handleClick}
       {...passthroughAttrs}
     >

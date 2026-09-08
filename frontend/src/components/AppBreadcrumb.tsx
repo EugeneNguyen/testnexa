@@ -21,16 +21,9 @@
  * never produces a raw param or `undefined` fragment.
  *
  * The final (`active`) segment in a resolved trail is rendered as plain
- * text via `CBreadcrumbItem`'s own `active` prop (no link, `aria-current`
- * set automatically); earlier segments are wrapped in a real React Router
- * `<Link>` so clicking one is client-side navigation, not a full page
- * reload — `CBreadcrumbItem`'s own `as`/`href` composition is NOT used for
- * this (that combination replaces the outer `<li>` root node per its own
- * prop doc, not the inner link, and `href` alone would produce a
- * non-SPA `<a>` navigation), so the `<Link>` is nested as `children`
- * instead.
- *
- * Built with CoreUI (ADR-0012) — `CBreadcrumb`/`CBreadcrumbItem` only.
+ * text on an `<li class="breadcrumb-item active" aria-current="page">` (no
+ * link); earlier segments are wrapped in a real React Router `<Link>` so
+ * clicking one is client-side navigation, not a full page reload.
  *
  * Coverage extended (2026-09-07) to the remaining routed screens
  * (`ProjectDetail`/`TestPlanDetail`/`TestCycleDetail`, generic admin
@@ -94,6 +87,28 @@
  * `ROUTE_BREADCRUMBS` table and `matchPath` resolution logic above are
  * byte-for-byte unchanged. `aria-current="page"` on the active `<li>`
  * replaces what `CBreadcrumbItem`'s own `active` prop set automatically.
+ *
+ * AdminLTE v4 (ADR-0042): the `ROUTE_BREADCRUMBS` table, the `matchPath`
+ * resolution, all 15 route patterns, `nav[aria-label="breadcrumb"]`,
+ * `ol.breadcrumb`, `li.breadcrumb-item[.active]` and `aria-current="page"`
+ * are ALL unchanged — `.breadcrumb` is stock Bootstrap 5, which AdminLTE v4
+ * is built on, and four e2e specs assert on that exact structure. The only
+ * change is the outer wrapper: this component now renders inside
+ * `AppShell`'s `.app-content-header` (compiled selector
+ * `.app-main .app-content-header`), which supplies the vertical rhythm the
+ * old hand-tuned `py-3` was standing in for and the horizontal inset that
+ * `px-4` was. Both utilities are therefore dropped and only the bare
+ * `container-fluid` remains — matching `.app-content`'s own children, so the
+ * breadcrumb's left edge still lands exactly where page content's does (the
+ * property the 2026-09-07 alignment fix above was chasing; both boxes are a
+ * `container-fluid` under a parent with identical horizontal padding).
+ *
+ * `null` on an unmapped route is unchanged and still load-bearing
+ * (TC-SHELL-008) — note it leaves `AppShell`'s `.app-content-header` div
+ * rendered but empty on such routes, i.e. that element's own padding shows
+ * as a small blank band. Cosmetic, flagged rather than "fixed" by moving the
+ * wrapper down into this component, since `AppShell` owning the grid regions
+ * is the structural rule ADR-0042 §4.4 sets.
  */
 import { Link, matchPath, useLocation } from "react-router-dom";
 import { allEntities } from "../pages/admin/registry";
@@ -224,7 +239,7 @@ function AppBreadcrumb() {
   }
 
   return (
-    <div className="container-fluid px-4 py-3">
+    <div className="container-fluid">
       <nav aria-label="breadcrumb">
         <ol className="breadcrumb my-0">
           {segments.map((segment, index) => {

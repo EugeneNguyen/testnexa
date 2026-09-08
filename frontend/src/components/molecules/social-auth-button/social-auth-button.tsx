@@ -5,12 +5,20 @@
  * Decomposition-stage comment on TNX-0056, item #10.
  */
 import { Button, ButtonColor, ButtonProps } from "../../atoms/button";
-import { Icon } from "../../atoms/icon";
+import { Icon, IconVariant } from "../../atoms/icon";
 
 export interface SocialAuthButtonProps {
   href: string;
-  /** Bootstrap Icons name suffix, e.g. "facebook", "google". */
+  /** Font Awesome name suffix, e.g. "facebook", "google" (ADR-0042). */
   icon: string;
+  /**
+   * Font Awesome style for `icon`. Defaults to `"brands"` — every provider a
+   * social-auth button can plausibly represent (Facebook, Google, GitHub,
+   * Apple, ...) is a third-party logo, and those glyphs live ONLY in Font
+   * Awesome's `fa-brands` font; they do not exist in `fa-solid`, so the
+   * atom's own `"solid"` default would render nothing here.
+   */
+  iconVariant?: IconVariant;
   label: string;
   color: ButtonColor;
   onClick?: ButtonProps["onClick"];
@@ -18,10 +26,18 @@ export interface SocialAuthButtonProps {
   className?: string;
 }
 
-export function SocialAuthButton({ href, icon, label, color, onClick, className }: SocialAuthButtonProps) {
+export function SocialAuthButton({
+  href,
+  icon,
+  iconVariant = "brands",
+  label,
+  color,
+  onClick,
+  className,
+}: SocialAuthButtonProps) {
   return (
     <Button as="a" href={href} color={color} onClick={onClick} className={className}>
-      <Icon name={icon} spaced />
+      <Icon name={icon} variant={iconVariant} spaced />
       {label}
     </Button>
   );

@@ -1,7 +1,9 @@
 # User Stories — Frontend Shared Component (Design System / CoreUI)
 
 **Date:** 2026-09-04
-**Feature area:** Frontend shared component layer, on top of CoreUI (ADR-0012)
+**Feature area:** Frontend shared component layer, on top of ~~CoreUI (ADR-0012)~~ **AdminLTE v4 as of 2026-09-08 ([ADR-0042](../adr/0042-adminlte-design-system.md))**
+
+> **2026-09-08 — design system changed, [ADR-0042](../adr/0042-adminlte-design-system.md).** Every story below stands: the duplication these components exist to close, and their acceptance criteria as *behavior*, are unaffected. Only the primitives they compose change — `FormField` now composes raw `<label className="form-label">` + `<input className="form-control [is-invalid]">` + `<div className="invalid-feedback d-block" role="alert">` rather than `CFormLabel`/`CFormInput`/`CFormFeedback`, and DS-2's `Table` container composes raw `table.table`/`ul.pagination`/`select.form-select` rather than `CTable`/`CPagination`/`CFormSelect`. Where a story says "building a CoreUI screen," read "building a screen" — [ADR-0042](../adr/0042-adminlte-design-system.md) makes raw HTML against the design system's CSS the universal rule, so there is no longer a component-library layer for a contributor to be building "on top of."
 **Context:** [Business case](../business-case/2026-09-04-atomic-design-system-coreui-business-case.md), [Personas](../personas/2026-09-04-atomic-design-contributor-personas.md) (Persona 1, "The Agent" — validated), [Journeys](../user-journeys/2026-09-04-atomic-design-contributor-journeys.md) (Journey 1, steps 3-4)
 
 **Scope note, carried from the business case's PIVOT finding:** this is the **only** validated opportunity from *that* discovery pass — one narrow, evidenced component extraction, not a full Atomic Design (atoms/molecules/organisms/templates) buildout. Full tiering stays explicitly out of scope until more screens show duplication beyond what's already evidenced. DS-1 below was the sole story from the original business-case pass, deliberately — inventing additional stories the evidence didn't support would have violated this process's own no-fabrication principle.

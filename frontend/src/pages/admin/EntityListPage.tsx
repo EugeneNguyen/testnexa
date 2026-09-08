@@ -7,27 +7,23 @@
  *
  * UI Design Document §2/§4: resolves scope (`useEntityScope`), fires
  * `EntityTable`'s list query once scope is ready, hosts the "New" button +
- * create `CModal` (`EntityForm` create mode renders inside a modal here,
+ * create modal (`EntityForm` create mode renders inside a modal here,
  * per §2 — only `update` gets its own route, `EntityFormPage`), and gates
  * every action behind `usePermissions` (§5) — a `<resource>.create`/
  * `.update`/`.delete` gap makes the corresponding affordance absent, not
  * disabled.
+ *
+ * **ADR-0042 (CoreUI -> AdminLTE v4):** raw Bootstrap 5 markup now.
+ * `CContainer fluid` -> `<div class="container-fluid">`, `CCard`/`CCardBody`
+ * -> `<div class="card">`/`<div class="card-body">`, `CAlert` -> `<div
+ * class="alert alert-*" role="alert">`, `CButton` -> `<button class="btn
+ * btn-*">`, and the two `CModal`s -> the local `AdminModal` helper below
+ * (hand-rolled Bootstrap modal markup + backdrop; see its own docstring for
+ * the two behavioral deltas from `CModal`).
  */
-import { useState } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  CAlert,
-  CButton,
-  CCard,
-  CCardBody,
-  CContainer,
-  CModal,
-  CModalBody,
-  CModalFooter,
-  CModalHeader,
-  CModalTitle,
-} from "@coreui/react";
 import { usePermissions } from "../../auth/usePermissions";
 import EntityForm from "../../components/crud/EntityForm";
 import EntityTable from "../../components/crud/EntityTable";
@@ -47,6 +43,80 @@ import { useEntityScope } from "./useEntityScope";
  * across navigation or reload (TC-DS-018).
  */
 const DEFAULT_PAGE_SIZE = 25;
+
+/**
+ * ADR-0042: hand-rolled replacement for `CModal` + `CModalHeader`/
+ * `CModalTitle`/`CModalBody`/`CModalFooter`. Extracted rather than inlined
+ * twice because this page renders two modals (create, delete-confirm).
+ *
+ * Deliberate parity choices:
+ * - **Renders nothing at all when closed** — `queryByText(...)`-is-null
+ *   assertions and the e2e specs' `.modal-content` locators both depend on
+ *   the closed modal contributing no DOM, which is what `CModal` effectively
+ *   did for test purposes.
+ * - **ESC closes**, matching `CModal`'s own default `keyboard` behavior. The
+ *   listener is bound only while open and removed on close/unmount.
+ * - The header's close `<button class="btn-close" aria-label="Close">` is
+ *   kept — `CModalHeader` rendered one by default and it is the only way to
+ *   dismiss the create modal besides its own Cancel button.
+ *
+ * Deliberate gaps, accepted in ADR-0042 rather than reimplemented: no focus
+ * trap, no focus restore on close, no backdrop-click-to-close (`CModal`'s
+ * `backdrop="static"`-off default did close on backdrop click; the backdrop
+ * here is inert, so ESC and the explicit buttons are the dismissal paths).
+ */
+function AdminModal({
+  visible,
+  title,
+  onClose,
+  children,
+  footer,
+}: {
+  visible: boolean;
+  title: ReactNode;
+  onClose: () => void;
+  children: ReactNode;
+  footer?: ReactNode;
+}) {
+  const titleId = useId();
+
+  useEffect(() => {
+    if (!visible) {
+      return;
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [visible, onClose]);
+
+  if (!visible) {
+    return null;
+  }
+
+  return (
+    <>
+      <div className="modal fade show d-block" tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby={titleId}>
+        <div className="modal-dialog">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h5 className="modal-title" id={titleId}>
+                {title}
+              </h5>
+              <button type="button" className="btn-close" aria-label="Close" onClick={onClose} />
+            </div>
+            <div className="modal-body">{children}</div>
+            {footer && <div className="modal-footer">{footer}</div>}
+          </div>
+        </div>
+      </div>
+      <div className="modal-backdrop fade show" />
+    </>
+  );
+}
 
 function fieldErrorsFrom(error: unknown): Record<string, string> | undefined {
   if (!(error instanceof ApiError)) {
@@ -122,38 +192,38 @@ function EntityListPage() {
 
   if (!config) {
     return (
-      <CContainer fluid className="px-4 py-4 h-100">
-        <CCard className="h-100">
-          <CCardBody>
-            <CAlert color="danger" role="alert">
+      <div className="container-fluid px-4 py-4 h-100">
+        <div className="card h-100">
+          <div className="card-body">
+            <div className="alert alert-danger" role="alert">
               Unknown admin entity &quot;{entityKey}&quot;.
-            </CAlert>
-          </CCardBody>
-        </CCard>
-      </CContainer>
+            </div>
+          </div>
+        </div>
+      </div>
     );
   }
 
   const canCreate = config.methods.includes("create") && permissions.has(`${config.resource}.create`, projectId);
 
   return (
-    <CContainer fluid className="px-4 py-4 h-100">
-      <CCard className="h-100">
-      <CCardBody>
+    <div className="container-fluid px-4 py-4 h-100">
+      <div className="card h-100">
+      <div className="card-body">
         <div className="d-flex justify-content-between align-items-center mb-3">
           <h1 className="fs-4 mb-0">{entityKey.replace(/-/g, " ")}</h1>
           {canCreate && (
-            <CButton color="primary" onClick={() => setShowCreateModal(true)}>
+            <button type="button" className="btn btn-primary" onClick={() => setShowCreateModal(true)}>
               New
-            </CButton>
+            </button>
           )}
         </div>
 
         {!canList ? (
-          <CAlert color="info" role="alert">
+          <div className="alert alert-info" role="alert">
             Listing is not available for this entity through the admin surface — see this entity's own config file
             for why.
-          </CAlert>
+          </div>
         ) : config.scopeSelector && !scope.ready ? (
           <ScopeSelector
             options={config.scopeSelector}
@@ -190,54 +260,55 @@ function EntityListPage() {
             }}
           />
         )}
-      </CCardBody>
+      </div>
 
-      <CModal visible={showCreateModal} onClose={() => setShowCreateModal(false)}>
-        <CModalHeader>
-          <CModalTitle>New {entityKey.replace(/-/g, " ")}</CModalTitle>
-        </CModalHeader>
-        <CModalBody>
-          <EntityForm
-            config={config}
-            mode="create"
-            lockedValues={scope.field && scope.value ? { [scope.field]: scope.value } : undefined}
-            submitError={createError}
-            serverFieldErrors={createFieldErrors}
-            onCancel={() => setShowCreateModal(false)}
-            onSubmit={async (values) => {
-              await createMutation.mutateAsync(values);
-            }}
-          />
-        </CModalBody>
-      </CModal>
+      <AdminModal
+        visible={showCreateModal}
+        title={<>New {entityKey.replace(/-/g, " ")}</>}
+        onClose={() => setShowCreateModal(false)}
+      >
+        <EntityForm
+          config={config}
+          mode="create"
+          lockedValues={scope.field && scope.value ? { [scope.field]: scope.value } : undefined}
+          submitError={createError}
+          serverFieldErrors={createFieldErrors}
+          onCancel={() => setShowCreateModal(false)}
+          onSubmit={async (values) => {
+            await createMutation.mutateAsync(values);
+          }}
+        />
+      </AdminModal>
 
-      <CModal visible={Boolean(rowPendingDelete)} onClose={() => setRowPendingDelete(null)}>
-        <CModalHeader>
-          <CModalTitle>Delete record</CModalTitle>
-        </CModalHeader>
-        <CModalBody>
-          {deleteError && (
-            <CAlert color="danger" role="alert">
-              {deleteError}
-            </CAlert>
-          )}
-          Are you sure you want to delete this record? This cannot be undone.
-        </CModalBody>
-        <CModalFooter>
-          <CButton color="secondary" variant="outline" onClick={() => setRowPendingDelete(null)}>
-            Cancel
-          </CButton>
-          <CButton
-            color="danger"
-            disabled={deleteMutation.isPending}
-            onClick={() => rowPendingDelete && deleteMutation.mutate(rowPendingDelete)}
-          >
-            Delete
-          </CButton>
-        </CModalFooter>
-      </CModal>
-      </CCard>
-    </CContainer>
+      <AdminModal
+        visible={Boolean(rowPendingDelete)}
+        title="Delete record"
+        onClose={() => setRowPendingDelete(null)}
+        footer={
+          <>
+            <button type="button" className="btn btn-outline-secondary" onClick={() => setRowPendingDelete(null)}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn btn-danger"
+              disabled={deleteMutation.isPending}
+              onClick={() => rowPendingDelete && deleteMutation.mutate(rowPendingDelete)}
+            >
+              Delete
+            </button>
+          </>
+        }
+      >
+        {deleteError && (
+          <div className="alert alert-danger" role="alert">
+            {deleteError}
+          </div>
+        )}
+        Are you sure you want to delete this record? This cannot be undone.
+      </AdminModal>
+      </div>
+    </div>
   );
 }
 

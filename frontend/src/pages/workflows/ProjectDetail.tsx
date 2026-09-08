@@ -9,10 +9,12 @@
  * so a page reload does not lose data here.
  *
  * "New Release" modal copies `OrgHome.tsx`'s "New Project" modal convention
- * exactly: React Hook Form + Zod (ADR-0009) bound to CoreUI input
- * components, `CModal`/`CModalHeader`/`CModalBody`/`CModalFooter` structure,
- * inline `CAlert` for a non-field API error, `error.body.field_errors.<field>`
- * mapped onto the matching RHF field when present.
+ * exactly: React Hook Form + Zod (ADR-0009) bound to plain Bootstrap 5 input
+ * markup, the local `ProjectModal` helper's header/body/footer structure
+ * (ADR-0042; was `CModal`/`CModalHeader`/`CModalBody`/`CModalFooter`), an
+ * inline `div.alert.alert-danger[role=alert]` for a non-field API error, and
+ * `error.body.field_errors.<field>` mapped onto the matching RHF field when
+ * present.
  *
  * Each Release row expands in place to fetch and render
  * `GET /releases/{id}/test-cycles` (ADR-0019 AC2's nested-executions audit
@@ -26,7 +28,7 @@
  * REQ-1 (ADR-0022/ADR-0025): a second, independent section on this same page
  * — Requirement list (searchable by `?q=` title/description/external_ref/
  * source substring, per FR-REQ-1's own AC) + "New Requirement" modal, same
- * RHF+Zod+CoreUI convention as "New Release" above, its own separate
+ * RHF+Zod+Bootstrap convention as "New Release" above, its own separate
  * `useForm` instance (two independent forms on one page, not a shared one).
  *
  * REQ-2 (ADR-0006): each Requirement row itself is click-to-expand (same
@@ -43,14 +45,15 @@
  * `RequirementDetail` page (the Sitemap's stale 2026-09-05 reservation) —
  * a dedicated "Test conditions" toggle button on each Requirement row (kept
  * independent of REQ-2's row-click expand, via its own `stopPropagation`)
- * expands (`CCollapse`) into its own TestCondition list, lazily fetched on
- * first expand, with a "New Test Condition" modal per requirement and a
- * "New Test Case" modal per condition. Two more independent `useForm`
- * instances beyond REQ-2's own two (Release/Requirement/TestCase/TestStep),
- * each section keeping its own separate instance rather than a shared one.
- * No per-condition TestCase list is rendered: no backend route lists
- * TestCases by condition (explicit YAGNI, ADR-0028's design spec), so the
- * create modal confirms with a `CToast` instead.
+ * expands (a Bootstrap `div.collapse`, ADR-0042; was `CCollapse`) into its
+ * own TestCondition list, lazily fetched on first expand, with a "New Test
+ * Condition" modal per requirement and a "New Test Case" modal per condition.
+ * Two more independent `useForm` instances beyond REQ-2's own two
+ * (Release/Requirement/TestCase/TestStep), each section keeping its own
+ * separate instance rather than a shared one. No per-condition TestCase list
+ * is rendered: no backend route lists TestCases by condition (explicit YAGNI,
+ * ADR-0028's design spec), so the create modal confirms with a Bootstrap
+ * toast instead.
  *
  * The "New Test Case" modal itself (form fields, schema, RHF instance) is
  * shared verbatim between REQ-2's direct-link path and REQ-3's rigor path —
@@ -61,57 +64,38 @@
  *
  * None of the REQ-3 buttons are permission-hidden/disabled — this is a
  * bespoke workflow screen, so it keeps this page's existing attempt-then-
- * error convention (a 403 surfaces as the modal's inline `CAlert`), not the
+ * error convention (a 403 surfaces as the modal's own inline alert), not the
  * generic admin surface's ADR-0027 hide/disable rule.
  *
- * Built with CoreUI (ADR-0012).
+ * Built with AdminLTE v4 / Bootstrap 5 raw markup (ADR-0042, which supersedes
+ * ADR-0012's CoreUI choice). Every `@coreui/react` component this screen used
+ * is now hand-written markup against the same class contract: `CContainer`/
+ * `CRow`/`CCol` -> `div.container-fluid`/`div.row`/`div.col-*`, `CCard` ->
+ * `div.card`, `CTable*` -> real `<table>`/`<thead>`/`<tr>`/`<th scope="col">`/
+ * `<td>`, `CForm*` -> `<form>`/`<label class="form-label">`/
+ * `input.form-control`/`select.form-select`/`div.invalid-feedback.d-block`,
+ * `CAlert` -> `div.alert.alert-*[role=alert]`, `CBadge` -> `span.badge.bg-*`,
+ * `CSpinner` -> `div.spinner-border[role=status]`, `CCollapse` ->
+ * `div.collapse(.show)`, and `CModal*`/`CDropdown*` -> the two local helper
+ * components below. React Hook Form + Zod are untouched — only the rendered
+ * element and its classes changed.
  */
-import { Fragment, useCallback, useEffect, useState, type FormEvent } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type FormEvent,
+  type FormEventHandler,
+  type ReactNode,
+} from "react";
 import { Link, useParams } from "react-router-dom";
 import Table from "../../container/Table";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import {
-  CAlert,
-  CBadge,
-  CButton,
-  CCard,
-  CCardBody,
-  CCol,
-  CCollapse,
-  CContainer,
-  CDropdown,
-  CDropdownItem,
-  CDropdownMenu,
-  CDropdownToggle,
-  CForm,
-  CFormInput,
-  CFormFeedback,
-  CFormLabel,
-  CFormSelect,
-  CFormText,
-  CFormTextarea,
-  CInputGroup,
-  CListGroup,
-  CListGroupItem,
-  CModal,
-  CModalBody,
-  CModalFooter,
-  CModalHeader,
-  CModalTitle,
-  CRow,
-  CSpinner,
-  CTable,
-  CTableBody,
-  CTableDataCell,
-  CTableHead,
-  CTableHeaderCell,
-  CTableRow,
-  CToast,
-  CToastBody,
-  CToaster,
-} from "@coreui/react";
 import { ApiError } from "../../lib/api/client";
 import {
   createRelease,
@@ -189,7 +173,7 @@ type NewTestConditionFormValues = z.infer<typeof newTestConditionSchema>;
  * Shared "New Test Case" form (REQ-2's direct-link path and REQ-3's rigor
  * path both use it — same fields either way). `testLevelId`/`testTypeId`
  * are select-driven, so "required" here really means "a selection was made"
- * — surfaced as the same required-field `CFormFeedback` message as any
+ * — surfaced as the same required-field `.invalid-feedback` message as any
  * other field (ADR-0023's `FormField` convention, which this page applies
  * inline).
  */
@@ -269,6 +253,190 @@ function formatDate(value: string | null): string {
 
 function dashIfEmpty(value: string | null): string {
   return value ?? "—";
+}
+
+/**
+ * ADR-0042: hand-rolled replacement for `CModal` + `CModalHeader`/
+ * `CModalTitle`/`CModalBody`/`CModalFooter`. Extracted rather than inlined
+ * because this page renders six of them (New Release, New Requirement, New
+ * Test Suite, New Test Condition, and REQ-2's and REQ-3's two "New Test Case"
+ * variants), and follows the same shape as `EntityListPage`'s own
+ * `AdminModal` so the two hand-rolled modals in this codebase stay identical.
+ *
+ * The `<form>` sits inside `.modal-content` as a sibling of the header and
+ * wraps both the body and the footer — exactly the nesting the
+ * `<CModal><CModalHeader/><CForm><CModalBody/><CModalFooter/></CForm></CModal>`
+ * structure it replaces had, so a footer submit button still submits the
+ * body's fields.
+ *
+ * Deliberate parity choices:
+ * - **Renders nothing at all when closed.** This page's tests assert
+ *   `queryByRole("heading", {name: /^new release$/i})` is null once the modal
+ *   closes, and only one of the two "New Test Case" modals may contribute its
+ *   duplicate field labels to `getByLabelText` at a time — both depend on the
+ *   unmount-when-hidden semantics `CModal` had.
+ * - **ESC closes**, matching `CModal`'s own default `keyboard` behavior.
+ * - The header's close `<button class="btn-close" aria-label="Close">` is
+ *   kept — `CModalHeader` rendered one by default.
+ *
+ * Deliberate gaps, accepted in ADR-0042 rather than reimplemented: no focus
+ * trap, no focus restore on close, and no backdrop-click-to-close (`CModal`
+ * did close on backdrop click; the backdrop here is inert, so ESC and the
+ * explicit Cancel/close buttons are the dismissal paths).
+ */
+function ProjectModal({
+  visible,
+  title,
+  onClose,
+  onSubmit,
+  children,
+  footer,
+  testId,
+}: {
+  visible: boolean;
+  title: ReactNode;
+  onClose: () => void;
+  onSubmit: FormEventHandler<HTMLFormElement>;
+  children: ReactNode;
+  footer: ReactNode;
+  testId?: string;
+}) {
+  const titleId = useId();
+
+  useEffect(() => {
+    if (!visible) {
+      return;
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [visible, onClose]);
+
+  if (!visible) {
+    return null;
+  }
+
+  return (
+    <>
+      <div
+        className="modal fade show d-block"
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        data-testid={testId}
+      >
+        <div className="modal-dialog">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h5 className="modal-title" id={titleId}>
+                {title}
+              </h5>
+              <button type="button" className="btn-close" aria-label="Close" onClick={onClose} />
+            </div>
+            <form onSubmit={onSubmit} noValidate>
+              <div className="modal-body">{children}</div>
+              <div className="modal-footer">{footer}</div>
+            </form>
+          </div>
+        </div>
+      </div>
+      <div className="modal-backdrop fade show" />
+    </>
+  );
+}
+
+/**
+ * ADR-0042: hand-rolled replacement for REQ-4's `CDropdown variant="btn-group"`
+ * + `CDropdownToggle`/`CDropdownMenu`/`CDropdownItem`, reusing
+ * `AppHeader.tsx`'s established pattern (a `useState` open boolean plus a
+ * ref-scoped document click-outside listener toggling Bootstrap's own `.show`
+ * class on both the toggle and the menu).
+ *
+ * A component rather than an inline block only because this dropdown renders
+ * once per TestCase inside a `.map()` and React forbids calling the open-state
+ * hook in a loop — not a behavioral refactor.
+ *
+ * `variant="btn-group"` maps to `div.btn-group`, **not** `div.dropdown` (spec
+ * §4.5.10). Selecting an item closes the menu, matching `CDropdown`'s own
+ * `autoClose` default: REQ-4's e2e spec reopens this same toggle for its
+ * duplicate-add (409) case, which only works if the first selection closed it.
+ */
+function AddToSuiteDropdown({
+  testCaseId,
+  suites,
+  onSelect,
+}: {
+  testCaseId: string;
+  suites: TestSuiteSummary[];
+  onSelect: (suiteId: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    function handleClickOutside(event: MouseEvent) {
+      if (ref.current && !ref.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("click", handleClickOutside);
+    return () => document.removeEventListener("click", handleClickOutside);
+  }, [open]);
+
+  return (
+    <div className={open ? "btn-group show" : "btn-group"} ref={ref}>
+      <button
+        type="button"
+        className={
+          open
+            ? "btn btn-outline-secondary btn-sm dropdown-toggle show"
+            : "btn btn-outline-secondary btn-sm dropdown-toggle"
+        }
+        aria-expanded={open}
+        disabled={suites.length === 0}
+        data-testid={`add-to-suite-toggle-${testCaseId}`}
+        onClick={() => setOpen((prev) => !prev)}
+      >
+        Add to suite
+      </button>
+      <ul className={open ? "dropdown-menu show" : "dropdown-menu"}>
+        {/*
+          Empty-state is a disabled toggle plus this placeholder, not a
+          hidden control, so the ordering dependency (create a suite first)
+          stays visible (UI Design Document §4).
+        */}
+        {suites.length === 0 ? (
+          <li className="dropdown-item disabled" data-testid={`add-to-suite-empty-${testCaseId}`}>
+            No suites yet — create one above
+          </li>
+        ) : (
+          suites.map((suite) => (
+            <li key={suite.id}>
+              <button
+                type="button"
+                className="dropdown-item"
+                data-testid={`add-to-suite-${testCaseId}-${suite.id}`}
+                onClick={() => {
+                  setOpen(false);
+                  onSelect(suite.id);
+                }}
+              >
+                {suite.name}
+              </button>
+            </li>
+          ))
+        )}
+      </ul>
+    </div>
+  );
 }
 
 function ProjectDetail() {
@@ -437,9 +605,24 @@ function ProjectDetail() {
   const [conditionApiError, setConditionApiError] = useState<string | null>(null);
   const [testCaseModalConditionId, setTestCaseModalConditionId] = useState<string | null>(null);
 
-  // `id` bumps per toast so a second confirmation re-mounts `CToast` (it
-  // unmounts itself on exit) instead of silently reusing a hidden instance.
+  // `id` bumps per toast so a second confirmation re-mounts the toast element
+  // instead of silently reusing the previous one. (Under CoreUI this mattered
+  // because `CToast` unmounted itself on exit; under ADR-0042's raw markup the
+  // `key` still forces a fresh node, and the effect below restarts the timer.)
   const [toast, setToast] = useState<{ id: number; message: string } | null>(null);
+
+  // ADR-0042: `CToast`'s `autohide` (5s by default, and explicitly relied on
+  // here — nothing else ever cleared `toast`) went away with the component, so
+  // the auto-dismiss it provided is reimplemented. Keyed on the toast object,
+  // so a second confirmation restarts the countdown rather than inheriting the
+  // first one's remaining time.
+  useEffect(() => {
+    if (!toast) {
+      return;
+    }
+    const timer = window.setTimeout(() => setToast(null), 5000);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
 
   const {
     register: registerCondition,
@@ -507,7 +690,8 @@ function ProjectDetail() {
 
   // Per-TestCase inline feedback for the "Add to suite" dropdown — keyed by
   // test case id so a 422/409 stays next to the row it applies to (UI Design
-  // Document §2: an inline dismissible `CAlert`, never a toast).
+  // Document §2: an inline dismissible `.alert.alert-dismissible`, never a
+  // toast).
   const [addToSuiteError, setAddToSuiteError] = useState<Record<string, string | null>>({});
 
   const {
@@ -1132,27 +1316,29 @@ function ProjectDetail() {
 
   return (
     <div className="min-vh-100 bg-body-secondary py-4">
-      <CContainer fluid className="px-4">
-        <CRow className="justify-content-center">
-          <CCol md={10} lg={8}>
-            <CCard>
-              <CCardBody className="p-4">
+      <div className="container-fluid px-4">
+        <div className="row justify-content-center">
+          <div className="col-md-10 col-lg-8">
+            <div className="card">
+              <div className="card-body p-4">
                 <div className="d-flex justify-content-between align-items-center mb-3">
                   <h1 className="fs-4 mb-0">Project: {projectId}</h1>
-                  <CButton color="primary" onClick={openModal}>
+                  <button type="button" className="btn btn-primary" onClick={openModal}>
                     New Release
-                  </CButton>
+                  </button>
                 </div>
 
                 {loadError && (
-                  <CAlert color="danger" role="alert">
+                  <div className="alert alert-danger" role="alert">
                     {loadError}
-                  </CAlert>
+                  </div>
                 )}
 
                 {loading ? (
                   <div className="d-flex justify-content-center py-4">
-                    <CSpinner color="primary" />
+                    <div className="spinner-border text-primary" role="status">
+                      <span className="visually-hidden">Loading...</span>
+                    </div>
                   </div>
                 ) : releases.length === 0 ? (
                   <p className="text-body-secondary mb-0">No releases yet.</p>
@@ -1170,36 +1356,42 @@ function ProjectDetail() {
                     rowKey={(release) => release.id}
                     testIdPrefix="release-table"
                     columns={
-                      <CTableRow>
-                        <CTableHeaderCell>Version label</CTableHeaderCell>
-                        <CTableHeaderCell>
-                          <CButton color="link" className="p-0 text-decoration-none" onClick={toggleSort}>
+                      <tr>
+                        <th scope="col">Version label</th>
+                        <th scope="col">
+                          <button
+                            type="button"
+                            className="btn btn-link p-0 text-decoration-none"
+                            onClick={toggleSort}
+                          >
                             Target date {order === "asc" ? "▲" : "▼"}
-                          </CButton>
-                        </CTableHeaderCell>
-                      </CTableRow>
+                          </button>
+                        </th>
+                      </tr>
                     }
                     renderRow={(release) => (
                       <Fragment key={release.id}>
-                          <CTableRow
+                          <tr
                             style={{ cursor: "pointer" }}
                             onClick={() => toggleExpand(release)}
                           >
-                            <CTableDataCell>{release.version_label}</CTableDataCell>
-                            <CTableDataCell>{formatDate(release.target_date)}</CTableDataCell>
-                          </CTableRow>
+                            <td>{release.version_label}</td>
+                            <td>{formatDate(release.target_date)}</td>
+                          </tr>
                           {expandedId === release.id && (
-                            <CTableRow key={`${release.id}-detail`}>
-                              <CTableDataCell colSpan={2} className="bg-body-tertiary">
+                            <tr key={`${release.id}-detail`}>
+                              <td colSpan={2} className="bg-body-tertiary">
                                 {cyclesLoading && (
                                   <div className="d-flex justify-content-center py-2">
-                                    <CSpinner size="sm" color="primary" />
+                                    <div className="spinner-border spinner-border-sm text-primary" role="status">
+                                      <span className="visually-hidden">Loading...</span>
+                                    </div>
                                   </div>
                                 )}
                                 {cyclesError && (
-                                  <CAlert color="danger" role="alert">
+                                  <div className="alert alert-danger" role="alert">
                                     {cyclesError}
-                                  </CAlert>
+                                  </div>
                                 )}
                                 {!cyclesLoading && !cyclesError && cycles.length === 0 && (
                                   <p className="text-body-secondary mb-0">No test cycles yet.</p>
@@ -1219,7 +1411,7 @@ function ProjectDetail() {
                                           backend already filtered to `type =
                                           exit`, so there is deliberately no
                                           client-side filter here. Flat <ul>, not
-                                          a nested <CTable> (frontend/CLAUDE.md).
+                                          a nested <table> (frontend/CLAUDE.md).
                                         */}
                                         <div
                                           className="small text-body-secondary"
@@ -1277,64 +1469,69 @@ function ProjectDetail() {
                                     ))}
                                   </ul>
                                 )}
-                              </CTableDataCell>
-                            </CTableRow>
+                              </td>
+                            </tr>
                           )}
                       </Fragment>
                     )}
                   />
                 )}
-              </CCardBody>
-            </CCard>
+              </div>
+            </div>
 
-            <CCard className="mt-4">
-              <CCardBody className="p-4">
+            <div className="card mt-4">
+              <div className="card-body p-4">
                 <div className="d-flex justify-content-between align-items-center mb-3">
                   <h2 className="fs-4 mb-0">Requirements</h2>
-                  <CButton color="primary" onClick={openReqModal}>
+                  <button type="button" className="btn btn-primary" onClick={openReqModal}>
                     New Requirement
-                  </CButton>
+                  </button>
                 </div>
 
-                <CForm onSubmit={onSearchSubmit} className="mb-3">
-                  <CInputGroup>
-                    <CFormInput
+                <form onSubmit={onSearchSubmit} className="mb-3">
+                  <div className="input-group">
+                    <input
+                      type="text"
+                      className="form-control"
                       aria-label="Search requirements"
                       placeholder="Search by title, description, source, or external ref…"
                       value={searchInput}
                       onChange={(e) => setSearchInput(e.target.value)}
                     />
-                    <CButton type="submit" color="secondary" variant="outline">
+                    <button type="submit" className="btn btn-outline-secondary">
                       Search
-                    </CButton>
-                  </CInputGroup>
-                </CForm>
+                    </button>
+                  </div>
+                </form>
 
                 {reqLoadError && (
-                  <CAlert color="danger" role="alert">
+                  <div className="alert alert-danger" role="alert">
                     {reqLoadError}
-                  </CAlert>
+                  </div>
                 )}
 
                 {reqLoading ? (
                   <div className="d-flex justify-content-center py-4">
-                    <CSpinner color="primary" />
+                    <div className="spinner-border text-primary" role="status">
+                      <span className="visually-hidden">Loading...</span>
+                    </div>
                   </div>
                 ) : requirements.length === 0 ? (
                   <p className="text-body-secondary mb-0">
                     {searchTerm ? "No requirements match your search." : "No requirements yet."}
                   </p>
                 ) : (
-                  <CTable hover responsive>
-                    <CTableHead>
-                      <CTableRow>
-                        <CTableHeaderCell>Title</CTableHeaderCell>
-                        <CTableHeaderCell>External ref</CTableHeaderCell>
-                        <CTableHeaderCell>Source</CTableHeaderCell>
-                        <CTableHeaderCell>Test conditions</CTableHeaderCell>
-                      </CTableRow>
-                    </CTableHead>
-                    <CTableBody>
+                  <div className="table-responsive">
+                  <table className="table table-hover">
+                    <thead>
+                      <tr>
+                        <th scope="col">Title</th>
+                        <th scope="col">External ref</th>
+                        <th scope="col">Source</th>
+                        <th scope="col">Test conditions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
                       {requirements.map((requirement) => {
                         const expanded = expandedRequirementIds.includes(requirement.id);
                         const conditions = conditionsByRequirement[requirement.id] ?? [];
@@ -1342,17 +1539,17 @@ function ProjectDetail() {
                         const conditionsLoadError = conditionsError[requirement.id] ?? null;
                         return (
                           <Fragment key={requirement.id}>
-                            <CTableRow
+                            <tr
                               style={{ cursor: "pointer" }}
                               onClick={() => toggleRequirementExpand(requirement)}
                             >
-                              <CTableDataCell>{requirement.title}</CTableDataCell>
-                              <CTableDataCell>{dashIfEmpty(requirement.external_ref)}</CTableDataCell>
-                              <CTableDataCell>{dashIfEmpty(requirement.source)}</CTableDataCell>
-                              <CTableDataCell>
-                                <CButton
-                                  color="link"
-                                  className="p-0 text-decoration-none"
+                              <td>{requirement.title}</td>
+                              <td>{dashIfEmpty(requirement.external_ref)}</td>
+                              <td>{dashIfEmpty(requirement.source)}</td>
+                              <td>
+                                <button
+                                  type="button"
+                                  className="btn btn-link p-0 text-decoration-none"
                                   aria-expanded={expanded}
                                   data-testid={`tc-section-toggle-${requirement.id}`}
                                   onClick={(e) => {
@@ -1361,40 +1558,42 @@ function ProjectDetail() {
                                   }}
                                 >
                                   Test conditions {expanded ? "▲" : "▼"}
-                                </CButton>
-                              </CTableDataCell>
-                            </CTableRow>
+                                </button>
+                              </td>
+                            </tr>
                             {expandedRequirementId === requirement.id && (
-                              <CTableRow key={`${requirement.id}-detail`}>
-                                <CTableDataCell colSpan={4} className="bg-body-tertiary">
+                              <tr key={`${requirement.id}-detail`}>
+                                <td colSpan={4} className="bg-body-tertiary">
                                   <div className="d-flex justify-content-between align-items-center mb-2">
                                     <h3 className="fs-6 mb-0">Test cases</h3>
-                                    <CButton
-                                      size="sm"
-                                      color="primary"
+                                    <button
+                                      type="button"
+                                      className="btn btn-primary btn-sm"
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         openTestCaseModal(requirement.id);
                                       }}
                                     >
                                       New Test Case
-                                    </CButton>
+                                    </button>
                                   </div>
 
                                   {testCasesError && (
-                                    <CAlert color="danger" role="alert">
+                                    <div className="alert alert-danger" role="alert">
                                       {testCasesError}
-                                    </CAlert>
+                                    </div>
                                   )}
 
                                   {testCasesLoading ? (
                                     <div className="d-flex justify-content-center py-2">
-                                      <CSpinner size="sm" color="primary" />
+                                      <div className="spinner-border spinner-border-sm text-primary" role="status">
+                                        <span className="visually-hidden">Loading...</span>
+                                      </div>
                                     </div>
                                   ) : !testCasesError && testCases.length === 0 ? (
                                     <p className="text-body-secondary mb-0">No test cases yet.</p>
                                   ) : (
-                                    // Flat `<ul>`, not a nested `<CTable>` — same convention the
+                                    // Flat `<ul>`, not a nested `<table>` — same convention the
                                     // Release-cycles audit view above already uses, and for the
                                     // same reason: a `<table>` nested inside a `<td>` of an outer
                                     // `<table>` makes the outer row's accessible name aggregate the
@@ -1418,13 +1617,18 @@ function ProjectDetail() {
                                           {expandedTestCaseId === testCase.id && (
                                             <div className="ms-3 mt-1">
                                               {testStepsError && (
-                                                <CAlert color="danger" role="alert">
+                                                <div className="alert alert-danger" role="alert">
                                                   {testStepsError}
-                                                </CAlert>
+                                                </div>
                                               )}
                                               {testStepsLoading ? (
                                                 <div className="d-flex justify-content-center py-2">
-                                                  <CSpinner size="sm" color="primary" />
+                                                  <div
+                                                    className="spinner-border spinner-border-sm text-primary"
+                                                    role="status"
+                                                  >
+                                                    <span className="visually-hidden">Loading...</span>
+                                                  </div>
                                                 </div>
                                               ) : (
                                                 <>
@@ -1437,15 +1641,17 @@ function ProjectDetail() {
                                                         <li key={step.id} className="mb-2">
                                                           {editingStepId === step.id ? (
                                                             <div>
-                                                              <CFormInput
+                                                              <input
+                                                                type="text"
                                                                 aria-label={`Step ${step.sequence} action`}
-                                                                className="mb-1"
+                                                                className="form-control mb-1"
                                                                 value={editAction}
                                                                 onChange={(e) => setEditAction(e.target.value)}
                                                               />
-                                                              <CFormInput
+                                                              <input
+                                                                type="text"
                                                                 aria-label={`Step ${step.sequence} expected result`}
-                                                                className="mb-1"
+                                                                className="form-control mb-1"
                                                                 placeholder="Expected result (optional)"
                                                                 value={editExpectedResult}
                                                                 onChange={(e) =>
@@ -1453,27 +1659,28 @@ function ProjectDetail() {
                                                                 }
                                                               />
                                                               {editStepApiError && (
-                                                                <CAlert color="danger" role="alert" className="py-1">
+                                                                <div
+                                                                  className="alert alert-danger py-1"
+                                                                  role="alert"
+                                                                >
                                                                   {editStepApiError}
-                                                                </CAlert>
+                                                                </div>
                                                               )}
-                                                              <CButton
-                                                                size="sm"
-                                                                color="primary"
-                                                                className="me-1"
+                                                              <button
+                                                                type="button"
+                                                                className="btn btn-primary btn-sm me-1"
                                                                 disabled={editStepSubmitting}
                                                                 onClick={() => saveEditStep(step.id)}
                                                               >
                                                                 Save
-                                                              </CButton>
-                                                              <CButton
-                                                                size="sm"
-                                                                color="secondary"
-                                                                variant="outline"
+                                                              </button>
+                                                              <button
+                                                                type="button"
+                                                                className="btn btn-outline-secondary btn-sm"
                                                                 onClick={cancelEditStep}
                                                               >
                                                                 Cancel
-                                                              </CButton>
+                                                              </button>
                                                             </div>
                                                           ) : (
                                                             <div>
@@ -1484,14 +1691,13 @@ function ProjectDetail() {
                                                                   — {step.expected_result}
                                                                 </span>
                                                               )}
-                                                              <CButton
-                                                                size="sm"
-                                                                color="link"
-                                                                className="p-0 ms-2"
+                                                              <button
+                                                                type="button"
+                                                                className="btn btn-link btn-sm p-0 ms-2"
                                                                 onClick={() => startEditStep(step)}
                                                               >
                                                                 Edit
-                                                              </CButton>
+                                                              </button>
                                                             </div>
                                                           )}
                                                         </li>
@@ -1501,51 +1707,57 @@ function ProjectDetail() {
                                                 </>
                                               )}
 
-                                              <CForm onSubmit={handleSubmitTestStep(onSubmitTestStep)} noValidate>
-                                                <CInputGroup className="mb-1">
-                                                  <CFormInput
+                                              <form onSubmit={handleSubmitTestStep(onSubmitTestStep)} noValidate>
+                                                <div className="input-group mb-1">
+                                                  <input
+                                                    type="text"
                                                     aria-label="New step action"
                                                     placeholder="Action"
-                                                    invalid={!!testStepErrors.action}
+                                                    className={
+                                                      testStepErrors.action
+                                                        ? "form-control is-invalid"
+                                                        : "form-control"
+                                                    }
                                                     {...registerTestStep("action")}
                                                   />
-                                                  <CFormInput
+                                                  <input
+                                                    type="text"
+                                                    className="form-control"
                                                     aria-label="New step expected result"
                                                     placeholder="Expected result (optional)"
                                                     {...registerTestStep("expectedResult")}
                                                   />
-                                                  <CButton
+                                                  <button
                                                     type="submit"
-                                                    color="secondary"
-                                                    variant="outline"
+                                                    className="btn btn-outline-secondary"
                                                     disabled={isSubmittingTestStep}
                                                   >
                                                     Add step
-                                                  </CButton>
-                                                </CInputGroup>
+                                                  </button>
+                                                </div>
                                                 {testStepErrors.action && (
-                                                  <CFormFeedback invalid className="d-block">
+                                                  <div className="invalid-feedback d-block">
                                                     {testStepErrors.action.message}
-                                                  </CFormFeedback>
+                                                  </div>
                                                 )}
                                                 {testStepApiError && (
-                                                  <CAlert color="danger" role="alert" className="py-1">
+                                                  <div className="alert alert-danger py-1" role="alert">
                                                     {testStepApiError}
-                                                  </CAlert>
+                                                  </div>
                                                 )}
-                                              </CForm>
+                                              </form>
                                             </div>
                                           )}
                                         </li>
                                       ))}
                                     </ul>
                                   )}
-                                </CTableDataCell>
-                              </CTableRow>
+                                </td>
+                              </tr>
                             )}
-                            <CTableRow>
-                              <CTableDataCell colSpan={4} className="p-0 border-0">
-                                <CCollapse visible={expanded}>
+                            <tr>
+                              <td colSpan={4} className="p-0 border-0">
+                                <div className={expanded ? "collapse show" : "collapse"}>
                                   {/*
                                     Content is mounted only while expanded, so
                                     the collapsed state costs nothing and a
@@ -1556,39 +1768,45 @@ function ProjectDetail() {
                                     <div className="bg-body-tertiary p-3">
                                       <div className="d-flex justify-content-between align-items-center mb-2">
                                         <h3 className="fs-6 mb-0">Test conditions</h3>
-                                        <CButton
-                                          color="primary"
-                                          size="sm"
+                                        <button
+                                          type="button"
+                                          className="btn btn-primary btn-sm"
                                           data-testid={`new-test-condition-btn-${requirement.id}`}
                                           onClick={() => openConditionModal(requirement.id)}
                                         >
                                           New Test Condition
-                                        </CButton>
+                                        </button>
                                       </div>
 
                                       {conditionsLoadError && (
-                                        <CAlert color="danger" role="alert">
+                                        <div className="alert alert-danger" role="alert">
                                           {conditionsLoadError}
-                                        </CAlert>
+                                        </div>
                                       )}
 
                                       {loadingConditions ? (
                                         <div className="d-flex justify-content-center py-2">
-                                          <CSpinner size="sm" color="primary" />
+                                          <div
+                                            className="spinner-border spinner-border-sm text-primary"
+                                            role="status"
+                                          >
+                                            <span className="visually-hidden">Loading...</span>
+                                          </div>
                                         </div>
                                       ) : !conditionsLoadError && conditions.length === 0 ? (
                                         <p className="text-body-secondary mb-0">No test conditions yet.</p>
                                       ) : (
                                         !conditionsLoadError && (
-                                          <CTable small responsive className="mb-0">
-                                            <CTableHead>
-                                              <CTableRow>
-                                                <CTableHeaderCell>Description</CTableHeaderCell>
-                                                <CTableHeaderCell>Priority</CTableHeaderCell>
-                                                <CTableHeaderCell />
-                                              </CTableRow>
-                                            </CTableHead>
-                                            <CTableBody>
+                                          <div className="table-responsive">
+                                          <table className="table table-sm mb-0">
+                                            <thead>
+                                              <tr>
+                                                <th scope="col">Description</th>
+                                                <th scope="col">Priority</th>
+                                                <th scope="col" />
+                                              </tr>
+                                            </thead>
+                                            <tbody>
                                               {conditions.map((condition) => {
                                                 const casesExpanded = expandedConditionIds.includes(
                                                   condition.id,
@@ -1601,18 +1819,20 @@ function ProjectDetail() {
                                                   conditionCasesError[condition.id] ?? null;
                                                 return (
                                                   <Fragment key={condition.id}>
-                                                    <CTableRow
+                                                    <tr
                                                       data-testid={`test-condition-row-${condition.id}`}
                                                     >
-                                                      <CTableDataCell>
+                                                      <td>
                                                         {condition.description}
-                                                      </CTableDataCell>
-                                                      <CTableDataCell>
-                                                        <CBadge color={priorityColor(condition.priority)}>
+                                                      </td>
+                                                      <td>
+                                                        <span
+                                                          className={`badge bg-${priorityColor(condition.priority)}`}
+                                                        >
                                                           {condition.priority}
-                                                        </CBadge>
-                                                      </CTableDataCell>
-                                                      <CTableDataCell className="text-end">
+                                                        </span>
+                                                      </td>
+                                                      <td className="text-end">
                                                         {/*
                                                           REQ-4: the TestCase
                                                           sub-list REQ-3
@@ -1623,11 +1843,22 @@ function ProjectDetail() {
                                                           can carry an "Add to
                                                           suite" action.
                                                         */}
-                                                        <CButton
-                                                          color="secondary"
-                                                          variant="ghost"
-                                                          size="sm"
-                                                          className="me-2"
+                                                        {/*
+                                                          ADR-0042: this was
+                                                          `variant="ghost"`,
+                                                          a CoreUI-only
+                                                          variant with no
+                                                          Bootstrap/AdminLTE
+                                                          equivalent — spec
+                                                          §4.5.1 says to use
+                                                          `btn-link` rather
+                                                          than emit the
+                                                          now-unstyled
+                                                          `btn-ghost-*`.
+                                                        */}
+                                                        <button
+                                                          type="button"
+                                                          className="btn btn-link btn-sm me-2"
                                                           data-testid={`tc-cases-toggle-${condition.id}`}
                                                           aria-expanded={casesExpanded}
                                                           onClick={() =>
@@ -1635,36 +1866,46 @@ function ProjectDetail() {
                                                           }
                                                         >
                                                           Test Cases
-                                                        </CButton>
-                                                        <CButton
-                                                          color="secondary"
-                                                          variant="outline"
-                                                          size="sm"
+                                                        </button>
+                                                        <button
+                                                          type="button"
+                                                          className="btn btn-outline-secondary btn-sm"
                                                           data-testid={`new-test-case-btn-${condition.id}`}
                                                           onClick={() =>
                                                             openConditionTestCaseModal(condition.id)
                                                           }
                                                         >
                                                           New Test Case
-                                                        </CButton>
-                                                      </CTableDataCell>
-                                                    </CTableRow>
-                                                    <CTableRow>
-                                                      <CTableDataCell
+                                                        </button>
+                                                      </td>
+                                                    </tr>
+                                                    <tr>
+                                                      <td
                                                         colSpan={3}
                                                         className="p-0 border-0"
                                                       >
-                                                        <CCollapse visible={casesExpanded}>
+                                                        <div
+                                                          className={
+                                                            casesExpanded ? "collapse show" : "collapse"
+                                                          }
+                                                        >
                                                           {casesExpanded && (
                                                             <div className="bg-body p-3">
                                                               {casesLoadError && (
-                                                                <CAlert color="danger" role="alert">
+                                                                <div className="alert alert-danger" role="alert">
                                                                   {casesLoadError}
-                                                                </CAlert>
+                                                                </div>
                                                               )}
                                                               {loadingCases ? (
                                                                 <div className="d-flex justify-content-center py-2">
-                                                                  <CSpinner size="sm" color="primary" />
+                                                                  <div
+                                                                    className="spinner-border spinner-border-sm text-primary"
+                                                                    role="status"
+                                                                  >
+                                                                    <span className="visually-hidden">
+                                                                      Loading...
+                                                                    </span>
+                                                                  </div>
                                                                 </div>
                                                               ) : !casesLoadError &&
                                                                 conditionCases.length === 0 ? (
@@ -1675,7 +1916,7 @@ function ProjectDetail() {
                                                                 !casesLoadError && (
                                                                   /*
                                                                     Flat <ul>/<li>, never a nested
-                                                                    <CTable>: a <table> inside
+                                                                    <table>: a <table> inside
                                                                     another <table>'s <td> has no
                                                                     ARIA role boundary, so the outer
                                                                     row's accessible name would
@@ -1696,77 +1937,39 @@ function ProjectDetail() {
                                                                         <div className="d-flex justify-content-between align-items-center gap-2">
                                                                           <span>
                                                                             {testCase.title}{" "}
-                                                                            <CBadge color="secondary">
+                                                                            <span className="badge bg-secondary">
                                                                               {testCase.status}
-                                                                            </CBadge>
+                                                                            </span>
                                                                           </span>
-                                                                          <CDropdown variant="btn-group">
-                                                                            <CDropdownToggle
-                                                                              color="secondary"
-                                                                              variant="outline"
-                                                                              size="sm"
-                                                                              disabled={
-                                                                                testSuites.length === 0
-                                                                              }
-                                                                              data-testid={`add-to-suite-toggle-${testCase.id}`}
-                                                                            >
-                                                                              Add to suite
-                                                                            </CDropdownToggle>
-                                                                            <CDropdownMenu>
-                                                                              {/*
-                                                                                Empty-state is a
-                                                                                disabled toggle plus
-                                                                                this placeholder, not
-                                                                                a hidden control, so
-                                                                                the ordering
-                                                                                dependency (create a
-                                                                                suite first) stays
-                                                                                visible (UI Design
-                                                                                Document §4).
-                                                                              */}
-                                                                              {testSuites.length === 0 ? (
-                                                                                <CDropdownItem
-                                                                                  disabled
-                                                                                  data-testid={`add-to-suite-empty-${testCase.id}`}
-                                                                                >
-                                                                                  No suites yet — create
-                                                                                  one above
-                                                                                </CDropdownItem>
-                                                                              ) : (
-                                                                                testSuites.map((suite) => (
-                                                                                  <CDropdownItem
-                                                                                    key={suite.id}
-                                                                                    role="button"
-                                                                                    data-testid={`add-to-suite-${testCase.id}-${suite.id}`}
-                                                                                    onClick={() =>
-                                                                                      onAddTestCaseToSuite(
-                                                                                        suite.id,
-                                                                                        testCase.id,
-                                                                                      )
-                                                                                    }
-                                                                                  >
-                                                                                    {suite.name}
-                                                                                  </CDropdownItem>
-                                                                                ))
-                                                                              )}
-                                                                            </CDropdownMenu>
-                                                                          </CDropdown>
-                                                                        </div>
-                                                                        {addToSuiteError[testCase.id] && (
-                                                                          <CAlert
-                                                                            color="danger"
-                                                                            role="alert"
-                                                                            dismissible
-                                                                            className="mt-2 mb-0 py-1"
-                                                                            data-testid={`add-to-suite-error-${testCase.id}`}
-                                                                            onClose={() =>
-                                                                              dismissAddToSuiteError(
+                                                                          <AddToSuiteDropdown
+                                                                            testCaseId={testCase.id}
+                                                                            suites={testSuites}
+                                                                            onSelect={(suiteId) =>
+                                                                              onAddTestCaseToSuite(
+                                                                                suiteId,
                                                                                 testCase.id,
                                                                               )
                                                                             }
+                                                                          />
+                                                                        </div>
+                                                                        {addToSuiteError[testCase.id] && (
+                                                                          <div
+                                                                            className="alert alert-danger alert-dismissible mt-2 mb-0 py-1"
+                                                                            role="alert"
+                                                                            data-testid={`add-to-suite-error-${testCase.id}`}
                                                                           >
                                                                             {addToSuiteError[testCase.id]}
-                                                                          </CAlert>
+                                                                            <button
+                                                                              type="button"
+                                                                              className="btn-close"
+                                                                              aria-label="Close"
+                                                                              onClick={() =>
+                                                                                dismissAddToSuiteError(
+                                                                                  testCase.id,
+                                                                                )
+                                                                              }
+                                                                            />
+                                                                          </div>
                                                                         )}
                                                                       </li>
                                                                     ))}
@@ -1775,29 +1978,31 @@ function ProjectDetail() {
                                                               )}
                                                             </div>
                                                           )}
-                                                        </CCollapse>
-                                                      </CTableDataCell>
-                                                    </CTableRow>
+                                                        </div>
+                                                      </td>
+                                                    </tr>
                                                   </Fragment>
                                                 );
                                               })}
-                                            </CTableBody>
-                                          </CTable>
+                                            </tbody>
+                                          </table>
+                                          </div>
                                         )
                                       )}
                                     </div>
                                   )}
-                                </CCollapse>
-                              </CTableDataCell>
-                            </CTableRow>
+                                </div>
+                              </td>
+                            </tr>
                           </Fragment>
                         );
                       })}
-                    </CTableBody>
-                  </CTable>
+                    </tbody>
+                  </table>
+                  </div>
                 )}
-              </CCardBody>
-            </CCard>
+              </div>
+            </div>
 
             {/*
               REQ-4 (ADR-0030, UI Design Document 2026-09-06): Test Suites, a
@@ -1809,59 +2014,67 @@ function ProjectDetail() {
               (`POST`/`GET /test-suites`); only the membership view below is
               bespoke, because a many-to-many join is not a plain-field form.
             */}
-            <CCard className="mt-4">
-              <CCardBody className="p-4">
+            <div className="card mt-4">
+              <div className="card-body p-4">
                 <div className="d-flex justify-content-between align-items-center mb-3">
                   <h2 className="fs-5 mb-0">Test Suites</h2>
-                  <CButton color="primary" data-testid="new-test-suite-btn" onClick={openSuiteModal}>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    data-testid="new-test-suite-btn"
+                    onClick={openSuiteModal}
+                  >
                     New Test Suite
-                  </CButton>
+                  </button>
                 </div>
 
                 {suitesLoadError && (
-                  <CAlert color="danger" role="alert">
+                  <div className="alert alert-danger" role="alert">
                     {suitesLoadError}
-                  </CAlert>
+                  </div>
                 )}
 
                 {suitesLoading ? (
                   <div className="d-flex justify-content-center py-3">
-                    <CSpinner color="primary" />
+                    <div className="spinner-border text-primary" role="status">
+                      <span className="visually-hidden">Loading...</span>
+                    </div>
                   </div>
                 ) : !suitesLoadError && testSuites.length === 0 ? (
                   <p className="text-body-secondary mb-0">No test suites yet.</p>
                 ) : (
                   !suitesLoadError && (
-                    <CTable hover responsive className="mb-0">
-                      <CTableHead>
-                        <CTableRow>
-                          <CTableHeaderCell>Name</CTableHeaderCell>
-                          <CTableHeaderCell>Purpose</CTableHeaderCell>
-                        </CTableRow>
-                      </CTableHead>
-                      <CTableBody>
+                    <div className="table-responsive">
+                    <table className="table table-hover mb-0">
+                      <thead>
+                        <tr>
+                          <th scope="col">Name</th>
+                          <th scope="col">Purpose</th>
+                        </tr>
+                      </thead>
+                      <tbody>
                         {testSuites.map((suite) => {
                           const suiteExpanded = expandedSuiteId === suite.id;
                           return (
                             <Fragment key={suite.id}>
-                              <CTableRow
+                              <tr
                                 className="cursor-pointer"
                                 data-testid={`test-suite-row-${suite.id}`}
                                 aria-expanded={suiteExpanded}
                                 onClick={() => toggleSuiteMembership(suite.id)}
                               >
-                                <CTableDataCell>{suite.name}</CTableDataCell>
-                                <CTableDataCell>
+                                <td>{suite.name}</td>
+                                <td>
                                   {suite.purpose ? (
-                                    <CBadge color="info">{suite.purpose}</CBadge>
+                                    <span className="badge bg-info">{suite.purpose}</span>
                                   ) : (
                                     "—"
                                   )}
-                                </CTableDataCell>
-                              </CTableRow>
-                              <CTableRow>
-                                <CTableDataCell colSpan={2} className="p-0 border-0">
-                                  <CCollapse visible={suiteExpanded}>
+                                </td>
+                              </tr>
+                              <tr>
+                                <td colSpan={2} className="p-0 border-0">
+                                  <div className={suiteExpanded ? "collapse show" : "collapse"}>
                                     {suiteExpanded && (
                                       <div
                                         className="bg-body-tertiary p-3"
@@ -1870,14 +2083,19 @@ function ProjectDetail() {
                                         <h3 className="fs-6 mb-2">Test cases in this suite</h3>
 
                                         {suiteMembersError && (
-                                          <CAlert color="danger" role="alert">
+                                          <div className="alert alert-danger" role="alert">
                                             {suiteMembersError}
-                                          </CAlert>
+                                          </div>
                                         )}
 
                                         {suiteMembersLoading ? (
                                           <div className="d-flex justify-content-center py-2">
-                                            <CSpinner size="sm" color="primary" />
+                                            <div
+                                              className="spinner-border spinner-border-sm text-primary"
+                                              role="status"
+                                            >
+                                              <span className="visually-hidden">Loading...</span>
+                                            </div>
                                           </div>
                                         ) : !suiteMembersError && suiteMembers.length === 0 ? (
                                           /*
@@ -1891,7 +2109,7 @@ function ProjectDetail() {
                                           </p>
                                         ) : (
                                           !suiteMembersError && (
-                                            /* Flat <ul>/<li>, not a nested <CTable> — frontend/CLAUDE.md. */
+                                            /* Flat <ul>/<li>, not a nested <table> — frontend/CLAUDE.md. */
                                             <ul
                                               className="list-unstyled mb-0"
                                               data-testid={`suite-member-list-${suite.id}`}
@@ -1904,19 +2122,20 @@ function ProjectDetail() {
                                                 >
                                                   <span>
                                                     {member.title}{" "}
-                                                    <CBadge color="secondary">{member.status}</CBadge>
+                                                    <span className="badge bg-secondary">
+                                                      {member.status}
+                                                    </span>
                                                   </span>
-                                                  <CButton
-                                                    color="danger"
-                                                    variant="outline"
-                                                    size="sm"
+                                                  <button
+                                                    type="button"
+                                                    className="btn btn-outline-danger btn-sm"
                                                     data-testid={`remove-from-suite-${suite.id}-${member.id}`}
                                                     onClick={() =>
                                                       onRemoveFromSuite(suite.id, member.id)
                                                     }
                                                   >
                                                     Remove
-                                                  </CButton>
+                                                  </button>
                                                 </li>
                                               ))}
                                             </ul>
@@ -1924,18 +2143,19 @@ function ProjectDetail() {
                                         )}
                                       </div>
                                     )}
-                                  </CCollapse>
-                                </CTableDataCell>
-                              </CTableRow>
+                                  </div>
+                                </td>
+                              </tr>
                             </Fragment>
                           );
                         })}
-                      </CTableBody>
-                    </CTable>
+                      </tbody>
+                    </table>
+                    </div>
                   )
                 )}
-              </CCardBody>
-            </CCard>
+              </div>
+            </div>
 
             {/*
               PLAN-1 (ADR-0031, UI Design Document §1): Test Plans. The only
@@ -1946,50 +2166,56 @@ function ProjectDetail() {
               (the generic admin `/test-plans` page owns that), no membership
               UI (that's the detail route's own).
             */}
-            <CCard className="mt-4">
-              <CCardBody className="p-4">
+            <div className="card mt-4">
+              <div className="card-body p-4">
                 <h2 className="fs-5 mb-3">Test Plans</h2>
 
                 {plansLoadError && (
-                  <CAlert color="danger" role="alert" data-testid="test-plans-error">
+                  <div className="alert alert-danger" role="alert" data-testid="test-plans-error">
                     {plansLoadError}
-                  </CAlert>
+                  </div>
                 )}
 
                 {plansLoading ? (
                   <div className="d-flex justify-content-center py-3">
-                    <CSpinner color="primary" />
+                    <div className="spinner-border text-primary" role="status">
+                      <span className="visually-hidden">Loading...</span>
+                    </div>
                   </div>
                 ) : !plansLoadError && testPlans.length === 0 ? (
                   <p className="text-body-secondary mb-0">No test plans yet.</p>
                 ) : (
                   !plansLoadError && (
-                    <CTable hover responsive className="mb-0">
-                      <CTableHead>
-                        <CTableRow>
-                          <CTableHeaderCell>Identifier</CTableHeaderCell>
-                          <CTableHeaderCell>Status</CTableHeaderCell>
-                        </CTableRow>
-                      </CTableHead>
-                      <CTableBody>
+                    <div className="table-responsive">
+                    <table className="table table-hover mb-0">
+                      <thead>
+                        <tr>
+                          <th scope="col">Identifier</th>
+                          <th scope="col">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
                         {testPlans.map((plan) => (
-                          <CTableRow key={plan.id} data-testid={`test-plan-row-${plan.id}`}>
-                            <CTableDataCell>
+                          <tr key={plan.id} data-testid={`test-plan-row-${plan.id}`}>
+                            <td>
                               <Link to={`/projects/${projectId}/test-plans/${plan.id}`}>
                                 {plan.identifier}
                               </Link>
-                            </CTableDataCell>
-                            <CTableDataCell>
-                              <CBadge color={testPlanStatusColor(plan.status)}>{plan.status}</CBadge>
-                            </CTableDataCell>
-                          </CTableRow>
+                            </td>
+                            <td>
+                              <span className={`badge bg-${testPlanStatusColor(plan.status)}`}>
+                                {plan.status}
+                              </span>
+                            </td>
+                          </tr>
                         ))}
-                      </CTableBody>
-                    </CTable>
+                      </tbody>
+                    </table>
+                    </div>
                   )
                 )}
-              </CCardBody>
-            </CCard>
+              </div>
+            </div>
 
             {/*
               ADR-0026 / UI Design Document §7: the 20 project-scoped
@@ -2002,434 +2228,457 @@ function ProjectDetail() {
               bespoke screen into its own entity's generic page" is about
               *this* project/release, not about the other 18 entities.
             */}
-            <CCard className="mt-4">
-              <CCardBody className="p-4">
+            <div className="card mt-4">
+              <div className="card-body p-4">
                 <h2 className="fs-5 mb-3">Admin</h2>
-                <CListGroup>
+                <div className="list-group">
                   {projectScopedEntities.map((item) => (
-                    <CListGroupItem
+                    <Link
                       key={item.key}
-                      as={Link}
+                      className="list-group-item list-group-item-action"
                       to={`/projects/${projectId}/admin/${item.key}`}
                       data-testid={`project-admin-link-${item.key}`}
                     >
                       {item.label}
-                    </CListGroupItem>
+                    </Link>
                   ))}
-                </CListGroup>
-              </CCardBody>
-            </CCard>
-          </CCol>
-        </CRow>
-      </CContainer>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
-      <CModal visible={showTestCaseModal} onClose={closeTestCaseModal}>
-        <CModalHeader>
-          <CModalTitle>New Test Case</CModalTitle>
-        </CModalHeader>
-        <CForm onSubmit={handleSubmitTestCase(onSubmitTestCase)} noValidate>
-          <CModalBody>
-            <div className="mb-3">
-              <CFormLabel htmlFor="testCaseTitle">Title</CFormLabel>
-              <CFormInput
-                id="testCaseTitle"
-                type="text"
-                invalid={!!testCaseErrors.title}
-                {...registerTestCase("title")}
-              />
-              {testCaseErrors.title && <CFormFeedback invalid>{testCaseErrors.title.message}</CFormFeedback>}
-            </div>
-            <div className="mb-3">
-              <CFormLabel htmlFor="testCasePreconditions">Preconditions</CFormLabel>
-              <CFormTextarea id="testCasePreconditions" rows={2} {...registerTestCase("preconditions")} />
-              <CFormText>Optional.</CFormText>
-            </div>
-            <div className="mb-3">
-              <CFormLabel htmlFor="testCaseExpectedResult">Expected result</CFormLabel>
-              <CFormTextarea id="testCaseExpectedResult" rows={2} {...registerTestCase("expectedResult")} />
-              <CFormText>Optional.</CFormText>
-            </div>
-            <div className="mb-3">
-              <CFormLabel htmlFor="testCaseTestLevel">Test level</CFormLabel>
-              <CFormSelect
-                id="testCaseTestLevel"
-                invalid={!!testCaseErrors.testLevelId}
-                {...registerTestCase("testLevelId")}
-              >
-                <option value="">Select a test level…</option>
-                {testLevels.map((level) => (
-                  <option key={level.id} value={level.id}>
-                    {level.name}
-                  </option>
-                ))}
-              </CFormSelect>
-              {testCaseErrors.testLevelId && (
-                <CFormFeedback invalid>{testCaseErrors.testLevelId.message}</CFormFeedback>
-              )}
-            </div>
-            <div className="mb-3">
-              <CFormLabel htmlFor="testCaseTestType">Test type</CFormLabel>
-              <CFormSelect
-                id="testCaseTestType"
-                invalid={!!testCaseErrors.testTypeId}
-                {...registerTestCase("testTypeId")}
-              >
-                <option value="">Select a test type…</option>
-                {testTypes.map((type) => (
-                  <option key={type.id} value={type.id}>
-                    {type.name}
-                  </option>
-                ))}
-              </CFormSelect>
-              {testCaseErrors.testTypeId && <CFormFeedback invalid>{testCaseErrors.testTypeId.message}</CFormFeedback>}
-            </div>
-            {testCaseApiError && (
-              <CAlert color="danger" role="alert">
-                {testCaseApiError}
-              </CAlert>
-            )}
-          </CModalBody>
-          <CModalFooter>
-            <CButton color="secondary" variant="outline" onClick={closeTestCaseModal}>
+      <ProjectModal
+        visible={showTestCaseModal}
+        onClose={closeTestCaseModal}
+        onSubmit={handleSubmitTestCase(onSubmitTestCase)}
+        title="New Test Case"
+        footer={
+          <>
+            <button type="button" className="btn btn-outline-secondary" onClick={closeTestCaseModal}>
               Cancel
-            </CButton>
-            <CButton type="submit" color="primary" disabled={isSubmittingTestCase}>
+            </button>
+            <button type="submit" className="btn btn-primary" disabled={isSubmittingTestCase}>
               {isSubmittingTestCase ? "Creating..." : "Create"}
-            </CButton>
-          </CModalFooter>
-        </CForm>
-      </CModal>
+            </button>
+          </>
+        }
+      >
+        <div className="mb-3">
+          <label className="form-label" htmlFor="testCaseTitle">Title</label>
+          <input
+            id="testCaseTitle"
+            type="text"
+            className={`form-control${testCaseErrors.title ? " is-invalid" : ""}`}
+            {...registerTestCase("title")}
+          />
+          {testCaseErrors.title && <div className="invalid-feedback d-block">{testCaseErrors.title.message}</div>}
+        </div>
+        <div className="mb-3">
+          <label className="form-label" htmlFor="testCasePreconditions">Preconditions</label>
+          <textarea
+            id="testCasePreconditions"
+            className="form-control"
+            rows={2}
+            {...registerTestCase("preconditions")}
+          />
+          <div className="form-text">Optional.</div>
+        </div>
+        <div className="mb-3">
+          <label className="form-label" htmlFor="testCaseExpectedResult">Expected result</label>
+          <textarea
+            id="testCaseExpectedResult"
+            className="form-control"
+            rows={2}
+            {...registerTestCase("expectedResult")}
+          />
+          <div className="form-text">Optional.</div>
+        </div>
+        <div className="mb-3">
+          <label className="form-label" htmlFor="testCaseTestLevel">Test level</label>
+          <select
+            id="testCaseTestLevel"
+            className={`form-select${testCaseErrors.testLevelId ? " is-invalid" : ""}`}
+            {...registerTestCase("testLevelId")}
+          >
+            <option value="">Select a test level…</option>
+            {testLevels.map((level) => (
+              <option key={level.id} value={level.id}>
+                {level.name}
+              </option>
+            ))}
+          </select>
+          {testCaseErrors.testLevelId && (
+            <div className="invalid-feedback d-block">{testCaseErrors.testLevelId.message}</div>
+          )}
+        </div>
+        <div className="mb-3">
+          <label className="form-label" htmlFor="testCaseTestType">Test type</label>
+          <select
+            id="testCaseTestType"
+            className={`form-select${testCaseErrors.testTypeId ? " is-invalid" : ""}`}
+            {...registerTestCase("testTypeId")}
+          >
+            <option value="">Select a test type…</option>
+            {testTypes.map((type) => (
+              <option key={type.id} value={type.id}>
+                {type.name}
+              </option>
+            ))}
+          </select>
+          {testCaseErrors.testTypeId && (
+            <div className="invalid-feedback d-block">{testCaseErrors.testTypeId.message}</div>
+          )}
+        </div>
+        {testCaseApiError && (
+          <div className="alert alert-danger" role="alert">
+            {testCaseApiError}
+          </div>
+        )}
+      </ProjectModal>
 
-      <CModal visible={showReqModal} onClose={closeReqModal}>
-        <CModalHeader>
-          <CModalTitle>New Requirement</CModalTitle>
-        </CModalHeader>
-        <CForm onSubmit={handleSubmitRequirement(onSubmitRequirement)} noValidate>
-          <CModalBody>
-            <div className="mb-3">
-              <CFormLabel htmlFor="requirementTitle">Title</CFormLabel>
-              <CFormInput
-                id="requirementTitle"
-                type="text"
-                invalid={!!requirementErrors.title}
-                {...registerRequirement("title")}
-              />
-              {requirementErrors.title && <CFormFeedback invalid>{requirementErrors.title.message}</CFormFeedback>}
-            </div>
-            <div className="mb-3">
-              <CFormLabel htmlFor="requirementDescription">Description</CFormLabel>
-              <CFormTextarea
-                id="requirementDescription"
-                rows={3}
-                invalid={!!requirementErrors.description}
-                {...registerRequirement("description")}
-              />
-              {requirementErrors.description && (
-                <CFormFeedback invalid>{requirementErrors.description.message}</CFormFeedback>
-              )}
-            </div>
-            <div className="mb-3">
-              <CFormLabel htmlFor="requirementSource">Source</CFormLabel>
-              <CFormInput id="requirementSource" type="text" {...registerRequirement("source")} />
-              <CFormText>Optional.</CFormText>
-            </div>
-            <div className="mb-3">
-              <CFormLabel htmlFor="requirementExternalRef">External ref</CFormLabel>
-              <CFormInput id="requirementExternalRef" type="text" {...registerRequirement("externalRef")} />
-              <CFormText>Optional — e.g. a Jira/GitHub issue id.</CFormText>
-            </div>
-            {reqApiError && (
-              <CAlert color="danger" role="alert">
-                {reqApiError}
-              </CAlert>
-            )}
-          </CModalBody>
-          <CModalFooter>
-            <CButton color="secondary" variant="outline" onClick={closeReqModal}>
+      <ProjectModal
+        visible={showReqModal}
+        onClose={closeReqModal}
+        onSubmit={handleSubmitRequirement(onSubmitRequirement)}
+        title="New Requirement"
+        footer={
+          <>
+            <button type="button" className="btn btn-outline-secondary" onClick={closeReqModal}>
               Cancel
-            </CButton>
-            <CButton type="submit" color="primary" disabled={isSubmittingRequirement}>
+            </button>
+            <button type="submit" className="btn btn-primary" disabled={isSubmittingRequirement}>
               {isSubmittingRequirement ? "Creating..." : "Create"}
-            </CButton>
-          </CModalFooter>
-        </CForm>
-      </CModal>
+            </button>
+          </>
+        }
+      >
+        <div className="mb-3">
+          <label className="form-label" htmlFor="requirementTitle">Title</label>
+          <input
+            id="requirementTitle"
+            type="text"
+            className={`form-control${requirementErrors.title ? " is-invalid" : ""}`}
+            {...registerRequirement("title")}
+          />
+          {requirementErrors.title && (
+            <div className="invalid-feedback d-block">{requirementErrors.title.message}</div>
+          )}
+        </div>
+        <div className="mb-3">
+          <label className="form-label" htmlFor="requirementDescription">Description</label>
+          <textarea
+            id="requirementDescription"
+            className={`form-control${requirementErrors.description ? " is-invalid" : ""}`}
+            rows={3}
+            {...registerRequirement("description")}
+          />
+          {requirementErrors.description && (
+            <div className="invalid-feedback d-block">{requirementErrors.description.message}</div>
+          )}
+        </div>
+        <div className="mb-3">
+          <label className="form-label" htmlFor="requirementSource">Source</label>
+          <input id="requirementSource" type="text" className="form-control" {...registerRequirement("source")} />
+          <div className="form-text">Optional.</div>
+        </div>
+        <div className="mb-3">
+          <label className="form-label" htmlFor="requirementExternalRef">External ref</label>
+          <input
+            id="requirementExternalRef"
+            type="text"
+            className="form-control"
+            {...registerRequirement("externalRef")}
+          />
+          <div className="form-text">Optional — e.g. a Jira/GitHub issue id.</div>
+        </div>
+        {reqApiError && (
+          <div className="alert alert-danger" role="alert">
+            {reqApiError}
+          </div>
+        )}
+      </ProjectModal>
 
-      <CModal visible={showSuiteModal} onClose={closeSuiteModal} data-testid="test-suite-modal">
-        <CModalHeader>
-          <CModalTitle>New Test Suite</CModalTitle>
-        </CModalHeader>
-        <CForm onSubmit={handleSubmitSuite(onSubmitTestSuite)} noValidate>
-          <CModalBody>
-            <div className="mb-3">
-              <CFormLabel htmlFor="testSuiteName">Name</CFormLabel>
-              <CFormInput
-                id="testSuiteName"
-                type="text"
-                data-testid="test-suite-name"
-                invalid={!!suiteErrors.name}
-                {...registerSuite("name")}
-              />
-              {suiteErrors.name && <CFormFeedback invalid>{suiteErrors.name.message}</CFormFeedback>}
-            </div>
-            <div className="mb-3">
-              <CFormLabel htmlFor="testSuitePurpose">Purpose</CFormLabel>
-              <CFormInput
-                id="testSuitePurpose"
-                type="text"
-                data-testid="test-suite-purpose"
-                invalid={!!suiteErrors.purpose}
-                {...registerSuite("purpose")}
-              />
-              {suiteErrors.purpose ? (
-                <CFormFeedback invalid>{suiteErrors.purpose.message}</CFormFeedback>
-              ) : (
-                <CFormText>Optional — e.g. regression, smoke, acceptance.</CFormText>
-              )}
-            </div>
-            {suiteApiError && (
-              <CAlert color="danger" role="alert">
-                {suiteApiError}
-              </CAlert>
-            )}
-          </CModalBody>
-          <CModalFooter>
-            <CButton color="secondary" variant="outline" onClick={closeSuiteModal}>
+      <ProjectModal
+        visible={showSuiteModal}
+        onClose={closeSuiteModal}
+        onSubmit={handleSubmitSuite(onSubmitTestSuite)}
+        title="New Test Suite"
+        testId="test-suite-modal"
+        footer={
+          <>
+            <button type="button" className="btn btn-outline-secondary" onClick={closeSuiteModal}>
               Cancel
-            </CButton>
-            <CButton
+            </button>
+            <button
               type="submit"
-              color="primary"
+              className="btn btn-primary"
               data-testid="test-suite-submit"
               disabled={isSubmittingSuite}
             >
               {isSubmittingSuite ? "Creating..." : "Create"}
-            </CButton>
-          </CModalFooter>
-        </CForm>
-      </CModal>
+            </button>
+          </>
+        }
+      >
+        <div className="mb-3">
+          <label className="form-label" htmlFor="testSuiteName">Name</label>
+          <input
+            id="testSuiteName"
+            type="text"
+            className={`form-control${suiteErrors.name ? " is-invalid" : ""}`}
+            data-testid="test-suite-name"
+            {...registerSuite("name")}
+          />
+          {suiteErrors.name && <div className="invalid-feedback d-block">{suiteErrors.name.message}</div>}
+        </div>
+        <div className="mb-3">
+          <label className="form-label" htmlFor="testSuitePurpose">Purpose</label>
+          <input
+            id="testSuitePurpose"
+            type="text"
+            className={`form-control${suiteErrors.purpose ? " is-invalid" : ""}`}
+            data-testid="test-suite-purpose"
+            {...registerSuite("purpose")}
+          />
+          {suiteErrors.purpose ? (
+            <div className="invalid-feedback d-block">{suiteErrors.purpose.message}</div>
+          ) : (
+            <div className="form-text">Optional — e.g. regression, smoke, acceptance.</div>
+          )}
+        </div>
+        {suiteApiError && (
+          <div className="alert alert-danger" role="alert">
+            {suiteApiError}
+          </div>
+        )}
+      </ProjectModal>
 
-      <CModal
+      <ProjectModal
         visible={conditionModalRequirementId !== null}
         onClose={closeConditionModal}
-        data-testid="test-condition-modal"
-      >
-        <CModalHeader>
-          <CModalTitle>New Test Condition</CModalTitle>
-        </CModalHeader>
-        <CForm onSubmit={handleSubmitCondition(onSubmitTestCondition)} noValidate>
-          <CModalBody>
-            <div className="mb-3">
-              <CFormLabel htmlFor="testConditionDescription">Description</CFormLabel>
-              <CFormTextarea
-                id="testConditionDescription"
-                rows={3}
-                data-testid="test-condition-description"
-                invalid={!!conditionErrors.description}
-                {...registerCondition("description")}
-              />
-              {conditionErrors.description && (
-                <CFormFeedback invalid>{conditionErrors.description.message}</CFormFeedback>
-              )}
-            </div>
-            <div className="mb-3">
-              <CFormLabel htmlFor="testConditionPriority">Priority</CFormLabel>
-              <CFormSelect
-                id="testConditionPriority"
-                data-testid="test-condition-priority"
-                invalid={!!conditionErrors.priority}
-                {...registerCondition("priority")}
-              >
-                <option value="">Select a priority…</option>
-                {TEST_CONDITION_PRIORITIES.map((priority) => (
-                  <option key={priority} value={priority}>
-                    {priority}
-                  </option>
-                ))}
-              </CFormSelect>
-              {conditionErrors.priority && (
-                <CFormFeedback invalid>{conditionErrors.priority.message}</CFormFeedback>
-              )}
-            </div>
-            {conditionApiError && (
-              <CAlert color="danger" role="alert">
-                {conditionApiError}
-              </CAlert>
-            )}
-          </CModalBody>
-          <CModalFooter>
-            <CButton color="secondary" variant="outline" onClick={closeConditionModal}>
+        onSubmit={handleSubmitCondition(onSubmitTestCondition)}
+        title="New Test Condition"
+        testId="test-condition-modal"
+        footer={
+          <>
+            <button type="button" className="btn btn-outline-secondary" onClick={closeConditionModal}>
               Cancel
-            </CButton>
-            <CButton
+            </button>
+            <button
               type="submit"
-              color="primary"
+              className="btn btn-primary"
               data-testid="test-condition-submit"
               disabled={isSubmittingCondition}
             >
               {isSubmittingCondition ? "Creating..." : "Create"}
-            </CButton>
-          </CModalFooter>
-        </CForm>
-      </CModal>
+            </button>
+          </>
+        }
+      >
+        <div className="mb-3">
+          <label className="form-label" htmlFor="testConditionDescription">Description</label>
+          <textarea
+            id="testConditionDescription"
+            className={`form-control${conditionErrors.description ? " is-invalid" : ""}`}
+            rows={3}
+            data-testid="test-condition-description"
+            {...registerCondition("description")}
+          />
+          {conditionErrors.description && (
+            <div className="invalid-feedback d-block">{conditionErrors.description.message}</div>
+          )}
+        </div>
+        <div className="mb-3">
+          <label className="form-label" htmlFor="testConditionPriority">Priority</label>
+          <select
+            id="testConditionPriority"
+            className={`form-select${conditionErrors.priority ? " is-invalid" : ""}`}
+            data-testid="test-condition-priority"
+            {...registerCondition("priority")}
+          >
+            <option value="">Select a priority…</option>
+            {TEST_CONDITION_PRIORITIES.map((priority) => (
+              <option key={priority} value={priority}>
+                {priority}
+              </option>
+            ))}
+          </select>
+          {conditionErrors.priority && (
+            <div className="invalid-feedback d-block">{conditionErrors.priority.message}</div>
+          )}
+        </div>
+        {conditionApiError && (
+          <div className="alert alert-danger" role="alert">
+            {conditionApiError}
+          </div>
+        )}
+      </ProjectModal>
 
-      <CModal
+      <ProjectModal
         visible={testCaseModalConditionId !== null}
         onClose={closeTestCaseModal}
-        data-testid="test-case-modal"
-      >
-        <CModalHeader>
-          <CModalTitle>New Test Case</CModalTitle>
-        </CModalHeader>
-        <CForm onSubmit={handleSubmitTestCase(onSubmitTestCase)} noValidate>
-          <CModalBody>
-            <div className="mb-3">
-              <CFormLabel htmlFor="conditionTestCaseTitle">Title</CFormLabel>
-              <CFormInput
-                id="conditionTestCaseTitle"
-                type="text"
-                data-testid="test-case-title"
-                invalid={!!testCaseErrors.title}
-                {...registerTestCase("title")}
-              />
-              {testCaseErrors.title && <CFormFeedback invalid>{testCaseErrors.title.message}</CFormFeedback>}
-            </div>
-            <div className="mb-3">
-              <CFormLabel htmlFor="conditionTestCasePreconditions">Preconditions</CFormLabel>
-              <CFormTextarea
-                id="conditionTestCasePreconditions"
-                rows={2}
-                data-testid="test-case-preconditions"
-                {...registerTestCase("preconditions")}
-              />
-              <CFormText>Optional.</CFormText>
-            </div>
-            <div className="mb-3">
-              <CFormLabel htmlFor="conditionTestCaseExpectedResult">Expected result</CFormLabel>
-              <CFormTextarea
-                id="conditionTestCaseExpectedResult"
-                rows={2}
-                data-testid="test-case-expected-result"
-                {...registerTestCase("expectedResult")}
-              />
-              <CFormText>Optional.</CFormText>
-            </div>
-            <div className="mb-3">
-              <CFormLabel htmlFor="conditionTestCaseTestLevel">Test level</CFormLabel>
-              <CFormSelect
-                id="conditionTestCaseTestLevel"
-                data-testid="test-case-test-level"
-                invalid={!!testCaseErrors.testLevelId}
-                {...registerTestCase("testLevelId")}
-              >
-                <option value="">Select a test level…</option>
-                {testLevels.map((level) => (
-                  <option key={level.id} value={level.id}>
-                    {level.name}
-                  </option>
-                ))}
-              </CFormSelect>
-              {testCaseErrors.testLevelId && (
-                <CFormFeedback invalid>{testCaseErrors.testLevelId.message}</CFormFeedback>
-              )}
-            </div>
-            <div className="mb-3">
-              <CFormLabel htmlFor="conditionTestCaseTestType">Test type</CFormLabel>
-              <CFormSelect
-                id="conditionTestCaseTestType"
-                data-testid="test-case-test-type"
-                invalid={!!testCaseErrors.testTypeId}
-                {...registerTestCase("testTypeId")}
-              >
-                <option value="">Select a test type…</option>
-                {testTypes.map((type) => (
-                  <option key={type.id} value={type.id}>
-                    {type.name}
-                  </option>
-                ))}
-              </CFormSelect>
-              {testCaseErrors.testTypeId && (
-                <CFormFeedback invalid>{testCaseErrors.testTypeId.message}</CFormFeedback>
-              )}
-            </div>
-            {/*
-              Catalog-load failure is a non-field error, so it uses this
-              page's page-level `CAlert` convention (ADR-0023) — the two
-              selects simply render empty, and the required-field validation
-              above is what blocks an unselectable submit.
-            */}
-            {catalogError && (
-              <CAlert color="warning" role="alert">
-                {catalogError}
-              </CAlert>
-            )}
-            {testCaseApiError && (
-              <CAlert color="danger" role="alert">
-                {testCaseApiError}
-              </CAlert>
-            )}
-          </CModalBody>
-          <CModalFooter>
-            <CButton color="secondary" variant="outline" onClick={closeTestCaseModal}>
+        onSubmit={handleSubmitTestCase(onSubmitTestCase)}
+        title="New Test Case"
+        testId="test-case-modal"
+        footer={
+          <>
+            <button type="button" className="btn btn-outline-secondary" onClick={closeTestCaseModal}>
               Cancel
-            </CButton>
-            <CButton
+            </button>
+            <button
               type="submit"
-              color="primary"
+              className="btn btn-primary"
               data-testid="test-case-submit"
               disabled={isSubmittingTestCase}
             >
               {isSubmittingTestCase ? "Creating..." : "Create"}
-            </CButton>
-          </CModalFooter>
-        </CForm>
-      </CModal>
-
-      <CToaster placement="top-end">
-        {toast && (
-          <CToast key={toast.id} visible color="success" data-testid="test-case-created-toast">
-            <CToastBody>{toast.message}</CToastBody>
-          </CToast>
+            </button>
+          </>
+        }
+      >
+        <div className="mb-3">
+          <label className="form-label" htmlFor="conditionTestCaseTitle">Title</label>
+          <input
+            id="conditionTestCaseTitle"
+            type="text"
+            className={`form-control${testCaseErrors.title ? " is-invalid" : ""}`}
+            data-testid="test-case-title"
+            {...registerTestCase("title")}
+          />
+          {testCaseErrors.title && <div className="invalid-feedback d-block">{testCaseErrors.title.message}</div>}
+        </div>
+        <div className="mb-3">
+          <label className="form-label" htmlFor="conditionTestCasePreconditions">Preconditions</label>
+          <textarea
+            id="conditionTestCasePreconditions"
+            className="form-control"
+            rows={2}
+            data-testid="test-case-preconditions"
+            {...registerTestCase("preconditions")}
+          />
+          <div className="form-text">Optional.</div>
+        </div>
+        <div className="mb-3">
+          <label className="form-label" htmlFor="conditionTestCaseExpectedResult">Expected result</label>
+          <textarea
+            id="conditionTestCaseExpectedResult"
+            className="form-control"
+            rows={2}
+            data-testid="test-case-expected-result"
+            {...registerTestCase("expectedResult")}
+          />
+          <div className="form-text">Optional.</div>
+        </div>
+        <div className="mb-3">
+          <label className="form-label" htmlFor="conditionTestCaseTestLevel">Test level</label>
+          <select
+            id="conditionTestCaseTestLevel"
+            className={`form-select${testCaseErrors.testLevelId ? " is-invalid" : ""}`}
+            data-testid="test-case-test-level"
+            {...registerTestCase("testLevelId")}
+          >
+            <option value="">Select a test level…</option>
+            {testLevels.map((level) => (
+              <option key={level.id} value={level.id}>
+                {level.name}
+              </option>
+            ))}
+          </select>
+          {testCaseErrors.testLevelId && (
+            <div className="invalid-feedback d-block">{testCaseErrors.testLevelId.message}</div>
+          )}
+        </div>
+        <div className="mb-3">
+          <label className="form-label" htmlFor="conditionTestCaseTestType">Test type</label>
+          <select
+            id="conditionTestCaseTestType"
+            className={`form-select${testCaseErrors.testTypeId ? " is-invalid" : ""}`}
+            data-testid="test-case-test-type"
+            {...registerTestCase("testTypeId")}
+          >
+            <option value="">Select a test type…</option>
+            {testTypes.map((type) => (
+              <option key={type.id} value={type.id}>
+                {type.name}
+              </option>
+            ))}
+          </select>
+          {testCaseErrors.testTypeId && (
+            <div className="invalid-feedback d-block">{testCaseErrors.testTypeId.message}</div>
+          )}
+        </div>
+        {/*
+          Catalog-load failure is a non-field error, so it uses this
+          page's page-level alert convention (ADR-0023) — the two
+          selects simply render empty, and the required-field validation
+          above is what blocks an unselectable submit.
+        */}
+        {catalogError && (
+          <div className="alert alert-warning" role="alert">
+            {catalogError}
+          </div>
         )}
-      </CToaster>
+        {testCaseApiError && (
+          <div className="alert alert-danger" role="alert">
+            {testCaseApiError}
+          </div>
+        )}
+      </ProjectModal>
 
-      <CModal visible={showModal} onClose={closeModal}>
-        <CModalHeader>
-          <CModalTitle>New Release</CModalTitle>
-        </CModalHeader>
-        <CForm onSubmit={handleSubmit(onSubmit)} noValidate>
-          <CModalBody>
-            <div className="mb-3">
-              <CFormLabel htmlFor="releaseVersionLabel">Version label</CFormLabel>
-              <CFormInput
-                id="releaseVersionLabel"
-                type="text"
-                invalid={!!errors.versionLabel}
-                {...register("versionLabel")}
-              />
-              {errors.versionLabel && <CFormFeedback invalid>{errors.versionLabel.message}</CFormFeedback>}
-            </div>
-            <div className="mb-3">
-              <CFormLabel htmlFor="releaseTargetDate">Target date</CFormLabel>
-              <CFormInput id="releaseTargetDate" type="date" {...register("targetDate")} />
-              <CFormText>Optional.</CFormText>
-            </div>
-            {apiError && (
-              <CAlert color="danger" role="alert">
-                {apiError}
-              </CAlert>
-            )}
-          </CModalBody>
-          <CModalFooter>
-            <CButton color="secondary" variant="outline" onClick={closeModal}>
+      <div className="toast-container position-fixed top-0 end-0 p-3">
+        {toast && (
+          <div
+            key={toast.id}
+            className="toast show text-bg-success border-0"
+            role="alert"
+            aria-live="assertive"
+            aria-atomic="true"
+            data-testid="test-case-created-toast"
+          >
+            <div className="toast-body">{toast.message}</div>
+          </div>
+        )}
+      </div>
+
+      <ProjectModal
+        visible={showModal}
+        onClose={closeModal}
+        onSubmit={handleSubmit(onSubmit)}
+        title="New Release"
+        footer={
+          <>
+            <button type="button" className="btn btn-outline-secondary" onClick={closeModal}>
               Cancel
-            </CButton>
-            <CButton type="submit" color="primary" disabled={isSubmitting}>
+            </button>
+            <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
               {isSubmitting ? "Creating..." : "Create"}
-            </CButton>
-          </CModalFooter>
-        </CForm>
-      </CModal>
+            </button>
+          </>
+        }
+      >
+        <div className="mb-3">
+          <label className="form-label" htmlFor="releaseVersionLabel">Version label</label>
+          <input
+            id="releaseVersionLabel"
+            type="text"
+            className={`form-control${errors.versionLabel ? " is-invalid" : ""}`}
+            {...register("versionLabel")}
+          />
+          {errors.versionLabel && <div className="invalid-feedback d-block">{errors.versionLabel.message}</div>}
+        </div>
+        <div className="mb-3">
+          <label className="form-label" htmlFor="releaseTargetDate">Target date</label>
+          <input id="releaseTargetDate" type="date" className="form-control" {...register("targetDate")} />
+          <div className="form-text">Optional.</div>
+        </div>
+        {apiError && (
+          <div className="alert alert-danger" role="alert">
+            {apiError}
+          </div>
+        )}
+      </ProjectModal>
     </div>
   );
 }

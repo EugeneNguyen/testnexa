@@ -9,17 +9,25 @@
  * Design Document §2 explicitly asks for reuse rather than a second
  * copy-pasted implementation. Hence one component, two callers.
  *
- * `CSpinner` renders `role="status"`, which is what both guards' tests assert
- * on; the wrapper's full-viewport centering classes are CoreUI/Bootstrap
- * utilities (ADR-0012), carried over verbatim so the visual result is
- * unchanged from what `ProtectedRoute` shipped.
+ * Raw Bootstrap 5 markup per ADR-0042 (AdminLTE v4 design system), replacing
+ * `@coreui/react`'s `CSpinner`. **`role="status"` is written explicitly here
+ * and must stay**: `CSpinner` applied that role implicitly, and it is exactly
+ * what both guards' tests assert on (`ProtectedRoute.test.tsx`,
+ * `RootRedirect.test.tsx` — three `getByRole("status")` lookups). A bare
+ * `<div className="spinner-border">` without it silently breaks all three.
+ * The `visually-hidden` label gives the status region an accessible name;
+ * `CSpinner` had none, so this is a small a11y improvement, not a port
+ * artifact.
+ *
+ * The wrapper's full-viewport centering classes are Bootstrap utilities,
+ * carried over verbatim so the visual result is unchanged.
  */
-import { CSpinner } from "@coreui/react";
-
 function AuthLoadingSpinner() {
   return (
     <div className="min-vh-100 d-flex align-items-center justify-content-center">
-      <CSpinner color="primary" />
+      <div className="spinner-border text-primary" role="status">
+        <span className="visually-hidden">Loading…</span>
+      </div>
     </div>
   );
 }

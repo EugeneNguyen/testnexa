@@ -3,12 +3,12 @@
  * Template-parity scaffolding ONLY — **not backed by any FR/NFR or user
  * story** (ADR-0020, TC-SHELL-014's own note), same status as the base
  * template's own demo content. Smoke-level content only: a swatch per
- * CoreUI themed color, no content-correctness assertions expected.
+ * themed color, no content-correctness assertions expected.
  *
- * Built with CoreUI (ADR-0012) — `CCard`/`CCol`/`CRow` plus CoreUI's own
- * `bg-*`/`text-*` utility classes (Bootstrap-family, not Tailwind).
+ * Built with raw Bootstrap 5 / AdminLTE markup (ADR-0042, superseding the
+ * CoreUI build of ADR-0012) — `card`/`col-*`/`row` plus Bootstrap's own
+ * `bg-*`/`text-*` utility classes (not Tailwind).
  */
-import { CCard, CCardBody, CCardText, CCol, CContainer, CRow } from "@coreui/react";
 
 const THEME_COLORS = [
   "primary",
@@ -23,23 +23,23 @@ const THEME_COLORS = [
 
 function Colors() {
   return (
-    <CContainer fluid className="px-4 py-4">
+    <div className="container-fluid px-4 py-4">
       <h1 className="fs-4 mb-3">Colors</h1>
-      <CRow>
+      <div className="row">
         {THEME_COLORS.map((color) => (
-          <CCol sm={6} md={3} className="mb-4" key={color}>
-            <CCard>
+          <div className="col-sm-6 col-md-3 mb-4" key={color}>
+            <div className="card">
               <div className={`bg-${color} py-4 text-center`}>
                 <span className={color === "light" ? "text-dark" : "text-white"}>{color}</span>
               </div>
-              <CCardBody>
-                <CCardText className="text-body-secondary mb-0 text-capitalize">.bg-{color}</CCardText>
-              </CCardBody>
-            </CCard>
-          </CCol>
+              <div className="card-body">
+                <p className="card-text text-body-secondary mb-0 text-capitalize">.bg-{color}</p>
+              </div>
+            </div>
+          </div>
         ))}
-      </CRow>
-    </CContainer>
+      </div>
+    </div>
   );
 }
 

@@ -1,6 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { CTableDataCell, CTableHeaderCell, CTableRow } from "@coreui/react";
 import Table from "../../src/container/Table";
 
 /**
@@ -10,6 +9,14 @@ import Table from "../../src/container/Table";
  * `OrgHome`'s own test files cover the *migrated screens'* regressions
  * (TC-DS-015/016), not the container's own contract, which is what this
  * file is for.
+ *
+ * ADR-0042 (CoreUI -> AdminLTE v4): the fixture `columns`/`renderRow` below
+ * are raw `<tr>`/`<th scope="col">`/`<td>` now, not
+ * `<CTableRow>`/`<CTableHeaderCell>`/`<CTableDataCell>` — that is the
+ * container's new caller contract, not a test-only convenience. Every
+ * assertion in this file is otherwise unchanged: the rendered class contract
+ * (`page-item`/`active`/`disabled`) and every `data-testid` survived the
+ * migration intact.
  */
 
 type Row = { id: string; label: string };
@@ -19,16 +26,16 @@ function makeRows(n: number): Row[] {
 }
 
 const columns = (
-  <CTableRow>
-    <CTableHeaderCell>Label</CTableHeaderCell>
-  </CTableRow>
+  <tr>
+    <th scope="col">Label</th>
+  </tr>
 );
 
 function renderRow(row: Row) {
   return (
-    <CTableRow key={row.id}>
-      <CTableDataCell>{row.label}</CTableDataCell>
-    </CTableRow>
+    <tr key={row.id}>
+      <td>{row.label}</td>
+    </tr>
   );
 }
 
@@ -118,9 +125,13 @@ describe("Table container", () => {
     expect(screen.getByText("Previous").closest("li")).not.toHaveClass("disabled");
     expect(screen.getByText("Next").closest("li")).toHaveClass("disabled");
 
-    // "3" is the currently-active page — CoreUI's own CPaginationItem
-    // intentionally drops onClick for the active item (renders a <span>, not
-    // a clickable link). Click a non-active page instead.
+    // "3" is the currently-active page. Pre-ADR-0042 that was a hard
+    // constraint (CoreUI's `CPaginationItem` rendered the active item as a
+    // <span> and dropped its onClick); post-migration it is a real <button>
+    // that would fire. Clicking a *non-active* page is still the right way to
+    // prove `onPageChange` is wired (`frontend/CLAUDE.md`), so this is
+    // unchanged — only the active item's accessible state is newly assertable.
+    expect(screen.getByText("3")).toHaveAttribute("aria-current", "page");
     fireEvent.click(screen.getByText("2"));
     expect(onPageChange).toHaveBeenCalledWith(2);
   });

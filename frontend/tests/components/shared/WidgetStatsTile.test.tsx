@@ -29,13 +29,16 @@ describe("WidgetStatsTile", () => {
         color="warning"
         title="Widget title"
         value="$1.999,50"
-        icon="cilSettings"
+        icon="fa-solid fa-gear"
       />,
     );
 
     const iconBlock = container.querySelector(".bg-warning.text-white.p-4.me-3");
     expect(iconBlock).not.toBeNull();
-    expect(iconBlock?.querySelector("svg.icon.icon-xl")).not.toBeNull();
+    // ADR-0042: the icon is a Font Awesome `<i>` carrying the caller's own
+    // class string plus this component's `fa-2x` size, not CoreUI's
+    // `<svg class="icon icon-xl">`.
+    expect(iconBlock?.querySelector("i.fa-solid.fa-gear.fa-2x")).not.toBeNull();
   });
 
   it("color-coordinates the icon block bg and the value text by the `color` prop", () => {
@@ -44,7 +47,7 @@ describe("WidgetStatsTile", () => {
         color="danger"
         title="Widget title"
         value="$1.999,50"
-        icon="cilBell"
+        icon="fa-solid fa-bell"
       />,
     );
 
