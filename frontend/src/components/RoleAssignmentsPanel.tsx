@@ -22,9 +22,14 @@
  * (RBAC-2/an agent-list route are both separate, unbuilt scope) — the field
  * label and helper text say so plainly rather than pretending otherwise.
  *
+ * **DS-2/ADR-0041 (2026-09-07):** the list, previously an unpaginated
+ * `CTable` (the one table-backing screen in this codebase with no
+ * pagination at all), now uses the shared `container/Table.tsx` in server
+ * mode, against `listRoleAssignments`'s newly-paginated route.
+ *
  * Built with CoreUI (ADR-0012).
  */
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -45,13 +50,11 @@ import {
   CModalHeader,
   CModalTitle,
   CSpinner,
-  CTable,
-  CTableBody,
   CTableDataCell,
-  CTableHead,
   CTableHeaderCell,
   CTableRow,
 } from "@coreui/react";
+import Table from "../container/Table";
 import { ApiError } from "../lib/api/client";
 import {
   createRoleAssignment,
@@ -92,6 +95,9 @@ function RoleAssignmentsPanel({ orgId }: RoleAssignmentsPanelProps) {
   const [roles, setRoles] = useState<RoleSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [total, setTotal] = useState(0);
 
   const [showModal, setShowModal] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
@@ -109,24 +115,30 @@ function RoleAssignmentsPanel({ orgId }: RoleAssignmentsPanelProps) {
   });
   const scope = watch("scope");
 
-  async function loadAssignments() {
-    setLoading(true);
-    setLoadError(null);
-    try {
-      const [assignmentRows, roleRows] = await Promise.all([listRoleAssignments(orgId), listRoles(orgId)]);
-      setAssignments(assignmentRows);
-      setRoles(roleRows);
-    } catch (err) {
-      setLoadError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  }
+  const loadAssignments = useCallback(
+    async (targetPage: number, targetPageSize: number) => {
+      setLoading(true);
+      setLoadError(null);
+      try {
+        const [assignmentResponse, roleRows] = await Promise.all([
+          listRoleAssignments(orgId, { page: targetPage, page_size: targetPageSize }),
+          listRoles(orgId),
+        ]);
+        setAssignments(assignmentResponse.items);
+        setTotal(assignmentResponse.total);
+        setRoles(roleRows);
+      } catch (err) {
+        setLoadError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [orgId],
+  );
 
   useEffect(() => {
-    void loadAssignments();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgId]);
+    void loadAssignments(page, pageSize);
+  }, [loadAssignments, page, pageSize]);
 
   function roleName(roleId: string): string {
     return roles.find((role) => role.id === roleId)?.name ?? roleId;
@@ -145,12 +157,16 @@ function RoleAssignmentsPanel({ orgId }: RoleAssignmentsPanelProps) {
   async function onSubmit(values: NewRoleAssignmentFormValues) {
     setApiError(null);
     try {
-      const created = await createRoleAssignment(orgId, {
+      await createRoleAssignment(orgId, {
         actor_id: values.actorId,
         role_id: values.roleId,
         ...(values.scope === "project-scoped" && values.projectId ? { project_id: values.projectId } : {}),
       });
-      setAssignments((prev) => [...prev, created]);
+      // Re-fetch (rather than locally append) so `total`/the page-size
+      // selector's pagination stay correct — a locally-appended row would
+      // silently understate `total` by one until the next real fetch.
+      setPage(1);
+      await loadAssignments(1, pageSize);
       closeModal();
     } catch (err) {
       if (err instanceof ApiError) {
@@ -191,30 +207,37 @@ function RoleAssignmentsPanel({ orgId }: RoleAssignmentsPanelProps) {
         ) : assignments.length === 0 ? (
           <p className="text-body-secondary mb-0">No role assignments yet.</p>
         ) : (
-          <CTable hover responsive>
-            <CTableHead>
+          <Table
+            mode="server"
+            items={assignments}
+            total={total}
+            page={page}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+            rowKey={(assignment) => assignment.id}
+            testIdPrefix="role-assignment-table"
+            columns={
               <CTableRow>
                 <CTableHeaderCell>Actor</CTableHeaderCell>
                 <CTableHeaderCell>Role</CTableHeaderCell>
                 <CTableHeaderCell>Scope</CTableHeaderCell>
               </CTableRow>
-            </CTableHead>
-            <CTableBody>
-              {assignments.map((assignment) => (
-                <CTableRow key={assignment.id}>
-                  <CTableDataCell className="font-monospace small">{assignment.actor_id}</CTableDataCell>
-                  <CTableDataCell>{roleName(assignment.role_id)}</CTableDataCell>
-                  <CTableDataCell>
-                    {assignment.project_id ? (
-                      <span className="font-monospace small">Project {assignment.project_id}</span>
-                    ) : (
-                      "Org-wide"
-                    )}
-                  </CTableDataCell>
-                </CTableRow>
-              ))}
-            </CTableBody>
-          </CTable>
+            }
+            renderRow={(assignment) => (
+              <CTableRow key={assignment.id}>
+                <CTableDataCell className="font-monospace small">{assignment.actor_id}</CTableDataCell>
+                <CTableDataCell>{roleName(assignment.role_id)}</CTableDataCell>
+                <CTableDataCell>
+                  {assignment.project_id ? (
+                    <span className="font-monospace small">Project {assignment.project_id}</span>
+                  ) : (
+                    "Org-wide"
+                  )}
+                </CTableDataCell>
+              </CTableRow>
+            )}
+          />
         )}
       </CCardBody>
 

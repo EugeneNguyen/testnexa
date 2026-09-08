@@ -68,6 +68,7 @@
  */
 import { Fragment, useCallback, useEffect, useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
+import Table from "../../container/Table";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -275,6 +276,15 @@ function ProjectDetail() {
 
   const [releases, setReleases] = useState<ReleaseSummary[]>([]);
   const [order, setOrder] = useState<"asc" | "desc">("asc");
+  // DS-2/ADR-0041: Releases is the one ProjectDetail outer table migrated
+  // onto `container/Table.tsx` in this pass (server mode) — proves the
+  // container coexists correctly with this same screen's nested
+  // Release→TestCycle flat <ul>/<li> audit view (TC-DS-017). The other outer
+  // tables (Requirements, Test Suites, Risk Items) are unchanged; see
+  // ADR-0041's own Consequences for that explicitly-flagged remaining scope.
+  const [releasesPage, setReleasesPage] = useState(1);
+  const [releasesPageSize, setReleasesPageSize] = useState(25);
+  const [releasesTotal, setReleasesTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -1021,15 +1031,21 @@ function ProjectDetail() {
   }, [fetchTestPlans]);
 
   const fetchReleases = useCallback(
-    async (sortOrder: "asc" | "desc") => {
+    async (sortOrder: "asc" | "desc", page: number, pageSize: number) => {
       if (!projectId) {
         return;
       }
       setLoading(true);
       setLoadError(null);
       try {
-        const response = await listReleases(projectId, { sort: "target_date", order: sortOrder });
+        const response = await listReleases(projectId, {
+          sort: "target_date",
+          order: sortOrder,
+          page,
+          page_size: pageSize,
+        });
         setReleases(response.items);
+        setReleasesTotal(response.total);
       } catch (err) {
         setLoadError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
       } finally {
@@ -1040,11 +1056,12 @@ function ProjectDetail() {
   );
 
   useEffect(() => {
-    fetchReleases(order);
-  }, [fetchReleases, order]);
+    fetchReleases(order, releasesPage, releasesPageSize);
+  }, [fetchReleases, order, releasesPage, releasesPageSize]);
 
   function toggleSort() {
     setOrder((prev) => (prev === "asc" ? "desc" : "asc"));
+    setReleasesPage(1);
   }
 
   function openModal() {
@@ -1071,8 +1088,11 @@ function ProjectDetail() {
       });
       closeModal();
       // Re-fetch (rather than locally append) so the new release lands in
-      // its correct sorted position per the current `order`.
-      await fetchReleases(order);
+      // its correct sorted position per the current `order` — page 1, since
+      // a newly-created release could land anywhere in sort order relative
+      // to whatever page was previously showing.
+      setReleasesPage(1);
+      await fetchReleases(order, 1, releasesPageSize);
     } catch (err) {
       if (err instanceof ApiError) {
         const versionLabelError = fieldError(err, "version_label");
@@ -1137,8 +1157,19 @@ function ProjectDetail() {
                 ) : releases.length === 0 ? (
                   <p className="text-body-secondary mb-0">No releases yet.</p>
                 ) : (
-                  <CTable hover responsive>
-                    <CTableHead>
+                  <Table
+                    mode="server"
+                    items={releases}
+                    total={releasesTotal}
+                    page={releasesPage}
+                    pageSize={releasesPageSize}
+                    onPageChange={setReleasesPage}
+                    onPageSizeChange={(size) => {
+                      setReleasesPageSize(size);
+                    }}
+                    rowKey={(release) => release.id}
+                    testIdPrefix="release-table"
+                    columns={
                       <CTableRow>
                         <CTableHeaderCell>Version label</CTableHeaderCell>
                         <CTableHeaderCell>
@@ -1147,10 +1178,9 @@ function ProjectDetail() {
                           </CButton>
                         </CTableHeaderCell>
                       </CTableRow>
-                    </CTableHead>
-                    <CTableBody>
-                      {releases.map((release) => (
-                        <Fragment key={release.id}>
+                    }
+                    renderRow={(release) => (
+                      <Fragment key={release.id}>
                           <CTableRow
                             style={{ cursor: "pointer" }}
                             onClick={() => toggleExpand(release)}
@@ -1250,10 +1280,9 @@ function ProjectDetail() {
                               </CTableDataCell>
                             </CTableRow>
                           )}
-                        </Fragment>
-                      ))}
-                    </CTableBody>
-                  </CTable>
+                      </Fragment>
+                    )}
+                  />
                 )}
               </CCardBody>
             </CCard>

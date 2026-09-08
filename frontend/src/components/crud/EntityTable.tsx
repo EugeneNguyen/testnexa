@@ -12,6 +12,17 @@
  * FK cells resolve via a batched, deduped lookup (one `getEntity` per
  * *distinct* id across the current page, not one per row) — §3's own "not
  * one request per row" requirement.
+ *
+ * **DS-2 (ADR-0041):** the table markup, `CPagination` block, and the new
+ * "Rows per page" selector all live in `container/Table.tsx` now — this
+ * component keeps its `EntityConfig`-driven column/cell/actions system and
+ * its search/filter row (both of which the container has no opinion on) and
+ * delegates the rest. The external prop contract is unchanged except for one
+ * added optional `onPageSizeChange`, so all 24 generic-admin entity list
+ * screens' existing assertions pass unmodified (TC-DS-016). ADR-0041
+ * explicitly declines to merge `EntityConfig`-driven columns with the
+ * container's generic render-prop API — they stay two call conventions over
+ * one shared pagination implementation.
  */
 import { useEffect, useState } from "react";
 import { CIcon } from "@coreui/icons-react";
@@ -21,16 +32,12 @@ import {
   CBadge,
   CButton,
   CFormInput,
-  CPagination,
-  CPaginationItem,
   CSpinner,
-  CTable,
-  CTableBody,
   CTableDataCell,
-  CTableHead,
   CTableHeaderCell,
   CTableRow,
 } from "@coreui/react";
+import Table from "../../container/Table";
 import { EntityConfig, FieldConfig } from "../../entityConfigs/types";
 import { EntityRow, getEntity } from "../../lib/api/entityCrud";
 import { entityConfigByKey } from "../../pages/admin/registry";
@@ -87,6 +94,13 @@ export interface EntityTableProps {
   page: number;
   pageSize: number;
   onPageChange: (page: number) => void;
+  /**
+   * DS-2: fired when the user picks a different page size in the shared
+   * container's "Rows per page" selector. Optional so the 9 existing
+   * `EntityTable.test.tsx` cases (and any other caller) keep compiling
+   * unchanged — `EntityListPage` is the one caller that passes it.
+   */
+  onPageSizeChange?: (pageSize: number) => void;
   loading?: boolean;
   loadError?: string | null;
   filters?: Record<string, string>;
@@ -106,6 +120,7 @@ function EntityTable({
   page,
   pageSize,
   onPageChange,
+  onPageSizeChange,
   loading,
   loadError,
   filters = {},
@@ -191,8 +206,6 @@ function EntityTable({
     }
   }
 
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-
   return (
     <div>
       {onSearchChange && config.searchFields && config.searchFields.length > 0 && (
@@ -232,71 +245,60 @@ function EntityTable({
       ) : rows.length === 0 ? (
         <p className="text-body-secondary mb-0">No records found.</p>
       ) : (
-        <>
-          <CTable hover responsive>
-            <CTableHead>
-              <CTableRow>
-                {tableFields.map((field) => (
-                  <CTableHeaderCell key={field.name}>{field.label}</CTableHeaderCell>
-                ))}
-                {showActionsColumn && <CTableHeaderCell>Actions</CTableHeaderCell>}
-              </CTableRow>
-            </CTableHead>
-            <CTableBody>
-              {rows.map((row) => (
-                <CTableRow key={String(row.id)}>
-                  {tableFields.map((field) => (
-                    <CTableDataCell key={field.name}>{renderCell(field, row)}</CTableDataCell>
-                  ))}
-                  {showActionsColumn && (
-                    <CTableDataCell>
-                      <div className="d-flex gap-2">
-                        {config.methods.includes("update") && onEdit && canEditRow(row) && (
-                          <CButton
-                            size="sm"
-                            color="secondary"
-                            variant="outline"
-                            aria-label="Edit"
-                            onClick={() => onEdit(row)}
-                          >
-                            <CIcon icon={cilPencil} />
-                          </CButton>
-                        )}
-                        {config.methods.includes("delete") && onDelete && canDeleteRow(row) && (
-                          <CButton
-                            size="sm"
-                            color="danger"
-                            variant="outline"
-                            aria-label="Delete"
-                            onClick={() => onDelete(row)}
-                          >
-                            <CIcon icon={cilTrash} />
-                          </CButton>
-                        )}
-                      </div>
-                    </CTableDataCell>
-                  )}
-                </CTableRow>
+        <Table<EntityRow>
+          mode="server"
+          items={rows}
+          total={total}
+          page={page}
+          pageSize={pageSize}
+          onPageChange={onPageChange}
+          onPageSizeChange={onPageSizeChange}
+          rowKey={(row) => String(row.id)}
+          testIdPrefix="entity-table"
+          columns={
+            <CTableRow>
+              {tableFields.map((field) => (
+                <CTableHeaderCell key={field.name}>{field.label}</CTableHeaderCell>
               ))}
-            </CTableBody>
-          </CTable>
-
-          {totalPages > 1 && (
-            <CPagination aria-label="Page navigation">
-              <CPaginationItem disabled={page <= 1} onClick={() => onPageChange(page - 1)}>
-                Previous
-              </CPaginationItem>
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                <CPaginationItem key={p} active={p === page} onClick={() => onPageChange(p)}>
-                  {p}
-                </CPaginationItem>
+              {showActionsColumn && <CTableHeaderCell>Actions</CTableHeaderCell>}
+            </CTableRow>
+          }
+          renderRow={(row) => (
+            <CTableRow>
+              {tableFields.map((field) => (
+                <CTableDataCell key={field.name}>{renderCell(field, row)}</CTableDataCell>
               ))}
-              <CPaginationItem disabled={page >= totalPages} onClick={() => onPageChange(page + 1)}>
-                Next
-              </CPaginationItem>
-            </CPagination>
+              {showActionsColumn && (
+                <CTableDataCell>
+                  <div className="d-flex gap-2">
+                    {config.methods.includes("update") && onEdit && canEditRow(row) && (
+                      <CButton
+                        size="sm"
+                        color="secondary"
+                        variant="outline"
+                        aria-label="Edit"
+                        onClick={() => onEdit(row)}
+                      >
+                        <CIcon icon={cilPencil} />
+                      </CButton>
+                    )}
+                    {config.methods.includes("delete") && onDelete && canDeleteRow(row) && (
+                      <CButton
+                        size="sm"
+                        color="danger"
+                        variant="outline"
+                        aria-label="Delete"
+                        onClick={() => onDelete(row)}
+                      >
+                        <CIcon icon={cilTrash} />
+                      </CButton>
+                    )}
+                  </div>
+                </CTableDataCell>
+              )}
+            </CTableRow>
           )}
-        </>
+        />
       )}
     </div>
   );

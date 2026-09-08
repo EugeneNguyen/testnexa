@@ -658,12 +658,130 @@ async def test_list_role_assignments_returns_org_wide_and_project_scoped_rows() 
 
         assert response.status_code == 200
         body = response.json()
-        returned_ids = {row["id"] for row in body}
+        # DS-2/ADR-0041: this route returns the standard
+        # `{items,total,page,page_size}` envelope now, not RBAC-3's original
+        # bare array. Asserted here (rather than only in the DS-2 test file)
+        # because this is the pre-existing test that would otherwise silently
+        # keep passing against a `list`-shaped body if the change regressed.
+        assert set(body.keys()) == {"items", "total", "page", "page_size"}
+        rows = body["items"]
+        returned_ids = {row["id"] for row in rows}
         assert str(org_wide_id) in returned_ids
         assert str(project_scoped_id) in returned_ids
-        assert all(row["org_id"] == str(org_id) for row in body)
+        assert all(row["org_id"] == str(org_id) for row in rows)
     finally:
         await _cleanup(user_ids=user_ids, org_ids=org_ids, project_ids=project_ids)
+
+
+# --- TC-DS-013: list-endpoint pagination (DS-2/ADR-0041) -----------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_list_role_assignments_is_paginated() -> None:  # TC-DS-013
+    """`GET /orgs/{org_id}/role-assignments` honors `page`/`page_size` and
+    returns the standard envelope unconditionally, even with no pagination
+    params supplied at all — this route had no pagination contract before
+    DS-2 (a bare, unbounded array), so both halves need direct proof against
+    the live route, not inferred from `RoleAssignmentsPanel` rendering
+    correctly (`docs/CLAUDE.md`'s "don't trust a claim you haven't directly
+    checked" discipline).
+
+    Total is 16, not 15: `_create_org_admin` seeds its own org-wide
+    `org_admin` grant for the admin actor in the same `org_id`, on top of
+    this test's 15 grants for `target`.
+    """
+    user_ids: list = []
+    org_ids: list = []
+    project_ids: list = []
+    try:
+        async with AsyncSessionLocal() as session:
+            admin, org = await _create_org_admin(session, "tcds013")
+            target = await _create_user(session, _unique_email("tcds013-target"))
+            await _create_membership(session, target, org, OrgMembershipStatus.active)
+            tester_role = await _get_role_by_name(session, "tester")
+
+            # 15 grants for the one target actor: 1 org-wide + 14
+            # project-scoped (distinct `project_id` each, to stay clear of
+            # the `(actor_id, org_id, project_id, role_id)` unique
+            # constraint) — cheaper than seeding 15 separate users for the
+            # same row count.
+            projects = [await _create_project(session, org, f"TC-DS-013 Project {i}") for i in range(14)]
+            await _assign_role(session, actor_id=target.actor_id, org=org, role=tester_role)
+            for project in projects:
+                await _assign_role(
+                    session, actor_id=target.actor_id, org=org, role=tester_role, project_id=project.id
+                )
+            await session.commit()  # commits the admin/org from _create_org_admin too
+
+            user_ids = [admin.actor_id, target.actor_id]
+            org_ids = [org.id]
+            project_ids = [p.id for p in projects]
+            admin_id, org_id = admin.actor_id, org.id
+
+        access_token = _access_token_for(admin_id)
+
+        async with httpx.AsyncClient(base_url=TEST_API_BASE_URL) as client:
+            # Explicit page/page_size: exactly 10 items, honoring the request.
+            paged = await client.get(
+                _role_assignments_path(org_id),
+                params={"page": 1, "page_size": 10},
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            # No params at all: still the full envelope, default page_size —
+            # proves the shape change is unconditional, not opt-in.
+            unparameterized = await client.get(
+                _role_assignments_path(org_id),
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+
+        assert paged.status_code == 200
+        paged_body = paged.json()
+        assert paged_body["total"] == 16
+        assert paged_body["page"] == 1
+        assert paged_body["page_size"] == 10
+        assert len(paged_body["items"]) == 10
+
+        assert unparameterized.status_code == 200
+        unparameterized_body = unparameterized.json()
+        assert set(unparameterized_body.keys()) == {"items", "total", "page", "page_size"}
+        assert unparameterized_body["total"] == 16
+        assert unparameterized_body["page"] == 1
+        assert unparameterized_body["page_size"] == 25  # NFR-6 default, unchanged
+        assert len(unparameterized_body["items"]) == 16  # under the 25 default, so all 16 fit on page 1
+    finally:
+        await _cleanup(user_ids=user_ids, org_ids=org_ids, project_ids=project_ids)
+
+
+@pytest.mark.asyncio
+async def test_list_role_assignments_clamps_page_size_above_100() -> None:  # TC-DS-012 (route-level proof)
+    """Same clamp `crud_factory.clamp_pagination` enforces elsewhere, proven
+    against this specific route's own call site (`role_assignments.py`
+    imports and calls the shared helper — this is not a second, independently
+    written clamp that could drift from it).
+    """
+    user_ids: list = []
+    org_ids: list = []
+    try:
+        async with AsyncSessionLocal() as session:
+            admin, org = await _create_org_admin(session, "tcds012")
+            await session.commit()
+            user_ids = [admin.actor_id]
+            org_ids = [org.id]
+            admin_id, org_id = admin.actor_id, org.id
+
+        access_token = _access_token_for(admin_id)
+
+        async with httpx.AsyncClient(base_url=TEST_API_BASE_URL) as client:
+            response = await client.get(
+                _role_assignments_path(org_id),
+                params={"page": 1, "page_size": 500},
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+
+        assert response.status_code == 200
+        assert response.json()["page_size"] == 100  # clamped, not 500 and not a 422
+    finally:
+        await _cleanup(user_ids=user_ids, org_ids=org_ids, project_ids=[])
 
 
 # --- TC-RBAC-034: list-endpoint 404-vs-403 boundary ---------------------------------------------

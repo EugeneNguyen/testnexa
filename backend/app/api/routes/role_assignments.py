@@ -44,18 +44,30 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.crud_factory import clamp_pagination
 from app.api.deps import get_current_actor, get_db, require_permission
 from app.models.actor import AIAgent, User
 from app.models.project import Project
 from app.models.rbac import Role, RoleAssignment
 from app.models.tenancy import OrgMembership
-from app.schemas.rbac import CreateRoleAssignmentRequest, RoleAssignmentSummary
+from app.schemas.rbac import (
+    CreateRoleAssignmentRequest,
+    RoleAssignmentListResponse,
+    RoleAssignmentSummary,
+)
 
 router = APIRouter()
+
+# NFR-6 offset pagination, added by DS-2/ADR-0041 — this was the last
+# table-backing list route in the codebase with no pagination contract at all
+# (a bare `list[RoleAssignmentSummary]`). Default page size 25, ceiling 100 as
+# a plain literal at the `clamp_pagination` call site (no shared constant, per
+# ADR-0041's explicit direction).
+_DEFAULT_PAGE_SIZE = 25
 
 
 def _error(
@@ -195,19 +207,34 @@ async def create_role_assignment(
     return _summary(row)
 
 
-@router.get("/orgs/{org_id}/role-assignments", response_model=list[RoleAssignmentSummary])
+@router.get("/orgs/{org_id}/role-assignments", response_model=RoleAssignmentListResponse)
 async def list_role_assignments(
     org_id: UUID,
     request: Request,
     actor: User | AIAgent = Depends(get_current_actor),
     db: AsyncSession = Depends(get_db),
-) -> list[RoleAssignmentSummary] | JSONResponse:
+    page: int = 1,
+    page_size: int = _DEFAULT_PAGE_SIZE,
+) -> RoleAssignmentListResponse | JSONResponse:
     """List every `RoleAssignment` (org-wide and project-scoped) in `org_id` (ADR-0021).
 
     Same 404-vs-403 boundary as `create_role_assignment`, gated on
     `role_assignment.read`. No `project_id` filter query param in this
     story — every row for `org_id` is returned, org-wide and project-scoped
     both.
+
+    **DS-2/ADR-0041:** offset-paginated (`page`/`page_size`, default 25, max
+    100) and returning the standard `{items,total,page,page_size}` envelope
+    instead of RBAC-3's original bare array. This is a breaking response-shape
+    change — deliberate, and unconditional: the envelope is returned even when
+    no `page`/`page_size` params are supplied (TC-DS-013), so no caller can
+    keep relying on the old array shape by simply omitting the params.
+
+    Rows are ordered by `created_at` ascending, then `id` — an explicit,
+    stable order is required for offset pagination to be meaningful at all
+    (an unordered `SELECT` can return the same row on two different pages).
+    RBAC-3's original unordered query was fine only because it returned
+    everything in one response.
     """
     # 1. 404-vs-403 boundary.
     if not await _org_membership_exists(db, org_id, actor.actor_id):
@@ -216,7 +243,23 @@ async def list_role_assignments(
     # 2. Permission check — invoked directly, same posture as create above.
     await require_permission("role_assignment.read")(request, actor)
 
-    result = await db.execute(select(RoleAssignment).where(RoleAssignment.org_id == org_id))
+    page, page_size = clamp_pagination(page, page_size, 100)
+
+    total = await db.scalar(
+        select(func.count()).select_from(RoleAssignment).where(RoleAssignment.org_id == org_id)
+    )
+    result = await db.execute(
+        select(RoleAssignment)
+        .where(RoleAssignment.org_id == org_id)
+        .order_by(RoleAssignment.created_at.asc(), RoleAssignment.id.asc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
     rows = result.scalars().all()
 
-    return [_summary(row) for row in rows]
+    return RoleAssignmentListResponse(
+        items=[_summary(row) for row in rows],
+        total=total or 0,
+        page=page,
+        page_size=page_size,
+    )
