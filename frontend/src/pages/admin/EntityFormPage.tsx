@@ -16,7 +16,7 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import EntityForm from "../../components/crud/EntityForm";
+import EntityForm from "../../components/organisms/entity-form";
 import { ApiError } from "../../lib/api/client";
 import { EntityRow, getEntity, updateEntity } from "../../lib/api/entityCrud";
 import { useAdminRouteContext } from "./useAdminRouteContext";
