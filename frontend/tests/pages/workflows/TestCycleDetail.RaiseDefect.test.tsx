@@ -1,5 +1,5 @@
 /**
- * EXEC-3 (raise a Defect from a failed TestExecution, ADR-0041):
+ * EXEC-3 (raise a Defect from a failed TestExecution, ADR-0044):
  * `TestCycleDetail`'s "Raise Defect" button — only on `fail`-result
  * execution-history rows — and its modal (`POST /executions/{id}/defects`).
  *

@@ -7,7 +7,8 @@
  * `token` comes from the URL path param (`/invites/:token/accept`), matching
  * the backend route's own path shape exactly rather than a query string.
  *
- * Built with CoreUI (ADR-0012), mirrors `Signup.tsx`/`Login.tsx`'s structure.
+ * Built with raw Bootstrap 5 / AdminLTE markup (ADR-0042, superseding the
+ * CoreUI build of ADR-0012), mirrors `Signup.tsx`/`Login.tsx`'s structure.
  * React Hook Form + Zod own the form's state/validation. There is no
  * existing password-strength rule anywhere else in this codebase to mirror
  * (`Signup.tsx`'s password field has no client-side rule beyond HTML
@@ -30,18 +31,6 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useNavigate, useParams } from "react-router-dom";
-import {
-  CAlert,
-  CButton,
-  CCard,
-  CCardBody,
-  CCol,
-  CContainer,
-  CForm,
-  CFormInput,
-  CFormLabel,
-  CRow,
-} from "@coreui/react";
 import { useAuth } from "../../auth/AuthContext";
 import { ApiError } from "../../lib/api/client";
 
@@ -93,52 +82,56 @@ function AcceptInvite() {
 
   return (
     <div className="min-vh-100 d-flex align-items-center bg-body-secondary">
-      <CContainer>
-        <CRow className="justify-content-center">
-          <CCol md={6} lg={4}>
-            <CCard>
-              <CCardBody className="p-4">
+      <div className="container">
+        <div className="row justify-content-center">
+          <div className="col-md-6 col-lg-4">
+            <div className="card">
+              <div className="card-body p-4">
                 <h1 className="mb-4 fs-4">Accept your invite</h1>
-                <CForm
+                <form
                   noValidate
                   onSubmit={(event: FormEvent<HTMLFormElement>) => {
                     void handleSubmit(onSubmit)(event);
                   }}
                 >
                   <div className="mb-3">
-                    <CFormLabel htmlFor="password">Password</CFormLabel>
-                    <CFormInput
+                    <label className="form-label" htmlFor="password">
+                      Password
+                    </label>
+                    <input
+                      className={`form-control${errors.password ? " is-invalid" : ""}`}
                       id="password"
                       type="password"
                       autoComplete="new-password"
-                      invalid={Boolean(errors.password)}
                       {...register("password")}
                     />
                   </div>
                   <div className="mb-3">
-                    <CFormLabel htmlFor="confirmPassword">Confirm password</CFormLabel>
-                    <CFormInput
+                    <label className="form-label" htmlFor="confirmPassword">
+                      Confirm password
+                    </label>
+                    <input
+                      className={`form-control${errors.confirmPassword ? " is-invalid" : ""}`}
                       id="confirmPassword"
                       type="password"
                       autoComplete="new-password"
-                      invalid={Boolean(errors.confirmPassword)}
                       {...register("confirmPassword")}
                     />
                   </div>
                   {(errors.password || errors.confirmPassword || error) && (
-                    <CAlert color="danger" role="alert">
+                    <div className="alert alert-danger" role="alert">
                       {errors.password?.message ?? errors.confirmPassword?.message ?? error}
-                    </CAlert>
+                    </div>
                   )}
-                  <CButton type="submit" color="primary" disabled={submitting} className="w-100">
+                  <button type="submit" className="btn btn-primary w-100" disabled={submitting}>
                     {submitting ? "Setting password..." : "Set password"}
-                  </CButton>
-                </CForm>
-              </CCardBody>
-            </CCard>
-          </CCol>
-        </CRow>
-      </CContainer>
+                  </button>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

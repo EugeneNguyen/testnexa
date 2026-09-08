@@ -22,6 +22,10 @@ This bit the PLAN-3 documentation pass directly: a first attempt at a new `TestE
 
 When an ADR supersedes an earlier one and that earlier decision has its own rows in Requirements/Test-Design/Test-Cases/WBS (an FR, an NFR, a `TC-*` case, a WBS line), the convention this repo settled on (DASH-1, 2026-09-07, superseding LANDING-1/ADR-0024) is: **strikethrough (`~~text~~`) the stale row's content in place, add a one-line "superseded by X" note pointing at the new row/ADR, and keep it in the table** — don't delete the row outright. This mirrors the ADR index's own `Status: Superseded by NNNN` convention (never delete an ADR file) and keeps a coverage/traceability table's row count auditable across history (a reader can grep `~~` to find every superseded claim, and a deleted row leaves no trace that a decision ever existed or changed). Exclude struck-through rows from any total/count in the same table (e.g. Test Cases' coverage-summary total) and show the arithmetic in the recompute note, same as any other total change — don't silently drop the count without saying why it moved.
 
+## Code can land on `main` with zero doc propagation — a docs pass for one story should glance at what else shipped nearby, not just its own scope
+
+See root `CLAUDE.md`'s "Architecture decisions are ADR-first" section for the full write-up (two confirmed instances in one session, DS-2, 2026-09-08) — a cheap `git log` sweep against the doc index's own last-updated point can catch a sibling story's undocumented merge before it compounds into a bigger reconciliation later.
+
 ## Doc-propagation and implementation-worktree timing
 
 See root `CLAUDE.md`'s "Git / worktrees" section — a worktree created before a docs-propagation pass lands on `main` will implement against a stale doc set. This is a doc-authoring-side risk too, not just an implementation-side one: if you know an implementation worktree already exists for the story you're documenting, say so in the completion report so whoever implements knows to rebase first, rather than letting it surface later as a merge-time surprise.

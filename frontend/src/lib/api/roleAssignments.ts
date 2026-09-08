@@ -6,6 +6,13 @@
  *
  * All three are bespoke and org-path-scoped, same `apiFetch` wrapper shape
  * as `organizations.ts`/`projects.ts` — no cookie involved in any of them.
+ *
+ * **DS-2/ADR-0041 (2026-09-07):** `listRoleAssignments` now returns the
+ * standard `{items,total,page,page_size}` envelope (`page`/`page_size`
+ * accepted, default 25, max 100), not a bare array — the one table-backing
+ * list route in this codebase that had no pagination contract before this
+ * story. Breaking response-shape change; `RoleAssignmentsPanel.tsx` is the
+ * only caller and is updated in the same change.
  */
 import { apiFetch } from "./client";
 
@@ -16,6 +23,13 @@ export interface RoleAssignmentSummary {
   project_id: string | null;
   role_id: string;
   created_at: string;
+}
+
+export interface RoleAssignmentListResponse {
+  items: RoleAssignmentSummary[];
+  total: number;
+  page: number;
+  page_size: number;
 }
 
 export interface CreateRoleAssignmentPayload {
@@ -37,8 +51,21 @@ export interface RoleSummary {
  * in `orgId` (NFR-19), `403 permission_denied` if they're a member but lack
  * `role_assignment.read`.
  */
-export async function listRoleAssignments(orgId: string): Promise<RoleAssignmentSummary[]> {
-  return apiFetch<RoleAssignmentSummary[]>(`/api/v1/orgs/${orgId}/role-assignments`);
+export async function listRoleAssignments(
+  orgId: string,
+  params: { page?: number; page_size?: number } = {},
+): Promise<RoleAssignmentListResponse> {
+  const query = new URLSearchParams();
+  if (params.page !== undefined) {
+    query.set("page", String(params.page));
+  }
+  if (params.page_size !== undefined) {
+    query.set("page_size", String(params.page_size));
+  }
+  const qs = query.toString();
+  return apiFetch<RoleAssignmentListResponse>(
+    `/api/v1/orgs/${orgId}/role-assignments${qs ? `?${qs}` : ""}`,
+  );
 }
 
 /**

@@ -1,5 +1,5 @@
 /**
- * EXEC-3 raise-a-Defect (ADR-0041): the two client entry points this story
+ * EXEC-3 raise-a-Defect (ADR-0044): the two client entry points this story
  * adds — `POST /executions/{id}/defects` (create, atomic Defect+
  * TestCaseDefectLink) and `GET /test-cases/{id}/defects` (the ordered,
  * most-recent-first read `TestCase`'s detail view uses, AC3).

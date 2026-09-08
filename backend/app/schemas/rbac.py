@@ -70,6 +70,27 @@ class RoleAssignmentSummary(BaseModel):
     created_at: datetime
 
 
+class RoleAssignmentListResponse(BaseModel):
+    """Response of `GET /orgs/{org_id}/role-assignments` (DS-2, ADR-0041).
+
+    RBAC-3 (ADR-0021) originally returned a bare `list[RoleAssignmentSummary]`
+    — the one table-backing list route in this codebase with no pagination
+    contract at all. DS-2 brings it onto the same `{items,total,page,
+    page_size}` envelope every other list route already uses (NFR-6,
+    ADR-0022), so `RoleAssignmentsPanel` can be driven by the shared
+    `container/Table.tsx` in server mode like every other retrofitted screen.
+
+    This is a **breaking response-shape change** (bare array -> envelope);
+    ADR-0041 records that no caller outside `RoleAssignmentsPanel.tsx`
+    existed, so no deprecation path was needed.
+    """
+
+    items: list[RoleAssignmentSummary]
+    total: int
+    page: int
+    page_size: int
+
+
 # --- Role (RBAC-3 bespoke list; ADMIN-2 factory full CRUD) --------------------------------------
 
 
@@ -158,6 +179,7 @@ __all__ = [
     "MyPermissionsResponse",
     "PermissionListResponse",
     "PermissionSummary",
+    "RoleAssignmentListResponse",
     "RoleAssignmentSummary",
     "RoleListResponse",
     "RoleSummary",

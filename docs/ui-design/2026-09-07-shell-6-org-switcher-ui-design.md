@@ -38,7 +38,7 @@ Opening the trigger fires `GET /auth/me/orgs` (lazy-fetch — no call before the
 ```
 
 - One `CDropdownItem` per org in the response, label = `org.name`.
-- The org whose `id` matches the current route's `:orgId` (via `useParams()`) is marked active (checkmark/highlighted, CoreUI's own `active` prop on `CDropdownItem`) and is not itself clickable (no-op switching to the org you're already in). This checkmark row is exactly the row `useParams().orgId` matches — no separate "current org" section above the list.
+- The org whose `id` matches the current route's `:orgId` (via `useParams()`) is marked active (checkmark/highlighted — ~~CoreUI's own `active` prop on `CDropdownItem`~~ → Bootstrap's own `active` class on the `button.dropdown-item`, revised 2026-09-08 per [ADR-0042](../adr/0042-adminlte-design-system.md)) and is not itself clickable (no-op switching to the org you're already in). This checkmark row is exactly the row `useParams().orgId` matches — no separate "current org" section above the list.
 - Every other org is a plain clickable `CDropdownItem`.
 - No "New Organization" item anywhere in this menu (ADR-0036 decision) — org creation stays on `/orgs/pick`.
 - Single-org accounts: the list still renders (one row, marked current, non-clickable) — the trigger itself is never hidden or disabled.
@@ -47,7 +47,7 @@ Opening the trigger fires `GET /auth/me/orgs` (lazy-fetch — no call before the
 
 ## 4. Switch behavior
 
-Clicking a non-current org's `CDropdownItem` calls `navigate(`/orgs/${org.id}`)` — always the org root, never an attempt to reconstruct the current nested path in the target org (ADR-0036). The dropdown closes on click (CoreUI's default `CDropdownItem` behavior, no extra handling needed).
+Clicking a non-current org's dropdown item calls `navigate(`/orgs/${org.id}`)` — always the org root, never an attempt to reconstruct the current nested path in the target org (ADR-0036). ~~The dropdown closes on click (CoreUI's default `CDropdownItem` behavior, no extra handling needed).~~ **Revised 2026-09-08 ([ADR-0042](../adr/0042-adminlte-design-system.md)): close-on-click is now our own responsibility** — the dropdown is hand-rolled (`useState` open boolean toggling Bootstrap's `.show`, plus a document click-outside listener, the `useDropdown` pattern in `AppHeader.tsx`), and AdminLTE's plugin JS is not vendored, so the item's own handler must clear the open state explicitly. This is exactly the class of implicit library behavior worth re-checking anywhere a doc said "no extra handling needed."
 
 ## 5. Non-goals (explicit)
 

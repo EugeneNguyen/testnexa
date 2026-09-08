@@ -583,13 +583,27 @@ class TestClampPagination:
         assert clamp_pagination(1, -10)[1] == 1
 
     def test_page_size_above_max_ceilings_to_max(self) -> None:
-        assert clamp_pagination(1, 1000)[1] == 25
+        # DS-2/ADR-0041: default max_page_size raised 25 -> 100.
+        assert clamp_pagination(1, 1000)[1] == 100
 
     def test_custom_max_page_size_respected(self) -> None:
         assert clamp_pagination(1, 1000, max_page_size=50) == (1, 50)
 
     def test_page_unbounded_above(self) -> None:
         assert clamp_pagination(999, 25)[0] == 999
+
+    def test_page_size_500_clamps_to_exactly_100(self) -> None:
+        # TC-DS-012: an over-ceiling request clamps to the new 100 ceiling,
+        # not the requested value and not a 422 (this function never raises).
+        assert clamp_pagination(1, 500)[1] == 100
+
+    def test_page_size_101_clamps_to_100(self) -> None:
+        # Boundary just above the ceiling.
+        assert clamp_pagination(1, 101)[1] == 100
+
+    def test_page_size_exactly_100_is_not_clamped(self) -> None:
+        # TC-DS-012: the ceiling itself is inclusive, not off-by-one.
+        assert clamp_pagination(1, 100)[1] == 100
 
 
 # --- path/display-name helpers --------------------------------------------------------------------

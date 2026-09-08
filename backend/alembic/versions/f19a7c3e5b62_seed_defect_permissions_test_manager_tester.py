@@ -4,7 +4,7 @@ Revision ID: f19a7c3e5b62
 Revises: 6a11a6a1d803
 Create Date: 2026-09-08 00:00:00.000000
 
-EXEC-3/ADR-0041: `app/db/rbac_seed_catalog.py`'s seeded bundles gain two new
+EXEC-3/ADR-0044: `app/db/rbac_seed_catalog.py`'s seeded bundles gain two new
 grants:
 
 - **`test_manager` + `defect.create`** — held only `defect.read` before. The

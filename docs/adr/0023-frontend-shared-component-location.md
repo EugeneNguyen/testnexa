@@ -1,7 +1,7 @@
 # ADR-0023: Frontend shared-component location & FormField error-display convention
 
 **Date:** 2026-09-05
-**Status:** Accepted
+**Status:** Accepted — the `CFormFeedback`+`invalid` error-display convention is **partially superseded by [ADR-0042](0042-adminlte-design-system.md)** (2026-09-08): the convention itself survives *as a convention* — per-field inline feedback, not a page-level alert, for every RHF+Zod-bound field (NFR-34) — but its markup is now raw Bootstrap: `<div className="invalid-feedback d-block" role="alert">` alongside `is-invalid` on the input, not `<CFormFeedback invalid>`. **The `d-block` is not optional**: Bootstrap only reveals `.invalid-feedback` when it is the adjacent sibling of `.is-invalid`, and `FormField` does not always render it in that position. **This ADR's directory-location decision (`components/shared/` vs. `components/crud/`) is separately superseded by [ADR-0043](0043-atomic-design-tiering-for-frontend-components.md)** (2026-09-08, same day): both buckets are retired in favor of atoms/molecules/organisms/templates tiering by composition complexity. The page-local-components clause and ADR-0041's `container/` axis are untouched by either change.
 **Deciders:** xuanbinh91@gmail.com (CTO)
 **Related:** [ADR-0009](0009-frontend-stack.md) (React Hook Form + Zod, unchanged), [ADR-0012](0012-coreui-design-system.md) (CoreUI design system), [DS-1 user story](../user-stories/2026-09-04-design-system-component-stories.md#story-ds-1-reusable-form-field-component), [DS-1 scope plan](../superpowers/plans/2026-09-04-ds-1-form-field-plan.md)
 

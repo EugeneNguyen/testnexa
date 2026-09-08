@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { expect, test } from "@playwright/test";
 
 /**
- * EXEC-3 E2E (ADR-0041, UI Design Document
+ * EXEC-3 E2E (ADR-0044, UI Design Document
  * `docs/ui-design/2026-09-08-exec-3-raise-defect-ui-design.md`).
  *
  * The one thing no lower test layer can prove: that raising a Defect through
@@ -190,7 +190,7 @@ asyncio.run(main())
 /**
  * FK-safe, child-first cleanup. Extends `exec2-append-only-test-log.spec.ts`'s
  * own cleanup shape with one more child layer: `Defect.test_execution_id` is
- * `ON DELETE RESTRICT` (Database Document §3.8/ADR-0041), so any `Defect`
+ * `ON DELETE RESTRICT` (Database Document §3.8/ADR-0044), so any `Defect`
  * raised in this spec must be deleted before its `TestExecution` parent —
  * before even `TestLog`, since deletion order only needs each RESTRICT-FK
  * child gone before its own parent, not a strict global ordering across

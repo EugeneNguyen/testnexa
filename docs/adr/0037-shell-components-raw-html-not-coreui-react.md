@@ -1,9 +1,14 @@
 # ADR-0037: Shell components use raw HTML/Bootstrap classes, not `@coreui/react`
 
 **Date:** 2026-09-07
-**Status:** Accepted
+**Status:** Superseded by [ADR-0042](0042-adminlte-design-system.md) (2026-09-08).
+
+> **What survives:** the *pattern* — raw HTML/JSX written directly against the design system's own CSS classes, no component-library wrapper, class names copied from the library's real rendered DOM rather than invented, and interactive behavior reimplemented as plain React state toggling the same classes the library's JS would toggle. ADR-0042 promotes all of that from this ADR's 5-file exception to the **universal, repo-wide rule**.
+>
+> **What is obsolete:** every CoreUI-specific class name and mechanism named below (`sidebar`, `sidebar-dark`, `header`, `nav-group`, `data-coreui-theme`, `--cui-is-mobile`, `coreui.min.css`, `@coreui/coreui`'s bundled Bootstrap JS as the escape hatch) — AdminLTE v4's contract replaces each, see ADR-0042's Decision §"AdminLTE's own JS plugins and jQuery are NOT vendored" for the mapping. This ADR's **incremental-not-big-bang scope decision is also explicitly reversed**: its reasoning held while both conventions resolved to the same stylesheet, which is no longer true when the stylesheet itself changes (ADR-0042 Decision §"Big-bang scope").
+
 **Deciders:** xuanbinh91@gmail.com (CTO)
-**Related:** [ADR-0012](0012-coreui-design-system.md) (CoreUI design system — **partially superseded**, see below), [ADR-0018](0018-admin-shell-sidebar-layout.md) (admin shell sidebar+navbar layout — **partially superseded**, see below), [ADR-0020](0020-admin-shell-full-template-parity.md) (full template parity, unaffected)
+**Related:** [ADR-0042](0042-adminlte-design-system.md) (supersedes this ADR), [ADR-0012](0012-coreui-design-system.md) (CoreUI design system — **partially superseded** by this ADR, now fully superseded by ADR-0042), [ADR-0018](0018-admin-shell-sidebar-layout.md) (admin shell sidebar+navbar layout — **partially superseded**, see below), [ADR-0020](0020-admin-shell-full-template-parity.md) (full template parity, unaffected by this ADR)
 
 ## Context
 

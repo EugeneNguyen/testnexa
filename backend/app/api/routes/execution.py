@@ -379,7 +379,7 @@ async def raise_defect_for_execution(
     actor: User | AIAgent = Depends(get_current_actor),
     db: AsyncSession = Depends(get_db),
 ) -> DefectSummary | JSONResponse:
-    """FR-EXEC-3 AC1 (EXEC-3, ADR-0041): raise a `Defect` from a failed
+    """FR-EXEC-3 AC1 (EXEC-3, ADR-0044): raise a `Defect` from a failed
     `TestExecution`, atomically linking it to the originating `TestCase` via
     `TestCaseDefectLink`.
 
@@ -466,7 +466,7 @@ async def list_defects_for_test_case(
     actor: User | AIAgent = Depends(get_current_actor),
     db: AsyncSession = Depends(get_db),
 ) -> DefectListResponse | JSONResponse:
-    """FR-EXEC-3 AC3 (EXEC-3, ADR-0041): every Defect ever raised against any
+    """FR-EXEC-3 AC3 (EXEC-3, ADR-0044): every Defect ever raised against any
     of this TestCase's executions, most recent first.
 
     Not the generic factory's `GET /test-case-defect-links?test_case_id=`

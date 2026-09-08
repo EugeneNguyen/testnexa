@@ -49,9 +49,13 @@ from app.schemas.releases import (
 
 router = APIRouter()
 
-# API Document §1: offset-based pagination, default/max page_size = 25 (NFR-6).
+# API Document §1: offset-based pagination (NFR-6). Default page_size stays
+# 25; the ceiling was raised 25 -> 100 by DS-2/ADR-0041 so `ProjectDetail`'s
+# Releases table, now driven by the shared `container/Table.tsx`, can actually
+# honor its page-size selector's 100 option. Plain per-module literal, not a
+# shared constant, per that ADR's explicit direction.
 _DEFAULT_PAGE_SIZE = 25
-_MAX_PAGE_SIZE = 25
+_MAX_PAGE_SIZE = 100
 
 # Sortable columns for `GET /projects/{project_id}/releases` — only
 # `target_date` is named by ADR-0019/AC3; any other/unrecognized `sort`

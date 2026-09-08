@@ -1,5 +1,5 @@
 """Integration tests for EXEC-3 (raise a Defect from a failed TestExecution,
-ADR-0041).
+ADR-0044).
 
 Covers TC-EXEC-007 (atomic create+link, create-then-read), TC-EXEC-008
 (`external_ref` v1 posture), TC-EXEC-009 (most-recent-first ordering,

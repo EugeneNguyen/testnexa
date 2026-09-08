@@ -48,7 +48,7 @@ export function LoginForm({
       <IconInputGroup
         id="loginPassword"
         label="Password"
-        icon="lock-fill"
+        icon="lock"
         type="password"
         {...passwordFieldProps}
       />

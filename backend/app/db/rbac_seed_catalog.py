@@ -158,7 +158,7 @@ def build_role_bundles(all_permission_codes: set[str]) -> dict[str, set[str]]:
         # expansion this ADR doesn't need. EXEC-1/EXEC-3 write their own
         # migration if re-run-editing/defect workflow needs them.
         | {_code("test_execution", "create"), _code("test_execution", "read")}
-        # EXEC-3/ADR-0041: `defect.create` (the minimum to reach the new
+        # EXEC-3/ADR-0044: `defect.create` (the minimum to reach the new
         # `POST /executions/{id}/defects` — `test_manager` held only `.read`
         # before) plus `test_case_defect_link.read` (needed to reach the new
         # `GET /test-cases/{id}/defects` view; held neither before). `.update`/
@@ -188,7 +188,7 @@ def build_role_bundles(all_permission_codes: set[str]) -> dict[str, set[str]]:
         | _crud_codes("test_execution")
         | {_code("test_log", "read")}
         | {_code("defect", "create"), _code("defect", "read"), _code("defect", "update")}
-        # EXEC-3/ADR-0041: `tester` held full `defect` create/read/update
+        # EXEC-3/ADR-0044: `tester` held full `defect` create/read/update
         # already but never `test_case_defect_link.read` — needed to reach the
         # new `GET /test-cases/{id}/defects` view.
         | {_code("test_case_defect_link", "read")}

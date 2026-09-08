@@ -29,7 +29,7 @@ TestLogEventType = Literal["status_change", "comment", "attachment", "agent_acti
 
 
 class CreateDefectForExecutionRequest(BaseModel):
-    """Body of the bespoke `POST /executions/{id}/defects` (EXEC-3, ADR-0041).
+    """Body of the bespoke `POST /executions/{id}/defects` (EXEC-3, ADR-0044).
 
     `test_execution_id` comes from the path segment, not the body — same
     "the path is the only source of truth for the parent id" posture

@@ -1,5 +1,5 @@
 /**
- * EXEC-3 (raise a Defect from a failed TestExecution, ADR-0041):
+ * EXEC-3 (raise a Defect from a failed TestExecution, ADR-0044):
  * `EntityFormPage`'s new read-only "Defects" section, rendered only when
  * `entityKey === "test-cases"` — `GET /test-cases/{id}/defects`, most recent
  * first exactly as the route returns it, no client-side re-sort.

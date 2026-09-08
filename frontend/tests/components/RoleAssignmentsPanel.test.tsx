@@ -35,7 +35,7 @@ describe("RoleAssignmentsPanel", () => {
   });
 
   it("shows a loading state, then an empty state when there are no assignments", async () => {
-    mockListRoleAssignments.mockResolvedValue([]);
+    mockListRoleAssignments.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 25 });
     mockListRoles.mockResolvedValue([]);
 
     render(<RoleAssignmentsPanel orgId={ORG_ID} />);
@@ -48,24 +48,29 @@ describe("RoleAssignmentsPanel", () => {
       { id: ROLE_ORG_ADMIN, name: "org_admin", is_system_role: true },
       { id: ROLE_TESTER, name: "tester", is_system_role: true },
     ]);
-    mockListRoleAssignments.mockResolvedValue([
-      {
-        id: "aa-1",
-        actor_id: ACTOR_ID,
-        org_id: ORG_ID,
-        project_id: null,
-        role_id: ROLE_ORG_ADMIN,
-        created_at: "2026-09-03T00:00:00Z",
-      },
-      {
-        id: "aa-2",
-        actor_id: ACTOR_ID,
-        org_id: ORG_ID,
-        project_id: PROJECT_ID,
-        role_id: ROLE_TESTER,
-        created_at: "2026-09-03T00:00:00Z",
-      },
-    ]);
+    mockListRoleAssignments.mockResolvedValue({
+      items: [
+        {
+          id: "aa-1",
+          actor_id: ACTOR_ID,
+          org_id: ORG_ID,
+          project_id: null,
+          role_id: ROLE_ORG_ADMIN,
+          created_at: "2026-09-03T00:00:00Z",
+        },
+        {
+          id: "aa-2",
+          actor_id: ACTOR_ID,
+          org_id: ORG_ID,
+          project_id: PROJECT_ID,
+          role_id: ROLE_TESTER,
+          created_at: "2026-09-03T00:00:00Z",
+        },
+      ],
+      total: 2,
+      page: 1,
+      page_size: 25,
+    });
 
     render(<RoleAssignmentsPanel orgId={ORG_ID} />);
 
@@ -76,7 +81,7 @@ describe("RoleAssignmentsPanel", () => {
   });
 
   it("opens the modal with a role dropdown populated from listRoles()", async () => {
-    mockListRoleAssignments.mockResolvedValue([]);
+    mockListRoleAssignments.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 25 });
     mockListRoles.mockResolvedValue([{ id: ROLE_ORG_ADMIN, name: "org_admin", is_system_role: true }]);
 
     render(<RoleAssignmentsPanel orgId={ORG_ID} />);
@@ -90,7 +95,7 @@ describe("RoleAssignmentsPanel", () => {
   });
 
   it("rejects a malformed actor id client-side, without calling createRoleAssignment()", async () => {
-    mockListRoleAssignments.mockResolvedValue([]);
+    mockListRoleAssignments.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 25 });
     mockListRoles.mockResolvedValue([{ id: ROLE_ORG_ADMIN, name: "org_admin", is_system_role: true }]);
 
     render(<RoleAssignmentsPanel orgId={ORG_ID} />);
@@ -106,16 +111,23 @@ describe("RoleAssignmentsPanel", () => {
   });
 
   it("submits an org-wide grant (project_id omitted) and adds it to the list", async () => {
-    mockListRoleAssignments.mockResolvedValue([]);
-    mockListRoles.mockResolvedValue([{ id: ROLE_ORG_ADMIN, name: "org_admin", is_system_role: true }]);
-    mockCreateRoleAssignment.mockResolvedValue({
+    // DS-2/ADR-0041: the panel now re-fetches (server mode) rather than
+    // locally appending on create, so `total`/pagination stay correct — the
+    // 2nd `listRoleAssignments` call (the post-create refetch) needs its own
+    // mock returning the newly-created row.
+    const createdRow = {
       id: "aa-1",
       actor_id: ACTOR_ID,
       org_id: ORG_ID,
       project_id: null,
       role_id: ROLE_ORG_ADMIN,
       created_at: "2026-09-03T00:00:00Z",
-    });
+    };
+    mockListRoleAssignments
+      .mockResolvedValueOnce({ items: [], total: 0, page: 1, page_size: 25 })
+      .mockResolvedValue({ items: [createdRow], total: 1, page: 1, page_size: 25 });
+    mockListRoles.mockResolvedValue([{ id: ROLE_ORG_ADMIN, name: "org_admin", is_system_role: true }]);
+    mockCreateRoleAssignment.mockResolvedValue(createdRow);
 
     render(<RoleAssignmentsPanel orgId={ORG_ID} />);
     await screen.findByText(/no role assignments yet/i);
@@ -136,16 +148,19 @@ describe("RoleAssignmentsPanel", () => {
   });
 
   it("submits a project-scoped grant when scope is switched, including project_id", async () => {
-    mockListRoleAssignments.mockResolvedValue([]);
-    mockListRoles.mockResolvedValue([{ id: ROLE_TESTER, name: "tester", is_system_role: true }]);
-    mockCreateRoleAssignment.mockResolvedValue({
+    const createdRow = {
       id: "aa-2",
       actor_id: ACTOR_ID,
       org_id: ORG_ID,
       project_id: PROJECT_ID,
       role_id: ROLE_TESTER,
       created_at: "2026-09-03T00:00:00Z",
-    });
+    };
+    mockListRoleAssignments
+      .mockResolvedValueOnce({ items: [], total: 0, page: 1, page_size: 25 })
+      .mockResolvedValue({ items: [createdRow], total: 1, page: 1, page_size: 25 });
+    mockListRoles.mockResolvedValue([{ id: ROLE_TESTER, name: "tester", is_system_role: true }]);
+    mockCreateRoleAssignment.mockResolvedValue(createdRow);
 
     render(<RoleAssignmentsPanel orgId={ORG_ID} />);
     await screen.findByText(/no role assignments yet/i);
@@ -168,7 +183,7 @@ describe("RoleAssignmentsPanel", () => {
   });
 
   it("shows a 422 field_errors.actor_id inline on the actor id field, keeping the modal open", async () => {
-    mockListRoleAssignments.mockResolvedValue([]);
+    mockListRoleAssignments.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 25 });
     mockListRoles.mockResolvedValue([{ id: ROLE_ORG_ADMIN, name: "org_admin", is_system_role: true }]);
     mockCreateRoleAssignment.mockRejectedValue(
       new ApiError("Request failed validation.", 422, {
@@ -191,7 +206,7 @@ describe("RoleAssignmentsPanel", () => {
   });
 
   it("shows a non-field ApiError (e.g. 403 permission_denied) inline as an alert", async () => {
-    mockListRoleAssignments.mockResolvedValue([]);
+    mockListRoleAssignments.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 25 });
     mockListRoles.mockResolvedValue([{ id: ROLE_ORG_ADMIN, name: "org_admin", is_system_role: true }]);
     mockCreateRoleAssignment.mockRejectedValue(
       new ApiError("You do not have permission to perform this action.", 403, {

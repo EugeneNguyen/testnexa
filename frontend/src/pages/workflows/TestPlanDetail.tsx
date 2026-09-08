@@ -15,7 +15,7 @@
  * Five sections — PLAN-1's three, per §2, plus PLAN-2's fourth and PLAN-3's
  * fifth:
  *
- * 1. **Header card** — identifier, `status` as a colour-coded `CBadge`, and
+ * 1. **Header card** — identifier, `status` as a colour-coded badge, and
  *    scope/approach/staffing/schedule as labelled read-only text blocks. Its
  *    "Edit" modal reuses the generic admin surface's own `TestPlan` field
  *    config (`entityConfigs/test-plan.ts`) rendered through the same
@@ -25,7 +25,7 @@
  *    it anyway.
  * 2. **Test Suites** — the live membership list (`GET
  *    /test-plans/{id}/test-suites`), an "Include Suite" modal, and a per-row
- *    "Remove". A flat `<ul>`/`<li>`, never a nested `<CTable>`, per
+ *    "Remove". A flat `<ul>`/`<li>`, never a nested `<table>`, per
  *    `frontend/CLAUDE.md`'s nested-table a11y-name gotcha.
  * 3. **Covered Test Cases** — the read-only two-hop coverage query (`GET
  *    /test-plans/{id}/test-cases`), re-fetched on every successful include or
@@ -67,7 +67,7 @@
  * Cycle button (ADR-0033): this is a bespoke workflow screen, so it keeps the
  * attempt-then-error convention every other one uses, not the generic admin
  * surface's ADR-0027 hide/disable rule. A `403` simply surfaces as the same
- * inline `CAlert` a `422`/`409` does.
+ * inline alert a `422`/`409` does.
  *
  * Non-goals (§6): no Approve/Supersede buttons (GOV-1's own `/approve` route),
  * no bulk-include, and — per PLAN-2's own UI Design Document §5 — no
@@ -75,35 +75,17 @@
  * non-goals hold too: no execution-recording UI and no pass/fail dashboard
  * (EXEC-1).
  *
- * Built with CoreUI (ADR-0012).
+ * Built with AdminLTE v4 / raw Bootstrap 5 markup (ADR-0042). This screen was
+ * originally built on CoreUI React components (ADR-0012); ADR-0042 replaced the
+ * design system wholesale, so every former `C*` component here is now the
+ * equivalent hand-written Bootstrap 5 element. Nothing about the page's
+ * structure, semantics, or `data-testid` surface changed in that swap.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import {
-  CAlert,
-  CBadge,
-  CButton,
-  CCard,
-  CCardBody,
-  CCol,
-  CContainer,
-  CForm,
-  CFormFeedback,
-  CFormInput,
-  CFormLabel,
-  CFormSelect,
-  CFormText,
-  CModal,
-  CModalBody,
-  CModalFooter,
-  CModalHeader,
-  CModalTitle,
-  CRow,
-  CSpinner,
-} from "@coreui/react";
 import { ApiError } from "../../lib/api/client";
 import {
   addTestSuiteToPlan,
@@ -128,8 +110,8 @@ import {
   updateEntity,
   type EntityRow,
 } from "../../lib/api/entityCrud";
-import EntityForm from "../../components/crud/EntityForm";
-import FkAutocomplete from "../../components/crud/FkAutocomplete";
+import EntityForm from "../../components/organisms/entity-form";
+import FkAutocomplete from "../../components/molecules/fk-autocomplete";
 import testPlanConfig from "../../entityConfigs/test-plan";
 import testCycleConfig from "../../entityConfigs/test-cycle";
 import environmentConfig from "../../entityConfigs/environment";
@@ -296,6 +278,96 @@ function TextBlock({ label, value }: { label: string; value: string | null }) {
   );
 }
 
+/**
+ * The former `CSpinner color="primary"`, hand-written (ADR-0042). The explicit
+ * `role="status"` and the visually-hidden label are not decoration — CoreUI's
+ * own spinner emitted both, and `role="status"` is what several sibling
+ * screens' `getByRole("status")` lookups resolve against.
+ */
+function Spinner() {
+  return (
+    <div className="spinner-border text-primary" role="status">
+      <span className="visually-hidden">Loading...</span>
+    </div>
+  );
+}
+
+/**
+ * The former `CModal` + `CModalHeader`/`CModalTitle` pair, hand-written
+ * (ADR-0042 §2.3). One local helper rather than four copies of the same
+ * Bootstrap modal skeleton — this file renders four modals.
+ *
+ * **Renders nothing at all when closed**, which is the property that matters
+ * for behavior, not just for markup: `CModal` unmounted its content on
+ * `visible={false}`, and several tests assert exactly that
+ * (`queryByTestId("record-result-modal")).toBeNull()` and friends). A
+ * render-but-hide modal would silently break them.
+ *
+ * ESC-to-close reproduces CoreUI's own default `keyboard` behavior. Focus
+ * trapping is deliberately *not* reimplemented — ADR-0042 records it as an
+ * accepted gap for the whole migration, not an oversight here.
+ *
+ * `children` supplies the `.modal-body`/`.modal-footer` (or a `<form>` wrapping
+ * them, which is how the submit-bearing modals on this screen are shaped).
+ */
+function Modal({
+  visible,
+  onClose,
+  title,
+  testId,
+  children,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  title: string;
+  testId: string;
+  children: ReactNode;
+}) {
+  useEffect(() => {
+    if (!visible) {
+      return;
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [visible, onClose]);
+
+  if (!visible) {
+    return null;
+  }
+
+  const titleId = `${testId}-title`;
+  return (
+    <>
+      <div
+        className="modal fade show d-block"
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        data-testid={testId}
+      >
+        <div className="modal-dialog">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h5 className="modal-title" id={titleId}>
+                {title}
+              </h5>
+              <button type="button" className="btn-close" aria-label="Close" onClick={onClose} />
+            </div>
+            {children}
+          </div>
+        </div>
+      </div>
+      <div className="modal-backdrop fade show" />
+    </>
+  );
+}
+
 function TestPlanDetail() {
   const { projectId, testPlanId } = useParams<{ projectId: string; testPlanId: string }>();
 
@@ -305,7 +377,7 @@ function TestPlanDetail() {
 
   // Header "Edit" modal. `editApiError` carries the non-field failures —
   // including `409 invalid_status_transition`, which renders as an inline
-  // `CAlert` *inside* the modal (§4), never a toast and never a silent revert.
+  // inline alert *inside* the modal (§4), never a toast and never a silent revert.
   const [showEditModal, setShowEditModal] = useState(false);
   const [editApiError, setEditApiError] = useState<string | null>(null);
   const [editFieldErrors, setEditFieldErrors] = useState<Record<string, string> | undefined>(
@@ -317,7 +389,7 @@ function TestPlanDetail() {
   const [suitesLoading, setSuitesLoading] = useState(true);
   const [suitesLoadError, setSuitesLoadError] = useState<string | null>(null);
   // `422` (cross-project) / `409 already_included_in_plan` / `403`, rendered as
-  // a dismissible `CAlert` directly under the section header (§2).
+  // a dismissible alert directly under the section header (§2).
   const [membershipError, setMembershipError] = useState<string | null>(null);
 
   // The project's own suites — the "Include Suite" dropdown's options. Fetched
@@ -338,7 +410,7 @@ function TestPlanDetail() {
   const [criteria, setCriteria] = useState<EntryExitCriteriaSummary[]>([]);
   const [criteriaLoading, setCriteriaLoading] = useState(true);
   const [criteriaLoadError, setCriteriaLoadError] = useState<string | null>(null);
-  // `422`/`403`/`409` from an add/edit/delete — the dismissible `CAlert` under
+  // `422`/`403`/`409` from an add/edit/delete — the dismissible alert under
   // the section header, same convention as `membershipError` above.
   const [criteriaError, setCriteriaError] = useState<string | null>(null);
   // `null` when closed; `{ row: null }` = create, `{ row }` = edit that row.
@@ -354,7 +426,7 @@ function TestPlanDetail() {
   const [cyclesLoading, setCyclesLoading] = useState(true);
   const [cyclesLoadError, setCyclesLoadError] = useState<string | null>(null);
   // `422` (cross-project release/environment) / `403`, rendered as a
-  // dismissible `CAlert` directly under the section header (§1), same
+  // dismissible alert directly under the section header (§1), same
   // convention as `membershipError` above.
   const [cycleError, setCycleError] = useState<string | null>(null);
   // Label lookups for the list's FK columns: the project's own releases and
@@ -635,7 +707,7 @@ function TestPlanDetail() {
    * the mechanism behind "the coverage view never silently drifts."
    *
    * On failure the modal closes and the reason renders as the section-header
-   * `CAlert` (§2 places the `422`/`409` there, next to the list the action was
+   * alert (§2 places the `422`/`409` there, next to the list the action was
    * about, rather than inside a modal the user has finished with).
    */
   async function onSubmitInclude() {
@@ -699,7 +771,7 @@ function TestPlanDetail() {
    * puts each message on its own field (the only place a per-field message can
    * meaningfully render); anything else — `403`, `409`, a field-less `422`,
    * a network failure — closes the modal and surfaces as the dismissible
-   * section-header `CAlert` (§1), the same handling `onSubmitInclude` gives
+   * section-header alert (§1), the same handling `onSubmitInclude` gives
    * the Test Suites section's own failures.
    */
   async function onSubmitCriteria(values: Record<string, unknown>) {
@@ -833,51 +905,59 @@ function TestPlanDetail() {
 
   return (
     <div className="min-vh-100 bg-body-secondary py-4">
-      <CContainer fluid className="px-4">
-        <CRow className="justify-content-center">
-          <CCol md={10} lg={8}>
+      <div className="container-fluid px-4">
+        <div className="row justify-content-center">
+          <div className="col-md-10 col-lg-8">
             {/* --- Header card ------------------------------------------- */}
-            <CCard>
-              <CCardBody className="p-4">
+            <div className="card">
+              <div className="card-body p-4">
                 <div className="d-flex justify-content-between align-items-center mb-3">
                   <h1 className="fs-4 mb-0">
                     {plan ? plan.identifier : "Test plan"}{" "}
                     {plan && (
-                      <CBadge color={statusColor(plan.status)} data-testid="test-plan-status">
+                      <span
+                        className={`badge bg-${statusColor(plan.status)}`}
+                        data-testid="test-plan-status"
+                      >
                         {plan.status}
-                      </CBadge>
+                      </span>
                     )}
                   </h1>
                   <div className="d-flex gap-2">
-                    <CButton
-                      color="secondary"
-                      variant="outline"
-                      as={Link}
+                    {/*
+                      A real `<Link>` carrying button classes, not a `<button>`
+                      — the former `CButton as={Link}` was polymorphic and
+                      rendered an `<a>`; ADR-0042 §4.5.9 keeps that shape rather
+                      than degrading a navigation into a click handler.
+                    */}
+                    <Link
+                      className="btn btn-outline-secondary"
                       to={`/projects/${projectId}`}
                       data-testid="back-to-project"
                     >
                       Back to project
-                    </CButton>
-                    <CButton
-                      color="primary"
+                    </Link>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
                       data-testid="edit-test-plan-btn"
                       disabled={!plan}
                       onClick={openEditModal}
                     >
                       Edit
-                    </CButton>
+                    </button>
                   </div>
                 </div>
 
                 {planLoadError && (
-                  <CAlert color="danger" role="alert" data-testid="test-plan-load-error">
+                  <div className="alert alert-danger" role="alert" data-testid="test-plan-load-error">
                     {planLoadError}
-                  </CAlert>
+                  </div>
                 )}
 
                 {planLoading ? (
                   <div className="d-flex justify-content-center py-4">
-                    <CSpinner color="primary" />
+                    <Spinner />
                   </div>
                 ) : (
                   plan && (
@@ -889,51 +969,65 @@ function TestPlanDetail() {
                     </div>
                   )
                 )}
-              </CCardBody>
-            </CCard>
+              </div>
+            </div>
 
             {/* --- Test Suites (membership) ------------------------------- */}
-            <CCard className="mt-4">
-              <CCardBody className="p-4">
+            <div className="card mt-4">
+              <div className="card-body p-4">
                 <div className="d-flex justify-content-between align-items-center mb-3">
                   <h2 className="fs-5 mb-0">Test Suites</h2>
-                  <CButton color="primary" data-testid="include-suite-btn" onClick={openIncludeModal}>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    data-testid="include-suite-btn"
+                    onClick={openIncludeModal}
+                  >
                     Include Suite
-                  </CButton>
+                  </button>
                 </div>
 
                 {/*
                   §2: a `422` (cross-project) or `409 already_included_in_plan`
                   renders here — directly under the section header, dismissible,
-                  never a toast.
+                  never a toast. `alert-dismissible fade show` plus an explicit
+                  `.btn-close` is what the former `CAlert dismissible` emitted.
                 */}
                 {membershipError && (
-                  <CAlert
-                    color="danger"
+                  <div
+                    className="alert alert-danger alert-dismissible fade show"
                     role="alert"
-                    dismissible
                     data-testid="membership-error"
-                    onClose={() => setMembershipError(null)}
                   >
                     {membershipError}
-                  </CAlert>
+                    <button
+                      type="button"
+                      className="btn-close"
+                      aria-label="Close"
+                      onClick={() => setMembershipError(null)}
+                    />
+                  </div>
                 )}
 
                 {suitesLoadError && (
-                  <CAlert color="danger" role="alert" data-testid="included-suites-error">
+                  <div
+                    className="alert alert-danger"
+                    role="alert"
+                    data-testid="included-suites-error"
+                  >
                     {suitesLoadError}
-                  </CAlert>
+                  </div>
                 )}
 
                 {suitesLoading ? (
                   <div className="d-flex justify-content-center py-3">
-                    <CSpinner color="primary" />
+                    <Spinner />
                   </div>
                 ) : !suitesLoadError && includedSuites.length === 0 ? (
                   <p className="text-body-secondary mb-0">No test suites included yet.</p>
                 ) : (
                   !suitesLoadError && (
-                    /* Flat <ul>/<li>, not a nested <CTable> — frontend/CLAUDE.md. */
+                    /* Flat <ul>/<li>, not a nested <table> — frontend/CLAUDE.md. */
                     <ul className="list-unstyled mb-0" data-testid="included-suite-list">
                       {includedSuites.map((suite) => (
                         <li
@@ -943,39 +1037,40 @@ function TestPlanDetail() {
                         >
                           <span>
                             {suite.name}{" "}
-                            {suite.purpose && <CBadge color="info">{suite.purpose}</CBadge>}
+                            {suite.purpose && (
+                              <span className="badge bg-info">{suite.purpose}</span>
+                            )}
                           </span>
-                          <CButton
-                            color="danger"
-                            variant="outline"
-                            size="sm"
+                          <button
+                            type="button"
+                            className="btn btn-outline-danger btn-sm"
                             data-testid={`remove-suite-${suite.id}`}
                             onClick={() => onRemoveSuite(suite.id)}
                           >
                             Remove
-                          </CButton>
+                          </button>
                         </li>
                       ))}
                     </ul>
                   )
                 )}
-              </CCardBody>
-            </CCard>
+              </div>
+            </div>
 
             {/* --- Covered Test Cases (derived, read-only) ---------------- */}
-            <CCard className="mt-4">
-              <CCardBody className="p-4">
+            <div className="card mt-4">
+              <div className="card-body p-4">
                 <h2 className="fs-5 mb-3">Covered Test Cases</h2>
 
                 {coverageError && (
-                  <CAlert color="danger" role="alert" data-testid="coverage-error">
+                  <div className="alert alert-danger" role="alert" data-testid="coverage-error">
                     {coverageError}
-                  </CAlert>
+                  </div>
                 )}
 
                 {coverageLoading ? (
                   <div className="d-flex justify-content-center py-3">
-                    <CSpinner color="primary" />
+                    <Spinner />
                   </div>
                 ) : !coverageError && coverage.length === 0 ? (
                   /*
@@ -995,51 +1090,57 @@ function TestPlanDetail() {
                           className="border-bottom py-2"
                           data-testid={`covered-test-case-${testCase.id}`}
                         >
-                          {testCase.title} <CBadge color="secondary">{testCase.status}</CBadge>
+                          {testCase.title}{" "}
+                          <span className="badge bg-secondary">{testCase.status}</span>
                         </li>
                       ))}
                     </ul>
                   )
                 )}
-              </CCardBody>
-            </CCard>
+              </div>
+            </div>
 
             {/* --- Entry/Exit Criteria (PLAN-2, ADR-0032, §1) -------------- */}
-            <CCard className="mt-4">
-              <CCardBody className="p-4">
+            <div className="card mt-4">
+              <div className="card-body p-4">
                 <div className="d-flex justify-content-between align-items-center mb-3">
                   <h2 className="fs-5 mb-0">Entry/Exit Criteria</h2>
-                  <CButton
-                    color="primary"
+                  <button
+                    type="button"
+                    className="btn btn-primary"
                     data-testid="add-criteria-btn"
                     onClick={() => openCriteriaModal(null)}
                   >
                     Add Criteria
-                  </CButton>
+                  </button>
                 </div>
 
                 {/* §1: a `422`/`403`/`409` from add/edit/delete renders here. */}
                 {criteriaError && (
-                  <CAlert
-                    color="danger"
+                  <div
+                    className="alert alert-danger alert-dismissible fade show"
                     role="alert"
-                    dismissible
                     data-testid="criteria-error"
-                    onClose={() => setCriteriaError(null)}
                   >
                     {criteriaError}
-                  </CAlert>
+                    <button
+                      type="button"
+                      className="btn-close"
+                      aria-label="Close"
+                      onClick={() => setCriteriaError(null)}
+                    />
+                  </div>
                 )}
 
                 {criteriaLoadError && (
-                  <CAlert color="danger" role="alert" data-testid="criteria-load-error">
+                  <div className="alert alert-danger" role="alert" data-testid="criteria-load-error">
                     {criteriaLoadError}
-                  </CAlert>
+                  </div>
                 )}
 
                 {criteriaLoading ? (
                   <div className="d-flex justify-content-center py-3">
-                    <CSpinner color="primary" />
+                    <Spinner />
                   </div>
                 ) : !criteriaLoadError && criteria.length === 0 ? (
                   <p className="text-body-secondary mb-0">No entry/exit criteria defined yet.</p>
@@ -1054,71 +1155,84 @@ function TestPlanDetail() {
                           data-testid={`criteria-${row.id}`}
                         >
                           <span>
-                            <CBadge color={criteriaTypeColor(row.type)}>{row.type}</CBadge>{" "}
+                            <span className={`badge bg-${criteriaTypeColor(row.type)}`}>
+                              {row.type}
+                            </span>{" "}
                             {row.condition_text}
                           </span>
                           <span className="d-flex gap-2">
-                            <CButton
-                              color="primary"
-                              variant="outline"
-                              size="sm"
+                            <button
+                              type="button"
+                              className="btn btn-outline-primary btn-sm"
                               data-testid={`edit-criteria-${row.id}`}
                               onClick={() => openCriteriaModal(row)}
                             >
                               Edit
-                            </CButton>
-                            <CButton
-                              color="danger"
-                              variant="outline"
-                              size="sm"
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-outline-danger btn-sm"
                               data-testid={`delete-criteria-${row.id}`}
                               onClick={() => onDeleteCriteria(row.id)}
                             >
                               Delete
-                            </CButton>
+                            </button>
                           </span>
                         </li>
                       ))}
                     </ul>
                   )
                 )}
-              </CCardBody>
-            </CCard>
+              </div>
+            </div>
 
             {/* --- Test Cycles (PLAN-3, ADR-0033) ------------------------- */}
-            <CCard className="mt-4">
-              <CCardBody className="p-4">
+            <div className="card mt-4">
+              <div className="card-body p-4">
                 <div className="d-flex justify-content-between align-items-center mb-3">
                   <h2 className="fs-5 mb-0">Test Cycles</h2>
                   {/* §1: no permission-based hide/disable — attempt, then error. */}
-                  <CButton color="primary" data-testid="create-cycle-btn" onClick={openCycleModal}>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    data-testid="create-cycle-btn"
+                    onClick={openCycleModal}
+                  >
                     Create Cycle
-                  </CButton>
+                  </button>
                 </div>
 
                 {/* §1: a `422` (cross-project release/environment) or `403`
                     renders here, directly under the section header. */}
                 {cycleError && (
-                  <CAlert
-                    color="danger"
+                  <div
+                    className="alert alert-danger alert-dismissible fade show"
                     role="alert"
-                    dismissible
                     data-testid="cycle-error"
-                    onClose={() => setCycleError(null)}
                   >
                     {cycleError}
-                  </CAlert>
+                    <button
+                      type="button"
+                      className="btn-close"
+                      aria-label="Close"
+                      onClick={() => setCycleError(null)}
+                    />
+                  </div>
                 )}
 
                 {cyclesLoadError && (
-                  <CAlert color="danger" role="alert" data-testid="test-cycles-load-error">
+                  <div
+                    className="alert alert-danger"
+                    role="alert"
+                    data-testid="test-cycles-load-error"
+                  >
                     {cyclesLoadError}
-                  </CAlert>
+                  </div>
                 )}
 
                 {cyclesLoading ? (
                   <div className="d-flex justify-content-center py-3">
-                    <CSpinner color="primary" />
+                    <Spinner />
                   </div>
                 ) : !cyclesLoadError && cycles.length === 0 ? (
                   <p className="text-body-secondary mb-0">No test cycles yet.</p>
@@ -1147,12 +1261,12 @@ function TestPlanDetail() {
                               {cycle.name}
                             </Link>{" "}
                             <span className="text-body-secondary small">{cycleDateRange(cycle)}</span>{" "}
-                            <CBadge color="info">
+                            <span className="badge bg-info">
                               {releaseLabels[cycle.release_id] ?? cycle.release_id}
-                            </CBadge>{" "}
-                            <CBadge color="secondary">
+                            </span>{" "}
+                            <span className="badge bg-secondary">
                               {environmentLabels[cycle.environment_id] ?? cycle.environment_id}
-                            </CBadge>
+                            </span>
                           </span>
                           {/*
                             §1: no Edit/Delete here — `TestCycle`'s PATCH/DELETE
@@ -1170,18 +1284,20 @@ function TestPlanDetail() {
                     </ul>
                   )
                 )}
-              </CCardBody>
-            </CCard>
-          </CCol>
-        </CRow>
-      </CContainer>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* --- "Edit" modal: the generic admin field config, reused ---------- */}
-      <CModal visible={showEditModal} onClose={closeEditModal} data-testid="edit-test-plan-modal">
-        <CModalHeader>
-          <CModalTitle>Edit Test Plan</CModalTitle>
-        </CModalHeader>
-        <CModalBody>
+      <Modal
+        visible={showEditModal}
+        onClose={closeEditModal}
+        title="Edit Test Plan"
+        testId="edit-test-plan-modal"
+      >
+        <div className="modal-body">
           {plan && (
             <EntityForm
               config={editConfig}
@@ -1193,24 +1309,35 @@ function TestPlanDetail() {
               serverFieldErrors={editFieldErrors}
             />
           )}
-        </CModalBody>
-      </CModal>
+        </div>
+      </Modal>
 
       {/* --- "Include Suite" modal ----------------------------------------- */}
-      <CModal visible={showIncludeModal} onClose={closeIncludeModal} data-testid="include-suite-modal">
-        <CModalHeader>
-          <CModalTitle>Include Suite</CModalTitle>
-        </CModalHeader>
-        <CForm
+      <Modal
+        visible={showIncludeModal}
+        onClose={closeIncludeModal}
+        title="Include Suite"
+        testId="include-suite-modal"
+      >
+        <form
           onSubmit={(event) => {
             event.preventDefault();
             onSubmitInclude();
           }}
           noValidate
         >
-          <CModalBody>
-            <CFormLabel htmlFor="includeSuiteId">Test suite</CFormLabel>
-            <CFormSelect
+          <div className="modal-body">
+            <label className="form-label" htmlFor="includeSuiteId">
+              Test suite
+            </label>
+            {/*
+              Controlled, *not* RHF-registered — this one select predates the
+              cycle form's `useForm` and owns its value in plain `useState`.
+              Left exactly as it was; the migration changed the element, not the
+              state ownership.
+            */}
+            <select
+              className="form-select"
               id="includeSuiteId"
               data-testid="include-suite-select"
               value={selectedSuiteId}
@@ -1232,36 +1359,41 @@ function TestPlanDetail() {
               ) : (
                 <option value="">No suites yet — create one on the Test Suites page</option>
               )}
-            </CFormSelect>
-          </CModalBody>
-          <CModalFooter>
-            <CButton color="secondary" variant="outline" onClick={closeIncludeModal}>
+            </select>
+          </div>
+          <div className="modal-footer">
+            {/*
+              `type="button"` is load-bearing now: `CButton`'s own default was
+              `button`, but a bare `<button>` inside a `<form>` defaults to
+              `submit` and would turn Cancel into a submit.
+            */}
+            <button
+              type="button"
+              className="btn btn-outline-secondary"
+              onClick={closeIncludeModal}
+            >
               Cancel
-            </CButton>
-            <CButton
+            </button>
+            <button
               type="submit"
-              color="primary"
+              className="btn btn-primary"
               data-testid="include-suite-submit"
               disabled={!selectedSuiteId || includeSubmitting}
             >
               {includeSubmitting ? "Including..." : "Include"}
-            </CButton>
-          </CModalFooter>
-        </CForm>
-      </CModal>
+            </button>
+          </div>
+        </form>
+      </Modal>
 
       {/* --- Criteria add/edit modal: the same generic config, reused ------ */}
-      <CModal
+      <Modal
         visible={criteriaModal !== null}
         onClose={closeCriteriaModal}
-        data-testid="criteria-modal"
+        title={criteriaModal?.row ? "Edit Criteria" : "Add Criteria"}
+        testId="criteria-modal"
       >
-        <CModalHeader>
-          <CModalTitle>
-            {criteriaModal?.row ? "Edit Criteria" : "Add Criteria"}
-          </CModalTitle>
-        </CModalHeader>
-        <CModalBody>
+        <div className="modal-body">
           {criteriaModal && (
             <EntityForm
               // Remount between create and each edit target so RHF picks up
@@ -1280,16 +1412,18 @@ function TestPlanDetail() {
               serverFieldErrors={criteriaFieldErrors}
             />
           )}
-        </CModalBody>
-      </CModal>
+        </div>
+      </Modal>
 
       {/* --- "Create Cycle" modal (PLAN-3, UI Design Document §2) ---------- */}
-      <CModal visible={showCycleModal} onClose={closeCycleModal} data-testid="create-cycle-modal">
-        <CModalHeader>
-          <CModalTitle>Create Cycle</CModalTitle>
-        </CModalHeader>
-        <CForm onSubmit={handleSubmitCycle(onSubmitCycle)} noValidate>
-          <CModalBody>
+      <Modal
+        visible={showCycleModal}
+        onClose={closeCycleModal}
+        title="Create Cycle"
+        testId="create-cycle-modal"
+      >
+        <form onSubmit={handleSubmitCycle(onSubmitCycle)} noValidate>
+          <div className="modal-body">
             {/*
               `FkAutocomplete` takes no `data-testid` of its own (it's the
               generic-admin widget, not this screen's), so each is wrapped in a
@@ -1320,27 +1454,34 @@ function TestPlanDetail() {
               */
               <>
                 <div className="mb-3">
-                  <CFormLabel htmlFor="newEnvironmentName">New environment name</CFormLabel>
-                  <CFormInput
+                  <label className="form-label" htmlFor="newEnvironmentName">
+                    New environment name
+                  </label>
+                  <input
+                    className={`form-control${cycleErrors.newEnvironmentName ? " is-invalid" : ""}`}
                     id="newEnvironmentName"
                     type="text"
                     data-testid="new-environment-name"
-                    invalid={!!cycleErrors.newEnvironmentName}
                     {...registerCycle("newEnvironmentName")}
                   />
                   {cycleErrors.newEnvironmentName && (
-                    <CFormFeedback invalid>{cycleErrors.newEnvironmentName.message}</CFormFeedback>
+                    <div className="invalid-feedback d-block">
+                      {cycleErrors.newEnvironmentName.message}
+                    </div>
                   )}
                 </div>
                 <div className="mb-3">
-                  <CFormLabel htmlFor="newEnvironmentConfigNotes">Config notes</CFormLabel>
-                  <CFormInput
+                  <label className="form-label" htmlFor="newEnvironmentConfigNotes">
+                    Config notes
+                  </label>
+                  <input
+                    className="form-control"
                     id="newEnvironmentConfigNotes"
                     type="text"
                     data-testid="new-environment-config-notes"
                     {...registerCycle("newEnvironmentConfigNotes")}
                   />
-                  <CFormText>Optional.</CFormText>
+                  <div className="form-text">Optional.</div>
                 </div>
               </>
             ) : (
@@ -1360,71 +1501,80 @@ function TestPlanDetail() {
               </div>
             )}
 
-            <CButton
-              color="link"
-              size="sm"
-              className="p-0 mb-3"
+            {/* `color="link"` was CoreUI's own alias for Bootstrap's `btn-link`. */}
+            <button
               type="button"
+              className="btn btn-link btn-sm p-0 mb-3"
               data-testid="new-environment-toggle"
               onClick={toggleNewEnvironment}
             >
               {newEnvironmentActive ? "Use an existing environment" : "+ New Environment"}
-            </CButton>
+            </button>
 
             <div className="mb-3">
-              <CFormLabel htmlFor="cycleName">Name</CFormLabel>
-              <CFormInput
+              <label className="form-label" htmlFor="cycleName">
+                Name
+              </label>
+              <input
+                className={`form-control${cycleErrors.name ? " is-invalid" : ""}`}
                 id="cycleName"
                 type="text"
                 data-testid="cycle-name"
-                invalid={!!cycleErrors.name}
                 {...registerCycle("name")}
               />
-              {cycleErrors.name && <CFormFeedback invalid>{cycleErrors.name.message}</CFormFeedback>}
+              {cycleErrors.name && (
+                <div className="invalid-feedback d-block">{cycleErrors.name.message}</div>
+              )}
             </div>
 
             <div className="mb-3">
-              <CFormLabel htmlFor="cycleStartDate">Start date</CFormLabel>
-              <CFormInput
+              <label className="form-label" htmlFor="cycleStartDate">
+                Start date
+              </label>
+              <input
+                className="form-control"
                 id="cycleStartDate"
                 type="date"
                 data-testid="cycle-start-date"
                 {...registerCycle("startDate")}
               />
-              <CFormText>Optional.</CFormText>
+              <div className="form-text">Optional.</div>
             </div>
 
             <div className="mb-3">
-              <CFormLabel htmlFor="cycleEndDate">End date</CFormLabel>
-              <CFormInput
+              <label className="form-label" htmlFor="cycleEndDate">
+                End date
+              </label>
+              <input
+                className="form-control"
                 id="cycleEndDate"
                 type="date"
                 data-testid="cycle-end-date"
                 {...registerCycle("endDate")}
               />
-              <CFormText>Optional.</CFormText>
+              <div className="form-text">Optional.</div>
             </div>
-          </CModalBody>
-          <CModalFooter>
-            <CButton
-              color="secondary"
-              variant="outline"
+          </div>
+          <div className="modal-footer">
+            <button
+              type="button"
+              className="btn btn-outline-secondary"
               data-testid="create-cycle-cancel"
               onClick={closeCycleModal}
             >
               Cancel
-            </CButton>
-            <CButton
+            </button>
+            <button
               type="submit"
-              color="primary"
+              className="btn btn-primary"
               data-testid="create-cycle-submit"
               disabled={isSubmittingCycle}
             >
               {isSubmittingCycle ? "Creating..." : "Create"}
-            </CButton>
-          </CModalFooter>
-        </CForm>
-      </CModal>
+            </button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

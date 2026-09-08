@@ -24,7 +24,7 @@
  * 2. **Execution history** — `GET /test-executions?test_cycle_id=<id>`, sorted
  *    `executed_at` **descending** client-side (the generic list route has no
  *    `sort` param — same client-side ordering `testSteps.ts` already documents).
- *    A flat `<ul>`/`<li>`, never a `<CTable>`, per `frontend/CLAUDE.md`.
+ *    A flat `<ul>`/`<li>`, never a `<table>`, per `frontend/CLAUDE.md`.
  * 3. **Record Result modal** — `test_case_id` picker scoped to the plan's own
  *    coverage query, `result`, `actual_result`, `executed_at`.
  *
@@ -73,7 +73,7 @@
  * a bespoke workflow screen, so it keeps the attempt-then-error convention
  * every other one uses, not the generic admin surface's ADR-0027
  * hide/disable rule"). Consistency with the sibling screen wins: a `403`
- * surfaces as the same dismissible in-modal `CAlert` a `422` does (see
+ * surfaces as the same dismissible in-modal alert a `422` does (see
  * `onSubmitRecord`). Flagged rather than silently absorbed — same posture
  * PLAN-3's implementer took with ADR-0032's own prose/sketch contradiction.
  *
@@ -82,36 +82,17 @@
  * recorded execution (`test_manager` holds neither `test_execution.update` nor
  * `.delete`, ADR-0033's own deliberate withholding).
  *
- * Built with CoreUI (ADR-0012).
+ * Built with AdminLTE v4 / raw Bootstrap 5 markup (ADR-0042). This screen was
+ * originally built on CoreUI React components (ADR-0012); ADR-0042 replaced the
+ * design system wholesale, so every former `C*` component here is now the
+ * equivalent hand-written Bootstrap 5 element. Nothing about the page's
+ * structure, semantics, or `data-testid` surface changed in that swap.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import {
-  CAlert,
-  CBadge,
-  CButton,
-  CCard,
-  CCardBody,
-  CCol,
-  CContainer,
-  CForm,
-  CFormFeedback,
-  CFormInput,
-  CFormLabel,
-  CFormSelect,
-  CFormText,
-  CFormTextarea,
-  CModal,
-  CModalBody,
-  CModalFooter,
-  CModalHeader,
-  CModalTitle,
-  CRow,
-  CSpinner,
-} from "@coreui/react";
 import { ApiError } from "../../lib/api/client";
 import {
   createTestExecution,
@@ -132,7 +113,7 @@ import {
 import { getProject } from "../../lib/api/projects";
 import { listMembers } from "../../lib/api/members";
 import { listEntities, getEntity, type EntityRow } from "../../lib/api/entityCrud";
-import FkAutocomplete from "../../components/crud/FkAutocomplete";
+import FkAutocomplete from "../../components/molecules/fk-autocomplete";
 import testExecutionConfig from "../../entityConfigs/test-execution";
 import testCycleConfig from "../../entityConfigs/test-cycle";
 import testCaseConfig from "../../entityConfigs/test-case";
@@ -208,7 +189,7 @@ const commentSchema = z.object({
 
 type CommentFormValues = z.infer<typeof commentSchema>;
 
-/** UI Design Document §2 (EXEC-3, ADR-0041): all four `DefectSeverity` values. */
+/** UI Design Document §2 (EXEC-3, ADR-0044): all four `DefectSeverity` values. */
 const DEFECT_SEVERITIES: DefectSeverityValue[] = ["low", "medium", "high", "critical"];
 
 const raiseDefectSchema = z.object({
@@ -304,7 +285,11 @@ function errorMessage(err: unknown): string {
   return err instanceof ApiError ? err.message : GENERIC_ERROR;
 }
 
-/** One dashboard stat tile (UI Design Document §3) — always rendered, `0` included. */
+/**
+ * One dashboard stat tile (UI Design Document §3) — always rendered, `0`
+ * included. `xs={6} md={3}` was CoreUI's grid API; Bootstrap's own `xs` tier has
+ * no infix, hence `col-6 col-md-3` (ADR-0042 §2).
+ */
 function StatTile({
   label,
   value,
@@ -317,16 +302,110 @@ function StatTile({
   testId: string;
 }) {
   return (
-    <CCol xs={6} md={3} className="mb-3">
-      <CCard className="h-100 text-center" data-testid={testId}>
-        <CCardBody className="py-3">
+    <div className="col-6 col-md-3 mb-3">
+      <div className="card h-100 text-center" data-testid={testId}>
+        <div className="card-body py-3">
           <div className="text-body-secondary small text-uppercase">{label}</div>
           <div className={`fs-3 fw-semibold text-${color}`} data-testid={`${testId}-count`}>
             {value === null ? "—" : value}
           </div>
-        </CCardBody>
-      </CCard>
-    </CCol>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The former `CSpinner color="primary"`, hand-written (ADR-0042). The explicit
+ * `role="status"` and the visually-hidden label are not decoration — CoreUI's
+ * own spinner emitted both, and `role="status"` is what sibling screens'
+ * `getByRole("status")` lookups resolve against.
+ */
+function Spinner() {
+  return (
+    <div className="spinner-border text-primary" role="status">
+      <span className="visually-hidden">Loading...</span>
+    </div>
+  );
+}
+
+/**
+ * The former `CModal` + `CModalHeader`/`CModalTitle` pair, hand-written
+ * (ADR-0042 §2.3). One local helper rather than two copies of the same
+ * Bootstrap modal skeleton.
+ *
+ * **Renders nothing at all when closed**, which is the property that matters
+ * for behavior, not just for markup: `CModal` unmounted its content on
+ * `visible={false}`, and both of this screen's own suites assert exactly that
+ * (`queryByTestId("record-result-modal")).toBeNull()`,
+ * `queryByTestId("execution-history-modal")).not.toBeInTheDocument()`). A
+ * render-but-hide modal would silently break them.
+ *
+ * `centered` is the former `alignment="center"` — `modal-dialog-centered`. It is
+ * the only alignment override in this codebase, and it belongs to the history
+ * modal alone; the record-result modal is deliberately top-aligned, as before.
+ *
+ * ESC-to-close reproduces CoreUI's own default `keyboard` behavior. Focus
+ * trapping is deliberately *not* reimplemented — ADR-0042 records it as an
+ * accepted gap for the whole migration, not an oversight here.
+ */
+function Modal({
+  visible,
+  onClose,
+  title,
+  testId,
+  centered,
+  children,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  title: string;
+  testId: string;
+  centered?: boolean;
+  children: ReactNode;
+}) {
+  useEffect(() => {
+    if (!visible) {
+      return;
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [visible, onClose]);
+
+  if (!visible) {
+    return null;
+  }
+
+  const titleId = `${testId}-title`;
+  return (
+    <>
+      <div
+        className="modal fade show d-block"
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        data-testid={testId}
+      >
+        <div className={`modal-dialog${centered ? " modal-dialog-centered" : ""}`}>
+          <div className="modal-content">
+            <div className="modal-header">
+              <h5 className="modal-title" id={titleId}>
+                {title}
+              </h5>
+              <button type="button" className="btn-close" aria-label="Close" onClick={onClose} />
+            </div>
+            {children}
+          </div>
+        </div>
+      </div>
+      <div className="modal-backdrop fade show" />
+    </>
   );
 }
 
@@ -367,7 +446,7 @@ function TestCycleDetail() {
   const [actorLabels, setActorLabels] = useState<Record<string, string>>({});
 
   // `422` (out-of-scope test case) / `403` from a record attempt — rendered as
-  // a dismissible `CAlert` *inside* the still-open modal (UI Design Document
+  // a dismissible alert *inside* the still-open modal (UI Design Document
   // §5), so a failed attempt never discards what the user typed.
   const [recordError, setRecordError] = useState<string | null>(null);
   const [showRecordModal, setShowRecordModal] = useState(false);
@@ -409,7 +488,7 @@ function TestCycleDetail() {
     defaultValues: { text: "", attachmentUrl: "", fileName: "" },
   });
 
-  // --- EXEC-3: "Raise Defect" modal (ADR-0041) --------------------------
+  // --- EXEC-3: "Raise Defect" modal (ADR-0044) --------------------------
   const [showRaiseDefectModal, setShowRaiseDefectModal] = useState(false);
   const [raiseDefectExecutionId, setRaiseDefectExecutionId] = useState<string | null>(null);
   const [raiseDefectError, setRaiseDefectError] = useState<string | null>(null);
@@ -655,7 +734,7 @@ function TestCycleDetail() {
    * both views re-fetch.
    *
    * On failure the modal **stays open** and the reason renders as a
-   * dismissible `CAlert` inside it (UI Design Document §5's literal wording for
+   * dismissible alert inside it (UI Design Document §5's literal wording for
    * both the `422` out-of-scope case and the `403`). Keeping it open is the
    * point, not an incidental detail: closing would discard the user's typed
    * `actual_result` and their chosen `executed_at`, forcing them to retype
@@ -798,51 +877,60 @@ function TestCycleDetail() {
 
   return (
     <div className="min-vh-100 bg-body-secondary py-4">
-      <CContainer fluid className="px-4">
-        <CRow className="justify-content-center">
-          <CCol md={10} lg={8}>
+      <div className="container-fluid px-4">
+        <div className="row justify-content-center">
+          <div className="col-md-10 col-lg-8">
             {/* --- Header card ------------------------------------------- */}
-            <CCard>
-              <CCardBody className="p-4">
+            <div className="card">
+              <div className="card-body p-4">
                 <div className="d-flex justify-content-between align-items-center mb-3">
                   <h1 className="fs-4 mb-0" data-testid="test-cycle-name">
                     {cycleName}
                   </h1>
                   <div className="d-flex gap-2">
-                    <CButton
-                      color="secondary"
-                      variant="outline"
-                      as={Link}
+                    {/*
+                      A real `<Link>` carrying button classes, not a `<button>`
+                      — the former `CButton as={Link}` was polymorphic and
+                      rendered an `<a>`; ADR-0042 §4.5.9 keeps that shape rather
+                      than degrading a navigation into a click handler.
+                    */}
+                    <Link
+                      className="btn btn-outline-secondary"
                       to={`/projects/${projectId}/test-plans/${testPlanId}`}
                       data-testid="back-to-test-plan"
                     >
                       Back to Test Plan
-                    </CButton>
+                    </Link>
                     {/*
                       No permission-based hide/disable — see this module's
                       docstring, deviation 2: consistent with `TestPlanDetail`'s
                       own attempt-then-error convention for this screen family.
                     */}
-                    <CButton
-                      color="primary"
+                    <button
+                      type="button"
+                      className="btn btn-primary"
                       data-testid="record-result-btn"
                       disabled={!cycle}
                       onClick={openRecordModal}
                     >
                       Record Result
-                    </CButton>
+                    </button>
                   </div>
                 </div>
 
                 {cycleLoadError && (
-                  <CAlert color="danger" role="alert" data-testid="test-cycle-load-error">
+                  <div
+                    className="alert alert-danger"
+                    role="alert"
+                    data-testid="test-cycle-load-error"
+                  >
                     {cycleLoadError}
-                  </CAlert>
+                  </div>
                 )}
 
                 {cycleLoading ? (
                   <div className="d-flex justify-content-center py-4">
-                    <CSpinner color="primary" />
+                    <Spinner />
                   </div>
                 ) : (
                   cycle && (
@@ -867,21 +955,22 @@ function TestCycleDetail() {
                     </div>
                   )
                 )}
-              </CCardBody>
-            </CCard>
+              </div>
+            </div>
 
             {/* --- Dashboard (UI Design Document §3, above history) -------- */}
-            <CCard className="mt-4">
-              <CCardBody className="p-4">
+            <div className="card mt-4">
+              <div className="card-body p-4">
                 <h2 className="fs-5 mb-3">Dashboard</h2>
 
                 {countsError && (
-                  <CAlert color="danger" role="alert" data-testid="dashboard-error">
+                  <div className="alert alert-danger" role="alert" data-testid="dashboard-error">
                     {countsError}
-                  </CAlert>
+                  </div>
                 )}
 
-                <CRow data-testid="execution-dashboard">
+                {/* The former `CRow` — the testid stays on the `.row` itself. */}
+                <div className="row" data-testid="execution-dashboard">
                   <StatTile
                     label="Pass"
                     value={counts.pass}
@@ -906,30 +995,34 @@ function TestCycleDetail() {
                     color="secondary"
                     testId="dashboard-tile-skipped"
                   />
-                </CRow>
-              </CCardBody>
-            </CCard>
+                </div>
+              </div>
+            </div>
 
             {/* --- Execution history (UI Design Document §4) --------------- */}
-            <CCard className="mt-4">
-              <CCardBody className="p-4">
+            <div className="card mt-4">
+              <div className="card-body p-4">
                 <h2 className="fs-5 mb-3">Execution history</h2>
 
                 {historyLoadError && (
-                  <CAlert color="danger" role="alert" data-testid="execution-history-error">
+                  <div
+                    className="alert alert-danger"
+                    role="alert"
+                    data-testid="execution-history-error"
+                  >
                     {historyLoadError}
-                  </CAlert>
+                  </div>
                 )}
 
                 {historyLoading ? (
                   <div className="d-flex justify-content-center py-3">
-                    <CSpinner color="primary" />
+                    <Spinner />
                   </div>
                 ) : !historyLoadError && executions.length === 0 ? (
                   <p className="text-body-secondary mb-0">No executions recorded yet.</p>
                 ) : (
                   !historyLoadError && (
-                    /* Flat <ul>/<li>, never a <CTable> — frontend/CLAUDE.md. */
+                    /* Flat <ul>/<li>, never a <table> — frontend/CLAUDE.md. */
                     <ul className="list-unstyled mb-0" data-testid="execution-history-list">
                       {executions.map((execution) => (
                         <li
@@ -941,12 +1034,12 @@ function TestCycleDetail() {
                             <span data-testid={`execution-${execution.id}-test-case`}>
                               {testCaseTitles[execution.test_case_id] ?? execution.test_case_id}
                             </span>
-                            <CBadge
-                              color={resultColor(execution.result)}
+                            <span
+                              className={`badge bg-${resultColor(execution.result)}`}
                               data-testid={`execution-${execution.id}-result`}
                             >
                               {execution.result}
-                            </CBadge>
+                            </span>
                             <span
                               className="text-body-secondary small"
                               data-testid={`execution-${execution.id}-executed-at`}
@@ -960,31 +1053,28 @@ function TestCycleDetail() {
                               {actorLabels[execution.executed_by_actor_id] ??
                                 execution.executed_by_actor_id}
                             </span>
-                            <CButton
-                              size="sm"
-                              color="secondary"
-                              variant="outline"
-                              className="ms-auto"
+                            <button
+                              type="button"
+                              className="btn btn-outline-secondary btn-sm ms-auto"
                               data-testid={`execution-${execution.id}-view-history`}
                               onClick={() => openHistoryModal(execution.id)}
                             >
                               History
-                            </CButton>
+                            </button>
                             {/*
-                              EXEC-3 (ADR-0041): only on `fail` rows — the
+                              EXEC-3 (ADR-0044): only on `fail` rows — the
                               backend's own `422` (result != fail) stays the
                               real enforcement boundary regardless.
                             */}
                             {execution.result === "fail" && (
-                              <CButton
-                                size="sm"
-                                color="danger"
-                                variant="outline"
+                              <button
+                                type="button"
+                                className="btn btn-outline-danger btn-sm"
                                 data-testid={`execution-${execution.id}-raise-defect`}
                                 onClick={() => openRaiseDefectModal(execution.id)}
                               >
                                 Raise Defect
-                              </CButton>
+                              </button>
                             )}
                           </div>
                           {execution.actual_result && (
@@ -997,38 +1087,42 @@ function TestCycleDetail() {
                     </ul>
                   )
                 )}
-              </CCardBody>
-            </CCard>
-          </CCol>
-        </CRow>
-      </CContainer>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* --- "Record Result" modal (UI Design Document §5) ----------------- */}
-      <CModal
+      <Modal
         visible={showRecordModal}
         onClose={closeRecordModal}
-        data-testid="record-result-modal"
+        title="Record Result"
+        testId="record-result-modal"
       >
-        <CModalHeader>
-          <CModalTitle>Record Result</CModalTitle>
-        </CModalHeader>
-        <CForm onSubmit={handleSubmitRecord(onSubmitRecord)} noValidate>
-          <CModalBody>
+        <form onSubmit={handleSubmitRecord(onSubmitRecord)} noValidate>
+          <div className="modal-body">
             {/*
               UI Design Document §5: a `422` (out-of-scope TestCase) or `403`
               renders here, inside the modal, dismissible — and the modal stays
               open so the user's typed input survives the failure.
+              `alert-dismissible fade show` plus an explicit `.btn-close` is what
+              the former `CAlert dismissible` emitted.
             */}
             {recordError && (
-              <CAlert
-                color="danger"
+              <div
+                className="alert alert-danger alert-dismissible fade show"
                 role="alert"
-                dismissible
                 data-testid="record-error"
-                onClose={() => setRecordError(null)}
               >
                 {recordError}
-              </CAlert>
+                <button
+                  type="button"
+                  className="btn-close"
+                  aria-label="Close"
+                  onClick={() => setRecordError(null)}
+                />
+              </div>
             )}
 
             {/*
@@ -1053,11 +1147,15 @@ function TestCycleDetail() {
             </div>
 
             <div className="mb-3">
-              <CFormLabel htmlFor="recordResult">Result</CFormLabel>
-              <CFormSelect
+              <label className="form-label" htmlFor="recordResult">
+                Result
+              </label>
+              {/* RHF-registered (unlike `TestPlanDetail`'s controlled suite
+                  picker) — the `register()` spread is unchanged. */}
+              <select
+                className={`form-select${recordErrors.result ? " is-invalid" : ""}`}
                 id="recordResult"
                 data-testid="record-result-select"
-                invalid={!!recordErrors.result}
                 {...registerRecord("result")}
               >
                 {TEST_EXECUTION_RESULTS.map((value) => (
@@ -1065,87 +1163,101 @@ function TestCycleDetail() {
                     {value}
                   </option>
                 ))}
-              </CFormSelect>
+              </select>
               {recordErrors.result && (
-                <CFormFeedback invalid>{recordErrors.result.message}</CFormFeedback>
+                <div className="invalid-feedback d-block">{recordErrors.result.message}</div>
               )}
             </div>
 
             <div className="mb-3">
-              <CFormLabel htmlFor="recordActualResult">Actual result</CFormLabel>
-              <CFormTextarea
+              <label className="form-label" htmlFor="recordActualResult">
+                Actual result
+              </label>
+              <textarea
+                className="form-control"
                 id="recordActualResult"
                 rows={3}
                 data-testid="record-actual-result"
                 {...registerRecord("actualResult")}
               />
-              <CFormText>Optional.</CFormText>
+              <div className="form-text">Optional.</div>
             </div>
 
             <div className="mb-3">
-              <CFormLabel htmlFor="recordExecutedAt">Executed at</CFormLabel>
+              <label className="form-label" htmlFor="recordExecutedAt">
+                Executed at
+              </label>
               {/*
                 `datetime-local`, not `date`: `executed_at` is a `datetime`
                 column and time of day is significant (the same distinction
                 `entityConfigs/test-execution.ts`'s own docstring flags).
               */}
-              <CFormInput
+              <input
+                className={`form-control${recordErrors.executedAt ? " is-invalid" : ""}`}
                 id="recordExecutedAt"
                 type="datetime-local"
                 data-testid="record-executed-at"
-                invalid={!!recordErrors.executedAt}
                 {...registerRecord("executedAt")}
               />
               {recordErrors.executedAt && (
-                <CFormFeedback invalid>{recordErrors.executedAt.message}</CFormFeedback>
+                <div className="invalid-feedback d-block">{recordErrors.executedAt.message}</div>
               )}
             </div>
-          </CModalBody>
-          <CModalFooter>
-            <CButton
-              color="secondary"
-              variant="outline"
+          </div>
+          <div className="modal-footer">
+            {/*
+              `type="button"` is load-bearing now: `CButton`'s own default was
+              `button`, but a bare `<button>` inside a `<form>` defaults to
+              `submit` and would turn Cancel into a submit.
+            */}
+            <button
+              type="button"
+              className="btn btn-outline-secondary"
               data-testid="record-result-cancel"
               onClick={closeRecordModal}
             >
               Cancel
-            </CButton>
-            <CButton
+            </button>
+            <button
               type="submit"
-              color="primary"
+              className="btn btn-primary"
               data-testid="record-result-submit"
               disabled={isSubmittingRecord}
             >
               {isSubmittingRecord ? "Recording..." : "Record"}
-            </CButton>
-          </CModalFooter>
-        </CForm>
-      </CModal>
+            </button>
+          </div>
+        </form>
+      </Modal>
 
-      {/* --- "Execution history" timeline modal (EXEC-2, FR-EXEC-2) -------- */}
-      <CModal
+      {/* --- "Execution history" timeline modal (EXEC-2, FR-EXEC-2) --------
+          The one vertically-centred modal in the codebase: CoreUI's
+          `alignment="center"` is Bootstrap's `modal-dialog-centered`. */}
+      <Modal
         visible={showHistoryModal}
         onClose={closeHistoryModal}
-        alignment="center"
-        data-testid="execution-history-modal"
+        title="Execution history"
+        testId="execution-history-modal"
+        centered
       >
-        <CModalHeader>
-          <CModalTitle>Execution history</CModalTitle>
-        </CModalHeader>
-        <CModalBody>
+        <div className="modal-body">
           {logsLoadError && (
-            <CAlert color="danger" role="alert" data-testid="execution-log-load-error">
+            <div
+              className="alert alert-danger"
+              role="alert"
+              data-testid="execution-log-load-error"
+            >
               {logsLoadError}
-            </CAlert>
+            </div>
           )}
 
           {logsLoading ? (
             <div className="d-flex justify-content-center py-3">
-              <CSpinner color="primary" />
+              <Spinner />
             </div>
           ) : (
             !logsLoadError && (
-              /* Flat <ul>/<li>, never a <CTable> — frontend/CLAUDE.md. Ordered
+              /* Flat <ul>/<li>, never a <table> — frontend/CLAUDE.md. Ordered
                  oldest-first exactly as `GET /executions/{id}/logs` returns it
                  (AC3's "ordered TestLog timeline"). */
               <ul className="list-unstyled mb-3" data-testid="execution-log-timeline">
@@ -1159,12 +1271,12 @@ function TestCycleDetail() {
                     data-testid={`execution-log-entry-${log.id}`}
                   >
                     <div className="d-flex align-items-center gap-2 flex-wrap">
-                      <CBadge
-                        color={logEventColor(log.event_type)}
+                      <span
+                        className={`badge bg-${logEventColor(log.event_type)}`}
                         data-testid={`execution-log-entry-${log.id}-type`}
                       >
                         {log.event_type}
-                      </CBadge>
+                      </span>
                       <span
                         className="text-body-secondary small"
                         data-testid={`execution-log-entry-${log.id}-logged-at`}
@@ -1184,47 +1296,53 @@ function TestCycleDetail() {
             )
           )}
 
-          <CForm onSubmit={handleSubmitComment(onSubmitComment)} noValidate>
+          <form onSubmit={handleSubmitComment(onSubmitComment)} noValidate>
             <h2 className="fs-6 mb-2">Add a comment</h2>
 
             {commentError && (
-              <CAlert color="danger" role="alert" data-testid="add-comment-error">
+              <div className="alert alert-danger" role="alert" data-testid="add-comment-error">
                 {commentError}
-              </CAlert>
+              </div>
             )}
 
             <div className="mb-2">
-              <CFormLabel htmlFor="comment-text">Comment</CFormLabel>
-              <CFormTextarea
+              <label className="form-label" htmlFor="comment-text">
+                Comment
+              </label>
+              <textarea
+                className={`form-control${commentErrors.text ? " is-invalid" : ""}`}
                 id="comment-text"
                 rows={2}
                 data-testid="add-comment-text"
-                invalid={Boolean(commentErrors.text)}
                 {...registerComment("text")}
               />
               {commentErrors.text && (
-                <CFormFeedback invalid>{commentErrors.text.message}</CFormFeedback>
+                <div className="invalid-feedback d-block">{commentErrors.text.message}</div>
               )}
             </div>
 
             <div className="mb-2">
-              <CFormLabel htmlFor="comment-attachment-url">
+              <label className="form-label" htmlFor="comment-attachment-url">
                 Attachment URL (optional)
-              </CFormLabel>
-              <CFormInput
+              </label>
+              <input
+                className="form-control"
                 id="comment-attachment-url"
                 data-testid="add-comment-attachment-url"
                 {...registerComment("attachmentUrl")}
               />
-              <CFormText>
+              <div className="form-text">
                 A plain link/reference, not a file upload (v1) — supplying one logs this
                 entry as an attachment rather than a plain comment.
-              </CFormText>
+              </div>
             </div>
 
             <div className="mb-3">
-              <CFormLabel htmlFor="comment-file-name">File name (optional)</CFormLabel>
-              <CFormInput
+              <label className="form-label" htmlFor="comment-file-name">
+                File name (optional)
+              </label>
+              <input
+                className="form-control"
                 id="comment-file-name"
                 data-testid="add-comment-file-name"
                 {...registerComment("fileName")}
@@ -1232,40 +1350,38 @@ function TestCycleDetail() {
             </div>
 
             <div className="d-flex justify-content-end">
-              <CButton
+              <button
                 type="submit"
-                color="primary"
+                className="btn btn-primary"
                 data-testid="add-comment-submit"
                 disabled={isSubmittingComment}
               >
                 {isSubmittingComment ? "Adding..." : "Add comment"}
-              </CButton>
+              </button>
             </div>
-          </CForm>
-        </CModalBody>
-        <CModalFooter>
-          <CButton
-            color="secondary"
-            variant="outline"
+          </form>
+        </div>
+        <div className="modal-footer">
+          <button
+            type="button"
+            className="btn btn-outline-secondary"
             data-testid="execution-history-close"
             onClick={closeHistoryModal}
           >
             Close
-          </CButton>
-        </CModalFooter>
-      </CModal>
+          </button>
+        </div>
+      </Modal>
 
-      {/* --- "Raise Defect" modal (EXEC-3, ADR-0041) ------------------------ */}
-      <CModal
+      {/* --- "Raise Defect" modal (EXEC-3, ADR-0044) ------------------------ */}
+      <Modal
         visible={showRaiseDefectModal}
         onClose={closeRaiseDefectModal}
-        data-testid="raise-defect-modal"
+        title="Raise Defect"
+        testId="raise-defect-modal"
       >
-        <CModalHeader>
-          <CModalTitle>Raise Defect</CModalTitle>
-        </CModalHeader>
-        <CForm onSubmit={handleSubmitRaiseDefect(onSubmitRaiseDefect)} noValidate>
-          <CModalBody>
+        <form onSubmit={handleSubmitRaiseDefect(onSubmitRaiseDefect)} noValidate>
+          <div className="modal-body">
             {/*
               UI Design Document §3: a `422` (execution no longer `fail`, a
               narrow race) or `403` renders here, inside the modal, dismissible
@@ -1273,36 +1389,45 @@ function TestCycleDetail() {
               convention `onSubmitRecord`/EXEC-2's comment form already use.
             */}
             {raiseDefectError && (
-              <CAlert
-                color="danger"
+              <div
+                className="alert alert-danger alert-dismissible fade show"
                 role="alert"
-                dismissible
                 data-testid="raise-defect-error"
-                onClose={() => setRaiseDefectError(null)}
               >
                 {raiseDefectError}
-              </CAlert>
+                <button
+                  type="button"
+                  className="btn-close"
+                  aria-label="Close"
+                  onClick={() => setRaiseDefectError(null)}
+                />
+              </div>
             )}
 
             <div className="mb-3">
-              <CFormLabel htmlFor="raiseDefectExternalRef">External ref (optional)</CFormLabel>
-              <CFormInput
+              <label className="form-label" htmlFor="raiseDefectExternalRef">
+                External ref (optional)
+              </label>
+              <input
+                className="form-control"
                 id="raiseDefectExternalRef"
                 data-testid="raise-defect-external-ref"
                 {...registerRaiseDefect("externalRef")}
               />
-              <CFormText>
+              <div className="form-text">
                 e.g. a Jira/GitHub/GitLab issue URL or id — plain text, no live integration
                 in this scaffold.
-              </CFormText>
+              </div>
             </div>
 
             <div className="mb-3">
-              <CFormLabel htmlFor="raiseDefectSeverity">Severity</CFormLabel>
-              <CFormSelect
+              <label className="form-label" htmlFor="raiseDefectSeverity">
+                Severity
+              </label>
+              <select
+                className={`form-select${raiseDefectErrors.severity ? " is-invalid" : ""}`}
                 id="raiseDefectSeverity"
                 data-testid="raise-defect-severity"
-                invalid={!!raiseDefectErrors.severity}
                 {...registerRaiseDefect("severity")}
               >
                 {DEFECT_SEVERITIES.map((value) => (
@@ -1310,41 +1435,44 @@ function TestCycleDetail() {
                     {value}
                   </option>
                 ))}
-              </CFormSelect>
+              </select>
               {raiseDefectErrors.severity && (
-                <CFormFeedback invalid>{raiseDefectErrors.severity.message}</CFormFeedback>
+                <div className="invalid-feedback d-block">{raiseDefectErrors.severity.message}</div>
               )}
             </div>
 
             <div className="mb-3">
-              <CFormLabel htmlFor="raiseDefectStatus">Status (optional, defaults to "open")</CFormLabel>
-              <CFormInput
+              <label className="form-label" htmlFor="raiseDefectStatus">
+                Status (optional, defaults to "open")
+              </label>
+              <input
+                className="form-control"
                 id="raiseDefectStatus"
                 data-testid="raise-defect-status"
                 {...registerRaiseDefect("status")}
               />
             </div>
-          </CModalBody>
-          <CModalFooter>
-            <CButton
-              color="secondary"
-              variant="outline"
+          </div>
+          <div className="modal-footer">
+            <button
+              type="button"
+              className="btn btn-outline-secondary"
               data-testid="raise-defect-cancel"
               onClick={closeRaiseDefectModal}
             >
               Cancel
-            </CButton>
-            <CButton
+            </button>
+            <button
               type="submit"
-              color="primary"
+              className="btn btn-primary"
               data-testid="raise-defect-submit"
               disabled={isSubmittingRaiseDefect}
             >
               {isSubmittingRaiseDefect ? "Raising..." : "Raise Defect"}
-            </CButton>
-          </CModalFooter>
-        </CForm>
-      </CModal>
+            </button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

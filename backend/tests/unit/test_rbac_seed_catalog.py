@@ -248,7 +248,7 @@ def test_tester_bundle_has_no_approval_or_role_permissions() -> None:
 
 
 def test_test_manager_bundle_gains_defect_create_only() -> None:
-    """EXEC-3/ADR-0041: `test_manager` gains `defect.create` — it held only
+    """EXEC-3/ADR-0044: `test_manager` gains `defect.create` — it held only
     `.read` before (RBAC-4's original seed). `.update`/`.delete` deliberately
     NOT granted, same restraint ADR-0033 already took for `test_execution.*`
     (no FR-EXEC-3 AC asks `test_manager` to edit/delete a raised Defect).
@@ -263,7 +263,7 @@ def test_test_manager_bundle_gains_defect_create_only() -> None:
 
 
 def test_test_manager_and_tester_both_gain_test_case_defect_link_read() -> None:
-    """EXEC-3/ADR-0041: neither role held `test_case_defect_link.read` before
+    """EXEC-3/ADR-0044: neither role held `test_case_defect_link.read` before
     (only `org_admin`/`auditor` did) — both need it to reach the new
     `GET /test-cases/{id}/defects` view (AC3).
     """

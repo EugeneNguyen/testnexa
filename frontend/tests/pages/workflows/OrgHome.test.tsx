@@ -60,7 +60,7 @@ const mockListProjects = vi.mocked(listProjects);
 const mockListRoleAssignments = vi.mocked(listRoleAssignments);
 const mockListRoles = vi.mocked(listRoles);
 
-mockListRoleAssignments.mockResolvedValue([]);
+mockListRoleAssignments.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 25 });
 mockListRoles.mockResolvedValue([]);
 mockListProjects.mockResolvedValue([]);
 
@@ -377,7 +377,11 @@ describe("OrgHome — New Project modal", () => {
     expect(screen.getAllByRole("row")).toHaveLength(11); // 10 data rows + 1 header row
     expect(screen.queryByText("Project 11")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByText("2", { selector: "a.page-link" }));
+    // ADR-0042: `container/Table.tsx`'s pagination is raw Bootstrap markup now
+    // — `CPaginationItem` rendered its inner control as an `<a class="page-link">`
+    // (or a `<span>` for the active page); the replacement is always a real
+    // `<button class="page-link">`. Same class, same text, different element.
+    fireEvent.click(screen.getByText("2", { selector: "button.page-link" }));
 
     expect(await screen.findByText("Project 11")).toBeInTheDocument();
     expect(screen.queryByText("Project 00")).not.toBeInTheDocument();

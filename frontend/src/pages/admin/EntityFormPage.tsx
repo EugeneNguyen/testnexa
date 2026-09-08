@@ -1,21 +1,33 @@
 /**
  * ADR-0025: the surface's other page component — the dedicated `/edit`
- * route only (UI Design Document §2: create renders inside a `CModal` on
+ * route only (UI Design Document §2: create renders inside a modal on
  * `EntityListPage` instead). Route:
  * `/orgs/:orgId/admin/:entity/:id/edit` or
  * `/projects/:projectId/admin/:entity/:id/edit`.
+ *
+ * **ADR-0042 (CoreUI -> AdminLTE v4):** raw Bootstrap 5 markup —
+ * `CContainer fluid` -> `<div class="container-fluid">`, `CCard`/`CCardBody`
+ * -> `<div class="card">`/`<div class="card-body">`, `CAlert` -> `<div
+ * class="alert alert-danger" role="alert">`, `CSpinner` -> `<div
+ * class="spinner-border" role="status">`. The `h-100` stretch pattern is
+ * unchanged (`frontend/CLAUDE.md`: the card is the sole child of its sizing
+ * context here, so a plain height utility is correct).
+ *
+ * **EXEC-3 (ADR-0044)** adds one exception to this page's otherwise fully
+ * generic shape: a read-only "Defects" section when `entityKey ===
+ * "test-cases"` (§4). Its badge uses `bg-*` per this repo's own AdminLTE
+ * convention (not Bootstrap 5.3's `text-bg-*`).
  */
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { CAlert, CBadge, CCard, CCardBody, CContainer, CSpinner } from "@coreui/react";
-import EntityForm from "../../components/crud/EntityForm";
+import EntityForm from "../../components/organisms/entity-form";
 import { ApiError } from "../../lib/api/client";
 import { EntityRow, getEntity, updateEntity } from "../../lib/api/entityCrud";
 import { listDefectsForTestCase, type DefectSummary } from "../../lib/api/defects";
 import { useAdminRouteContext } from "./useAdminRouteContext";
 
-/** UI Design Document §4 (EXEC-3, ADR-0041) — one color per `DefectSeverity`. */
+/** UI Design Document §4 (EXEC-3, ADR-0044) — one color per `DefectSeverity`. */
 function severityColor(severity: string): string {
   switch (severity) {
     case "critical":
@@ -68,7 +80,7 @@ function EntityFormPage() {
   });
 
   /**
-   * EXEC-3 (ADR-0041), UI Design Document §4: `TestCase`'s only detail view
+   * EXEC-3 (ADR-0044), UI Design Document §4: `TestCase`'s only detail view
    * (there is no bespoke `TestCaseDetail` page) gains a read-only "Defects"
    * section, most-recent-first exactly as `GET /test-cases/{id}/defects`
    * returns it — no client-side re-sort needed. Only fetched for the
@@ -83,32 +95,34 @@ function EntityFormPage() {
 
   if (!config) {
     return (
-      <CContainer fluid className="px-4 py-4 h-100">
-        <CCard className="h-100">
-          <CCardBody>
-            <CAlert color="danger" role="alert">
+      <div className="container-fluid px-4 py-4 h-100">
+        <div className="card h-100">
+          <div className="card-body">
+            <div className="alert alert-danger" role="alert">
               Unknown admin entity &quot;{entityKey}&quot;.
-            </CAlert>
-          </CCardBody>
-        </CCard>
-      </CContainer>
+            </div>
+          </div>
+        </div>
+      </div>
     );
   }
 
   return (
-    <CContainer fluid className="px-4 py-4 h-100">
-      <CCard className="h-100">
-        <CCardBody>
+    <div className="container-fluid px-4 py-4 h-100">
+      <div className="card h-100">
+        <div className="card-body">
           <h1 className="fs-4 mb-3">Edit {entityKey.replace(/-/g, " ")}</h1>
 
           {itemQuery.isLoading ? (
             <div className="d-flex justify-content-center py-4">
-              <CSpinner color="primary" />
+              <div className="spinner-border text-primary" role="status">
+                <span className="visually-hidden">Loading...</span>
+              </div>
             </div>
           ) : itemQuery.isError ? (
-            <CAlert color="danger" role="alert">
+            <div className="alert alert-danger" role="alert">
               Something went wrong loading this record.
-            </CAlert>
+            </div>
           ) : (
             <EntityForm
               config={config}
@@ -131,12 +145,14 @@ function EntityFormPage() {
 
               {defectsQuery.isLoading ? (
                 <div className="d-flex justify-content-center py-3">
-                  <CSpinner color="primary" />
+                  <div className="spinner-border text-primary" role="status">
+                    <span className="visually-hidden">Loading...</span>
+                  </div>
                 </div>
               ) : defectsQuery.isError ? (
-                <CAlert color="danger" role="alert" data-testid="test-case-defects-error">
+                <div className="alert alert-danger" role="alert" data-testid="test-case-defects-error">
                   Something went wrong loading this test case's defects.
-                </CAlert>
+                </div>
               ) : defectsQuery.data && defectsQuery.data.length > 0 ? (
                 /* Flat <ul>/<li>, per frontend/CLAUDE.md's nested-list convention. */
                 <ul className="list-unstyled mb-0" data-testid="test-case-defects-list">
@@ -147,12 +163,12 @@ function EntityFormPage() {
                       data-testid={`test-case-defect-${defect.id}`}
                     >
                       <div className="d-flex align-items-center gap-2 flex-wrap">
-                        <CBadge
-                          color={severityColor(defect.severity)}
+                        <span
+                          className={`badge bg-${severityColor(defect.severity)}`}
                           data-testid={`test-case-defect-${defect.id}-severity`}
                         >
                           {defect.severity}
-                        </CBadge>
+                        </span>
                         <span data-testid={`test-case-defect-${defect.id}-external-ref`}>
                           {defect.external_ref ?? "(no external ref)"}
                         </span>
@@ -173,9 +189,9 @@ function EntityFormPage() {
               )}
             </div>
           )}
-        </CCardBody>
-      </CCard>
-    </CContainer>
+        </div>
+      </div>
+    </div>
   );
 }
 

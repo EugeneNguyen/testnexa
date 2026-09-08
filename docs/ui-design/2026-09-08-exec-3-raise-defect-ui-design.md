@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-08
 **Owner:** xuanbinh91@gmail.com (CTO)
-**Sources:** [ADR-0041](../adr/0041-exec-3-raise-defect-from-execution.md), [ADR-0034](../adr/0034-exec-1-test-execution-recording-dashboard.md)/[EXEC-1 UI Design Document](2026-09-07-exec-1-test-execution-recording-ui-design.md) (`TestCycleDetail`, this story's first host screen), [ADR-0038](../adr/0038-exec-2-append-only-test-log.md)/[EXEC-2 UI Design Document](2026-09-07-exec-2-append-only-test-log-ui-design.md) (same screen's existing "History" modal, the sibling affordance this one sits next to), [ADR-0027](../adr/0027-generic-admin-crud-ui-and-backend-completion.md) (`EntityFormPage`, this story's second host screen — `TestCase`'s only existing detail view), [Sitemap](../sitemap/2026-09-05-project-scaffold-sitemap.md).
+**Sources:** [ADR-0044](../adr/0044-exec-3-raise-defect-from-execution.md), [ADR-0034](../adr/0034-exec-1-test-execution-recording-dashboard.md)/[EXEC-1 UI Design Document](2026-09-07-exec-1-test-execution-recording-ui-design.md) (`TestCycleDetail`, this story's first host screen), [ADR-0038](../adr/0038-exec-2-append-only-test-log.md)/[EXEC-2 UI Design Document](2026-09-07-exec-2-append-only-test-log-ui-design.md) (same screen's existing "History" modal, the sibling affordance this one sits next to), [ADR-0027](../adr/0027-generic-admin-crud-ui-and-backend-completion.md) (`EntityFormPage`, this story's second host screen — `TestCase`'s only existing detail view), [Sitemap](../sitemap/2026-09-05-project-scaffold-sitemap.md).
 
 ## 1. Screen identity
 
@@ -69,4 +69,4 @@ The button renders **only on rows whose `result` is `fail`** — the backend's o
 
 ## 6. Non-goals
 
-No edit/delete of a raised Defect from either screen (`test_manager`'s bundle is deliberately not extended with `defect.update`/`.delete` — see ADR-0041's Alternatives). No `TestLog` entry appended when a Defect is raised (EXEC-2's own scope note already excluded this; EXEC-3 stays additive). No live external-tracker integration for `external_ref` (AC2's own literal "plain text/URL... no live integration needed for v1"). No bespoke `TestCaseDetail` page — the Defects section extends the existing generic `EntityFormPage`, not a new screen, matching this story's minimal-surface posture.
+No edit/delete of a raised Defect from either screen (`test_manager`'s bundle is deliberately not extended with `defect.update`/`.delete` — see ADR-0044's Alternatives). No `TestLog` entry appended when a Defect is raised (EXEC-2's own scope note already excluded this; EXEC-3 stays additive). No live external-tracker integration for `external_ref` (AC2's own literal "plain text/URL... no live integration needed for v1"). No bespoke `TestCaseDetail` page — the Defects section extends the existing generic `EntityFormPage`, not a new screen, matching this story's minimal-surface posture.

@@ -250,11 +250,11 @@ test.describe("SHELL-4 dark/light color-mode toggle", () => {
       // asserted here, only the *change* below is.
       await page.getByTestId("color-mode-toggle").click();
       await page.getByTestId("color-mode-dark").click();
-      await expect(html).toHaveAttribute("data-coreui-theme", "dark");
+      await expect(html).toHaveAttribute("data-bs-theme", "dark");
 
       await page.getByTestId("color-mode-toggle").click();
       await page.getByTestId("color-mode-light").click();
-      await expect(html).toHaveAttribute("data-coreui-theme", "light");
+      await expect(html).toHaveAttribute("data-bs-theme", "light");
     } finally {
       cleanup(admin);
     }
@@ -268,14 +268,14 @@ test.describe("SHELL-4 dark/light color-mode toggle", () => {
 
       await page.getByTestId("color-mode-toggle").click();
       await page.getByTestId("color-mode-dark").click();
-      await expect(page.locator("html")).toHaveAttribute("data-coreui-theme", "dark");
+      await expect(page.locator("html")).toHaveAttribute("data-bs-theme", "dark");
 
       await page.reload();
       // AuthContext's boot-time silent refresh (AUTH-2) re-establishes the
       // session on reload; the theme survives independently of it, read
       // straight from localStorage on mount — not reset to the default.
       await page.waitForURL(new RegExp(`/orgs/${admin.orgId}$`));
-      await expect(page.locator("html")).toHaveAttribute("data-coreui-theme", "dark");
+      await expect(page.locator("html")).toHaveAttribute("data-bs-theme", "dark");
     } finally {
       cleanup(admin);
     }
@@ -289,27 +289,31 @@ test.describe("SHELL-4 dark/light color-mode toggle", () => {
     try {
       await loginToOrgHome(page, admin);
 
-      // FR-SHELL-5 (ADR-0026): `AppSidebar`'s `CSidebar` carries a static
-      // `colorScheme="dark"` prop, independent of this describe block's
-      // app-wide light/dark/auto toggle — the sidebar's own `sidebar-dark`
-      // class must never move regardless of `<html data-coreui-theme>`.
-      const sidebar = page.locator(".sidebar");
+      // FR-SHELL-5 (ADR-0026, superseded by ADR-0042): AdminLTE v4 ships no
+      // `sidebar-dark-*`/`sidebar-light-*` skin class at all (frontend/
+      // CLAUDE.md) — `AppSidebar`'s own static dark background is now a
+      // plain `bg-body-secondary` on `.app-sidebar` (there is no `.sidebar`
+      // element), independent of this describe block's app-wide light/dark/
+      // auto toggle. The invariant under test is unchanged: the sidebar's
+      // own background class must never move regardless of
+      // `<html data-bs-theme>`.
+      const sidebar = page.locator(".app-sidebar");
       const html = page.locator("html");
-      await expect(sidebar).toHaveClass(/\bsidebar-dark\b/);
+      await expect(sidebar).toHaveClass(/\bbg-body-secondary\b/);
 
       await page.getByTestId("color-mode-toggle").click();
       await page.getByTestId("color-mode-light").click();
-      await expect(html).toHaveAttribute("data-coreui-theme", "light");
-      await expect(sidebar).toHaveClass(/\bsidebar-dark\b/);
+      await expect(html).toHaveAttribute("data-bs-theme", "light");
+      await expect(sidebar).toHaveClass(/\bbg-body-secondary\b/);
 
       await page.getByTestId("color-mode-toggle").click();
       await page.getByTestId("color-mode-auto").click();
-      await expect(sidebar).toHaveClass(/\bsidebar-dark\b/);
+      await expect(sidebar).toHaveClass(/\bbg-body-secondary\b/);
 
       await page.getByTestId("color-mode-toggle").click();
       await page.getByTestId("color-mode-dark").click();
-      await expect(html).toHaveAttribute("data-coreui-theme", "dark");
-      await expect(sidebar).toHaveClass(/\bsidebar-dark\b/);
+      await expect(html).toHaveAttribute("data-bs-theme", "dark");
+      await expect(sidebar).toHaveClass(/\bbg-body-secondary\b/);
     } finally {
       cleanup(admin);
     }

@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
-import AppSidebar from "../src/components/AppSidebar";
+import { describe, expect, it } from "vitest";
+import AppSidebar from "../src/components/organisms/app-sidebar";
 import Colors from "../src/pages/ui-elements/Colors";
 import Icons from "../src/pages/ui-elements/Icons";
 import Typography from "../src/pages/ui-elements/Typography";
@@ -34,7 +34,7 @@ describe("UI Elements reference pages", () => {
     render(
       <MemoryRouter initialEntries={[`/orgs/${ORG_ID}`]}>
         <Routes>
-          <Route path="/orgs/:orgId" element={<AppSidebar visible onVisibleChange={vi.fn()} />} />
+          <Route path="/orgs/:orgId" element={<AppSidebar />} />
         </Routes>
       </MemoryRouter>,
     );
@@ -58,7 +58,7 @@ describe("UI Elements reference pages", () => {
     render(
       <MemoryRouter initialEntries={["/orgs/pick"]}>
         <Routes>
-          <Route path="/orgs/pick" element={<AppSidebar visible onVisibleChange={vi.fn()} />} />
+          <Route path="/orgs/pick" element={<AppSidebar />} />
         </Routes>
       </MemoryRouter>,
     );

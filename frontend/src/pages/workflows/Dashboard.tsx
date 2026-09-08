@@ -20,10 +20,11 @@
  * None of the deleted `LandingPage`'s marketing/pitch copy is ported here —
  * ADR-0035 removes that content from the product entirely.
  *
- * Built with CoreUI (ADR-0012), same `CContainer`/`CCard`/`CCardBody` page
+ * Built with raw Bootstrap 5 / AdminLTE markup (ADR-0042, superseding the
+ * CoreUI build of ADR-0012), same `container-fluid`/`card`/`card-body` page
  * shell every other bespoke screen uses.
  *
- * `h-100` on both `CContainer` and `CCard` (2026-09-07): without it, this
+ * `h-100` on both the container and the card (2026-09-07): without it, this
  * screen's near-empty content ("Nothing here yet.") only occupies the
  * height its own text needs, leaving a large unfilled grey gap below the
  * card down to `AppFooter` — confirmed empirically (`.flex-grow-1`, the
@@ -34,20 +35,18 @@
  * `h-100`'s percentage chain resolves correctly down through both levels —
  * verified against a live render, not assumed from source alone.
  */
-import { CCard, CCardBody, CCardHeader, CContainer } from "@coreui/react";
-
 function Dashboard() {
   return (
-    <CContainer fluid className="h-100">
-      <CCard className="h-100">
-        <CCardHeader>
+    <div className="container-fluid h-100">
+      <div className="card h-100">
+        <div className="card-header">
           <h1 className="mb-0 fs-4">Dashboard</h1>
-        </CCardHeader>
-        <CCardBody>
+        </div>
+        <div className="card-body">
           <p className="mb-0 text-body-secondary">Nothing here yet.</p>
-        </CCardBody>
-      </CCard>
-    </CContainer>
+        </div>
+      </div>
+    </div>
   );
 }
 
