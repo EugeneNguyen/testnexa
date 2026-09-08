@@ -28,6 +28,27 @@ TestExecutionResult = Literal["pass", "fail", "blocked", "skipped"]
 TestLogEventType = Literal["status_change", "comment", "attachment", "agent_action"]
 
 
+class CreateDefectForExecutionRequest(BaseModel):
+    """Body of the bespoke `POST /executions/{id}/defects` (EXEC-3, ADR-0041).
+
+    `test_execution_id` comes from the path segment, not the body — same
+    "the path is the only source of truth for the parent id" posture
+    `CreateExecutionForCycleRequest` already established for `test_cycle_id`.
+    `reported_by_actor_id` is stamped server-side from the authenticated
+    actor, never client-supplied — the field does not exist on this schema at
+    all, so a body attempting to set it is ignored by Pydantic rather than
+    honored.
+
+    `status` is optional; the route leaves it unset (server/model default
+    `"open"`) when omitted rather than duplicating the column's own default
+    here.
+    """
+
+    external_ref: str | None = None
+    severity: DefectSeverity
+    status: str | None = None
+
+
 class UpdateDefectRequest(BaseModel):
     """Body of `PATCH /defects/{id}` — partial update, `exclude_unset` semantics.
 
@@ -159,6 +180,7 @@ class AddTestLogCommentRequest(BaseModel):
 
 __all__ = [
     "AddTestLogCommentRequest",
+    "CreateDefectForExecutionRequest",
     "CreateExecutionForCycleRequest",
     "DefectListResponse",
     "DefectSeverity",

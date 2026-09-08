@@ -8,11 +8,26 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { CAlert, CCard, CCardBody, CContainer, CSpinner } from "@coreui/react";
+import { CAlert, CBadge, CCard, CCardBody, CContainer, CSpinner } from "@coreui/react";
 import EntityForm from "../../components/crud/EntityForm";
 import { ApiError } from "../../lib/api/client";
 import { EntityRow, getEntity, updateEntity } from "../../lib/api/entityCrud";
+import { listDefectsForTestCase, type DefectSummary } from "../../lib/api/defects";
 import { useAdminRouteContext } from "./useAdminRouteContext";
+
+/** UI Design Document §4 (EXEC-3, ADR-0041) — one color per `DefectSeverity`. */
+function severityColor(severity: string): string {
+  switch (severity) {
+    case "critical":
+      return "danger";
+    case "high":
+      return "warning";
+    case "medium":
+      return "info";
+    default:
+      return "secondary";
+  }
+}
 
 function fieldErrorsFrom(error: unknown): Record<string, string> | undefined {
   if (!(error instanceof ApiError)) {
@@ -50,6 +65,20 @@ function EntityFormPage() {
         setSubmitError(error instanceof ApiError ? error.message : "Something went wrong. Please try again.");
       }
     },
+  });
+
+  /**
+   * EXEC-3 (ADR-0041), UI Design Document §4: `TestCase`'s only detail view
+   * (there is no bespoke `TestCaseDetail` page) gains a read-only "Defects"
+   * section, most-recent-first exactly as `GET /test-cases/{id}/defects`
+   * returns it — no client-side re-sort needed. Only fetched for the
+   * `test-case` entity; every other entity's edit page is unaffected.
+   */
+  const isTestCaseEntity = entityKey === "test-cases";
+  const defectsQuery = useQuery({
+    queryKey: ["test-case-defects", id],
+    queryFn: () => listDefectsForTestCase(id as string),
+    enabled: isTestCaseEntity && Boolean(id),
   });
 
   if (!config) {
@@ -94,6 +123,55 @@ function EntityFormPage() {
                 await updateMutation.mutateAsync(values);
               }}
             />
+          )}
+
+          {isTestCaseEntity && (
+            <div className="mt-4" data-testid="test-case-defects-section">
+              <h2 className="fs-5 mb-3">Defects</h2>
+
+              {defectsQuery.isLoading ? (
+                <div className="d-flex justify-content-center py-3">
+                  <CSpinner color="primary" />
+                </div>
+              ) : defectsQuery.isError ? (
+                <CAlert color="danger" role="alert" data-testid="test-case-defects-error">
+                  Something went wrong loading this test case's defects.
+                </CAlert>
+              ) : defectsQuery.data && defectsQuery.data.length > 0 ? (
+                /* Flat <ul>/<li>, per frontend/CLAUDE.md's nested-list convention. */
+                <ul className="list-unstyled mb-0" data-testid="test-case-defects-list">
+                  {defectsQuery.data.map((defect: DefectSummary) => (
+                    <li
+                      key={defect.id}
+                      className="border-bottom py-2"
+                      data-testid={`test-case-defect-${defect.id}`}
+                    >
+                      <div className="d-flex align-items-center gap-2 flex-wrap">
+                        <CBadge
+                          color={severityColor(defect.severity)}
+                          data-testid={`test-case-defect-${defect.id}-severity`}
+                        >
+                          {defect.severity}
+                        </CBadge>
+                        <span data-testid={`test-case-defect-${defect.id}-external-ref`}>
+                          {defect.external_ref ?? "(no external ref)"}
+                        </span>
+                        <span
+                          className="text-body-secondary small"
+                          data-testid={`test-case-defect-${defect.id}-status`}
+                        >
+                          {defect.status}
+                        </span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-body-secondary mb-0" data-testid="test-case-defects-empty">
+                  No defects raised against this test case yet.
+                </p>
+              )}
+            </div>
           )}
         </CCardBody>
       </CCard>
