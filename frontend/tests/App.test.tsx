@@ -44,7 +44,11 @@ describe("App routing", () => {
     renderAppAt("/");
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: /^log in$/i })).toBeInTheDocument();
+      // TNX-0056 (AdminLTE re-skin): the page's own "Log in" heading is gone —
+      // `BrandLogo`'s "AdminLTE" wordmark (accessible name has a space
+      // inserted between the <b>Admin</b> and LTE text nodes) is now the
+      // unique marker that the real `Login` screen rendered.
+      expect(screen.getByRole("heading", { name: /admin\s*lte/i })).toBeInTheDocument();
     });
 
     // The deleted LandingPage's product-name heading and pitch CTAs must not
@@ -61,7 +65,11 @@ describe("App routing", () => {
     renderAppAt("/dashboard");
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: /^log in$/i })).toBeInTheDocument();
+      // TNX-0056 (AdminLTE re-skin): the page's own "Log in" heading is gone —
+      // `BrandLogo`'s "AdminLTE" wordmark (accessible name has a space
+      // inserted between the <b>Admin</b> and LTE text nodes) is now the
+      // unique marker that the real `Login` screen rendered.
+      expect(screen.getByRole("heading", { name: /admin\s*lte/i })).toBeInTheDocument();
     });
 
     expect(screen.queryByRole("heading", { name: /^dashboard$/i })).not.toBeInTheDocument();
