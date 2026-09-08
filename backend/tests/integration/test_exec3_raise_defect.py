@@ -43,9 +43,8 @@ from tests.integration.test_plan3_test_cycle_execution import (
     _access_token_for,
     _cleanup,
     _create_custom_role_member,
+    _create_member_with_role,
     _create_org_admin,
-    _get_role_by_name,
-    _assign_role,
 )
 
 TEST_API_BASE_URL = os.environ.get("TEST_API_BASE_URL", "http://localhost:8000")
@@ -260,18 +259,8 @@ async def test_manager_and_tester_can_reach_both_routes_without_org_admin() -> N
     try:
         async with AsyncSessionLocal() as session:
             scope = await _seed_scope(session, "exec3-rbac")
-            test_manager_role = await _get_role_by_name(session, "test_manager")
-            tester_role = await _get_role_by_name(session, "tester")
-
-            from app.models.actor import User
-
-            manager = User(name="EXEC-3 Manager", email="exec3-manager@example.com", password_hash="x")
-            tester = User(name="EXEC-3 Tester", email="exec3-tester@example.com", password_hash="x")
-            session.add_all([manager, tester])
-            await session.flush()
-
-            await _assign_role(session, actor_id=manager.actor_id, org=scope["org"], role=test_manager_role)
-            await _assign_role(session, actor_id=tester.actor_id, org=scope["org"], role=tester_role)
+            manager = await _create_member_with_role(session, "exec3-manager", scope["org"], "test_manager")
+            tester = await _create_member_with_role(session, "exec3-tester", scope["org"], "tester")
             await session.commit()
 
             scope_ids = _cleanup_ids(scope)
