@@ -158,6 +158,15 @@ def build_role_bundles(all_permission_codes: set[str]) -> dict[str, set[str]]:
         # expansion this ADR doesn't need. EXEC-1/EXEC-3 write their own
         # migration if re-run-editing/defect workflow needs them.
         | {_code("test_execution", "create"), _code("test_execution", "read")}
+        # EXEC-3/ADR-0044: `defect.create` (the minimum to reach the new
+        # `POST /executions/{id}/defects` — `test_manager` held only `.read`
+        # before) plus `test_case_defect_link.read` (needed to reach the new
+        # `GET /test-cases/{id}/defects` view; held neither before). `.update`/
+        # `.delete` on `defect` deliberately withheld — no FR-EXEC-3 AC asks
+        # `test_manager` to edit or delete a raised Defect, same restraint
+        # ADR-0033 already took for `test_execution.*` above. Fifth such ad hoc
+        # extension for this role.
+        | {_code("defect", "create"), _code("test_case_defect_link", "read")}
         # RBAC-3/ADR-0021: a project's own creator is auto-granted this Role,
         # project-scoped, unconditionally (PROJ-1/ADR-0017's `create_project`)
         # specifically so they can subsequently GET/PATCH the project they
@@ -179,6 +188,10 @@ def build_role_bundles(all_permission_codes: set[str]) -> dict[str, set[str]]:
         | _crud_codes("test_execution")
         | {_code("test_log", "read")}
         | {_code("defect", "create"), _code("defect", "read"), _code("defect", "update")}
+        # EXEC-3/ADR-0044: `tester` held full `defect` create/read/update
+        # already but never `test_case_defect_link.read` — needed to reach the
+        # new `GET /test-cases/{id}/defects` view.
+        | {_code("test_case_defect_link", "read")}
         | {_code("test_plan", "read")}
         | {_code("test_suite", "read")}
         | {_code("requirement", "read")}

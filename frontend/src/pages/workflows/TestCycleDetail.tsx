@@ -106,6 +106,10 @@ import {
   listTestExecutionLogs,
   type TestLogSummary,
 } from "../../lib/api/testLogs";
+import {
+  createDefectForExecution,
+  type DefectSeverityValue,
+} from "../../lib/api/defects";
 import { getProject } from "../../lib/api/projects";
 import { listMembers } from "../../lib/api/members";
 import { listEntities, getEntity, type EntityRow } from "../../lib/api/entityCrud";
@@ -184,6 +188,17 @@ const commentSchema = z.object({
 });
 
 type CommentFormValues = z.infer<typeof commentSchema>;
+
+/** UI Design Document §2 (EXEC-3, ADR-0044): all four `DefectSeverity` values. */
+const DEFECT_SEVERITIES: DefectSeverityValue[] = ["low", "medium", "high", "critical"];
+
+const raiseDefectSchema = z.object({
+  externalRef: z.string().trim().optional(),
+  severity: z.enum(["low", "medium", "high", "critical"]),
+  status: z.string().trim().optional(),
+});
+
+type RaiseDefectFormValues = z.infer<typeof raiseDefectSchema>;
 
 /**
  * `TestLog.payload`'s per-`event_type` shape (`app/api/routes/execution.py`'s
@@ -471,6 +486,21 @@ function TestCycleDetail() {
   } = useForm<CommentFormValues>({
     resolver: zodResolver(commentSchema),
     defaultValues: { text: "", attachmentUrl: "", fileName: "" },
+  });
+
+  // --- EXEC-3: "Raise Defect" modal (ADR-0044) --------------------------
+  const [showRaiseDefectModal, setShowRaiseDefectModal] = useState(false);
+  const [raiseDefectExecutionId, setRaiseDefectExecutionId] = useState<string | null>(null);
+  const [raiseDefectError, setRaiseDefectError] = useState<string | null>(null);
+
+  const {
+    register: registerRaiseDefect,
+    handleSubmit: handleSubmitRaiseDefect,
+    reset: resetRaiseDefect,
+    formState: { errors: raiseDefectErrors, isSubmitting: isSubmittingRaiseDefect },
+  } = useForm<RaiseDefectFormValues>({
+    resolver: zodResolver(raiseDefectSchema),
+    defaultValues: { externalRef: "", severity: "low", status: "" },
   });
 
   /** `GET /test-cycles/{id}` — the generic factory item route. */
@@ -794,6 +824,42 @@ function TestCycleDetail() {
     }
   }
 
+  /**
+   * `POST /executions/{id}/defects` — a `fail`-row-only affordance (§2 of the
+   * UI Design Document: the button itself renders only on `fail` rows, the
+   * backend's own `422` on a non-fail execution is the real enforcement
+   * boundary). No list to refresh here — the Defects list this raises a row
+   * into lives on `EntityFormPage`'s `test-case` edit page, not this screen.
+   */
+  function openRaiseDefectModal(executionId: string) {
+    setRaiseDefectExecutionId(executionId);
+    setRaiseDefectError(null);
+    resetRaiseDefect({ externalRef: "", severity: "low", status: "" });
+    setShowRaiseDefectModal(true);
+  }
+
+  function closeRaiseDefectModal() {
+    setShowRaiseDefectModal(false);
+    setRaiseDefectExecutionId(null);
+  }
+
+  async function onSubmitRaiseDefect(values: RaiseDefectFormValues) {
+    if (!raiseDefectExecutionId) {
+      return;
+    }
+    setRaiseDefectError(null);
+    try {
+      await createDefectForExecution(raiseDefectExecutionId, {
+        external_ref: values.externalRef ? values.externalRef : null,
+        severity: values.severity,
+        status: values.status ? values.status : null,
+      });
+      setShowRaiseDefectModal(false);
+    } catch (err) {
+      setRaiseDefectError(errorMessage(err));
+    }
+  }
+
   const cycleName = useMemo(
     () => (cycle && cycle.name ? String(cycle.name) : "Test cycle"),
     [cycle],
@@ -995,6 +1061,21 @@ function TestCycleDetail() {
                             >
                               History
                             </button>
+                            {/*
+                              EXEC-3 (ADR-0044): only on `fail` rows — the
+                              backend's own `422` (result != fail) stays the
+                              real enforcement boundary regardless.
+                            */}
+                            {execution.result === "fail" && (
+                              <button
+                                type="button"
+                                className="btn btn-outline-danger btn-sm"
+                                data-testid={`execution-${execution.id}-raise-defect`}
+                                onClick={() => openRaiseDefectModal(execution.id)}
+                              >
+                                Raise Defect
+                              </button>
+                            )}
                           </div>
                           {execution.actual_result && (
                             <div className="small" data-testid={`execution-${execution.id}-notes`}>
@@ -1290,6 +1371,107 @@ function TestCycleDetail() {
             Close
           </button>
         </div>
+      </Modal>
+
+      {/* --- "Raise Defect" modal (EXEC-3, ADR-0044) ------------------------ */}
+      <Modal
+        visible={showRaiseDefectModal}
+        onClose={closeRaiseDefectModal}
+        title="Raise Defect"
+        testId="raise-defect-modal"
+      >
+        <form onSubmit={handleSubmitRaiseDefect(onSubmitRaiseDefect)} noValidate>
+          <div className="modal-body">
+            {/*
+              UI Design Document §3: a `422` (execution no longer `fail`, a
+              narrow race) or `403` renders here, inside the modal, dismissible
+              — the modal stays open so typed input survives the failure, same
+              convention `onSubmitRecord`/EXEC-2's comment form already use.
+            */}
+            {raiseDefectError && (
+              <div
+                className="alert alert-danger alert-dismissible fade show"
+                role="alert"
+                data-testid="raise-defect-error"
+              >
+                {raiseDefectError}
+                <button
+                  type="button"
+                  className="btn-close"
+                  aria-label="Close"
+                  onClick={() => setRaiseDefectError(null)}
+                />
+              </div>
+            )}
+
+            <div className="mb-3">
+              <label className="form-label" htmlFor="raiseDefectExternalRef">
+                External ref (optional)
+              </label>
+              <input
+                className="form-control"
+                id="raiseDefectExternalRef"
+                data-testid="raise-defect-external-ref"
+                {...registerRaiseDefect("externalRef")}
+              />
+              <div className="form-text">
+                e.g. a Jira/GitHub/GitLab issue URL or id — plain text, no live integration
+                in this scaffold.
+              </div>
+            </div>
+
+            <div className="mb-3">
+              <label className="form-label" htmlFor="raiseDefectSeverity">
+                Severity
+              </label>
+              <select
+                className={`form-select${raiseDefectErrors.severity ? " is-invalid" : ""}`}
+                id="raiseDefectSeverity"
+                data-testid="raise-defect-severity"
+                {...registerRaiseDefect("severity")}
+              >
+                {DEFECT_SEVERITIES.map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+              {raiseDefectErrors.severity && (
+                <div className="invalid-feedback d-block">{raiseDefectErrors.severity.message}</div>
+              )}
+            </div>
+
+            <div className="mb-3">
+              <label className="form-label" htmlFor="raiseDefectStatus">
+                Status (optional, defaults to "open")
+              </label>
+              <input
+                className="form-control"
+                id="raiseDefectStatus"
+                data-testid="raise-defect-status"
+                {...registerRaiseDefect("status")}
+              />
+            </div>
+          </div>
+          <div className="modal-footer">
+            <button
+              type="button"
+              className="btn btn-outline-secondary"
+              data-testid="raise-defect-cancel"
+              onClick={closeRaiseDefectModal}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              data-testid="raise-defect-submit"
+              disabled={isSubmittingRaiseDefect}
+            >
+              {isSubmittingRaiseDefect ? "Raising..." : "Raise Defect"}
+            </button>
+          </div>
+        </form>
       </Modal>
     </div>
   );
