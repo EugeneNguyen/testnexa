@@ -60,7 +60,7 @@ const mockListProjects = vi.mocked(listProjects);
 const mockListRoleAssignments = vi.mocked(listRoleAssignments);
 const mockListRoles = vi.mocked(listRoles);
 
-mockListRoleAssignments.mockResolvedValue([]);
+mockListRoleAssignments.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 25 });
 mockListRoles.mockResolvedValue([]);
 mockListProjects.mockResolvedValue([]);
 

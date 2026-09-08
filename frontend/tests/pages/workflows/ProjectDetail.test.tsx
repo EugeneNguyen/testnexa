@@ -67,7 +67,12 @@ describe("ProjectDetail — release list + New Release modal", () => {
     renderProjectDetail();
 
     await waitFor(() =>
-      expect(mockListReleases).toHaveBeenCalledWith(PROJECT_ID, { sort: "target_date", order: "asc" }),
+      expect(mockListReleases).toHaveBeenCalledWith(PROJECT_ID, {
+        sort: "target_date",
+        order: "asc",
+        page: 1,
+        page_size: 25,
+      }),
     );
 
     const rows = await screen.findAllByRole("row");
@@ -127,13 +132,23 @@ describe("ProjectDetail — release list + New Release modal", () => {
     renderProjectDetail();
 
     await waitFor(() =>
-      expect(mockListReleases).toHaveBeenNthCalledWith(1, PROJECT_ID, { sort: "target_date", order: "asc" }),
+      expect(mockListReleases).toHaveBeenNthCalledWith(1, PROJECT_ID, {
+        sort: "target_date",
+        order: "asc",
+        page: 1,
+        page_size: 25,
+      }),
     );
 
     fireEvent.click(screen.getByRole("button", { name: /target date/i }));
 
     await waitFor(() =>
-      expect(mockListReleases).toHaveBeenNthCalledWith(2, PROJECT_ID, { sort: "target_date", order: "desc" }),
+      expect(mockListReleases).toHaveBeenNthCalledWith(2, PROJECT_ID, {
+        sort: "target_date",
+        order: "desc",
+        page: 1,
+        page_size: 25,
+      }),
     );
   });
 });

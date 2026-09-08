@@ -71,6 +71,18 @@
  * scope for this story) and the list is already fetched in full; revisit if
  * an org's project count ever grows large enough for this to matter.
  *
+ * **DS-2 (2026-09-07, ADR-0041):** the Project table's hand-rolled
+ * `CPagination` block and its hardcoded `PAGE_SIZE = 10` are replaced by the
+ * shared `container/Table.tsx` in **client mode** — it receives the full,
+ * already-filtered-and-sorted `filteredSortedProjects` array and does the
+ * slicing itself. ADR-0039's client-side search/sort decision above is NOT
+ * reopened: the search `CFormInput` and the `SortableHeader` cells stay
+ * exactly where and how they were, passed through as the container's header
+ * slot and `columns` respectively. The only user-visible change is a working
+ * "Rows per page" selector (10/25/50/100) where none existed; the default
+ * stays 10. TC-DS-015 asserts TC-PROJ-022 (search) and TC-PROJ-023 (sort)
+ * still pass with zero assertion changes.
+ *
  * Built with CoreUI (ADR-0012).
  */
 import { ReactNode, useMemo, useState } from "react";
@@ -96,23 +108,26 @@ import {
   CModalFooter,
   CModalHeader,
   CModalTitle,
-  CPagination,
-  CPaginationItem,
   CRow,
-  CTable,
-  CTableBody,
   CTableDataCell,
-  CTableHead,
   CTableHeaderCell,
   CTableRow,
 } from "@coreui/react";
+import Table from "../../container/Table";
 import { ApiError } from "../../lib/api/client";
 import { getActiveMemberTotal, getProjectsTotal } from "../../lib/api/dashboard";
 import { createProject, deleteProject, listProjects, ProjectSummary, updateProject } from "../../lib/api/projects";
 import RoleAssignmentsPanel from "../../components/RoleAssignmentsPanel";
 import { WidgetStatsTile } from "../../components/shared/widget-stats-tile";
 
-const PAGE_SIZE = 10;
+/**
+ * DS-2/ADR-0041: previously a hardcoded slice size with no UI to change it;
+ * now the *initial* value of the shared container's page-size selector, which
+ * offers 10/25/50/100. Kept at 10 so ADR-0039's own default is preserved
+ * exactly (TC-DS-018 asserts a screen returns to its own default, not the
+ * last-selected size, after navigating away and back).
+ */
+const DEFAULT_PAGE_SIZE = 10;
 
 const newProjectSchema = z.object({
   name: z.string().trim().min(1, "Name is required"),
@@ -264,7 +279,9 @@ function OrgHome() {
   const [search, setSearch] = useState("");
   const [sortField, setSortField] = useState<SortField>("name");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
-  const [page, setPage] = useState(1);
+  // DS-2/ADR-0041: page/page-size state moved into `container/Table.tsx`
+  // (client mode) — this screen only needs to tell it *when* to reset back to
+  // page 1 (`resetPageKey`, below), not track a page number itself.
 
   const {
     register,
@@ -386,7 +403,6 @@ function OrgHome() {
   }
 
   function handleSort(field: SortField) {
-    setPage(1);
     if (field === sortField) {
       setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
     } else {
@@ -404,10 +420,6 @@ function OrgHome() {
     });
     return sorted;
   }, [projects, search, sortField, sortDir]);
-
-  const totalPages = Math.max(1, Math.ceil(filteredSortedProjects.length / PAGE_SIZE));
-  const currentPage = Math.min(page, totalPages);
-  const pageProjects = filteredSortedProjects.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   if (!orgId) {
     return null;
@@ -466,94 +478,72 @@ function OrgHome() {
                         placeholder="Search by name…"
                         aria-label="Search projects"
                         value={search}
-                        onChange={(event) => {
-                          setPage(1);
-                          setSearch(event.target.value);
-                        }}
+                        onChange={(event) => setSearch(event.target.value)}
                       />
                     </div>
 
                     {filteredSortedProjects.length === 0 ? (
                       <p className="text-body-secondary mb-0">No projects match your search.</p>
                     ) : (
-                      <>
-                        <CTable hover responsive>
-                          <CTableHead>
-                            <CTableRow>
-                              <SortableHeader
-                                field="id"
-                                label="ID"
-                                sortField={sortField}
-                                sortDir={sortDir}
-                                onSort={handleSort}
-                              />
-                              <SortableHeader
-                                field="name"
-                                label="Name"
-                                sortField={sortField}
-                                sortDir={sortDir}
-                                onSort={handleSort}
-                              />
-                              <CTableHeaderCell>Standards profile</CTableHeaderCell>
-                              <CTableHeaderCell aria-label="Actions" />
-                            </CTableRow>
-                          </CTableHead>
-                          <CTableBody>
-                            {pageProjects.map((project) => (
-                              <CTableRow key={project.id}>
-                                <CTableDataCell className="text-body-secondary small">{project.id}</CTableDataCell>
-                                <CTableDataCell>
-                                  <Link to={`/projects/${project.id}`}>{project.name}</Link>
-                                </CTableDataCell>
-                                <CTableDataCell>
-                                  {project.standards_profile ?? <span className="text-body-secondary">—</span>}
-                                </CTableDataCell>
-                                <CTableDataCell className="text-end">
-                                  <CButton
-                                    size="sm"
-                                    color="secondary"
-                                    variant="outline"
-                                    className="me-2"
-                                    onClick={() => openEditModal(project)}
-                                  >
-                                    Edit
-                                  </CButton>
-                                  <CButton
-                                    size="sm"
-                                    color="danger"
-                                    variant="outline"
-                                    onClick={() => requestDelete(project)}
-                                  >
-                                    Delete
-                                  </CButton>
-                                </CTableDataCell>
-                              </CTableRow>
-                            ))}
-                          </CTableBody>
-                        </CTable>
-
-                        {totalPages > 1 && (
-                          <CPagination aria-label="Project list pages">
-                            <CPaginationItem
-                              disabled={currentPage <= 1}
-                              onClick={() => setPage(currentPage - 1)}
-                            >
-                              Previous
-                            </CPaginationItem>
-                            {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                              <CPaginationItem key={p} active={p === currentPage} onClick={() => setPage(p)}>
-                                {p}
-                              </CPaginationItem>
-                            ))}
-                            <CPaginationItem
-                              disabled={currentPage >= totalPages}
-                              onClick={() => setPage(currentPage + 1)}
-                            >
-                              Next
-                            </CPaginationItem>
-                          </CPagination>
+                      <Table
+                        mode="client"
+                        items={filteredSortedProjects}
+                        rowKey={(project) => project.id}
+                        defaultPageSize={DEFAULT_PAGE_SIZE}
+                        resetPageKey={`${search}|${sortField}|${sortDir}`}
+                        paginationLabel="Project list pages"
+                        testIdPrefix="project-table"
+                        columns={
+                          <CTableRow>
+                            <SortableHeader
+                              field="id"
+                              label="ID"
+                              sortField={sortField}
+                              sortDir={sortDir}
+                              onSort={handleSort}
+                            />
+                            <SortableHeader
+                              field="name"
+                              label="Name"
+                              sortField={sortField}
+                              sortDir={sortDir}
+                              onSort={handleSort}
+                            />
+                            <CTableHeaderCell>Standards profile</CTableHeaderCell>
+                            <CTableHeaderCell aria-label="Actions" />
+                          </CTableRow>
+                        }
+                        renderRow={(project) => (
+                          <CTableRow key={project.id}>
+                            <CTableDataCell className="text-body-secondary small">{project.id}</CTableDataCell>
+                            <CTableDataCell>
+                              <Link to={`/projects/${project.id}`}>{project.name}</Link>
+                            </CTableDataCell>
+                            <CTableDataCell>
+                              {project.standards_profile ?? <span className="text-body-secondary">—</span>}
+                            </CTableDataCell>
+                            <CTableDataCell className="text-end">
+                              <CButton
+                                size="sm"
+                                color="secondary"
+                                variant="outline"
+                                className="me-2"
+                                onClick={() => openEditModal(project)}
+                              >
+                                Edit
+                              </CButton>
+                              <CButton
+                                size="sm"
+                                color="danger"
+                                variant="outline"
+                                onClick={() => requestDelete(project)}
+                              >
+                                Delete
+                              </CButton>
+                            </CTableDataCell>
+                          </CTableRow>
                         )}
-                      </>
+                      />
                     )}
                   </>
                 )}

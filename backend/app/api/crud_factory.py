@@ -81,10 +81,14 @@ from app.models.project import Project
 from app.models.tenancy import OrgMembership
 from app.models.trace import RequirementTestCaseLink
 
-# API Document §1: offset-based pagination, default/max page_size = 25 (NFR-6)
-# — same constants `releases.py` already uses verbatim.
+# API Document §1: offset-based pagination (NFR-6). Default page_size stays
+# 25; the *ceiling* was raised 25 -> 100 by DS-2/ADR-0041 so the shared
+# `container/Table.tsx` page-size selector's 100 option isn't silently
+# clamped back to 25 by every list route. Kept as a plain per-module literal
+# (not a new shared cross-module constant) per that ADR's explicit direction
+# — `releases.py`/`org_memberships.py` each carry their own copy the same way.
 _DEFAULT_PAGE_SIZE = 25
-_MAX_PAGE_SIZE = 25
+_MAX_PAGE_SIZE = 100
 
 _PERMISSION_DENIED_MESSAGE = "You do not have permission to perform this action."
 
@@ -474,7 +478,10 @@ def clamp_pagination(page: int, page_size: int, max_page_size: int = _MAX_PAGE_S
     """Clamp `page`/`page_size` to the API Document §1/NFR-6 convention.
 
     `page` floors at 1; `page_size` floors at 1 and ceilings at
-    `max_page_size` (25 by default, same as `releases.py`'s own list route).
+    `max_page_size` (100 by default since DS-2/ADR-0041 raised the ceiling
+    from 25, same as `releases.py`'s own list route). The ceiling is
+    *inclusive*: `page_size=100` is returned unchanged, `page_size=101` (or
+    500) clamps to exactly 100 — never a `422`, per TC-DS-012.
     Pure function — unit-testable without a DB.
     """
     return max(page, 1), min(max(page_size, 1), max_page_size)

@@ -169,4 +169,29 @@ describe("EntityTable", () => {
     expect(screen.getByText("Previous").closest("li")).not.toHaveClass("disabled");
     expect(screen.getByText("Next").closest("li")).toHaveClass("disabled");
   });
+
+  // DS-2/ADR-0041, TC-DS-016: EntityTable's own pagination chrome now comes
+  // from `container/Table.tsx` — this is the one genuinely new piece of
+  // behavior the migration adds (every assertion above this one is
+  // regression coverage, unmodified from before DS-2).
+  it("DS-2: renders a Rows-per-page selector (10/25/50/100) and forwards onPageSizeChange", () => {
+    const onPageSizeChange = vi.fn();
+    render(
+      <EntityTable
+        config={READ_ONLY_CONFIG}
+        rows={ROWS}
+        total={55}
+        page={1}
+        pageSize={25}
+        onPageChange={vi.fn()}
+        onPageSizeChange={onPageSizeChange}
+      />,
+    );
+
+    const select = screen.getByLabelText("Rows per page") as HTMLSelectElement;
+    expect(Array.from(select.options).map((o) => o.value)).toEqual(["10", "25", "50", "100"]);
+
+    fireEvent.change(select, { target: { value: "100" } });
+    expect(onPageSizeChange).toHaveBeenCalledWith(100);
+  });
 });

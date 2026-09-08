@@ -37,7 +37,16 @@ import { createEntity, deleteEntity, EntityRow, listEntities } from "../../lib/a
 import { useAdminRouteContext } from "./useAdminRouteContext";
 import { useEntityScope } from "./useEntityScope";
 
-const PAGE_SIZE = 25;
+/**
+ * DS-2/ADR-0041: this used to be a hardcoded `const PAGE_SIZE = 25` with no
+ * way for a user to change it. It's now the *initial* value of real state,
+ * driven by the shared container's "Rows per page" selector (10/25/50/100).
+ * Still 25, so an admin who never touches the selector sees no change; the
+ * backend's ceiling was raised 25 -> 100 in the same story so the 100 option
+ * isn't silently clamped. Component state only — deliberately not persisted
+ * across navigation or reload (TC-DS-018).
+ */
+const DEFAULT_PAGE_SIZE = 25;
 
 function fieldErrorsFrom(error: unknown): Record<string, string> | undefined {
   if (!(error instanceof ApiError)) {
@@ -58,6 +67,7 @@ function EntityListPage() {
   const permissions = usePermissions(orgId);
 
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [search, setSearch] = useState("");
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -70,11 +80,11 @@ function EntityListPage() {
   const scopeParams = scope.field && scope.value ? { [scope.field]: scope.value } : {};
 
   const listQuery = useQuery({
-    queryKey: ["entity-list", entityKey, scope.field, scope.value, page, filters, search],
+    queryKey: ["entity-list", entityKey, scope.field, scope.value, page, pageSize, filters, search],
     queryFn: () =>
       listEntities(config!, routeParams, {
         page,
-        pageSize: PAGE_SIZE,
+        pageSize,
         q: search || undefined,
         params: { ...filters, ...scopeParams },
       }),
@@ -156,8 +166,9 @@ function EntityListPage() {
             rows={listQuery.data?.items ?? []}
             total={listQuery.data?.total ?? 0}
             page={page}
-            pageSize={PAGE_SIZE}
+            pageSize={pageSize}
             onPageChange={setPage}
+            onPageSizeChange={setPageSize}
             loading={listQuery.isLoading}
             loadError={listQuery.isError ? "Something went wrong. Please try again." : null}
             filters={filters}

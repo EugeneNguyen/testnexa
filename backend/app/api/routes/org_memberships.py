@@ -50,7 +50,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.crud_factory import CrudEntityConfig, chain_resolver, make_crud_router
+from app.api.crud_factory import CrudEntityConfig, chain_resolver, clamp_pagination, make_crud_router
 from app.api.deps import get_current_actor, get_db, require_permission
 from app.core.config import settings
 from app.core.security import (
@@ -80,8 +80,16 @@ router = APIRouter()
 
 # ADR-0017: 7 days from issuance.
 _INVITE_EXPIRY_DAYS = 7
-# NFR-6: page size 25, offset pagination — same default the (not-yet-built)
-# generic CRUD factory's list routes are specified to use.
+# NFR-6: page size 25 default, offset pagination — same default the generic
+# CRUD factory's list routes use.
+#
+# DS-2/ADR-0041: this route previously had NO ceiling at all — `page_size`
+# went straight into `.limit()` unclamped, so `?page_size=100000` was an
+# unbounded escape hatch. It now clamps through `crud_factory.clamp_pagination`
+# with a plain literal `100` ceiling at the call site (see `list_members`),
+# matching what `crud_factory.py`/`releases.py` enforce. Discovered while
+# implementing DS-2 — ADR-0041's own Decision text assumed this module already
+# hardcoded a 25 ceiling to bump; it didn't.
 _DEFAULT_PAGE_SIZE = 25
 
 # ADR-0017 Decision: the only legal transition through the PATCH route.
@@ -176,6 +184,11 @@ async def list_members(
         return _error(404, "not_found", "Organization not found.")
 
     await require_permission("org_membership.read")(request, actor)
+
+    # DS-2/ADR-0041: clamp to the shared convention — `page` floors at 1,
+    # `page_size` floors at 1 and ceilings at 100 (plain literal, no shared
+    # constant, per the ADR). Previously unclamped entirely.
+    page, page_size = clamp_pagination(page, page_size, 100)
 
     total = await db.scalar(
         select(func.count()).select_from(OrgMembership).where(OrgMembership.org_id == org_id)
