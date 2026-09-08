@@ -2,8 +2,8 @@
  * SHELL-1 (ADR-0018) persistent sidebar, mounted once inside `AppShell` so
  * every `ProtectedRoute` screen gets it for free. Owns exactly one nav-item
  * list — org-home, org-members today — the single, obvious place a future
- * story adds its own entry (AC5); do not scatter per-page `CButton as={Link}`
- * back-links the way `OrgHome.tsx:193-195`'s pre-existing pattern does.
+ * story adds its own entry (AC5); do not scatter per-page `<Link>` back-links
+ * the way `OrgHome.tsx`'s pre-existing pattern does.
  *
  * `orgId` comes from `useParams<{orgId?: string}>()`, not a required route
  * param: on `/orgs/pick` (`OrgPicker`, no org selected yet) there is no
@@ -20,17 +20,6 @@
  * prefix-match regression this story calls out. The members item doesn't
  * need `end` since nothing is nested under it today.
  *
- * `colorScheme="dark"` (formerly `CSidebar`'s own prop) is now the literal
- * `sidebar-dark` class, shipped in the already-imported `coreui.min.css` —
- * matches the CoreUI free-demo look with zero bespoke CSS, per this story's
- * ask.
- *
- * `visible`/`onVisibleChange` still round-trip to `AppShell`'s state (see
- * that file's docstring) — `vh-100` (Bootstrap/CoreUI utility, not
- * hand-built logic) caps the sidebar's own height at exactly the viewport
- * height regardless of how tall its `d-flex` row sibling (the
- * header+content column) is.
- *
  * SHELL-8 (ADR-0020) adds a "UI Elements" nav group (Colors/Typography/
  * Icons) below the flat org nav-item list — template-parity scaffolding
  * only, **not backed by any FR/NFR or user story** (see that ADR and the
@@ -38,84 +27,81 @@
  * flat list above is (absent entirely on `/orgs/pick`, not disabled
  * controls) for the same reasoning: there is no org context to link into.
  *
- * Raw HTML per ADR-0037 (2026-09-07), not `@coreui/react`. Every class name
- * below (`sidebar`, `sidebar-dark`, `sidebar-header`, `sidebar-brand`,
- * `sidebar-nav`, `nav-item`, `nav-link`, `nav-group`, `nav-group-toggle`,
- * `nav-group-items`) is the exact class `CSidebar`/`CSidebarHeader`/
- * `CSidebarBrand`/`CSidebarNav`/`CNavItem`/`CNavLink`/`CNavGroup` rendered —
- * confirmed by dumping their actual DOM output before removing the import,
- * not guessed at. The sidebar's own show/hide (`visible` prop) becomes a
- * plain `hide` class, applied when `visible` is false, matching `CSidebar`'s
- * own rendered class exactly.
- *
- * Two accepted, explicitly-documented gaps against `CSidebar`'s original
- * behavior (both flagged in ADR-0037, not silently dropped):
- * - `CSidebar`'s `isInViewport`-geometry-based auto-collapse on a mobile
- *   breakpoint transition is NOT reproduced — this component only handles
- *   the manual toggle (`AppShell`'s toggler button), which is what
- *   TC-SHELL-004 actually tests.
- * - The "UI Elements"/"Admin" nav-group expand/collapse (`CNavGroup`
- *   internally height-animates via a resize measurement) is hand-rolled
- *   here as a plain `useState<Set<string>>` of open group keys, toggling a
- *   `show` class — CoreUI's own CSS still drives the visual transition, but
- *   there is no JS-measured smooth height animation the way `CNavGroup`'s
- *   original implementation had. Purely cosmetic (open/closed state and
- *   the resulting reachable links are identical either way), not something
- *   any existing TC or test asserts on.
- *
  * **DASH-2 (2026-09-07):** "Org home" relabeled "Dashboard" (label text
  * only — `key`/`testId`/`to` all stay `org-home`/`sidebar-nav-org-home`/
  * `/orgs/:orgId`, so no test needs updating for those, only the visible
  * string). This is a distinct page from the separate, unrelated global
  * `/dashboard` placeholder (ADR-0035/DASH-1) — that route is untouched, see
- * this story's own ADR for the naming-collision call. `CIcon` (still a
- * real `@coreui/icons-react` component, independent of the `CSidebar`
- * removal above) added to this one nav item only, per this story's literal
- * ask — no icon added to any other nav item.
+ * this story's own ADR for the naming-collision call.
+ *
+ * ## AdminLTE v4 (ADR-0042) — what changed from the CoreUI markup
+ *
+ * Raw HTML, same as under ADR-0037, but every class is now AdminLTE v4's,
+ * read verbatim out of the vendored `admin-lte@4.9.1` package (its shipped
+ * `dist/css/adminlte.css` and `src/ts/treeview.ts`), never from memory or a
+ * v3 tutorial. The renames that matter:
+ *
+ * | CoreUI (was)       | AdminLTE v4 (now)                       |
+ * |--------------------|-----------------------------------------|
+ * | `.sidebar`         | `.app-sidebar` (a named CSS-grid area)  |
+ * | `.sidebar-header`  | `.sidebar-brand`                        |
+ * | `.sidebar-brand`   | `.brand-link` + `.brand-text`           |
+ * | (none)             | `.sidebar-wrapper` (the scroll region)  |
+ * | `.sidebar-nav`     | `.nav.sidebar-menu.flex-column`         |
+ * | `.nav-group`       | `.nav-item` (+ `.menu-open` when open)  |
+ * | `.nav-group-toggle`| `.nav-link`                             |
+ * | `.nav-group-items` | `.nav.nav-treeview`                     |
+ *
+ * Three of those are load-bearing in a way that is easy to get wrong:
+ *
+ * 1. **It is `sidebar-menu`, NOT `nav-sidebar`.** The v3 name has zero
+ *    occurrences in v4.9.1's shipped CSS.
+ * 2. **`.sidebar-menu` needs Bootstrap's own `nav flex-column`.** AdminLTE's
+ *    `.sidebar-menu` rule sets only `white-space: nowrap` — no `display`, no
+ *    `list-style`, no `padding` reset — so without `nav flex-column` you get
+ *    a bulleted, horizontally-laid-out list. The nested `<ul>` needs
+ *    `nav nav-treeview` for the same reason (`.nav-treeview` resets its own
+ *    padding/list-style but still needs `nav`).
+ * 3. **Nav label text must be wrapped in `<p>`.** `.sidebar-menu .nav-link p`
+ *    is what carries the label layout, and the mini-collapse animation sets
+ *    `p { width: 0 }` — a bare text node cannot collapse.
+ *
+ * Group open/closed is still the same hand-rolled `useState<Set<string>>` of
+ * open group keys this component has always used (no JS height animation, no
+ * plugin) — only the toggled class changed, from CoreUI's `show` to
+ * AdminLTE's `menu-open`, and the submenu's inline `style={{display}}` is
+ * gone because AdminLTE's CSS owns that now (`.sidebar-menu .nav-treeview {
+ * display: none }` / `.sidebar-menu .menu-open > .nav-treeview { display:
+ * block }`). `aria-expanded` stays on the group's own `.nav-link` toggle,
+ * which is where `treeview.ts` puts it. `data-lte-toggle="treeview"` on the
+ * root `<ul>` is convention parity only — nothing listens for it, since we
+ * don't load AdminLTE's JS.
+ *
+ * Two classes were deleted outright rather than translated:
+ * - **`sidebar-dark` does not exist in AdminLTE v4** — the whole
+ *   `sidebar-dark-*` / `sidebar-light-*` skin family was removed (v4 themes a
+ *   sidebar with `--lte-sidebar-*` custom properties or a nested
+ *   `data-bs-theme="dark"`). `bg-body-secondary` — AdminLTE's own demo
+ *   default — replaces it. This is a deliberate visual change, not parity.
+ * - **`vh-100`** existed only to cap the sidebar's height against `AppShell`'s
+ *   old `d-flex` row (see that file's docstring). The `.app-wrapper` grid
+ *   gives `.app-sidebar` its own row-spanning area, so the cap is both
+ *   unnecessary and wrong (it would fight `layout-fixed`).
+ *
+ * The sidebar's own visible/hidden state is no longer a prop on this
+ * component at all: AdminLTE keeps it in `sidebar-collapse`/`sidebar-open`
+ * classes on `document.body`, which `AppShell` owns (see its docstring for
+ * the full push-menu state machine). The old `visible`/`onVisibleChange`
+ * props and the `--cui-is-mobile` breakpoint probe they fed are both gone —
+ * `--cui-is-mobile` was a CoreUI CSS custom property that AdminLTE never
+ * defines, so `getComputedStyle(...).getPropertyValue("--cui-is-mobile")`
+ * would have silently returned `""` forever and the mobile branch would never
+ * have fired. Its replacement (`matchMedia("(max-width: 991.98px)")`) lives
+ * in `AppShell`, next to the state it actually decides.
  */
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { NavLink, useParams } from "react-router-dom";
-import { CIcon } from "@coreui/icons-react";
-import { cilSpeedometer } from "@coreui/icons";
 import { orgScopedEntities } from "../pages/admin/registry";
-
-/**
- * Mirrors `CSidebar`'s own `isOnMobile` check byte-for-byte: read the
- * `--cui-is-mobile` CSS custom property (set to `true` by `coreui.min.css`
- * itself, `@media (max-width: 991.98px) { .sidebar { --cui-is-mobile: true } }`
- * — not a hand-picked breakpoint number of our own) off the sidebar element's
- * own computed style. TC-SHELL-004 (narrow-viewport toggle) needs this: below
- * that breakpoint the CSS keeps `.sidebar` permanently off-canvas unless it
- * also has a `show` class — `hide`'s mere absence (this component's desktop
- * behavior) isn't enough on mobile.
- */
-function useIsMobileSidebar(ref: React.RefObject<HTMLDivElement | null>) {
-  const [isMobile, setIsMobile] = useState(false);
-
-  useEffect(() => {
-    function check() {
-      if (ref.current) {
-        setIsMobile(Boolean(getComputedStyle(ref.current).getPropertyValue("--cui-is-mobile")));
-      }
-    }
-    check();
-    window.addEventListener("resize", check);
-    return () => window.removeEventListener("resize", check);
-  }, [ref]);
-
-  return isMobile;
-}
-
-interface AppSidebarProps {
-  visible: boolean;
-  /**
-   * Vestigial: `CSidebar`'s own geometry-check auto-collapse (the one thing
-   * that called this) isn't reproduced (see docstring) — kept in the prop
-   * signature only so `AppShell` and existing tests don't need editing just
-   * to stop passing it.
-   */
-  onVisibleChange: (visible: boolean) => void;
-}
 
 interface SidebarNavItem {
   key: string;
@@ -123,7 +109,8 @@ interface SidebarNavItem {
   to: string;
   end: boolean;
   testId: string;
-  icon?: string[];
+  /** Font Awesome classes, e.g. `"fa-solid fa-gauge-high"` (ADR-0042 §3.2). */
+  icon?: string;
 }
 
 interface SidebarNavGroup {
@@ -133,11 +120,9 @@ interface SidebarNavGroup {
   items: { to: string; label: string; testId: string }[];
 }
 
-function AppSidebar({ visible }: AppSidebarProps) {
+function AppSidebar() {
   const { orgId } = useParams<{ orgId?: string }>();
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
-  const sidebarRef = useRef<HTMLDivElement>(null);
-  const isMobile = useIsMobileSidebar(sidebarRef);
 
   function toggleGroup(key: string) {
     setOpenGroups((prev) => {
@@ -161,7 +146,10 @@ function AppSidebar({ visible }: AppSidebarProps) {
           to: `/orgs/${orgId}`,
           end: true,
           testId: "sidebar-nav-org-home",
-          icon: cilSpeedometer,
+          // Was `cilSpeedometer` (a @coreui/icons path array rendered as an
+          // <svg> by CIcon); ADR-0042 §3.2 maps it to Font Awesome's
+          // fa-gauge-high, which renders as an <i> glyph instead.
+          icon: "fa-solid fa-gauge-high",
         },
         {
           key: "org-members",
@@ -207,70 +195,64 @@ function AppSidebar({ visible }: AppSidebarProps) {
     : [];
 
   return (
-    <div
-      ref={sidebarRef}
-      className={[
-        "sidebar",
-        "sidebar-dark",
-        "vh-100",
-        // Confirmed empirically against real @coreui/react (not just read
-        // off its source, which has confusing internal effect-timing): the
-        // SAME "has the toggler been clicked an odd number of times since
-        // mount" boolean (`!visible`) maps to a different class depending
-        // on the breakpoint's own default state — desktop defaults open
-        // (needs `hide` to close), mobile defaults off-canvas-closed (needs
-        // `show` to reveal). Not two independent conditions.
-        isMobile && !visible ? "show" : null,
-        !isMobile && !visible ? "hide" : null,
-      ]
-        .filter(Boolean)
-        .join(" ")}
-    >
-      <div className="sidebar-header">
-        <a className="sidebar-brand">TestNexa</a>
+    <aside className="app-sidebar bg-body-secondary shadow">
+      <div className="sidebar-brand">
+        <a className="brand-link">
+          <span className="brand-text fw-light">TestNexa</span>
+        </a>
       </div>
-      <ul className="sidebar-nav">
-        {navItems.map((item) => (
-          <li className="nav-item" key={item.key}>
-            <NavLink to={item.to} end={item.end} className="nav-link" data-testid={item.testId}>
-              {item.icon && <CIcon icon={item.icon} customClassName="nav-icon" />}
-              {item.label}
-            </NavLink>
-          </li>
-        ))}
-        {navGroups.map((group) => {
-          const isOpen = openGroups.has(group.key);
-          return (
-            <li
-              className={isOpen ? "nav-group show" : "nav-group"}
-              data-testid={group.testId}
-              key={group.key}
-            >
-              <a
-                href="#"
-                className="nav-link nav-group-toggle"
-                aria-expanded={isOpen}
-                onClick={(event) => {
-                  event.preventDefault();
-                  toggleGroup(group.key);
-                }}
-              >
-                {group.label}
-              </a>
-              <ul className="nav-group-items" style={{ display: isOpen ? "block" : "none" }}>
-                {group.items.map((item) => (
-                  <li className="nav-item" key={item.testId}>
-                    <NavLink to={item.to} className="nav-link" data-testid={item.testId}>
-                      {item.label}
-                    </NavLink>
-                  </li>
-                ))}
-              </ul>
-            </li>
-          );
-        })}
-      </ul>
-    </div>
+      <div className="sidebar-wrapper">
+        <nav className="mt-2">
+          <ul className="nav sidebar-menu flex-column" data-lte-toggle="treeview" role="menu">
+            {navItems.map((item) => (
+              <li className="nav-item" key={item.key}>
+                <NavLink to={item.to} end={item.end} className="nav-link" data-testid={item.testId}>
+                  {item.icon && <i className={`nav-icon ${item.icon}`} aria-hidden="true" />}
+                  <p>{item.label}</p>
+                </NavLink>
+              </li>
+            ))}
+            {navGroups.map((group) => {
+              const isOpen = openGroups.has(group.key);
+              return (
+                <li
+                  className={isOpen ? "nav-item menu-open" : "nav-item"}
+                  data-testid={group.testId}
+                  key={group.key}
+                >
+                  <a
+                    href="#"
+                    className="nav-link"
+                    aria-expanded={isOpen}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      toggleGroup(group.key);
+                    }}
+                  >
+                    <p>
+                      {group.label}
+                      <i className="nav-arrow fa-solid fa-angle-right" aria-hidden="true" />
+                    </p>
+                  </a>
+                  {/* No inline display style: `.sidebar-menu .nav-treeview`
+                      is `display: none` and `.menu-open > .nav-treeview` is
+                      `display: block` in AdminLTE's own CSS. */}
+                  <ul className="nav nav-treeview">
+                    {group.items.map((item) => (
+                      <li className="nav-item" key={item.testId}>
+                        <NavLink to={item.to} className="nav-link" data-testid={item.testId}>
+                          <p>{item.label}</p>
+                        </NavLink>
+                      </li>
+                    ))}
+                  </ul>
+                </li>
+              );
+            })}
+          </ul>
+        </nav>
+      </div>
+    </aside>
   );
 }
 

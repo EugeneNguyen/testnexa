@@ -1,13 +1,14 @@
 /**
  * RBAC-1 bootstrap signup screen: name/email/password/org_name/org_slug form
- * calling `useAuth().signup`. Built with CoreUI (ADR-0012), mirrors
+ * calling `useAuth().signup`. Built with raw Bootstrap 5 / AdminLTE markup
+ * (ADR-0042, superseding the CoreUI build of ADR-0012), mirrors
  * `Login.tsx`'s structure, including its use of the shared `FormField`
  * component (DS-1) for all 5 fields.
  *
  * Form state is React Hook Form, validation schema is Zod (ADR-0009):
  * `signupSchema` requires non-empty `name`/`email`/`password`/`orgName`,
  * plus an `orgSlug` `^[a-z0-9-]+$` format check via `.regex()` — this used
- * to be a manual `handleSubmit` guard that set the page-level `CAlert` and
+ * to be a manual `handleSubmit` guard that set the page-level alert and
  * returned before calling `signup()`; it's now a Zod refinement surfaced
  * per-field via `FormField`'s `error` prop instead.
  *
@@ -43,7 +44,6 @@ import { FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { CAlert, CButton, CCard, CCardBody, CCol, CContainer, CForm, CFormText, CRow } from "@coreui/react";
 import { useAuth } from "../../auth/AuthContext";
 import { ApiError } from "../../lib/api/client";
 import FormField from "../../components/shared/FormField";
@@ -125,13 +125,13 @@ function Signup() {
 
   return (
     <div className="min-vh-100 d-flex align-items-center bg-body-secondary">
-      <CContainer>
-        <CRow className="justify-content-center">
-          <CCol md={7} lg={5}>
-            <CCard>
-              <CCardBody className="p-4">
+      <div className="container">
+        <div className="row justify-content-center">
+          <div className="col-md-7 col-lg-5">
+            <div className="card">
+              <div className="card-body p-4">
                 <h1 className="mb-4 fs-4">Create your organization</h1>
-                <CForm noValidate onSubmit={handleFormSubmit}>
+                <form noValidate onSubmit={handleFormSubmit}>
                   <FormField
                     id="name"
                     label="Your name"
@@ -168,25 +168,25 @@ function Signup() {
                       error={errors.orgSlug?.message}
                       {...register("orgSlug")}
                     />
-                    <CFormText>Lowercase letters, numbers, and hyphens only.</CFormText>
+                    <div className="form-text">Lowercase letters, numbers, and hyphens only.</div>
                   </div>
                   {error && (
-                    <CAlert color="danger" role="alert">
+                    <div className="alert alert-danger" role="alert">
                       {error}
-                    </CAlert>
+                    </div>
                   )}
-                  <CButton type="submit" color="primary" disabled={submitting} className="w-100">
+                  <button type="submit" className="btn btn-primary w-100" disabled={submitting}>
                     {submitting ? "Creating..." : "Create organization"}
-                  </CButton>
-                </CForm>
+                  </button>
+                </form>
                 <p className="mt-3 mb-0 text-body-secondary small">
                   Already have an account? <Link to="/login">Log in</Link>
                 </p>
-              </CCardBody>
-            </CCard>
-          </CCol>
-        </CRow>
-      </CContainer>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

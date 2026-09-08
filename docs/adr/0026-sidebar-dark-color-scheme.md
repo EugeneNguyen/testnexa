@@ -1,9 +1,9 @@
 # ADR-0026: Sidebar dark color scheme (`CSidebar colorScheme="dark"`)
 
 **Date:** 2026-09-05
-**Status:** Accepted
+**Status:** Partially superseded by [ADR-0042](0042-adminlte-design-system.md) (2026-09-08) — **this ADR's mechanism no longer exists.** AdminLTE v4 removed the entire `sidebar-dark-*`/`sidebar-light-*` skin family upstream (verified: zero occurrences in the shipped `admin-lte@4.9.1` CSS), and `CSidebar`/its `colorScheme` prop are gone with `@coreui/react`. The sidebar now renders `bg-body-secondary` (AdminLTE's own demo default) — a **real, visible change from the dark scheme this ADR chose**, flagged in ADR-0042's Consequences, not silently absorbed. What survives is this ADR's *distinction*: the sidebar's own treatment is independent of FR-SHELL-4's app-wide light/dark toggle, and a future contributor should still not "fix" the sidebar to flip with it. Restoring a dark sidebar under v4 (via `--lte-sidebar-*` custom properties or a nested `data-bs-theme="dark"` on `.app-sidebar`) is a new product decision, not implied by this ADR.
 **Deciders:** xuanbinh91@gmail.com (CTO)
-**Related:** [ADR-0018](0018-admin-shell-sidebar-layout.md) (admin shell sidebar+navbar — this ADR only adds a visual prop to that shell, no structural change), [ADR-0020](0020-admin-shell-full-template-parity.md) (full CoreUI free-template parity, including FR-SHELL-4's app-wide light/dark mode toggle — see Decision below for why the two are independent), [ADR-0012](0012-coreui-design-system.md) (CoreUI design system)
+**Related:** [ADR-0042](0042-adminlte-design-system.md) (partially supersedes this ADR), [ADR-0018](0018-admin-shell-sidebar-layout.md) (admin shell sidebar+navbar — this ADR only adds a visual prop to that shell, no structural change), [ADR-0020](0020-admin-shell-full-template-parity.md) (full CoreUI free-template parity, including FR-SHELL-4's app-wide light/dark mode toggle — see Decision below for why the two are independent), [ADR-0012](0012-coreui-design-system.md) (CoreUI design system)
 
 ## Context
 

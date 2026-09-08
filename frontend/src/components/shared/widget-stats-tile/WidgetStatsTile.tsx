@@ -4,16 +4,24 @@
  * row at `…/div[2]/div[2]/div[7]`, an 8-card grid of A-with-icon + B-no-icon
  * variants in the four contextual colors).
  *
- * Hand-rolled raw HTML/JSX against `@coreui/coreui/dist/css/coreui.min.css`'s
- * own Bootstrap-family classes — the same "hand-roll the markup, keep the
- * CSS" pattern [ADR-0037](docs/adr/0037-shell-components-raw-html-not-coreui-react.md)
+ * Hand-rolled raw HTML/JSX against the design system's own Bootstrap-family
+ * classes — the "hand-roll the markup, keep the CSS" pattern
+ * [ADR-0037](docs/adr/0037-shell-components-raw-html-not-coreui-react.md)
  * established for `AppSidebar`/`AppBreadcrumb` and `FeaturedCard` /
- * `FormField` reused from a plain product ask. Class strings below are
- * verbatim from the demo page's rendered DOM (captured via Playwright +
- * `getComputedStyle`, per root `CLAUDE.md`'s "screenshots can't reveal
- * class names" lesson), not reconstructed from memory. Icon rendered via
- * `@coreui/icons-react`'s `CIcon` — the codebase's only icon path (root
- * `CLAUDE.md`).
+ * `FormField` reused from a plain product ask, and which
+ * [ADR-0042](docs/adr/0042-adminlte-design-system.md) has since made the
+ * repo-wide rule. Class strings below were captured verbatim from the
+ * originating demo page's rendered DOM (via Playwright + `getComputedStyle`,
+ * per root `CLAUDE.md`'s "screenshots can't reveal class names" lesson), not
+ * reconstructed from memory, and are unchanged by the AdminLTE migration —
+ * they are all plain Bootstrap 5 utilities, which `adminlte.min.css` bundles.
+ *
+ * **The only thing ADR-0042 changed here is the icon**: `@coreui/icons-react`'s
+ * `CIcon` became a Font Awesome `<i>` (see the `icon` prop's own doc for the
+ * latent bug that surfaced). Three tests assert on exact compound selectors
+ * (`.bg-warning.text-white.p-4.me-3`, `.text-danger.fw-semibold`, and `card` /
+ * `overflow-hidden` on the root) — the surrounding markup is deliberately
+ * byte-identical so those keep passing.
  *
  * Tier placement: `frontend/src/components/shared/` per DS-1 and the
  * FormField doc comment, which explicitly notes that this repo does NOT
@@ -38,12 +46,12 @@
  * the explicit dedupe of the 8-card demo row documented in Stage 1 §1.
  *
  * Tailwind: not used. `frontend/package.json` has zero Tailwind deps;
- * ADR-0012 forbids reintroducing it; root `CLAUDE.md` says "Don't
- * reintroduce a Tailwind class or config file." Every class string below
- * is a CoreUI/Bootstrap-family utility class shipped in `coreui.min.css`.
+ * ADR-0012 forbade reintroducing it and ADR-0042 carries that rule forward;
+ * root `CLAUDE.md` says "Don't reintroduce a Tailwind class or config file."
+ * Every class string below is a Bootstrap 5 utility class, shipped inside
+ * `admin-lte/dist/css/adminlte.min.css` (which bundles Bootstrap in full).
  */
 import { createElement, ReactNode } from "react";
-import { CIcon } from "@coreui/icons-react";
 import type { CWidgetStatsColor } from "./types";
 
 /** Icon-block bg + readable-text pair, looked up by `color` at render time. */
@@ -83,10 +91,19 @@ export interface WidgetStatsTileProps {
    */
   value: ReactNode;
   /**
-   * Optional CoreUI icon name (e.g. `"cilSettings"`). When supplied, renders
-   * the leading colored icon block (A-variant); when omitted, omits the
-   * block entirely (B-variant). Demo's icon size is `xl` — the only size
-   * the rendered DOM uses, so size is not exposed as a prop (Stage 1 §3).
+   * Optional **Font Awesome class string**, e.g. `"fa-solid fa-folder"`
+   * (ADR-0042). When supplied, renders the leading colored icon block
+   * (A-variant); when omitted, omits the block entirely (B-variant). A
+   * `fa-2x` size class is added by this component, matching the demo's own
+   * icon size — so size is not exposed as a prop (Stage 1 §3).
+   *
+   * **This prop's contract changed in the AdminLTE migration.** It previously
+   * took a bare CoreUI icon *name* (`"cilFolder"`) and passed it straight to
+   * `CIcon icon={icon}` — but `CIcon` can only resolve a bare name string
+   * against a global icon registry (`React.icons`), which this app never set
+   * up. The tile's icon block was therefore almost certainly rendering an
+   * empty SVG the whole time: a latent pre-existing bug this migration
+   * incidentally fixes, not one it introduced.
    */
   icon?: string;
   /** Optional heading-level for `title`. Default `"div"` (matches the demo); pass `"h2"`/`"h3"`/... for screen-reader / heading-hierarchy correctness on the host page. */
@@ -116,7 +133,7 @@ export function WidgetStatsTile({
       <div className="card-body p-0 d-flex align-items-center">
         {icon !== undefined && (
           <div className={`${tileBgClassName[color]} p-4 me-3`}>
-            <CIcon icon={icon} size="xl" className="icon icon-xl" />
+            <i className={`${icon} fa-2x`} aria-hidden="true" />
           </div>
         )}
         <div>

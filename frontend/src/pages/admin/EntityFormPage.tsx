@@ -1,14 +1,21 @@
 /**
  * ADR-0025: the surface's other page component — the dedicated `/edit`
- * route only (UI Design Document §2: create renders inside a `CModal` on
+ * route only (UI Design Document §2: create renders inside a modal on
  * `EntityListPage` instead). Route:
  * `/orgs/:orgId/admin/:entity/:id/edit` or
  * `/projects/:projectId/admin/:entity/:id/edit`.
+ *
+ * **ADR-0042 (CoreUI -> AdminLTE v4):** raw Bootstrap 5 markup —
+ * `CContainer fluid` -> `<div class="container-fluid">`, `CCard`/`CCardBody`
+ * -> `<div class="card">`/`<div class="card-body">`, `CAlert` -> `<div
+ * class="alert alert-danger" role="alert">`, `CSpinner` -> `<div
+ * class="spinner-border" role="status">`. The `h-100` stretch pattern is
+ * unchanged (`frontend/CLAUDE.md`: the card is the sole child of its sizing
+ * context here, so a plain height utility is correct).
  */
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { CAlert, CCard, CCardBody, CContainer, CSpinner } from "@coreui/react";
 import EntityForm from "../../components/crud/EntityForm";
 import { ApiError } from "../../lib/api/client";
 import { EntityRow, getEntity, updateEntity } from "../../lib/api/entityCrud";
@@ -54,32 +61,34 @@ function EntityFormPage() {
 
   if (!config) {
     return (
-      <CContainer fluid className="px-4 py-4 h-100">
-        <CCard className="h-100">
-          <CCardBody>
-            <CAlert color="danger" role="alert">
+      <div className="container-fluid px-4 py-4 h-100">
+        <div className="card h-100">
+          <div className="card-body">
+            <div className="alert alert-danger" role="alert">
               Unknown admin entity &quot;{entityKey}&quot;.
-            </CAlert>
-          </CCardBody>
-        </CCard>
-      </CContainer>
+            </div>
+          </div>
+        </div>
+      </div>
     );
   }
 
   return (
-    <CContainer fluid className="px-4 py-4 h-100">
-      <CCard className="h-100">
-        <CCardBody>
+    <div className="container-fluid px-4 py-4 h-100">
+      <div className="card h-100">
+        <div className="card-body">
           <h1 className="fs-4 mb-3">Edit {entityKey.replace(/-/g, " ")}</h1>
 
           {itemQuery.isLoading ? (
             <div className="d-flex justify-content-center py-4">
-              <CSpinner color="primary" />
+              <div className="spinner-border text-primary" role="status">
+                <span className="visually-hidden">Loading...</span>
+              </div>
             </div>
           ) : itemQuery.isError ? (
-            <CAlert color="danger" role="alert">
+            <div className="alert alert-danger" role="alert">
               Something went wrong loading this record.
-            </CAlert>
+            </div>
           ) : (
             <EntityForm
               config={config}
@@ -95,9 +104,9 @@ function EntityFormPage() {
               }}
             />
           )}
-        </CCardBody>
-      </CCard>
-    </CContainer>
+        </div>
+      </div>
+    </div>
   );
 }
 

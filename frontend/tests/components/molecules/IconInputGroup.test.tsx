@@ -13,7 +13,7 @@ describe("IconInputGroup", () => {
     const input = screen.getByLabelText("Email");
     expect(input).toHaveClass("form-control");
     expect(container.querySelector(".input-group")).toBeInTheDocument();
-    expect(container.querySelector(".bi-envelope")).toBeInTheDocument();
+    expect(container.querySelector(".fa-envelope")).toBeInTheDocument();
     expect(screen.getByText("Email")).toHaveClass("visually-hidden");
   });
 

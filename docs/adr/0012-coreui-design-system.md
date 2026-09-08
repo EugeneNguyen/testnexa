@@ -1,9 +1,9 @@
 # ADR-0012: CoreUI for React as the project's design system
 
 **Date:** 2026-09-03
-**Status:** Accepted (Partially superseded by [ADR-0037](0037-shell-components-raw-html-not-coreui-react.md) for the 5 shell-chrome files only — CSS/design-token layer unaffected, "build UI from CoreUI's React components first" clause lifted for `AppShell`/`AppHeader`/`AppSidebar`/`AppFooter`/`AppBreadcrumb`)
+**Status:** Superseded by [ADR-0042](0042-adminlte-design-system.md) — AdminLTE v4 + Bootstrap 5 + Font Awesome replaces CoreUI outright (big-bang, 2026-09-08); every `@coreui/*` package is removed. *(Previously: partially superseded by [ADR-0037](0037-shell-components-raw-html-not-coreui-react.md) for the 5 shell-chrome files only.)* The one clause of this ADR that survives its own supersession is the **cascade-conflict argument** — two Bootstrap-family stylesheets must not run side by side — which ADR-0042 reuses verbatim, against this ADR's own CSS, to justify a big-bang rather than phased rollout. The "Tailwind is removed" decision also stands unchanged.
 **Deciders:** xuanbinh91@gmail.com (CTO)
-**Related:** [ADR-0009](0009-frontend-stack.md) (frontend stack — partially superseded by this ADR), [CoreUI for React docs](https://coreui.io/react/docs/getting-started/introduction/)
+**Related:** [ADR-0009](0009-frontend-stack.md) (frontend stack — partially superseded by this ADR), [ADR-0042](0042-adminlte-design-system.md) (supersedes this ADR), [CoreUI for React docs](https://coreui.io/react/docs/getting-started/introduction/)
 
 ## Context
 

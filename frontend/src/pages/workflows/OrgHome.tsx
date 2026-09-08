@@ -83,36 +83,24 @@
  * stays 10. TC-DS-015 asserts TC-PROJ-022 (search) and TC-PROJ-023 (sort)
  * still pass with zero assertion changes.
  *
- * Built with CoreUI (ADR-0012).
+ * **ADR-0042 (2026-09-08):** originally built with CoreUI (ADR-0012); the
+ * `@coreui/react` components are replaced by raw Bootstrap 5 / AdminLTE v4
+ * markup. Nothing about this screen's *behavior* changes — the RHF+Zod
+ * wiring, the ADR-0039 client-side search/sort, the ADR-0041 shared `Table`
+ * container call, and every `data-testid` are all untouched; only the
+ * rendered elements and class names are. Notable local consequences: the
+ * three `CModal`s become one local `Modal` helper (below) hand-rolling
+ * Bootstrap's own modal markup, and `SortableHeader` now renders a real
+ * `<th>` (`container/Table.tsx`'s `columns`/`renderRow` slots take raw
+ * `<tr>`/`<th>`/`<td>` since ADR-0042, not `<CTableRow>`/`<CTableHeaderCell>`
+ * /`<CTableDataCell>`).
  */
-import { ReactNode, useMemo, useState } from "react";
+import { ReactNode, useEffect, useId, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
-import {
-  CAlert,
-  CButton,
-  CCard,
-  CCardBody,
-  CCol,
-  CContainer,
-  CForm,
-  CFormInput,
-  CFormFeedback,
-  CFormLabel,
-  CFormText,
-  CModal,
-  CModalBody,
-  CModalFooter,
-  CModalHeader,
-  CModalTitle,
-  CRow,
-  CTableDataCell,
-  CTableHeaderCell,
-  CTableRow,
-} from "@coreui/react";
 import Table from "../../container/Table";
 import { ApiError } from "../../lib/api/client";
 import { getActiveMemberTotal, getProjectsTotal } from "../../lib/api/dashboard";
@@ -197,7 +185,11 @@ function ProjectCountWidget({ orgId }: { orgId: string }) {
       color="primary"
       title="Projects"
       value={widgetValue(isLoading, isError, data)}
-      icon="cilFolder"
+      // ADR-0042: was `"cilFolder"`, a CoreUI icon *name* string that
+      // `CIcon` could never resolve without a global icon registry this app
+      // never set up — i.e. the A-variant icon block rendered empty. Now a
+      // Font Awesome class string, which `WidgetStatsTile` renders directly.
+      icon="fa-solid fa-folder"
       testId="widget-project-count"
     />
   );
@@ -225,6 +217,74 @@ function ActiveMemberCountWidget({ orgId }: { orgId: string }) {
   );
 }
 
+/**
+ * Hand-rolled Bootstrap 5 modal (ADR-0042 §2.3), replacing `CModal` +
+ * `CModalHeader` + `CModalTitle`. This screen renders three of them, so the
+ * block lives here once rather than being repeated per modal.
+ *
+ * Deliberately renders **nothing at all when closed**, matching what `CModal`
+ * effectively did — several tests in this repo assert `queryBy*(...)` is null
+ * while a modal is shut, which a render-but-hide modal would break.
+ *
+ * ESC closes (CoreUI's `keyboard` default). Focus-trapping is *not*
+ * reimplemented — an accepted, documented gap in ADR-0042, not an oversight.
+ */
+function Modal({
+  visible,
+  onClose,
+  title,
+  children,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  title: string;
+  children: ReactNode;
+}) {
+  const titleId = useId();
+
+  useEffect(() => {
+    if (!visible) {
+      return;
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [visible, onClose]);
+
+  if (!visible) {
+    return null;
+  }
+
+  return (
+    <>
+      <div
+        className="modal fade show d-block"
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+      >
+        <div className="modal-dialog">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h5 className="modal-title" id={titleId}>
+                {title}
+              </h5>
+              <button type="button" className="btn-close" aria-label="Close" onClick={onClose} />
+            </div>
+            {children}
+          </div>
+        </div>
+      </div>
+      <div className="modal-backdrop fade show" />
+    </>
+  );
+}
+
 /** Sortable column header — click toggles asc/desc, a second field click resets to asc. */
 function SortableHeader({
   field,
@@ -241,7 +301,12 @@ function SortableHeader({
 }) {
   const isActive = sortField === field;
   return (
-    <CTableHeaderCell
+    // The accessible name of these cells is computed from their descendant
+    // text ("Name ▲"), and `OrgHome.test.tsx` looks them up with
+    // `getByRole("columnheader", {name: /^name/i})` — do not add, reorder, or
+    // wrap any text/icon inside this cell.
+    <th
+      scope="col"
       role="columnheader"
       aria-sort={isActive ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
       style={{ cursor: "pointer", userSelect: "none" }}
@@ -249,7 +314,7 @@ function SortableHeader({
     >
       {label}
       {isActive ? (sortDir === "asc" ? " ▲" : " ▼") : ""}
-    </CTableHeaderCell>
+    </th>
   );
 }
 
@@ -427,54 +492,55 @@ function OrgHome() {
 
   return (
     <div className="min-vh-100 bg-body-secondary py-4">
-      <CContainer fluid className="px-4">
-        <CRow className="justify-content-center mb-4">
-          <CCol md={10} lg={8}>
-            <CRow>
-              <CCol sm={6}>
+      <div className="container-fluid px-4">
+        <div className="row justify-content-center mb-4">
+          <div className="col-md-10 col-lg-8">
+            <div className="row">
+              <div className="col-sm-6">
                 <ProjectCountWidget orgId={orgId} />
-              </CCol>
-              <CCol sm={6}>
+              </div>
+              <div className="col-sm-6">
                 <ActiveMemberCountWidget orgId={orgId} />
-              </CCol>
-            </CRow>
-          </CCol>
-        </CRow>
-        <CRow className="justify-content-center">
-          <CCol md={10} lg={8}>
-            <CCard>
-              <CCardBody className="p-4">
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="row justify-content-center">
+          <div className="col-md-10 col-lg-8">
+            <div className="card">
+              <div className="card-body p-4">
                 <div className="d-flex justify-content-between align-items-center mb-3">
                   <h1 className="fs-4 mb-0">Dashboard</h1>
                   <div>
-                    <CButton
-                      as={Link}
-                      to={`/orgs/${orgId}/members`}
-                      color="secondary"
-                      variant="outline"
-                      className="me-2"
-                    >
+                    {/*
+                      ADR-0042 §4.5.9: was `CButton as={Link}` (polymorphic).
+                      A real `<Link>` carrying the button classes, not a
+                      `<button>` — it must stay an `<a>` so `getByRole("link")`
+                      and real navigation both keep working.
+                    */}
+                    <Link className="btn btn-outline-secondary me-2" to={`/orgs/${orgId}/members`}>
                       Members
-                    </CButton>
-                    <CButton color="primary" onClick={openModal}>
+                    </Link>
+                    <button type="button" className="btn btn-primary" onClick={openModal}>
                       New Project
-                    </CButton>
+                    </button>
                   </div>
                 </div>
 
                 {projectsLoading ? (
                   <p className="text-body-secondary mb-0">Loading projects…</p>
                 ) : projectsIsError ? (
-                  <CAlert color="danger" role="alert">
+                  <div className="alert alert-danger" role="alert">
                     Unable to load projects. Please try reloading the page.
-                  </CAlert>
+                  </div>
                 ) : projects.length === 0 ? (
                   <p className="text-body-secondary mb-0">No projects yet.</p>
                 ) : (
                   <>
                     <div className="mb-3" style={{ maxWidth: "20rem" }}>
-                      <CFormInput
+                      <input
                         type="search"
+                        className="form-control"
                         placeholder="Search by name…"
                         aria-label="Search projects"
                         value={search}
@@ -494,7 +560,7 @@ function OrgHome() {
                         paginationLabel="Project list pages"
                         testIdPrefix="project-table"
                         columns={
-                          <CTableRow>
+                          <tr>
                             <SortableHeader
                               field="id"
                               label="ID"
@@ -509,149 +575,168 @@ function OrgHome() {
                               sortDir={sortDir}
                               onSort={handleSort}
                             />
-                            <CTableHeaderCell>Standards profile</CTableHeaderCell>
-                            <CTableHeaderCell aria-label="Actions" />
-                          </CTableRow>
+                            <th scope="col">Standards profile</th>
+                            <th scope="col" aria-label="Actions" />
+                          </tr>
                         }
                         renderRow={(project) => (
-                          <CTableRow key={project.id}>
-                            <CTableDataCell className="text-body-secondary small">{project.id}</CTableDataCell>
-                            <CTableDataCell>
+                          <tr key={project.id}>
+                            <td className="text-body-secondary small">{project.id}</td>
+                            <td>
                               <Link to={`/projects/${project.id}`}>{project.name}</Link>
-                            </CTableDataCell>
-                            <CTableDataCell>
+                            </td>
+                            <td>
                               {project.standards_profile ?? <span className="text-body-secondary">—</span>}
-                            </CTableDataCell>
-                            <CTableDataCell className="text-end">
-                              <CButton
-                                size="sm"
-                                color="secondary"
-                                variant="outline"
-                                className="me-2"
+                            </td>
+                            <td className="text-end">
+                              <button
+                                type="button"
+                                className="btn btn-outline-secondary btn-sm me-2"
                                 onClick={() => openEditModal(project)}
                               >
                                 Edit
-                              </CButton>
-                              <CButton
-                                size="sm"
-                                color="danger"
-                                variant="outline"
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-outline-danger btn-sm"
                                 onClick={() => requestDelete(project)}
                               >
                                 Delete
-                              </CButton>
-                            </CTableDataCell>
-                          </CTableRow>
+                              </button>
+                            </td>
+                          </tr>
                         )}
                       />
                     )}
                   </>
                 )}
-              </CCardBody>
-            </CCard>
+              </div>
+            </div>
 
             <RoleAssignmentsPanel orgId={orgId} />
-          </CCol>
-        </CRow>
-      </CContainer>
+          </div>
+        </div>
+      </div>
 
-      <CModal visible={showModal} onClose={closeModal}>
-        <CModalHeader>
-          <CModalTitle>New Project</CModalTitle>
-        </CModalHeader>
-        <CForm onSubmit={handleSubmit(onSubmit)} noValidate>
-          <CModalBody>
+      <Modal visible={showModal} onClose={closeModal} title="New Project">
+        <form onSubmit={handleSubmit(onSubmit)} noValidate>
+          <div className="modal-body">
             <div className="mb-3">
-              <CFormLabel htmlFor="projectName">Name</CFormLabel>
-              <CFormInput id="projectName" type="text" invalid={!!errors.name} {...register("name")} />
-              {errors.name && <CFormFeedback invalid>{errors.name.message}</CFormFeedback>}
+              <label className="form-label" htmlFor="projectName">
+                Name
+              </label>
+              <input
+                id="projectName"
+                type="text"
+                className={`form-control${errors.name ? " is-invalid" : ""}`}
+                {...register("name")}
+              />
+              {errors.name && <div className="invalid-feedback d-block">{errors.name.message}</div>}
             </div>
             <div className="mb-3">
-              <CFormLabel htmlFor="projectStandardsProfile">Standards profile</CFormLabel>
-              <CFormInput id="projectStandardsProfile" type="text" {...register("standardsProfile")} />
-              <CFormText>Optional — defaults to the organization&apos;s standards profile if left blank.</CFormText>
+              <label className="form-label" htmlFor="projectStandardsProfile">
+                Standards profile
+              </label>
+              <input id="projectStandardsProfile" type="text" className="form-control" {...register("standardsProfile")} />
+              <div className="form-text">
+                Optional — defaults to the organization&apos;s standards profile if left blank.
+              </div>
             </div>
             {apiError && (
-              <CAlert color="danger" role="alert">
+              <div className="alert alert-danger" role="alert">
                 {apiError}
-              </CAlert>
+              </div>
             )}
-          </CModalBody>
-          <CModalFooter>
-            <CButton color="secondary" variant="outline" onClick={closeModal}>
+          </div>
+          <div className="modal-footer">
+            <button type="button" className="btn btn-outline-secondary" onClick={closeModal}>
               Cancel
-            </CButton>
-            <CButton type="submit" color="primary" disabled={isSubmitting}>
+            </button>
+            <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
               {isSubmitting ? "Creating..." : "Create"}
-            </CButton>
-          </CModalFooter>
-        </CForm>
-      </CModal>
+            </button>
+          </div>
+        </form>
+      </Modal>
 
-      <CModal visible={Boolean(editingProject)} onClose={closeEditModal}>
-        <CModalHeader>
-          <CModalTitle>Edit Project</CModalTitle>
-        </CModalHeader>
-        <CForm onSubmit={handleEditSubmit(onEditSubmit)} noValidate>
-          <CModalBody>
+      <Modal visible={Boolean(editingProject)} onClose={closeEditModal} title="Edit Project">
+        <form onSubmit={handleEditSubmit(onEditSubmit)} noValidate>
+          <div className="modal-body">
             <div className="mb-3">
-              <CFormLabel htmlFor="editProjectName">Name</CFormLabel>
-              <CFormInput
+              <label className="form-label" htmlFor="editProjectName">
+                Name
+              </label>
+              <input
                 id="editProjectName"
                 type="text"
-                invalid={!!editErrors.name}
+                className={`form-control${editErrors.name ? " is-invalid" : ""}`}
                 {...registerEdit("name")}
               />
-              {editErrors.name && <CFormFeedback invalid>{editErrors.name.message}</CFormFeedback>}
+              {editErrors.name && (
+                <div className="invalid-feedback d-block">{editErrors.name.message}</div>
+              )}
             </div>
             <div className="mb-3">
-              <CFormLabel htmlFor="editProjectStandardsProfile">Standards profile</CFormLabel>
-              <CFormInput id="editProjectStandardsProfile" type="text" {...registerEdit("standardsProfile")} />
-              <CFormText>Leave blank to clear it.</CFormText>
+              <label className="form-label" htmlFor="editProjectStandardsProfile">
+                Standards profile
+              </label>
+              <input
+                id="editProjectStandardsProfile"
+                type="text"
+                className="form-control"
+                {...registerEdit("standardsProfile")}
+              />
+              <div className="form-text">Leave blank to clear it.</div>
             </div>
             {editApiError && (
-              <CAlert color="danger" role="alert">
+              <div className="alert alert-danger" role="alert">
                 {editApiError}
-              </CAlert>
+              </div>
             )}
-          </CModalBody>
-          <CModalFooter>
-            <CButton color="secondary" variant="outline" onClick={closeEditModal}>
+          </div>
+          <div className="modal-footer">
+            <button type="button" className="btn btn-outline-secondary" onClick={closeEditModal}>
               Cancel
-            </CButton>
-            <CButton type="submit" color="primary" disabled={isEditSubmitting}>
+            </button>
+            <button type="submit" className="btn btn-primary" disabled={isEditSubmitting}>
               {isEditSubmitting ? "Saving..." : "Save"}
-            </CButton>
-          </CModalFooter>
-        </CForm>
-      </CModal>
+            </button>
+          </div>
+        </form>
+      </Modal>
 
-      <CModal visible={Boolean(rowPendingDelete)} onClose={() => setRowPendingDelete(null)}>
-        <CModalHeader>
-          <CModalTitle>Delete Project</CModalTitle>
-        </CModalHeader>
-        <CModalBody>
+      <Modal
+        visible={Boolean(rowPendingDelete)}
+        onClose={() => setRowPendingDelete(null)}
+        title="Delete Project"
+      >
+        <div className="modal-body">
           {deleteError && (
-            <CAlert color="danger" role="alert">
+            <div className="alert alert-danger" role="alert">
               {deleteError}
-            </CAlert>
+            </div>
           )}
           Are you sure you want to delete{" "}
           <strong>{rowPendingDelete?.name}</strong>? This cannot be undone.
-        </CModalBody>
-        <CModalFooter>
-          <CButton color="secondary" variant="outline" onClick={() => setRowPendingDelete(null)}>
+        </div>
+        <div className="modal-footer">
+          <button
+            type="button"
+            className="btn btn-outline-secondary"
+            onClick={() => setRowPendingDelete(null)}
+          >
             Cancel
-          </CButton>
-          <CButton
-            color="danger"
+          </button>
+          <button
+            type="button"
+            className="btn btn-danger"
             disabled={deleteMutation.isPending}
             onClick={() => rowPendingDelete && deleteMutation.mutate(rowPendingDelete)}
           >
             {deleteMutation.isPending ? "Deleting..." : "Delete"}
-          </CButton>
-        </CModalFooter>
-      </CModal>
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }

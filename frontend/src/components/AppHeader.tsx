@@ -52,15 +52,13 @@
  * Raw HTML per ADR-0037 (2026-09-07), not `@coreui/react` — this file
  * originally used `CDropdown`/`CDropdownToggle`/`CDropdownMenu`/
  * `CDropdownItem`/`CTooltip`/`CHeader`/`CHeaderBrand`/`CHeaderToggler`/
- * `CContainer`/`CButton`/`useColorModes`; every class name below is the exact
+ * `CContainer`/`CButton`/`useColorModes`; every class name below was the exact
  * class those components rendered, confirmed by dumping their actual DOM
  * before removing the import:
  * - `useColorModes` (a `@coreui/react` hook) is replaced with `useColorMode`
- *   below, a faithful line-for-line port of that hook's own source
- *   (`localStorage` key `coreui-react-color-scheme` unchanged, so an
- *   already-set preference from before this migration still applies; same
- *   `prefers-color-scheme` media-query listener for "auto"; same
- *   `document.documentElement.dataset.coreuiTheme` write) — not a
+ *   below, a faithful line-for-line port of that hook's own source (same
+ *   `prefers-color-scheme` media-query listener for "auto", same
+ *   read-storage-then-fall-back-to-system resolution) — not a
  *   simplification, just no longer imported from the library.
  * - Both dropdowns (color-mode, org-switcher) become a hand-rolled
  *   `useState` open/closed boolean toggling Bootstrap's own
@@ -85,16 +83,41 @@
  *   tooltip — no test (unit or e2e) asserts on the tooltip's own rendering,
  *   only on `aria-label`/`data-testid`, so reimplementing hover-positioning
  *   logic by hand would be pure risk for a behaviour nothing here verifies.
- * - `CIcon` (`@coreui/icons-react`) is kept as-is — it's a leaf SVG
- *   renderer, not a layout/markup-mediating component, so it isn't the
- *   class of dependency ADR-0037 is about; reimplementing `@coreui/icons`'
- *   own path-array format by hand would be pure duplicated risk for zero
- *   benefit.
+ * ## AdminLTE v4 (ADR-0042) — what changed
+ *
+ * - **The header root is `.app-header navbar navbar-expand`**, not CoreUI's
+ *   `.header`. It is a direct child of `AppShell`'s `.app-wrapper` CSS grid
+ *   and claims the `lte-app-header` grid area; an intermediate wrapper div
+ *   would break that placement (see `AppShell.tsx`'s docstring).
+ * - **The sidebar toggler no longer flips a prop on `AppSidebar`.** AdminLTE
+ *   keeps sidebar state in `sidebar-collapse`/`sidebar-open` classes on
+ *   `document.body`, so the button calls a handler `AppShell` owns and
+ *   `AppShell` writes those classes. `data-lte-toggle="sidebar"` is kept on
+ *   the button for convention parity with AdminLTE's own delegated listener
+ *   — nothing is actually listening for it, because we don't load that JS.
+ * - **Color mode is a deliberate breaking change**, not a rename for
+ *   tidiness (ADR-0042 §4.3, matching `admin-lte/src/ts/color-mode.ts`'s own
+ *   constants): the attribute written to `<html>` is **`data-bs-theme`** (was
+ *   `data-coreui-theme`) and the `localStorage` key is **`lte-theme`** (was
+ *   `coreui-react-color-scheme`). A user who had picked a theme before this
+ *   migration therefore falls back to their system preference once, on their
+ *   next visit, and re-picks — accepted, since the alternative (reading the
+ *   old key as a fallback) would leave a dead CoreUI-named key in storage
+ *   forever for a one-click cost. The three choices, their `data-testid`s and
+ *   the `auto` → `prefers-color-scheme` resolution are all unchanged.
+ * - **Icons are Font Awesome classes on an `<i>`**, not `CIcon` + a path
+ *   array (ADR-0042 §3.2): `cilMenu`→`fa-bars`, `cilBuilding`→`fa-building`,
+ *   `cilSun`→`fa-sun`, `cilMoon`→`fa-moon`,
+ *   `cilContrast`→`fa-circle-half-stroke`. `size="lg"` → FA's own `fa-lg`.
+ *   Each is `aria-hidden` — the buttons carry their own `aria-label`.
+ *
+ * Everything else in this file is deliberately unchanged, including the three
+ * org-switcher behaviours enumerated above and the `.dropdown`/`.dropdown-menu`/
+ * `.dropdown-item` markup — those are stock Bootstrap 5 classes, which
+ * AdminLTE v4 is built on, so they need no translation at all.
  */
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { CIcon } from "@coreui/icons-react";
-import { cilBuilding, cilContrast, cilMenu, cilMoon, cilSun } from "@coreui/icons";
 import { useAuth } from "../auth/AuthContext";
 import { getMyOrgs, type OrgSummary } from "../lib/api/auth";
 import { Button } from "./atoms/button";
@@ -105,13 +128,17 @@ interface AppHeaderProps {
 
 type ColorMode = "light" | "dark" | "auto";
 
-const COLOR_MODE_STORAGE_KEY = "coreui-react-color-scheme";
+/** `admin-lte/src/ts/color-mode.ts`'s own `STORAGE_KEY` constant. */
+const COLOR_MODE_STORAGE_KEY = "lte-theme";
 
-const COLOR_MODE_ICON = {
-  light: cilSun,
-  dark: cilMoon,
-  auto: cilContrast,
-} as const;
+/** `admin-lte/src/ts/color-mode.ts`'s own `ATTRIBUTE_THEME` constant. */
+const COLOR_MODE_ATTRIBUTE = "data-bs-theme";
+
+const COLOR_MODE_ICON: Record<ColorMode, string> = {
+  light: "fa-solid fa-sun",
+  dark: "fa-solid fa-moon",
+  auto: "fa-solid fa-circle-half-stroke",
+};
 
 function prefersDark(): boolean {
   return window.matchMedia("(prefers-color-scheme: dark)").matches;
@@ -123,12 +150,15 @@ function getStoredColorMode(): ColorMode | null {
 }
 
 function applyColorMode(mode: ColorMode) {
-  document.documentElement.setAttribute("data-coreui-theme", mode === "auto" && prefersDark() ? "dark" : mode);
+  document.documentElement.setAttribute(
+    COLOR_MODE_ATTRIBUTE,
+    mode === "auto" && prefersDark() ? "dark" : mode,
+  );
 }
 
 /**
- * Faithful port of `@coreui/react`'s `useColorModes` hook — see this file's
- * own docstring for why it's no longer imported from the library.
+ * Faithful port of `@coreui/react`'s `useColorModes` hook, retargeted at
+ * AdminLTE's own storage key/attribute — see this file's own docstring.
  */
 function useColorMode() {
   const [colorMode, setColorMode] = useState<ColorMode>(() => getStoredColorMode() ?? (prefersDark() ? "dark" : "light"));
@@ -270,21 +300,27 @@ function AppHeader({ onToggleSidebar }: AppHeaderProps) {
     colorModeDropdown.setOpen(false);
   }
 
-  const activeIcon = COLOR_MODE_ICON[colorMode] ?? cilContrast;
+  const activeIcon = COLOR_MODE_ICON[colorMode] ?? COLOR_MODE_ICON.auto;
 
   return (
-    <div className="header">
+    <nav className="app-header navbar navbar-expand bg-body">
       <div className="container-fluid d-flex justify-content-between align-items-center">
         <div className="d-flex align-items-center">
           <button
             type="button"
-            className="header-toggler"
+            className="btn btn-link nav-link px-2"
+            // Convention parity with AdminLTE's own delegated click listener
+            // (`push-menu.ts`'s `[data-lte-toggle="sidebar"]` selector). We
+            // don't load that JS — `onClick` is what actually runs, calling
+            // back into the state `AppShell` owns.
+            data-lte-toggle="sidebar"
             data-testid="sidebar-toggler"
+            aria-label="Toggle sidebar"
             onClick={onToggleSidebar}
           >
-            <CIcon icon={cilMenu} size="lg" />
+            <i className="fa-solid fa-bars fa-lg" aria-hidden="true" />
           </button>
-          <a className="header-brand">TestNexa</a>
+          <a className="navbar-brand mb-0">TestNexa</a>
         </div>
         <div className="d-flex align-items-center">
           <div
@@ -301,7 +337,7 @@ function AppHeader({ onToggleSidebar }: AppHeaderProps) {
               title="Switch organization"
               onClick={toggleOrgSwitcher}
             >
-              <CIcon icon={cilBuilding} size="lg" />
+              <i className="fa-solid fa-building fa-lg" aria-hidden="true" />
             </Button>
             <ul
               className={
@@ -360,7 +396,7 @@ function AppHeader({ onToggleSidebar }: AppHeaderProps) {
               aria-label="Toggle color mode"
               onClick={() => colorModeDropdown.setOpen((prev) => !prev)}
             >
-              <CIcon icon={activeIcon} size="lg" />
+              <i className={`${activeIcon} fa-lg`} aria-hidden="true" />
             </Button>
             <ul
               className={
@@ -376,7 +412,7 @@ function AppHeader({ onToggleSidebar }: AppHeaderProps) {
                   style={{ cursor: "pointer" }}
                   onClick={() => selectColorMode("light")}
                 >
-                  <CIcon className="me-2" icon={cilSun} size="lg" />
+                  <i className="fa-solid fa-sun fa-lg me-2" aria-hidden="true" />
                   Light
                 </a>
               </li>
@@ -388,7 +424,7 @@ function AppHeader({ onToggleSidebar }: AppHeaderProps) {
                   style={{ cursor: "pointer" }}
                   onClick={() => selectColorMode("dark")}
                 >
-                  <CIcon className="me-2" icon={cilMoon} size="lg" />
+                  <i className="fa-solid fa-moon fa-lg me-2" aria-hidden="true" />
                   Dark
                 </a>
               </li>
@@ -400,7 +436,7 @@ function AppHeader({ onToggleSidebar }: AppHeaderProps) {
                   style={{ cursor: "pointer" }}
                   onClick={() => selectColorMode("auto")}
                 >
-                  <CIcon className="me-2" icon={cilContrast} size="lg" />
+                  <i className="fa-solid fa-circle-half-stroke fa-lg me-2" aria-hidden="true" />
                   Auto
                 </a>
               </li>
@@ -411,7 +447,7 @@ function AppHeader({ onToggleSidebar }: AppHeaderProps) {
           </Button>
         </div>
       </div>
-    </div>
+    </nav>
   );
 }
 

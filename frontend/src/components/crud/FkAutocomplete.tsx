@@ -3,9 +3,36 @@
  * `components/shared/` cross-screen primitive — this is driven entirely by
  * an `EntityConfig`'s shape, not markup-duplication evidence.
  *
- * UI Design Document §2: `CFormInput` with a debounced (300ms) dropdown of
+ * UI Design Document §2: a text input with a debounced (300ms) dropdown of
  * matches, `?q=<term>` against the referenced entity's own list route;
  * selecting an option stores its `id`, displays its `labelField`.
+ *
+ * **ADR-0042 (CoreUI -> AdminLTE v4):** raw Bootstrap 5 markup now —
+ * `CFormLabel`/`CFormInput` -> `<label class="form-label">` + `<input
+ * class="form-control">` (`invalid` -> the `is-invalid` class), `CSpinner` ->
+ * `<div class="spinner-border spinner-border-sm">`, `CFormFeedback invalid`
+ * -> `<div class="invalid-feedback d-block">`, and the `CListGroup` dropdown
+ * -> `<div class="list-group">` of `<button type="button" class="list-group-item
+ * list-group-item-action">`.
+ *
+ * **On that wrapper being a `<div>`, not a `<ul>`:** `CListGroup` +
+ * `CListGroupItem as="button"` really did render `<button>` elements as direct
+ * children of a `<ul>`, which is invalid HTML — `<ul>` permits only `<li>`.
+ * The first pass of this migration reproduced that shape verbatim for DOM
+ * parity, but it is not worth preserving: a `<ul>` whose children are all
+ * non-`<li>` already exposes a degenerate accessibility tree (a list
+ * containing no list items), so copying it buys no real fidelity. This is
+ * Bootstrap's own documented actionable-list-group markup instead, which is
+ * valid and renders identically. Verified before switching that no Vitest or
+ * Playwright spec selects this dropdown via `getByRole("list")` /
+ * `getByRole("listitem")` — the `getByRole("listitem")` usages in the e2e
+ * suite all target genuine `<ul>/<li>` lists on other screens
+ * (`execution-history-list`, `included-suite-list`, `coverage-list`,
+ * `criteria-list`), which stay as they are.
+ *
+ * Interaction is unchanged: the same `onMouseDown` preventDefault keeps the
+ * blur-close timer from beating the click, and the option is still a real
+ * `<button>`, so it stays keyboard-reachable and Enter/Space-activatable.
  *
  * `refEntity` is a registry key (`pages/admin/registry.ts`'s
  * `entityConfigByKey`), not necessarily an entity with its own admin page —
@@ -16,7 +43,6 @@
  * route that doesn't exist.
  */
 import { useEffect, useRef, useState } from "react";
-import { CFormFeedback, CFormInput, CFormLabel, CListGroup, CListGroupItem, CSpinner } from "@coreui/react";
 import { EntityRow, getEntity, listEntities } from "../../lib/api/entityCrud";
 import { entityConfigByKey } from "../../pages/admin/registry";
 import type { EntityConfig } from "../../entityConfigs/types";
@@ -167,14 +193,16 @@ function FkAutocomplete({
 
   return (
     <div className="mb-3 position-relative">
-      <CFormLabel htmlFor={id}>{label}</CFormLabel>
-      <CFormInput
+      <label className="form-label" htmlFor={id}>
+        {label}
+      </label>
+      <input
+        className={`form-control${error ? " is-invalid" : ""}`}
         id={id}
         type="text"
         value={query}
         disabled={disabled || !canSearch}
         placeholder={canSearch ? "Type to search..." : "Search unavailable for this field"}
-        invalid={Boolean(error)}
         onChange={(event) => {
           hasUserTypedRef.current = true;
           setQuery(event.target.value);
@@ -186,26 +214,34 @@ function FkAutocomplete({
         onBlur={() => setTimeout(() => setIsOpen(false), 150)}
         autoComplete="off"
       />
-      {isLoading && <CSpinner size="sm" className="position-absolute" style={{ right: "0.5rem", top: "2.1rem" }} />}
+      {isLoading && (
+        <div
+          className="spinner-border spinner-border-sm position-absolute"
+          role="status"
+          style={{ right: "0.5rem", top: "2.1rem" }}
+        >
+          <span className="visually-hidden">Loading...</span>
+        </div>
+      )}
       {isOpen && results.length > 0 && (
-        <CListGroup className="position-absolute w-100 shadow" style={{ zIndex: 1000 }}>
+        <div className="list-group position-absolute w-100 shadow" style={{ zIndex: 1000 }}>
           {results.map((row) => (
-            <CListGroupItem
+            <button
               key={String(row.id)}
-              as="button"
               type="button"
+              className="list-group-item list-group-item-action"
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => handleSelect(row)}
             >
               {labelFor(row, labelField)}
-            </CListGroupItem>
+            </button>
           ))}
-        </CListGroup>
+        </div>
       )}
       {error && (
-        <CFormFeedback invalid role="alert">
+        <div className="invalid-feedback d-block" role="alert">
           {error}
-        </CFormFeedback>
+        </div>
       )}
     </div>
   );

@@ -1,3 +1,100 @@
-/* Tailwind removed per ADR-0012 (CoreUI is the design system). CoreUI's
-   stylesheet is imported once in main.tsx (@coreui/coreui/dist/css/coreui.min.css)
-   — this file is for app-specific overrides only, none needed yet. */
+/* Tailwind removed per ADR-0012; CoreUI removed per ADR-0042. AdminLTE v4 is
+   the design system — its stylesheet (which bundles Bootstrap 5) and Font
+   Awesome are imported once in main.tsx. This file is for app-specific
+   overrides only. */
+
+/* `btn-ghost-*` is a CoreUI-only button variant with no Bootstrap/AdminLTE
+   equivalent (ADR-0042). The `Button` atom still accepts `ghost` and still
+   emits these classes, so callers and their tests keep working, but nothing
+   styled them after the CoreUI stylesheet was dropped — a bare `.btn` with a
+   ghost color rendered as an unstyled default button.
+
+   Rather than delete a public prop (a breaking API change to a shared atom,
+   out of scope for a design-system swap) or leave it visibly broken, these
+   rules reproduce CoreUI's ghost semantics — transparent until hovered — on
+   top of Bootstrap's own theme variables, so they track the active
+   light/dark theme rather than hardcoding colors. */
+.btn-ghost-primary,
+.btn-ghost-secondary,
+.btn-ghost-success,
+.btn-ghost-danger,
+.btn-ghost-warning,
+.btn-ghost-info,
+.btn-ghost {
+  --bs-btn-bg: transparent;
+  --bs-btn-border-color: transparent;
+  --bs-btn-hover-color: #fff;
+  --bs-btn-active-color: #fff;
+  --bs-btn-disabled-bg: transparent;
+  --bs-btn-disabled-border-color: transparent;
+  --bs-btn-box-shadow: none;
+}
+
+.btn-ghost-primary {
+  --bs-btn-color: var(--bs-primary);
+  --bs-btn-hover-bg: var(--bs-primary);
+  --bs-btn-hover-border-color: var(--bs-primary);
+  --bs-btn-active-bg: var(--bs-primary);
+  --bs-btn-active-border-color: var(--bs-primary);
+  --bs-btn-disabled-color: var(--bs-primary);
+}
+
+.btn-ghost-secondary {
+  --bs-btn-color: var(--bs-secondary);
+  --bs-btn-hover-bg: var(--bs-secondary);
+  --bs-btn-hover-border-color: var(--bs-secondary);
+  --bs-btn-active-bg: var(--bs-secondary);
+  --bs-btn-active-border-color: var(--bs-secondary);
+  --bs-btn-disabled-color: var(--bs-secondary);
+}
+
+.btn-ghost-success {
+  --bs-btn-color: var(--bs-success);
+  --bs-btn-hover-bg: var(--bs-success);
+  --bs-btn-hover-border-color: var(--bs-success);
+  --bs-btn-active-bg: var(--bs-success);
+  --bs-btn-active-border-color: var(--bs-success);
+  --bs-btn-disabled-color: var(--bs-success);
+}
+
+.btn-ghost-danger {
+  --bs-btn-color: var(--bs-danger);
+  --bs-btn-hover-bg: var(--bs-danger);
+  --bs-btn-hover-border-color: var(--bs-danger);
+  --bs-btn-active-bg: var(--bs-danger);
+  --bs-btn-active-border-color: var(--bs-danger);
+  --bs-btn-disabled-color: var(--bs-danger);
+}
+
+.btn-ghost-warning {
+  --bs-btn-color: var(--bs-warning);
+  --bs-btn-hover-bg: var(--bs-warning);
+  --bs-btn-hover-border-color: var(--bs-warning);
+  --bs-btn-active-bg: var(--bs-warning);
+  --bs-btn-active-border-color: var(--bs-warning);
+  --bs-btn-disabled-color: var(--bs-warning);
+  --bs-btn-hover-color: #000;
+  --bs-btn-active-color: #000;
+}
+
+.btn-ghost-info {
+  --bs-btn-color: var(--bs-info);
+  --bs-btn-hover-bg: var(--bs-info);
+  --bs-btn-hover-border-color: var(--bs-info);
+  --bs-btn-active-bg: var(--bs-info);
+  --bs-btn-active-border-color: var(--bs-info);
+  --bs-btn-disabled-color: var(--bs-info);
+  --bs-btn-hover-color: #000;
+  --bs-btn-active-color: #000;
+}
+
+.btn-ghost {
+  --bs-btn-color: var(--bs-body-color);
+  --bs-btn-hover-bg: var(--bs-secondary-bg);
+  --bs-btn-hover-border-color: var(--bs-secondary-bg);
+  --bs-btn-hover-color: var(--bs-body-color);
+  --bs-btn-active-bg: var(--bs-secondary-bg);
+  --bs-btn-active-border-color: var(--bs-secondary-bg);
+  --bs-btn-active-color: var(--bs-body-color);
+  --bs-btn-disabled-color: var(--bs-body-color);
+}

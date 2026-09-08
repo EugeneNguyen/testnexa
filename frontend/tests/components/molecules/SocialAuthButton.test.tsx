@@ -12,7 +12,7 @@ describe("SocialAuthButton", () => {
     // `Button as="a"` sets role="button" (matches Bootstrap's own anchor-as-button pattern).
     const link = screen.getByRole("button", { name: /Sign in using Facebook/ });
     expect(link).toHaveClass("btn", "btn-primary");
-    expect(container.querySelector(".bi-facebook")).toBeInTheDocument();
+    expect(container.querySelector(".fa-facebook")).toBeInTheDocument();
   });
 
   it("calls onClick when clicked", async () => {

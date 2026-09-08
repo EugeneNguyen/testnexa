@@ -1,13 +1,28 @@
 /**
- * `components/crud/` (ADR-0023). UI Design Document §2/§3: a `CTable` with
+ * `components/crud/` (ADR-0023). UI Design Document §2/§3: a table with
  * one column per `fields[]` entry (`showInTable !== false`), a filter row
  * for `filterFields`, a `?q=` search box when `searchFields` is non-empty,
- * pagination (`CPagination`), and a trailing actions column whose Edit/
- * Delete icons (`cilPencil`/`cilTrash`) are present only when both (a) the
- * config's own `methods` include `"update"`/`"delete"` and (b) the caller's
- * per-row permission callback allows it (§5 — absent, not disabled, either
- * way: a `methods` gap is a structural read-only entity, a permission gap
- * is per-row).
+ * pagination, and a trailing actions column whose Edit/Delete icons are
+ * present only when both (a) the config's own `methods` include
+ * `"update"`/`"delete"` and (b) the caller's per-row permission callback
+ * allows it (§5 — absent, not disabled, either way: a `methods` gap is a
+ * structural read-only entity, a permission gap is per-row).
+ *
+ * **ADR-0042 (CoreUI -> AdminLTE v4):** the markup is raw Bootstrap 5 now.
+ * `CTable*` -> `<tr>`/`<th scope="col">`/`<td>` (which is also the shape
+ * `container/Table.tsx`'s `columns`/`renderRow` props take since ADR-0042),
+ * `CBadge` -> `<span class="badge bg-*">` (**`bg-*`, not Bootstrap 5.3's
+ * newer `text-bg-*`** — `bg-*` is what `CBadge` actually rendered and what
+ * the rest of the codebase's badge assertions check; see the root
+ * `CLAUDE.md`'s ADR-0042 gotcha list), `CButton` -> `<button
+ * class="btn btn-outline-* btn-sm">`, `CFormInput` -> `<input
+ * class="form-control">`, `CAlert` -> `<div class="alert alert-danger"
+ * role="alert">`, `CSpinner` -> `<div class="spinner-border">`. The
+ * Edit/Delete icons were `@coreui/icons`' `cilPencil`/`cilTrash` via `CIcon`;
+ * they are Font Awesome `fa-solid fa-pencil` / `fa-solid fa-trash` `<i>`
+ * elements now. `aria-label="Edit"`/`"Delete"` on the buttons is unchanged —
+ * it is what the icons' accessible name has always come from, and what the
+ * tests look them up by.
  *
  * FK cells resolve via a batched, deduped lookup (one `getEntity` per
  * *distinct* id across the current page, not one per row) — §3's own "not
@@ -25,18 +40,6 @@
  * one shared pagination implementation.
  */
 import { useEffect, useState } from "react";
-import { CIcon } from "@coreui/icons-react";
-import { cilPencil, cilTrash } from "@coreui/icons";
-import {
-  CAlert,
-  CBadge,
-  CButton,
-  CFormInput,
-  CSpinner,
-  CTableDataCell,
-  CTableHeaderCell,
-  CTableRow,
-} from "@coreui/react";
 import Table from "../../container/Table";
 import { EntityConfig, FieldConfig } from "../../entityConfigs/types";
 import { EntityRow, getEntity } from "../../lib/api/entityCrud";
@@ -47,7 +50,9 @@ const ENUM_BADGE_COLORS: Record<string, string> = {
   // other enum value falls back to a plain grey badge (UI Design Document
   // §3: "color by value where the entity has an obvious status semantic...
   // plain text otherwise" — implemented here as a shared plain-grey default
-  // rather than plain uncolored text, since CBadge has no "no color" mode).
+  // rather than plain uncolored text, since a Bootstrap badge always carries
+  // some `bg-*` background variant (as CoreUI's `CBadge` did before ADR-0042
+  // — the values here are the Bootstrap theme-color names both use).
   critical: "danger",
   high: "danger",
   fail: "danger",
@@ -191,7 +196,7 @@ function EntityTable({
         return fkLabels[field.name]?.[id] ?? id;
       }
       case "boolean":
-        return <CBadge color={raw ? "success" : "secondary"}>{raw ? "Yes" : "No"}</CBadge>;
+        return <span className={`badge bg-${raw ? "success" : "secondary"}`}>{raw ? "Yes" : "No"}</span>;
       case "date":
         return formatDate(raw);
       case "enum": {
@@ -199,7 +204,7 @@ function EntityTable({
           return "—";
         }
         const color = ENUM_BADGE_COLORS[String(raw)] ?? "secondary";
-        return <CBadge color={color}>{String(raw)}</CBadge>;
+        return <span className={`badge bg-${color}`}>{String(raw)}</span>;
       }
       default:
         return displayValue(raw);
@@ -209,8 +214,9 @@ function EntityTable({
   return (
     <div>
       {onSearchChange && config.searchFields && config.searchFields.length > 0 && (
-        <CFormInput
-          className="mb-3"
+        <input
+          type="text"
+          className="form-control mb-3"
           placeholder="Search..."
           value={search ?? ""}
           onChange={(event) => onSearchChange(event.target.value)}
@@ -221,8 +227,10 @@ function EntityTable({
       {onFilterChange && config.filterFields && config.filterFields.length > 0 && (
         <div className="d-flex gap-2 mb-3">
           {config.filterFields.map((field) => (
-            <CFormInput
+            <input
               key={field}
+              type="text"
+              className="form-control"
               placeholder={`Filter ${field}`}
               value={filters[field] ?? ""}
               onChange={(event) => onFilterChange(field, event.target.value)}
@@ -233,14 +241,16 @@ function EntityTable({
       )}
 
       {loadError && (
-        <CAlert color="danger" role="alert">
+        <div className="alert alert-danger" role="alert">
           {loadError}
-        </CAlert>
+        </div>
       )}
 
       {loading ? (
         <div className="d-flex justify-content-center py-4">
-          <CSpinner color="primary" />
+          <div className="spinner-border text-primary" role="status">
+            <span className="visually-hidden">Loading...</span>
+          </div>
         </div>
       ) : rows.length === 0 ? (
         <p className="text-body-secondary mb-0">No records found.</p>
@@ -256,47 +266,47 @@ function EntityTable({
           rowKey={(row) => String(row.id)}
           testIdPrefix="entity-table"
           columns={
-            <CTableRow>
+            <tr>
               {tableFields.map((field) => (
-                <CTableHeaderCell key={field.name}>{field.label}</CTableHeaderCell>
+                <th scope="col" key={field.name}>
+                  {field.label}
+                </th>
               ))}
-              {showActionsColumn && <CTableHeaderCell>Actions</CTableHeaderCell>}
-            </CTableRow>
+              {showActionsColumn && <th scope="col">Actions</th>}
+            </tr>
           }
           renderRow={(row) => (
-            <CTableRow>
+            <tr>
               {tableFields.map((field) => (
-                <CTableDataCell key={field.name}>{renderCell(field, row)}</CTableDataCell>
+                <td key={field.name}>{renderCell(field, row)}</td>
               ))}
               {showActionsColumn && (
-                <CTableDataCell>
+                <td>
                   <div className="d-flex gap-2">
                     {config.methods.includes("update") && onEdit && canEditRow(row) && (
-                      <CButton
-                        size="sm"
-                        color="secondary"
-                        variant="outline"
+                      <button
+                        type="button"
+                        className="btn btn-outline-secondary btn-sm"
                         aria-label="Edit"
                         onClick={() => onEdit(row)}
                       >
-                        <CIcon icon={cilPencil} />
-                      </CButton>
+                        <i className="fa-solid fa-pencil" aria-hidden="true" />
+                      </button>
                     )}
                     {config.methods.includes("delete") && onDelete && canDeleteRow(row) && (
-                      <CButton
-                        size="sm"
-                        color="danger"
-                        variant="outline"
+                      <button
+                        type="button"
+                        className="btn btn-outline-danger btn-sm"
                         aria-label="Delete"
                         onClick={() => onDelete(row)}
                       >
-                        <CIcon icon={cilTrash} />
-                      </CButton>
+                        <i className="fa-solid fa-trash" aria-hidden="true" />
+                      </button>
                     )}
                   </div>
-                </CTableDataCell>
+                </td>
               )}
-            </CTableRow>
+            </tr>
           )}
         />
       )}

@@ -146,8 +146,11 @@ describe("EntityTable", () => {
       <EntityTable config={READ_ONLY_CONFIG} rows={ROWS} total={55} page={1} pageSize={25} onPageChange={onPageChange} />,
     );
 
-    // ceil(55 / 25) = 3 pages -- CoreUI renders each `CPaginationItem` as an
-    // `<a class="page-link">` (or `<span>` for the active one), not a `<button>`.
+    // ceil(55 / 25) = 3 pages. ADR-0042: each page control is now a real
+    // `<button class="page-link">` inside its `<li class="page-item">` (CoreUI
+    // rendered `<a>`, or `<span>` for the active one). The `page-item`/`active`
+    // class contract the assertions below read is unchanged either way — it
+    // lives on the `<li>`, not on the inner control.
     expect(screen.getByText("1").closest("li")).toHaveClass("active");
     expect(screen.getByText("2")).toBeInTheDocument();
     expect(screen.getByText("3")).toBeInTheDocument();

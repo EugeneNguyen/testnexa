@@ -201,6 +201,12 @@ test.describe("DS-2: shared Table container", () => {
       // no-nested-<CTable> rule) inside the same outer table the container
       // now drives.
       await page.getByText("1", { exact: true }).click();
+      // Wait for page 1's own data to actually land before reading a row's
+      // text — without this, `firstRow`'s text can still be page 3's stale
+      // last-render content for an instant after the click (a real fetch
+      // roundtrip backs this navigation), making the read/click below race
+      // the refetch instead of the intended page-1 row.
+      await expect(page.getByRole("row")).toHaveCount(11); // header + 10 data rows, back on page 1
       const firstRow = page.getByRole("row").nth(1);
       const versionLabelText = (await firstRow.locator("td").first().innerText()).trim();
       await firstRow.click();

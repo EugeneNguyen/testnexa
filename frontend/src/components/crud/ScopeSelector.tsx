@@ -6,8 +6,16 @@
  * `project_id` — see e.g. `entityConfigs/test-condition.ts`'s own
  * docstring), renders one `FkAutocomplete`. For an array (`RiskItem`'s own
  * "by Requirement" / "by TestPlan" toggle, UI Design Document §4), renders a
- * `CButtonGroup` toggle first, then the `FkAutocomplete` for whichever
+ * button-group toggle first, then the `FkAutocomplete` for whichever
  * option is active.
+ *
+ * **ADR-0042 (CoreUI -> AdminLTE v4):** `CButtonGroup` -> `<div
+ * class="btn-group" role="group">` and `CButton` -> `<button type="button"
+ * class="btn btn-secondary|btn-outline-secondary">` (`variant="outline"` was
+ * the inactive option, no variant the active one — same two classes
+ * Bootstrap's own toggle-button-group example uses). The `active` class and
+ * `aria-pressed` are written out by hand here, where CoreUI's `active` prop
+ * used to supply them.
  *
  * **Bugfix (found writing ADMIN-2 UI E2E coverage):** the picker's own
  * `FkAutocomplete` search previously fired with no scope params at all
@@ -34,7 +42,6 @@
  * gap regardless of this fix.
  */
 import { useState } from "react";
-import { CButton, CButtonGroup } from "@coreui/react";
 import { ScopeSelectorOption } from "../../entityConfigs/types";
 import FkAutocomplete from "./FkAutocomplete";
 
@@ -67,19 +74,22 @@ function ScopeSelector({ options, onResolved, extraParams }: ScopeSelectorProps)
   return (
     <div className="mb-4" data-testid="scope-selector">
       {optionList.length > 1 && (
-        <CButtonGroup className="mb-2" role="group">
-          {optionList.map((option, index) => (
-            <CButton
-              key={option.paramName}
-              color="secondary"
-              variant={index === activeIndex ? undefined : "outline"}
-              active={index === activeIndex}
-              onClick={() => selectOption(index)}
-            >
-              {option.label ?? option.refEntity}
-            </CButton>
-          ))}
-        </CButtonGroup>
+        <div className="btn-group mb-2" role="group">
+          {optionList.map((option, index) => {
+            const isActive = index === activeIndex;
+            return (
+              <button
+                key={option.paramName}
+                type="button"
+                className={`btn btn-${isActive ? "" : "outline-"}secondary${isActive ? " active" : ""}`}
+                aria-pressed={isActive}
+                onClick={() => selectOption(index)}
+              >
+                {option.label ?? option.refEntity}
+              </button>
+            );
+          })}
+        </div>
       )}
       <FkAutocomplete
         id="scope-selector-fk"
