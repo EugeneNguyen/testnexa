@@ -84,10 +84,11 @@ function fieldError(error: ApiError, field: string): string | undefined {
  * documented gap in ADR-0042.
  *
  * Deliberately duplicated from `pages/workflows/OrgHome.tsx`'s own local
- * `Modal` rather than shared: `components/shared/` is a different agent's
- * surface in this migration, and ADR-0023's bucket rules mean promoting this
- * is its own decision, not a side effect of a markup swap. Worth extracting
- * in a follow-up once every screen's modal has landed.
+ * `Modal` rather than promoted to a shared `components/molecules/` component:
+ * that promotion is a different agent's surface in this migration, and
+ * ADR-0023/ADR-0043's location rules mean promoting this is its own
+ * decision, not a side effect of a markup swap. Worth extracting in a
+ * follow-up once every screen's modal has landed.
  */
 function Modal({
   visible,

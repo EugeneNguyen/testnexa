@@ -110,8 +110,8 @@ import {
   updateEntity,
   type EntityRow,
 } from "../../lib/api/entityCrud";
-import EntityForm from "../../components/crud/EntityForm";
-import FkAutocomplete from "../../components/crud/FkAutocomplete";
+import EntityForm from "../../components/organisms/entity-form";
+import FkAutocomplete from "../../components/molecules/fk-autocomplete";
 import testPlanConfig from "../../entityConfigs/test-plan";
 import testCycleConfig from "../../entityConfigs/test-cycle";
 import environmentConfig from "../../entityConfigs/environment";

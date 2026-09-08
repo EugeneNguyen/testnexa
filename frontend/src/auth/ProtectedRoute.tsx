@@ -27,7 +27,7 @@
  */
 import { ReactNode } from "react";
 import { Navigate } from "react-router-dom";
-import AppShell from "../components/AppShell";
+import AppShell from "../components/templates/app-shell";
 import AuthLoadingSpinner from "../components/AuthLoadingSpinner";
 import { useAuth } from "./AuthContext";
 

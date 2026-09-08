@@ -109,7 +109,7 @@ import {
 import { getProject } from "../../lib/api/projects";
 import { listMembers } from "../../lib/api/members";
 import { listEntities, getEntity, type EntityRow } from "../../lib/api/entityCrud";
-import FkAutocomplete from "../../components/crud/FkAutocomplete";
+import FkAutocomplete from "../../components/molecules/fk-autocomplete";
 import testExecutionConfig from "../../entityConfigs/test-execution";
 import testCycleConfig from "../../entityConfigs/test-cycle";
 import testCaseConfig from "../../entityConfigs/test-case";

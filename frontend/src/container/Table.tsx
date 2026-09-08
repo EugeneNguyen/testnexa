@@ -3,26 +3,31 @@
  * page-size-selector implementation, reused by every outermost table in the
  * app instead of the six divergent bespoke ones that existed before it.
  *
- * ## Location: why `container/`, not `components/shared/` or `components/crud/`
+ * ## Location: why `container/`, not `components/`
  *
- * ADR-0023 drew two buckets for frontend components, and this one fits
- * neither — ADR-0041 amends that ADR to add a third axis:
+ * ADR-0023 originally drew two component-directory buckets (`shared/`,
+ * `crud/`) on a composition-shape axis; ADR-0041 amended it to add a third,
+ * orthogonal axis for this component. **ADR-0043 (2026-09-08) then replaced
+ * the two original buckets with atomic-design tiers** (`atoms/`/`molecules/`/
+ * `organisms/`/`templates/`, sized by composition complexity) — `container/`
+ * is unaffected by that change, because the axis it answers was never about
+ * composition complexity in the first place:
  *
- * - `components/shared/` — **stateless markup-composition primitives**.
- *   `FormField` is the archetype: it owns no state and no actions, it just
- *   composes a `<label>` + `<input>` + invalid-feedback block around props the
- *   caller fully controls. `Table` is deliberately *not* here: it owns
- *   `page`/`pageSize` state and the actions that mutate them, which is
- *   exactly the axis that bucket's boundary excludes.
- * - `components/crud/` — **generic-entity-shape-driven** widgets, coupled to
- *   `EntityConfig`/`FieldConfig` (`EntityTable`, `EntityForm`,
- *   `FkAutocomplete`). `Table` is not here either: every bespoke screen's
- *   table has a different row shape with no `EntityConfig` behind it, so a
- *   component those screens can actually consume has to be config-shape-
- *   agnostic — which `EntityTable` structurally isn't.
- * - `container/` (this directory, new in DS-2) — **stateful cross-screen
- *   behavior**: components that own state and expose actions, consumed by
- *   many screens with no shared data shape between them.
+ * - `components/<tier>/` — sized by **composition complexity** (how many
+ *   smaller pieces a component is built from). `FormField`
+ *   (`components/molecules/form-field/`) is a stateless composition
+ *   primitive; `EntityTable`/`EntityForm`/`FkAutocomplete`
+ *   (`components/organisms/`, `components/molecules/`) are generic-entity-
+ *   shape-driven widgets coupled to `EntityConfig`/`FieldConfig`. `Table` is
+ *   deliberately in neither: it owns `page`/`pageSize` state and the actions
+ *   that mutate them, and every bespoke screen's table has a different row
+ *   shape with no `EntityConfig` behind it — a component those screens can
+ *   actually consume has to be config-shape-agnostic, which `EntityTable`
+ *   structurally isn't.
+ * - `container/` (this directory, new in DS-2) — sized by **state
+ *   ownership**: components that own state and expose actions, consumed by
+ *   many screens with no shared data shape between them. Independent of
+ *   which atomic tier a component would otherwise sit at.
  *
  * `EntityTable` still exists and still owns its `EntityConfig`-driven column
  * system; ADR-0041 explicitly declines to merge the two call conventions.
