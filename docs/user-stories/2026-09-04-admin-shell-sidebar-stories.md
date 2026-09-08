@@ -50,3 +50,23 @@
 - Given a user with zero Organizations somehow reaches an authenticated screen (should not happen post-login, direct-nav edge case only), when the dropdown opens, then it renders an empty state, not an error or crash.
 
 **Traceability:** [FR-SHELL-6](../requirements/2026-09-03-project-scaffold-requirements.md), [FR-AUTH-5](../requirements/2026-09-03-project-scaffold-requirements.md), [ADR-0036](../adr/0036-shell-6-organization-switcher-header-dropdown.md), [UI Design Document](../ui-design/2026-09-07-shell-6-org-switcher-ui-design.md). Closes, for this one surface only, the AUTH-2 gap [ADR-0035](../adr/0035-dash-1-root-redirect-and-dashboard-placeholder.md) explicitly deferred ("revisit if/when a future org-scoped feature needs it") — `AuthContext`'s login-time-only `orgs`/`orgContext` fields are otherwise unchanged.
+
+---
+
+## Story SHELL-7: Mini sidebar + org-scoped CRUD nav restructure
+
+**As** Priya (QA Lead / org admin who spends most of her session inside one org, working through its Roles/Permissions/catalog admin screens),
+**I want** the sidebar to (a) collapse to a compact, icon-only rail I can still recognize at a glance, and (b) group the org's CRUD admin screens into named categories instead of one flat list,
+**so that** I keep more screen width for my actual work without losing the ability to navigate, and I can find "who can do what" (roles/permissions/assignments) or "org-wide catalogs" (test levels/types/techniques) without scanning an undifferentiated 8-item list every time.
+
+**Acceptance criteria:**
+
+- Given a desktop-width authenticated screen, when the sidebar is collapsed, then it renders as a narrow, icon-only rail (AdminLTE's `sidebar-mini` layout) rather than the pre-existing fully-hidden-label collapsed state — each rail icon still identifies its nav item.
+- Given the collapsed rail, when the pointer hovers over it, then it expands to show labels again, and narrows back on pointer-leave — with no change to the underlying collapsed/expanded toggle state (this is a hover-only visual effect, not a click).
+- Given a mobile-width viewport, when the sidebar is opened/closed via its existing toggle, then behavior is unchanged from today — `sidebar-mini` has no effect on the off-canvas mobile mechanism.
+- Given an authenticated user with an org selected, when they view the sidebar, then the 8 org-scoped CRUD entities render under 3 named groups — Access Control (Roles, Permissions, Role assignments, Org memberships), Catalogs (Test design techniques, Test levels, Test types), Organization (Organizations) — each with its own icon, replacing today's single flat "Admin" group.
+- Given the restructured groups, when any of the 8 entities' existing list/create/edit/delete screens are reached through its new group, then behavior (routes, permission gating) is unchanged — this story is a sidebar presentation change only, not a CRUD/backend change.
+- Given the sidebar's `Members` item, when it renders, then it also gains an icon (previously icon-less) so no item is left without one under the new icon-only collapsed rail.
+- Out of scope, explicitly: the `UI Elements` nav group (ADR-0020 scaffolding) — untouched, not folded into the new groups, not reordered relative to itself.
+
+**Traceability:** [FR-SHELL-7](../requirements/2026-09-03-project-scaffold-requirements.md), [ADR-0044](../adr/0044-shell-7-sidebar-mini-org-crud-restructure.md), [UI Design Document](../ui-design/2026-09-08-shell-7-sidebar-mini-org-crud-restructure-ui-design.md). Presentation-only change over the existing `orgScopedEntities` registry (ADR-0025) — no new/changed entity, no new API route, no schema change.

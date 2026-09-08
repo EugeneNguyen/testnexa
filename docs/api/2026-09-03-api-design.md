@@ -24,6 +24,8 @@ REST over HTTPS, JSON bodies, base path `/api/v1`. FastAPI auto-generates the Op
 
 **DS-2** ([ADR-0041](../adr/0041-ds-2-table-container-shared-pagination.md), FR-DS-2) — **has API impact**: (1) §1's pagination convention max `page_size` raised 25 → 100 (default unchanged), applying to every route following that convention; (2) `GET /orgs/{org_id}/role-assignments` gains `page`/`page_size` and switches from a bare array to the standard `{items, total, page, page_size}` envelope — a breaking response-shape change for that one route, no other route's shape changes.
 
+**SHELL-7** ([ADR-0044](../adr/0044-shell-7-sidebar-mini-org-crud-restructure.md), FR-SHELL-7) — reviewed, no API impact. Sidebar-mini is a frontend body-class toggle; the org-scoped CRUD nav restructure only regroups the sidebar's presentation of the existing `orgScopedEntities` registry — every `:entity` route those 8 entities already answer to (§3/§5) is unchanged, no new route, no changed request/response shape.
+
 ---
 
 ## 1. Conventions
