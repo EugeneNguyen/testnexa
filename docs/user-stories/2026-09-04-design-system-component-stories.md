@@ -12,6 +12,8 @@
 
 **Not included here (belongs elsewhere, not as a user story):** the component-location naming convention (`components/shared/` vs `components/crud/` vs page-local) is an **ADR**, per CLAUDE.md's ADR-first rule for architecture choices — not a user story. That ADR is a prerequisite for DS-1 below and should be written before or alongside implementation, not as a separate backlog item competing for story-priority here.
 
+**DS-3 (added 2026-09-08) is a third graduation into this file, same posture as DS-2's own note above** — a direct CTO request (consolidate the org-home count widgets onto AdminLTE's own documented Info Box pattern), widened to repo-wide scope once a fresh audit found a second, independently-hand-rolled stat-tile implementation (`TestCycleDetail`'s local `StatTile`) alongside the one the request already named (`WidgetStatsTile`). **Naming note:** "DS-3" here is unrelated to any full atoms/molecules/organisms tiering buildout — this scope note's own PIVOT finding (previous paragraph) still holds, no tiering work is in scope. A local, uncommitted worktree named `ds3-atomic-tiering` exists elsewhere on this machine as of 2026-09-08 with zero commits and nothing in any doc claiming its own story number — if that separate tiering work is later picked up as a real story, it needs the next free `DS-N` slot (`DS-4` as of this writing), not `DS-3`, which this story claims.
+
 ---
 
 ## Story DS-1: Reusable form-field component
@@ -49,3 +51,22 @@
 - Out of scope for this story: search/sort/filter UI of any kind (the container renders pagination for rows the caller has already decided how to filter/sort — `OrgHome`'s own search/sort stays exactly where ADR-0039 put it); persisting the selected page size across navigation/reload (component state only, matches this repo's existing no-persistence convention for equivalent UI state); nested/child lists rendered inside an expanded table row (`frontend/CLAUDE.md`'s flat-`<ul>/<li>` ARIA rule is unchanged and unaffected — the container is for outermost, non-nested tables only).
 
 **Traceability:** [ADR-0041](../adr/0041-ds-2-table-container-shared-pagination.md). FR-DS-2, NFR-6 (revised), NFR-51 — see Requirements Document.
+
+---
+
+## Story DS-3: Reusable `InfoBox` metric tile (AdminLTE Info Box)
+
+**As** any contributor (human or AI agent) building or maintaining a screen that shows a small count/metric in a card,
+**I want** a single reusable `InfoBox` component that composes AdminLTE v4's own documented Info Box widget (`.info-box`/`.info-box-icon`/`.info-box-content`),
+**so that** I don't hand-roll a third divergent stat-tile implementation — the evidenced state of this repo as of 2026-09-08: two independent implementations, `WidgetStatsTile` (`OrgHome`'s Project-count and active-Org-Member-count widgets, 2 usages) and `TestCycleDetail`'s own local `StatTile` (4 execution-dashboard tiles, Pass/Fail/Blocked/Skipped), neither of which is AdminLTE's own Info Box markup — both predate [ADR-0042](../adr/0042-adminlte-design-system.md)'s design-system swap and were carried forward by markup-only reclassing rather than replaced.
+
+**Acceptance criteria:**
+
+- Given a screen needs to show a labeled count/metric in a small card, when a contributor uses `InfoBox` (`color`, `text`, `number`, optional `icon`, `testId`), then it renders AdminLTE's own `.info-box`/`.info-box-icon`/`.info-box-content`/`.info-box-text`/`.info-box-number` markup verbatim (confirmed against the shipped `adminlte.min.css`, not invented) — one implementation, not a per-screen reimplementation.
+- Given `OrgHome.tsx`'s `ProjectCountWidget`/`ActiveMemberCountWidget` are migrated onto `InfoBox`, then their existing `useQuery`-driven loading/error/real-count tri-state (TC-SHELL-010/011) and `data-testid`s (`widget-project-count`, `widget-active-member-count`) are unchanged — a markup swap only, no data-sourcing change.
+- Given `TestCycleDetail.tsx`'s 4 execution-dashboard tiles (Pass/Fail/Blocked/Skipped) are migrated onto `InfoBox`, then their existing `null`→`"—"` sentinel (a cycle with zero executions of a given result) and `data-testid`s (`dashboard-tile-{pass,fail,blocked,skipped}[-count]`) are unchanged, and the live-aggregation behavior TC-EXEC-002 already covers is unaffected.
+- Given `ActiveMemberCountWidget` previously rendered no icon block at all, when it's migrated onto `InfoBox`, then it gains an icon (`fa-solid fa-users`) — Info Box's own canonical shape has no icon-omitted variant, unlike the retired component's A/B split.
+- Given `WidgetStatsTile` and the local `StatTile` have no callers left once both migrations land, then both are deleted outright (component, barrel, and `StatTile`'s own function) — no dead code retained.
+- Out of scope for this story (explicitly): any AdminLTE small-box/large-box variant beyond Info Box, a progress-bar or trend-chart slot on the tile, or any further atoms/molecules/organisms tiering — none of these have duplication evidence behind them yet, same posture DS-1's own scope note already established.
+
+**Traceability:** [ADR-0043](../adr/0043-ds-3-infobox-widget-consolidation.md). FR-SHELL-3, NFR-27, FR-EXEC-1 AC2, NFR-46 (all unchanged in substance — this story changes the rendering mechanism, not the count-sourcing requirement) — see Requirements Document.

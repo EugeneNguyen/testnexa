@@ -53,6 +53,8 @@ First sitemap for this repo — no prior one existed; routes accreted story-by-s
 
 **Note (2026-09-07, DS-2):** every table-rendering screen listed in this document (`OrgHome`/Dashboard's Project table, `OrgMembers`, `ProjectDetail`'s Release/Test Suite/Risk Item tables, `TestPlanDetail`'s Test Plans list, `RoleAssignmentsPanel`, and the generic admin CRUD surface below) now shares one implementation, `frontend/src/container/Table.tsx` ([ADR-0041](../adr/0041-ds-2-table-container-shared-pagination.md)) — a component swap only, no route added, removed, or renamed, and no screen's URL/nav-item/breadcrumb changes. Not repeated as an edit on each row above.
 
+**Note (2026-09-08, DS-3):** `OrgHome`/Dashboard's two count widgets and `TestCycleDetail`'s 4 execution-dashboard tiles now share one implementation, `components/shared/info-box/InfoBox.tsx` ([ADR-0043](../adr/0043-ds-3-infobox-widget-consolidation.md)) — a component swap only, no route added, removed, or renamed, and no screen's URL/nav-item/breadcrumb changes.
+
 ## Protected — generic admin CRUD surface (ADR-0027)
 
 Two page components (`EntityListPage`, `EntityFormPage`), routed generically off an entity registry — the rows below are the registry's contents, not 28 separate `<Route>` declarations in `App.tsx`.

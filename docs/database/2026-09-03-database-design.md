@@ -245,6 +245,8 @@ Unique: `(org_id, name)`.
 
 **DS-2** ([ADR-0041](../adr/0041-ds-2-table-container-shared-pagination.md)) — reviewed, no schema impact. The shared `Table` container, the `page_size` ceiling change (25→100), and adding pagination to `GET /orgs/{org_id}/role-assignments` are all API/frontend-layer changes — no new column, no new table, no FK/constraint change. `role_assignment`'s columns (including `project_id`'s `ON DELETE CASCADE`, [ADR-0040](../adr/0040-role-assignment-project-cascade-delete.md) above) are unaffected; the route's response envelope changes shape, not the underlying query's `WHERE`/join.
 
+**DS-3** ([ADR-0043](../adr/0043-ds-3-infobox-widget-consolidation.md)) — reviewed, no schema impact. A frontend-only markup swap (new `InfoBox` component, retires `WidgetStatsTile`/`StatTile`) over data both retired components already sourced from existing routes' `total` fields — no new column, table, FK, or query shape.
+
 **Release**
 | Column | Type | Constraints |
 |---|---|---|
