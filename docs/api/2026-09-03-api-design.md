@@ -32,6 +32,8 @@ REST over HTTPS, JSON bodies, base path `/api/v1`. FastAPI auto-generates the Op
 
 **BRAND-1** ([ADR-0048](../adr/0048-brand-1-logo-brand-system.md), FR-BRAND-1) — reviewed, no API impact. The logo/brand system makes zero API calls of its own — SVG assets, a favicon, and static markup changes to `BrandLogo`/`AppHeader`/`AppSidebar`. No new route, no changed request/response shape.
 
+**FRONTEND-1** ([ADR-0049](../adr/0049-frontend-co-locate-unit-tests.md), NFR-54) — reviewed, no API impact. Vitest unit-test files move from `frontend/tests/**.test.{ts,tsx}` to live co-located next to their source under `frontend/src/`; the single non-test file (`frontend/test-setup/setup.ts`) moves to a renamed folder of the same level. No new route, no changed request/response shape, no changed client/server contract — the Vitest suite as a whole still imports the same `lib/api/*` modules that already exist (§2/§3/§4 documented routes), only the on-disk path of the test files changes. The full 69-spec suite re-running green against the post-move layout is the gate that proves no behavior changed. Noted here explicitly so the gap isn't mistaken for an oversight (same posture this section's other "no API impact" annotations take for prior frontend-only ADRs).
+
 ---
 
 ## 1. Conventions
