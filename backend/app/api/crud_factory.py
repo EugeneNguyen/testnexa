@@ -164,6 +164,46 @@ class FieldMeta:
     # Hide a field from the table (still in the form) — an arbitrary UI
     # choice, not derivable from anything Pydantic knows.
     show_in_table: bool = True
+    # Overrides the auto-derived required-ness. Only needed for a field
+    # that's logically required but has no `create_schema` to derive it
+    # from (`Project`'s `name` — its real create is a 100% bespoke route,
+    # `POST /orgs/{org_id}/projects`, never registered through this factory
+    # at all — `required_fields` below can only ever see this config's own
+    # `create_schema`, which is `None`).
+    required: bool | None = None
+
+
+@dataclass
+class ScopeSelectorOption:
+    """ADR-0053 (moved from the frontend's `entityConfigs/types.ts`, per the
+    CTO's own explicit direction — fully backend-driven, no residual static
+    frontend file). One choice on `EntityListPage`'s "pick a parent row
+    before the list can even fetch" step, for an entity whose `scope_field`
+    has no value until the admin picks which row to scope by (`RiskItem`'s
+    `requirement_id`-or-`test_plan_id` branch is the one entity needing more
+    than one option — `CrudEntityConfig.scope_selector` accepts a tuple for
+    exactly that case, same as its single-option siblings accept one).
+    """
+
+    ref_entity: str
+    param_name: str
+    label: str | None = None
+
+
+@dataclass
+class ScopeResolution:
+    """ADR-0053 (moved from the frontend, same posture as `ScopeSelectorOption`
+    above). Derives a scope value automatically, no picker, by resolving
+    `via_entity`'s own `get` route using a route param already in context,
+    then reading `via_field` off the result — `Project`'s own admin page is
+    the one user today (`/projects/:projectId/admin/projects`'s real
+    `scope_field` is `org_id`, but that route has no `:orgId` param; this
+    fetches the *current* Project and reads its `org_id` off the response).
+    """
+
+    from_route_param: Literal["orgId", "projectId"]
+    via_entity: str
+    via_field: str
 
 
 @dataclass
@@ -218,6 +258,21 @@ class CrudEntityConfig:
     # get from Pydantic alone — see `FieldMeta`'s own docstring for exactly
     # what. Only fields needing an override get an entry here.
     field_meta: dict[str, FieldMeta] = field(default_factory=dict)
+    # ADR-0053: only set for the ~15 entities whose list can't fetch until
+    # the admin picks (or the surface auto-resolves) which parent row to
+    # scope by — see `ScopeSelectorOption`/`ScopeResolution`'s own
+    # docstrings. A tuple of options is `RiskItem`'s branching-scope shape;
+    # every other scope-selector entity sets exactly one.
+    scope_selector: ScopeSelectorOption | tuple[ScopeSelectorOption, ...] | None = None
+    scope_resolution: ScopeResolution | None = None
+    # ADR-0053: overrides `methods` for the derived schema's own `methods`
+    # array only — never affects which routes `make_crud_router` registers.
+    # `Project` is the one user today: its real REST surface is `list`/
+    # `get`/`update`/`delete`, but `get`/`update` are this module's own
+    # bespoke routes at the same URL shape (this config's own `methods`
+    # above is only `{"list","delete"}`, the two the factory itself
+    # registers) — the admin surface still needs to know all four exist.
+    full_methods: frozenset[str] | None = None
 
 
 def _error(
@@ -677,7 +732,7 @@ def derive_entity_schema(config: CrudEntityConfig) -> dict[str, Any]:
             "name": name,
             "label": meta.label or _label_for(name),
             "type": field_type,
-            "required": name in required_fields,
+            "required": meta.required if meta.required is not None else name in required_fields,
             "showInTable": meta.show_in_table,
         }
         if field_type == "enum" and enum_values:
@@ -693,11 +748,33 @@ def derive_entity_schema(config: CrudEntityConfig) -> dict[str, Any]:
 
     scope_field = list(config.scope_field) if isinstance(config.scope_field, tuple) else config.scope_field
 
+    def _serialize_scope_selector_option(option: ScopeSelectorOption) -> dict[str, Any]:
+        out: dict[str, Any] = {"refEntity": option.ref_entity, "paramName": option.param_name}
+        if option.label:
+            out["label"] = option.label
+        return out
+
+    scope_selector: Any = None
+    if isinstance(config.scope_selector, tuple):
+        scope_selector = [_serialize_scope_selector_option(o) for o in config.scope_selector]
+    elif config.scope_selector is not None:
+        scope_selector = _serialize_scope_selector_option(config.scope_selector)
+
+    scope_resolution: dict[str, Any] | None = None
+    if config.scope_resolution is not None:
+        scope_resolution = {
+            "fromRouteParam": config.scope_resolution.from_route_param,
+            "viaEntity": config.scope_resolution.via_entity,
+            "viaField": config.scope_resolution.via_field,
+        }
+
     return {
         "resource": config.resource,
         "label": config.label or _display_name(config.resource),
-        "methods": sorted(config.methods),
+        "methods": sorted(config.full_methods or config.methods),
         "scopeField": scope_field,
+        "scopeSelector": scope_selector,
+        "scopeResolution": scope_resolution,
         "searchFields": list(config.search_fields),
         "filterFields": list(config.filter_fields),
         "fields": fields_out,
