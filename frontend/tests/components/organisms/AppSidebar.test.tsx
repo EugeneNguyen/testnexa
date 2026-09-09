@@ -280,6 +280,12 @@ describe("AppSidebar", () => {
 
   // TC-SHELL-027: asserted as an ORDERED sequence read from the DOM, not six
   // independent presence checks (which would pass on a scrambled order).
+  //
+  // PROJ-4 (ADR-0047, 2026-09-09): a new "Projects" flat item inserts between
+  // "Dashboard" and "Members" — TC-SHELL-027's own row in the Test Cases doc
+  // was corrected in place for this same cross-story interaction (found
+  // while writing that docs pass, not by SHELL-7's own). Order is otherwise
+  // unchanged.
   it("TC-SHELL-027: renders the org-scoped nav in the specified top-to-bottom order", () => {
     const { container } = renderSidebar("/orgs/org-1");
 
@@ -291,6 +297,7 @@ describe("AppSidebar", () => {
     );
     expect(labels).toEqual([
       "Dashboard",
+      "Projects",
       "Members",
       "Access Control",
       "Catalogs",
