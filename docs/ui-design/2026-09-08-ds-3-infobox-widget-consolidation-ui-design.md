@@ -2,11 +2,11 @@
 
 **Date:** 2026-09-08
 **Owner:** xuanbinh91@gmail.com (CTO)
-**Sources:** [ADR-0043](../adr/0043-ds-3-infobox-widget-consolidation.md), [ADR-0023](../adr/0023-frontend-shared-component-location.md) (location convention, `components/shared/` axis), [ADR-0042](../adr/0042-adminlte-design-system.md) (AdminLTE v4 — Info Box is one of its own documented widgets, https://adminlte.io/themes/v4/widgets/info-box.html), [DS-3 user story](../user-stories/2026-09-04-design-system-component-stories.md#story-ds-3-reusable-infobox-metric-tile)
+**Sources:** [ADR-0045](../adr/0045-ds-3-infobox-widget-consolidation.md), [ADR-0043](../adr/0043-atomic-design-tiering-for-frontend-components.md) (`components/molecules/` location convention — landed mid-flight, this doc updated to match at merge time), [ADR-0023](../adr/0023-frontend-shared-component-location.md) (stateless-composition axis, originally drawn against `components/shared/`, now re-homed under ADR-0043), [ADR-0042](../adr/0042-adminlte-design-system.md) (AdminLTE v4 — Info Box is one of its own documented widgets, https://adminlte.io/themes/v4/widgets/info-box.html), [DS-3 user story](../user-stories/2026-09-04-design-system-component-stories.md#story-ds-3-reusable-infobox-metric-tile)
 
 ## 1. Scope
 
-One new component, `frontend/src/components/shared/info-box/InfoBox.tsx`, and two migrations onto it:
+One new component, `frontend/src/components/molecules/info-box/info-box.tsx`, and two migrations onto it:
 
 | # | Screen | File | Retired component | Usages |
 |---|---|---|---|---|
@@ -41,7 +41,7 @@ Both retired components are deleted outright once their call sites migrate — c
 
 ## 4. Open item to resolve before implementation
 
-The exact contextual-color utility class on `.info-box-icon` (e.g. `text-bg-{color}` vs `bg-{color} text-{contrast}`) is **not** determinable from AdminLTE's shipped SCSS/CSS alone — `_info-box.scss` (confirmed by direct read) bakes in no color of its own; the demo page supplies it via a utility class in markup. Per `frontend/CLAUDE.md`'s "dump the real DOM, don't invent a class name" rule: before writing `InfoBox.tsx`, confirm the exact class either via an RTL/Playwright DOM dump of a real AdminLTE v4 Info Box render, or by viewing the live https://adminlte.io/themes/v4/widgets/info-box.html demo's rendered `outerHTML` directly — not by guessing from Bootstrap 5.3's own `text-bg-*` convention, which AdminLTE does not uniformly follow elsewhere in this codebase (root `CLAUDE.md` already flags badges as a case where AdminLTE deliberately diverges from `text-bg-*`).
+The exact contextual-color utility class on `.info-box-icon` (e.g. `text-bg-{color}` vs `bg-{color} text-{contrast}`) is **not** determinable from AdminLTE's shipped SCSS/CSS alone — `_info-box.scss` (confirmed by direct read) bakes in no color of its own; the demo page supplies it via a utility class in markup. Per `frontend/CLAUDE.md`'s "dump the real DOM, don't invent a class name" rule: before writing `info-box.tsx`, confirm the exact class either via an RTL/Playwright DOM dump of a real AdminLTE v4 Info Box render, or by viewing the live https://adminlte.io/themes/v4/widgets/info-box.html demo's rendered `outerHTML` directly — not by guessing from Bootstrap 5.3's own `text-bg-*` convention, which AdminLTE does not uniformly follow elsewhere in this codebase (root `CLAUDE.md` already flags badges as a case where AdminLTE deliberately diverges from `text-bg-*`).
 
 ## 5. Out of scope (explicit)
 

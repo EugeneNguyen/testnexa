@@ -69,4 +69,4 @@
 - Given `WidgetStatsTile` and the local `StatTile` have no callers left once both migrations land, then both are deleted outright (component, barrel, and `StatTile`'s own function) — no dead code retained.
 - Out of scope for this story (explicitly): any AdminLTE small-box/large-box variant beyond Info Box, a progress-bar or trend-chart slot on the tile, or any further atoms/molecules/organisms tiering — none of these have duplication evidence behind them yet, same posture DS-1's own scope note already established.
 
-**Traceability:** [ADR-0043](../adr/0043-ds-3-infobox-widget-consolidation.md). FR-SHELL-3, NFR-27, FR-EXEC-1 AC2, NFR-46 (all unchanged in substance — this story changes the rendering mechanism, not the count-sourcing requirement) — see Requirements Document.
+**Traceability:** [ADR-0045](../adr/0045-ds-3-infobox-widget-consolidation.md). FR-SHELL-3, NFR-27, FR-EXEC-1 AC2, NFR-46 (all unchanged in substance — this story changes the rendering mechanism, not the count-sourcing requirement) — see Requirements Document.

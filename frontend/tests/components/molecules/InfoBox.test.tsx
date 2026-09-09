@@ -1,15 +1,15 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { InfoBox, infoBoxIconColorClassName } from "../../../src/components/shared/info-box";
+import { InfoBox, infoBoxIconColorClassName } from "../../../src/components/molecules/info-box";
 
 /**
- * DS-3 ([ADR-0043](docs/adr/0043-ds-3-infobox-widget-consolidation.md)) unit
+ * DS-3 ([ADR-0045](docs/adr/0045-ds-3-infobox-widget-consolidation.md)) unit
  * tests for the shared `InfoBox`. Replaces the deleted
  * `WidgetStatsTile.test.tsx` — every equivalence class that file covered
  * (icon-supplied vs. icon-omitted, testId forwarding, color application,
  * `ReactNode` passthrough, `className` append) is carried over and re-aimed at
  * AdminLTE's own Info Box markup, plus the two classes that are new to this
- * story (Test Design §35).
+ * story (Test Design §36).
  *
  * Covers, at this layer:
  *   - **TC-DS-019** — the `.info-box` DOM shape itself, asserted against literal

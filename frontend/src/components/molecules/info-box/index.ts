@@ -1,3 +1,3 @@
-export { InfoBox, infoBoxIconColorClassName } from "./InfoBox";
-export type { InfoBoxProps } from "./InfoBox";
+export { InfoBox, infoBoxIconColorClassName } from "./info-box";
+export type { InfoBoxProps } from "./info-box";
 export type { CWidgetStatsColor } from "./types";

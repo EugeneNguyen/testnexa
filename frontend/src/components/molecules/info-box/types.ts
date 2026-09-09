@@ -1,9 +1,9 @@
 /**
  * `CWidgetStatsColor` — the contextual color token set used by `InfoBox`.
  *
- * Moved here verbatim from `components/shared/widget-stats-tile/types.ts` by
- * DS-3 ([ADR-0043](docs/adr/0043-ds-3-infobox-widget-consolidation.md)), which
- * deletes that directory outright. The union itself is unchanged — every color
+ * Moved here verbatim from `components/molecules/widget-stats-tile/types.ts`
+ * by DS-3 ([ADR-0045](docs/adr/0045-ds-3-infobox-widget-consolidation.md)),
+ * which deletes that directory outright. The union itself is unchanged — every color
  * either retired component used (`OrgHome`: `primary`/`info`;
  * `TestCycleDetail`: `success`/`danger`/`warning`/`secondary`) is already a
  * member, so no caller needed widening.

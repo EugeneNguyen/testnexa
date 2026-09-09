@@ -24,7 +24,7 @@ REST over HTTPS, JSON bodies, base path `/api/v1`. FastAPI auto-generates the Op
 
 **DS-2** ([ADR-0041](../adr/0041-ds-2-table-container-shared-pagination.md), FR-DS-2) — **has API impact**: (1) §1's pagination convention max `page_size` raised 25 → 100 (default unchanged), applying to every route following that convention; (2) `GET /orgs/{org_id}/role-assignments` gains `page`/`page_size` and switches from a bare array to the standard `{items, total, page, page_size}` envelope — a breaking response-shape change for that one route, no other route's shape changes.
 
-**DS-3** ([ADR-0043](../adr/0043-ds-3-infobox-widget-consolidation.md), FR-SHELL-3/FR-EXEC-1) — reviewed, no API impact. Both migrated widgets keep calling the exact same routes they already called (`GET /projects`, `GET /org-memberships`, `GET /test-executions` filtered by `result`) — only the frontend component rendering the returned `total` changes.
+**DS-3** ([ADR-0045](../adr/0045-ds-3-infobox-widget-consolidation.md), FR-SHELL-3/FR-EXEC-1) — reviewed, no API impact. Both migrated widgets keep calling the exact same routes they already called (`GET /projects`, `GET /org-memberships`, `GET /test-executions` filtered by `result`) — only the frontend component rendering the returned `total` changes.
 
 ---
 

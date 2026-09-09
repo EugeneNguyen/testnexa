@@ -96,7 +96,7 @@
  * `<tr>`/`<th>`/`<td>` since ADR-0042, not `<CTableRow>`/`<CTableHeaderCell>`
  * /`<CTableDataCell>`).
  *
- * **DS-3 (2026-09-08, [ADR-0043](docs/adr/0043-ds-3-infobox-widget-consolidation.md)):**
+ * **DS-3 (2026-09-08, [ADR-0045](docs/adr/0045-ds-3-infobox-widget-consolidation.md)):**
  * both count widgets move off `WidgetStatsTile` (deleted by this story) onto
  * the shared `InfoBox`, which renders AdminLTE's own Info Box markup. A
  * rendering swap only: each widget's `useQuery` and the shared `widgetValue()`

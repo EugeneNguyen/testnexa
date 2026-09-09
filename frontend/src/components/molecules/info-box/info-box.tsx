@@ -1,7 +1,7 @@
 /**
  * `InfoBox` shared presentational primitive — AdminLTE v4's own documented
  * **Info Box** widget (https://adminlte.io/themes/v4/widgets/info-box.html),
- * per DS-3 / [ADR-0043](docs/adr/0043-ds-3-infobox-widget-consolidation.md).
+ * per DS-3 / [ADR-0045](docs/adr/0045-ds-3-infobox-widget-consolidation.md).
  *
  * Replaces **two** independently hand-rolled stat tiles that predated
  * [ADR-0042](docs/adr/0042-adminlte-design-system.md)'s design-system swap and
@@ -20,7 +20,7 @@
  * `:14857`), which yields exactly six `.info-box*` selectors: those five plus
  * `.info-box-more` (a "read more" link slot neither call site uses).
  *
- * The **contextual color** on the icon block was the open item ADR-0043 and the
+ * The **contextual color** on the icon block was the open item ADR-0045 and the
  * DS-3 UI Design Document §4 both deferred to implementation, precisely because
  * it is *not* derivable from the CSS: `src/scss/_info-box.scss` bakes in no
  * color at all (verified — the only color-ish declarations in the whole file are
@@ -60,12 +60,15 @@
  *
  * ## Tier placement
  *
- * `frontend/src/components/shared/` per [ADR-0023](docs/adr/0023-frontend-shared-component-location.md)
- * — the same tier `FeaturedCard`/`FormField` and the retired `WidgetStatsTile`
- * occupy. Deliberately **not** `container/` (where DS-2's `Table` lives): this
- * component owns no state, no actions, and no data fetching. Every value it
- * renders is a prop. A sibling container here would be a forwarding shim with no
- * internal logic. This repo does not use atoms/molecules/organisms tiers.
+ * `frontend/src/components/molecules/` per [ADR-0043](docs/adr/0043-atomic-design-tiering-for-frontend-components.md)
+ * (which superseded [ADR-0023](docs/adr/0023-frontend-shared-component-location.md)'s
+ * `components/shared/` location while this component was mid-flight — rebased
+ * onto the new convention rather than shipped at a now-dead path) — the same
+ * tier `FeaturedCard`/`FormField` and the retired `WidgetStatsTile` occupy.
+ * Deliberately **not** `container/` (where DS-2's `Table` lives, an axis
+ * ADR-0043 left untouched): this component owns no state, no actions, and no
+ * data fetching. Every value it renders is a prop. A sibling container here
+ * would be a forwarding shim with no internal logic.
  *
  * ## Sentinel conventions are the caller's, not this component's (TC-DS-022)
  *
@@ -80,7 +83,7 @@
  *     executions of a given `result`.
  *
  * This looseness is inherited from `WidgetStatsTile`'s own `value` prop, not
- * introduced here — ADR-0043's Consequences names it explicitly as a
+ * introduced here — ADR-0045's Consequences names it explicitly as a
  * trade-off worth watching if a third caller ever invents a third convention.
  */
 import { ReactNode } from "react";
@@ -109,7 +112,7 @@ export interface InfoBoxProps {
    * Contextual color for the icon block. Has no effect when `icon` is omitted —
    * AdminLTE's Info Box colors the *icon block*, not the label or the number
    * (unlike the retired `StatTile`, which colored the number text via
-   * `text-{color}`; see this file's own migration note in ADR-0043).
+   * `text-{color}`; see this file's own migration note in ADR-0045).
    */
   color: CWidgetStatsColor;
   /** Small label, rendered in `.info-box-text` above the number. Plain string — callers own any localization. */

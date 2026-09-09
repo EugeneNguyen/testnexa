@@ -287,7 +287,7 @@ function errorMessage(err: unknown): string {
 }
 
 /**
- * DS-3 ([ADR-0043](docs/adr/0043-ds-3-infobox-widget-consolidation.md), 2026-09-08)
+ * DS-3 ([ADR-0045](docs/adr/0045-ds-3-infobox-widget-consolidation.md), 2026-09-08)
  * deleted this file's local `StatTile` function, which used to live here and
  * render the 4 dashboard tiles as a hand-rolled `div.card.h-100.text-center`
  * composition. The tiles now call the shared `InfoBox` (AdminLTE's own Info Box
