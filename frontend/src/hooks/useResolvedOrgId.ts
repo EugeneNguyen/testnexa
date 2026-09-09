@@ -1,5 +1,5 @@
 /**
- * SHELL-9 (ADR-0048): resolve the current screen's owning `org_id`, whether
+ * SHELL-9 (ADR-0049): resolve the current screen's owning `org_id`, whether
  * the route carries it directly or only names a Project.
  *
  * `AppSidebar`/`AppBreadcrumb` derived all org-scoped nav content from a raw
@@ -27,7 +27,7 @@
  * That hook already solves this exact sub-problem — but only for itself, and
  * only typed/scoped around the admin registry (`EntityConfig`, `getEntity`), a
  * dependency `AppSidebar`/`AppBreadcrumb` have no other reason to take on.
- * ADR-0048 deliberately generalizes the *idea* (route param, else fetch the
+ * ADR-0049 deliberately generalizes the *idea* (route param, else fetch the
  * Project and read its `org_id`) into this small registry-free hook rather than
  * refactoring the already-shipped admin resolver — smallest blast radius.
  *
@@ -37,7 +37,7 @@
  * The plain entity key is what a page fetching the same row for its own
  * purposes would naturally use, so sidebar + breadcrumb + page collapse to a
  * single `GET /projects/{id}` per page load instead of one per consumer
- * (NFR-53, TC-SHELL-034). The consequence, named in ADR-0048's own Consequences
+ * (NFR-54, TC-SHELL-034). The consequence, named in ADR-0049's own Consequences
  * rather than treated as an oversight: on the 20 project-scoped admin pages two
  * differently-keyed queries now fetch the identical row (this hook's key for the
  * shell chrome, the admin resolver's for the page itself). Unifying them is a
@@ -90,7 +90,7 @@ export interface ResolvedOrgContext {
    * or `/orgs/pick` where the answer is legitimately `undefined`); otherwise the
    * underlying query's own status. Callers use this to distinguish "still
    * loading" from "resolved to nothing" — both of which render the same
-   * degraded state today (ADR-0048 Decision §4), but only one of which is
+   * degraded state today (ADR-0049 Decision §4), but only one of which is
    * permanent.
    */
   status: "pending" | "error" | "success";

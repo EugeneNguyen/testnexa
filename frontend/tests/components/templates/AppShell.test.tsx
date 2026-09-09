@@ -31,7 +31,7 @@ function renderShell() {
     logout: vi.fn(),
   });
 
-  // SHELL-9 (ADR-0048): `AppShell` mounts `AppSidebar`/`AppBreadcrumb`, both of
+  // SHELL-9 (ADR-0049): `AppShell` mounts `AppSidebar`/`AppBreadcrumb`, both of
   // which now call `useResolvedOrgId()` -> `useQuery`, so this tree needs a
   // `QueryClientProvider` exactly like the real app's `main.tsx` supplies. This
   // route is org-scoped, so the hook short-circuits without ever fetching — the

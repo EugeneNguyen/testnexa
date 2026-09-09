@@ -8,7 +8,7 @@ import { useResolvedOrgId } from "../../src/hooks/useResolvedOrgId";
 import { getProject } from "../../src/lib/api/projects";
 
 /**
- * SHELL-9 (ADR-0048) — `useResolvedOrgId()`'s own unit coverage, plus
+ * SHELL-9 (ADR-0049) — `useResolvedOrgId()`'s own unit coverage, plus
  * TC-SHELL-034 (fetch dedup).
  *
  * ## Why this file stubs `globalThis.fetch` rather than mocking `getProject`
@@ -104,7 +104,7 @@ describe("useResolvedOrgId", () => {
     expect(screen.getByTestId("probe-org-id")).toHaveTextContent("org-1");
     expect(screen.getByTestId("probe-project-id")).toHaveTextContent("(undefined)");
     expect(screen.getByTestId("probe-project-name")).toHaveTextContent("(undefined)");
-    // ADR-0048 Decision §1: "return it directly, no fetch" — the hook must cost
+    // ADR-0049 Decision §1: "return it directly, no fetch" — the hook must cost
     // nothing beyond the `useParams` read it replaced on these routes.
     expect(screen.getByTestId("probe-status")).toHaveTextContent("success");
     expect(fetchMock).not.toHaveBeenCalled();
@@ -133,7 +133,7 @@ describe("useResolvedOrgId", () => {
     expect(screen.getByTestId("probe-org-id")).toHaveTextContent(PROJECT_ORG_ID);
     expect(screen.getByTestId("probe-project-id")).toHaveTextContent(PROJECT_ID);
     // The ProjectSummary itself is returned so `AppBreadcrumb` needn't refetch
-    // the same row for its name segment (ADR-0048 Decision §1).
+    // the same row for its name segment (ADR-0049 Decision §1).
     expect(screen.getByTestId("probe-project-name")).toHaveTextContent(PROJECT_NAME);
     expect(projectFetchCalls()).toHaveLength(1);
   });
@@ -163,7 +163,7 @@ describe("useResolvedOrgId", () => {
    * component does this today.** `ProjectDetail.tsx` loads releases/requirements
    * via `useState`/`useEffect` and never fetches its own `Project` row at all,
    * and `TestCycleDetail.tsx` calls `getProject` from a plain async handler, not
-   * through react-query. (ADR-0048's Consequences section asserts "`ProjectDetail`
+   * through react-query. (ADR-0049's Consequences section asserts "`ProjectDetail`
    * already does, for its own header" — that is inaccurate against the current
    * source; noted, not silently absorbed.) The TC's third consumer therefore has
    * to be constructed here. That is not a weakening of the test: the property

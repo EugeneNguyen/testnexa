@@ -8,7 +8,7 @@ import { ApiError } from "../../../src/lib/api/client";
 import { getProject } from "../../../src/lib/api/projects";
 
 /**
- * SHELL-9 (ADR-0048): `AppSidebar` reads its `orgId` through
+ * SHELL-9 (ADR-0049): `AppSidebar` reads its `orgId` through
  * `useResolvedOrgId()`, which issues a real `getProject(projectId)` on
  * project-scoped routes. Same partial-mock pattern the rest of this repo's
  * Vitest suite uses (`ProjectsPage.test.tsx`, `Signup.test.tsx`) — keep the
@@ -40,7 +40,7 @@ function newQueryClient() {
 }
 
 /**
- * SHELL-9 (ADR-0048): the `QueryClientProvider` is newly required — it is what
+ * SHELL-9 (ADR-0049): the `QueryClientProvider` is newly required — it is what
  * lets `useResolvedOrgId()`'s `useQuery` mount at all. On every entry this
  * helper serves (all `/orgs/...`) the hook still resolves purely from the
  * route param and issues no fetch, so no assertion below changed.
@@ -381,7 +381,7 @@ describe("AppSidebar", () => {
   });
 
   // ------------------------------------------------------------------
-  // SHELL-9 (ADR-0048): project-scope nav context resolution.
+  // SHELL-9 (ADR-0049): project-scope nav context resolution.
   //
   // Before this story `AppSidebar` read `useParams<{orgId}>()` directly, which
   // is `undefined` on every `/projects/:projectId/...` route, so the entire nav
@@ -462,7 +462,7 @@ describe("AppSidebar", () => {
 
     const { container } = renderSidebarAtProjectRoute(`/projects/${PROJECT_ID}`);
 
-    // Nav is empty until the fetch resolves (ADR-0048 §4, ADR-0049 extends the
+    // Nav is empty until the fetch resolves (ADR-0049 §4, ADR-0049 extends the
     // same trade-off to the project-mode nav) — then fully populated.
     await waitFor(() => {
       expect(screen.getByTestId("sidebar-nav-group-test-design")).toBeInTheDocument();

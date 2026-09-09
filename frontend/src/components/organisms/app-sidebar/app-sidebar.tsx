@@ -280,7 +280,7 @@ export const PROJECT_EXCLUDED_ENTITY_KEYS: string[] = [
 ];
 
 function AppSidebar() {
-  // SHELL-9 (ADR-0048): was a raw `useParams<{orgId?: string}>()` read, which
+  // SHELL-9 (ADR-0049): was a raw `useParams<{orgId?: string}>()` read, which
   // resolved to `undefined` on every `/projects/:projectId/...` screen and left
   // this whole nav empty there. `useResolvedOrgId()` returns the same value on
   // `/orgs/:orgId/...` routes (no fetch) and resolves it via `GET
@@ -424,7 +424,7 @@ function AppSidebar() {
   // available synchronously from the route, but waiting for `orgId` (i.e. for
   // `useResolvedOrgId()`'s fetch to actually resolve) preserves the same
   // "one fetch's worth of blank sidebar, no partial/flickering nav" trade-off
-  // ADR-0048 §4 already established for the org nav this replaces — content
+  // ADR-0049 §4 already established for the org nav this replaces — content
   // that depends on a project genuinely existing (its group links point at
   // `/projects/:projectId/admin/...` routes) shouldn't render before that's
   // confirmed.
@@ -458,11 +458,11 @@ function AppSidebar() {
   // groups (hence a separate array — `navItems` renders above `navGroups`).
   //
   // "Back to Projects" is PROJ-4's existing `/orgs/:orgId/projects` item
-  // repositioned, not a new destination — ADR-0048 already established that
+  // repositioned, not a new destination — ADR-0049 already established that
   // reusing it beats inventing a second entry pointing at the same place. It
   // needs `orgId`, which on this route only exists once SHELL-9's fetch has
   // resolved, so it is omitted while pending/failed rather than rendered as a
-  // dead link (the same graceful-degradation posture as ADR-0048 §4).
+  // dead link (the same graceful-degradation posture as ADR-0049 §4).
   const bottomNavItems: SidebarNavItem[] =
     mode === "project" && projectId
       ? [

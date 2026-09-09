@@ -37,7 +37,7 @@
  *   deliberately does not do), so the Project/TestPlan/TestCycle chain
  *   below nests under `projectId`/`testPlanId` only — no "Dashboard" parent
  *   link, same posture as `/orgs/:orgId`'s own single, unlinked crumb.
- *   **Reversed by SHELL-9 (2026-09-09, ADR-0048) — see below.** The
+ *   **Reversed by SHELL-9 (2026-09-09, ADR-0049) — see below.** The
  *   "deliberately does not fetch" posture is exactly what left every
  *   project-scoped screen with a dead-end, name-less crumb; this component
  *   now does resolve the org, via `useResolvedOrgId()`.
@@ -107,7 +107,7 @@
  * property the 2026-09-07 alignment fix above was chasing; both boxes are a
  * `container-fluid` under a parent with identical horizontal padding).
  *
- * SHELL-9 (2026-09-09, ADR-0048): this component is no longer render-only
+ * SHELL-9 (2026-09-09, ADR-0049): this component is no longer render-only
  * with respect to network state. All 5 project-scoped patterns now open with
  * a resolved `Projects → {project name}` prefix instead of the bare, unlinked
  * "Project" label described above, giving those screens their first real
@@ -118,11 +118,11 @@
  * target, the Project's own `name` for the trail) from one shared
  * `["project", projectId]` react-query entry, so the sidebar, this component,
  * and a page that fetches the same row collapse to a single network call
- * (NFR-53). Two structural consequences worth knowing:
+ * (NFR-54). Two structural consequences worth knowing:
  *
  * - **Every project-scoped trail grew by exactly one segment**, so any
  *   assertion pinning those trails' segment count/text had to change in the
- *   same commit (ADR-0048's own Consequences names this; `AppBreadcrumb.test.tsx`
+ *   same commit (ADR-0049's own Consequences names this; `AppBreadcrumb.test.tsx`
  *   and `shell2-breadcrumb-coverage.spec.ts` are the two files affected).
  * - **The `segments()` signature widened** to take a resolved-context second
  *   argument. Org-scoped entries simply ignore it; the `matchPath` resolution
@@ -154,7 +154,7 @@ interface BreadcrumbSegment {
 }
 
 /**
- * SHELL-9 (ADR-0048): resolved nav context passed alongside the route's own
+ * SHELL-9 (ADR-0049): resolved nav context passed alongside the route's own
  * `params`, for the 5 project-scoped patterns that need an `org_id` and a
  * project name neither of which appears anywhere in the URL.
  *
@@ -219,7 +219,7 @@ function projectTrailPrefix(
  * Guarding here (rather than in each caller) keeps the "never render a partial
  * project trail" rule in one place — appending tail segments onto an empty
  * prefix would otherwise produce a `Test Plan / Test Cycle` trail with no root,
- * which is exactly the partial state ADR-0048 §4 rules out.
+ * which is exactly the partial state ADR-0049 §4 rules out.
  */
 function projectTrail(
   context: BreadcrumbNavContext,
@@ -291,7 +291,7 @@ const ROUTE_BREADCRUMBS: RouteBreadcrumbConfig[] = [
       { label: entityLabel(params.entity) },
     ],
   },
-  // SHELL-9 (ADR-0048): all 5 project-scoped patterns below open with the
+  // SHELL-9 (ADR-0049): all 5 project-scoped patterns below open with the
   // resolved `Projects → {project name}` prefix, replacing the bare unlinked
   // "Project" label each used to render. That old label carried no org context
   // (this file's own docstring above explains why it originally couldn't) and so
@@ -342,7 +342,7 @@ const ROUTE_BREADCRUMBS: RouteBreadcrumbConfig[] = [
 
 function AppBreadcrumb() {
   const location = useLocation();
-  // SHELL-9 (ADR-0048): called unconditionally at the top of the body, before
+  // SHELL-9 (ADR-0049): called unconditionally at the top of the body, before
   // any early return — a hook cannot sit behind the `if (!config)` guard below.
   // It is a no-op (no fetch) on every route that isn't project-scoped.
   const { orgId, project } = useResolvedOrgId();

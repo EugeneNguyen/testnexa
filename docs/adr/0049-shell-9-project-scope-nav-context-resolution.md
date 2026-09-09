@@ -1,4 +1,4 @@
-# ADR-0048: SHELL-9 resolves org nav context on project-scoped routes (sidebar + breadcrumb), giving them a way back to the Projects list
+# ADR-0049: SHELL-9 resolves org nav context on project-scoped routes (sidebar + breadcrumb), giving them a way back to the Projects list
 
 **Date:** 2026-09-09
 **Status:** Accepted
@@ -42,7 +42,7 @@ No backend, schema, or RBAC change is required — `GET /projects/{id}` (ADR-001
 
 **Negative / accepted trade-offs:**
 
-- **One extra network round trip on first paint of any project-scoped screen** that doesn't already fetch the `Project` row itself (`ProjectDetail` already does, for its own header; `TestPlanDetail`/`TestCycleDetail` do not today) — mitigated, not eliminated, by the shared `["project", projectId]` react-query cache key: a screen that also calls `getProject(projectId)` under that same key dedupes against the sidebar's/breadcrumb's own fetch instead of tripling it. See NFR-53.
+- **One extra network round trip on first paint of any project-scoped screen** that doesn't already fetch the `Project` row itself (`ProjectDetail` already does, for its own header; `TestPlanDetail`/`TestCycleDetail` do not today) — mitigated, not eliminated, by the shared `["project", projectId]` react-query cache key: a screen that also calls `getProject(projectId)` under that same key dedupes against the sidebar's/breadcrumb's own fetch instead of tripling it. See NFR-54.
 - **Two independent `["project", projectId]`-shaped queries now exist in this codebase** (this story's plain key, `useAdminRouteContext`'s own `["admin-route-project-org-id", projectId]`) fetching the identical row under different keys on the 20 project-admin pages specifically (sidebar/breadcrumb use this story's key, the page itself uses the admin one) — a deliberate, named non-unification (Decision §1), not an oversight; unifying them is a small future cleanup, not required for this story's own scope.
 - **Breadcrumb trails on all 5 project-scoped route patterns grow by one segment** (`Projects` root, previously absent entirely) — every existing e2e/Vitest assertion on those trails' exact segment count/text needs updating in the same change (see Test Plan risk row); no assertion content for *other* (org-scoped) routes' breadcrumbs changes.
 - **`AppSidebar`/`AppBreadcrumb` each go from a pure, dependency-free `useParams()` read to a data-fetching component** (react-query) — both already sit inside `QueryClientProvider` (confirmed: `useAdminRouteContext` proves react-query is already available at this depth of the tree), so no new provider wiring is needed, but both components are no longer render-only with respect to network state the way they were on launch day.

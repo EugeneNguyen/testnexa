@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { expect, test } from "@playwright/test";
 
 /**
- * SHELL-9 (ADR-0048) project-scope nav context E2E — TC-SHELL-029,
+ * SHELL-9 (ADR-0049) project-scope nav context E2E — TC-SHELL-029,
  * TC-SHELL-031 and TC-SHELL-032 from `docs/test-cases/2026-09-03-test-cases.md`.
  *
  * **What this story fixed, and therefore what must be proven in a real

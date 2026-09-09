@@ -9,7 +9,7 @@ import { getProject } from "../../../src/lib/api/projects";
 
 /**
  * SHELL-2 (ADR-0020) breadcrumb unit tests, TC-SHELL-007/008 plus the
- * 2026-09-07 route-coverage correction, extended by SHELL-9 (ADR-0048) with
+ * 2026-09-07 route-coverage correction, extended by SHELL-9 (ADR-0049) with
  * TC-SHELL-032/033.
  *
  * Same per-route-pattern render approach as `AppSidebar.test.tsx`: mount
@@ -25,9 +25,9 @@ import { getProject } from "../../../src/lib/api/projects";
  *    without a provider every test in this file throws "No QueryClient set"
  *    regardless of which route it exercises.
  * 2. **The three project-scoped route tests below previously asserted a bare,
- *    unlinked "Project" crumb — the exact behavior ADR-0048 replaces.** Those
+ *    unlinked "Project" crumb — the exact behavior ADR-0049 replaces.** Those
  *    assertions are rewritten here to the resolved `Projects -> {project name}`
- *    trail, in the same change as the implementation, per ADR-0048's own
+ *    trail, in the same change as the implementation, per ADR-0049's own
  *    Consequences ("every existing e2e/Vitest assertion on those trails' exact
  *    segment count/text needs updating"). They previously carried
  *    `TC-SHELL-016/017/019` labels; those IDs in
@@ -156,7 +156,7 @@ describe("AppBreadcrumb", () => {
   });
 
   // ------------------------------------------------------------------
-  // SHELL-9 (ADR-0048) / TC-SHELL-032: the resolved project trail.
+  // SHELL-9 (ADR-0049) / TC-SHELL-032: the resolved project trail.
   //
   // The TC requires `/projects/:projectId` AND "each of its 4 nested route
   // patterns in turn", each asserted for its own full segment sequence per UI

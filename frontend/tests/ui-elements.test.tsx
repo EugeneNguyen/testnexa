@@ -32,7 +32,7 @@ describe("UI Elements reference pages", () => {
 
   it("sidebar's 'UI Elements' nav group reaches all 3 pages, only when orgId is present", () => {
     const ORG_ID = "org-1";
-    // SHELL-9 (ADR-0048): `AppSidebar` now reads its `orgId` through
+    // SHELL-9 (ADR-0049): `AppSidebar` now reads its `orgId` through
     // `useResolvedOrgId()` -> `useQuery`, so it needs a `QueryClientProvider`
     // to mount. Org-scoped route, so the hook resolves from the route param
     // and never fetches.

@@ -34,7 +34,7 @@ function mockAuth(overrides: Partial<ReturnType<typeof useAuth>>) {
 }
 
 function renderProtected() {
-  // SHELL-9 (ADR-0048): `ProtectedRoute` renders `<AppShell>`, whose
+  // SHELL-9 (ADR-0049): `ProtectedRoute` renders `<AppShell>`, whose
   // `AppSidebar`/`AppBreadcrumb` now call `useResolvedOrgId()` -> `useQuery`.
   // The provider mirrors `main.tsx`'s own; `/protected` carries no `projectId`
   // so no fetch is ever issued here.
