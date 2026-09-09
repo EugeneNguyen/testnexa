@@ -27,8 +27,8 @@ No new screen, no new component tree shape — `AppSidebar`/`AppBreadcrumb`'s ex
 │ TestNexa             │
 ├─────────────────────┤
 │ 🎚  Dashboard         │
-│    Projects           │
-│    Members            │
+│ 📁  Projects          │
+│ 👥  Members           │
 │ 🛡  Access Control  ▸ │
 │ 🗂  Catalogs        ▸ │
 │ 🏢  Organization    ▸ │
@@ -36,7 +36,7 @@ No new screen, no new component tree shape — `AppSidebar`/`AppBreadcrumb`'s ex
 └─────────────────────┘
 ```
 
-Byte-for-byte the same nav `AppSidebar` already renders on `/orgs/:orgId` (icons per ADR-0046/ADR-0047 — Dashboard and the 3 admin groups get one, Projects/Members/UI Elements don't). No item is highlighted "active," since none of `Dashboard`/`Projects`/`Members`/the admin groups' own routes match `/projects/:projectId` — this is expected and correct; there is no sidebar item *for* an individual project today, and none is added by this story (see §3, rejected alternative).
+Byte-for-byte the same nav `AppSidebar` already renders on `/orgs/:orgId` (~~icons per ADR-0046/ADR-0047 — Dashboard and the 3 admin groups get one, Projects/Members/UI Elements don't~~). **Icon parenthetical corrected in place 2026-09-09 (rebase onto `main` `32e7d1e`) — it was wrong on two counts, one of them already wrong when written.** `Projects` gained `fa-solid fa-folder` on `main` (CTO manual-test instruction, amending ADR-0047 §2's original "no icon" call) *after* this document was authored, so that half is ordinary staleness. But `Members` already had `fa-solid fa-users` from SHELL-7/ADR-0046 — merged before this document existed — so that half was never true; it was inherited from DASH-2/TC-SHELL-021's "Dashboard is the only icon item" invariant, which SHELL-7 had already broken. **Current shape: `Dashboard` (`fa-gauge-high`), `Projects` (`fa-folder`), `Members` (`fa-users`) and the 3 admin groups each carry exactly one icon; only the 8 entity children inside those groups and the `UI Elements` group toggle stay icon-less.** Per `frontend/CLAUDE.md`'s own note, this rule has now reversed three times across three stories — read `app-sidebar.tsx`'s array literals and `AppSidebar.test.tsx`'s assertions directly rather than trusting this paragraph. The ASCII sketch above has been corrected to match (`📁` Projects, `👥` Members), per root `CLAUDE.md`'s rule that a UI Design Document's prose and its own layout sketch must agree rather than each being separately plausible. No item is highlighted "active," since none of `Dashboard`/`Projects`/`Members`/the admin groups' own routes match `/projects/:projectId` — this is expected and correct; there is no sidebar item *for* an individual project today, and none is added by this story (see §3, rejected alternative).
 
 ### 1b. Breadcrumb, before/after
 

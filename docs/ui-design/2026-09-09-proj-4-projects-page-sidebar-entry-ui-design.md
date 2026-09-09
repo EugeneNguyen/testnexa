@@ -21,7 +21,7 @@ Members
 ```
 
 - `key`: `"projects"`, `testId`: `"sidebar-nav-projects"`, `to`: `/orgs/:orgId/projects`, label `"Projects"`.
-- No icon (see §4, open point 1).
+- `fa-solid fa-folder` icon (amended 2026-09-09 — see §4, open point 1).
 - Gated on `orgId` presence, same as every other flat item — absent on `/orgs/pick`.
 
 ### 2.2 `OrgHome` (`pages/workflows/OrgHome.tsx`) — "Dashboard"
@@ -38,7 +38,7 @@ The Project table, "New Project" button, and all three modals are removed from t
 
 ### 2.3 `ProjectsPage` (new, `pages/workflows/ProjectsPage.tsx`)
 
-Mounted at `/orgs/:orgId/projects`. Identical layout to what `OrgHome` used to render for its Project section — one `card` containing a heading ("Projects", not "Dashboard") + "New Project" button, then the search box + `Table` (client mode) + Edit/Delete modals below it:
+Mounted at `/orgs/:orgId/projects`. Same content as what `OrgHome` used to render for its Project section — one `card` containing a heading ("Projects", not "Dashboard") + "New Project" button, then the search box + `Table` (client mode) + Edit/Delete modals below it — **but full-width (amended 2026-09-09, CTO direct instruction, post-manual-test), not the centered `row.justify-content-center > col-md-10.col-lg-8` OrgHome originally used.** The `card` now sits directly in `container-fluid`, matching `EntityListPage.tsx`'s own existing full-width convention (`frontend/CLAUDE.md`'s `h-100` note already documents that shape) rather than a bespoke centered-column layout carried over from `OrgHome` by the original verbatim extraction.
 
 ```
 [Projects heading]                                [New Project button]
@@ -56,6 +56,6 @@ No change. `ProjectsPage` calls exactly the functions `OrgHome` used to (`listPr
 
 ## 4. Open points resolved during implementation
 
-1. **Should the new "Projects" nav item get an icon?** Resolved: no. DASH-2/TC-SHELL-021 established "Dashboard is the only sidebar item with an icon" as an explicit, tested invariant; expanding it wasn't asked for by this story and isn't free (it's a tested negative assertion), so it's left as-is. See ADR-0047 Consequences.
+1. **Should the new "Projects" nav item get an icon?** Originally resolved "no" (DASH-2/TC-SHELL-021's "Dashboard is the only sidebar item with an icon" invariant, not expanded without a story asking for it). **Reopened and reversed 2026-09-09**, CTO direct instruction after manual testing — the item gets `fa-solid fa-folder` (same glyph `ProjectCountWidget` already uses). See ADR-0047 Decision §2's own amendment note for the fuller reasoning, including that the original invariant was already stale by the time this document was written (SHELL-7 had already given `Members` an icon).
 2. **Does "Dashboard" keep a Project-related affordance at all, or drop Projects entirely?** Resolved: keep the Project-count widget as a link — cheaper than a second "Projects" button and reuses an element already on the page.
 3. **Does the "Members" quick-link button move with the table, stay on Dashboard, or get removed (redundant with the sidebar's own Members item)?** Resolved: stays on Dashboard, unchanged — a pre-existing convenience affordance from before the sidebar existed (RBAC-2), independent of this story's own scope; not removed without a story asking for that.
