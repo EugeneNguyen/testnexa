@@ -34,6 +34,10 @@ vi.mock("./registry", async () => {
       attachments: actual.default,
       projects: { resource: "project", path: "/projects", methods: ["list", "get"], fields: [] },
     },
+    entityLabelByKey: {
+      attachments: "Attachments",
+      projects: "Projects",
+    },
   };
 });
 

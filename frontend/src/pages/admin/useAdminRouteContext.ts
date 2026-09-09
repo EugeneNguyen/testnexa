@@ -18,11 +18,13 @@ import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { EntityConfig } from "../../entityConfigs/types";
 import { EntityRow, getEntity } from "../../lib/api/entityCrud";
-import { entityConfigByKey } from "./registry";
+import { entityConfigByKey, entityLabelByKey } from "./registry";
 
 export interface AdminRouteContext {
   entityKey: string;
   config: EntityConfig | undefined;
+  /** Registry's nav-label for this entity (e.g. "Requirements"), or `undefined` for an unknown `:entity`. */
+  label: string | undefined;
   /** Resolved for permission checks — direct `:orgId` route param, or fetched via the current Project. */
   orgId: string | undefined;
   projectId: string | undefined;
@@ -47,6 +49,7 @@ export function useAdminRouteContext(): AdminRouteContext {
   return {
     entityKey,
     config,
+    label: entityLabelByKey[entityKey],
     orgId,
     projectId: params.projectId,
     routeParams: { orgId: params.orgId, projectId: params.projectId },

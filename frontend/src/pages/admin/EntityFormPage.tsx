@@ -55,7 +55,7 @@ function fieldErrorsFrom(error: unknown): Record<string, string> | undefined {
 function EntityFormPage() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
-  const { entityKey, config } = useAdminRouteContext();
+  const { entityKey, config, label } = useAdminRouteContext();
 
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string> | undefined>(undefined);
@@ -111,7 +111,7 @@ function EntityFormPage() {
     <div className="container-fluid px-4 py-4 h-100">
       <div className="card h-100">
         <div className="card-body">
-          <h1 className="fs-4 mb-3">Edit {entityKey.replace(/-/g, " ")}</h1>
+          <h1 className="fs-4 mb-3">Edit {label ?? entityKey.replace(/-/g, " ")}</h1>
 
           {itemQuery.isLoading ? (
             <div className="d-flex justify-content-center py-4">

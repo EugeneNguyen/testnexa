@@ -40,7 +40,7 @@
  * container's generic render-prop API — they stay two call conventions over
  * one shared pagination implementation.
  */
-import { useEffect, useState } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import Table from "../../../container/Table";
 import { EntityConfig, FieldConfig } from "../../../entityConfigs/types";
 import { EntityRow, getEntity } from "../../../lib/api/entityCrud";
@@ -94,6 +94,20 @@ function displayValue(value: unknown): string {
 }
 
 export interface EntityTableProps {
+  /**
+   * AdminLTE "full-width table" card pattern: rendered as the card's own
+   * `.card-title`, in `.card-header`. Optional so `EntityTable.test.tsx`'s
+   * existing fixtures (no title needed for the shared-logic tests) keep
+   * compiling unchanged — `EntityListPage` is the one caller that passes it.
+   */
+  title?: ReactNode;
+  /**
+   * Rendered in `.card-header .card-tools`, alongside the search box (if
+   * any) — `EntityListPage`'s permission-gated "New" button lives here now,
+   * not owned by this component (it has no create-permission/modal-state
+   * concerns of its own).
+   */
+  headerActions?: ReactNode;
   config: EntityConfig;
   rows: EntityRow[];
   total: number;
@@ -120,6 +134,8 @@ export interface EntityTableProps {
 }
 
 function EntityTable({
+  title,
+  headerActions,
   config,
   rows,
   total,
@@ -129,8 +145,6 @@ function EntityTable({
   onPageSizeChange,
   loading,
   loadError,
-  filters = {},
-  onFilterChange,
   search,
   onSearchChange,
   canEditRow = () => true,
@@ -212,42 +226,43 @@ function EntityTable({
     }
   }
 
-  return (
-    <div>
-      {onSearchChange && config.searchFields && config.searchFields.length > 0 && (
-        <input
-          type="text"
-          className="form-control mb-3"
-          placeholder="Search..."
-          value={search ?? ""}
-          onChange={(event) => onSearchChange(event.target.value)}
-          data-testid="entity-table-search"
-        />
-      )}
+  const showSearch = Boolean(onSearchChange && config.searchFields && config.searchFields.length > 0);
+  // AdminLTE "full-width table" card pattern: the table's own card-body is
+  // `p-0` (cells carry their own padding) so it spans the card edge-to-edge —
+  // but that only looks right once there's an actual table to fill it.
+  // Loading/empty states fall back to a normally-padded body.
+  const showTable = !loading && rows.length > 0;
 
-      {onFilterChange && config.filterFields && config.filterFields.length > 0 && (
-        <div className="d-flex gap-2 mb-3">
-          {config.filterFields.map((field) => (
+  return (
+    <div className="card h-100">
+      <div className="card-header">
+        <h3 className="card-title">{title}</h3>
+        <div className="card-tools d-flex align-items-center gap-2">
+          {showSearch && (
             <input
-              key={field}
               type="text"
-              className="form-control"
-              placeholder={`Filter ${field}`}
-              value={filters[field] ?? ""}
-              onChange={(event) => onFilterChange(field, event.target.value)}
-              data-testid={`entity-table-filter-${field}`}
+              className="form-control form-control-sm"
+              style={{ width: 200 }}
+              placeholder="Search..."
+              value={search ?? ""}
+              onChange={(event) => onSearchChange!(event.target.value)}
+              data-testid="entity-table-search"
             />
-          ))}
+          )}
+          {headerActions}
         </div>
-      )}
+      </div>
 
       {loadError && (
-        <div className="alert alert-danger" role="alert">
-          {loadError}
+        <div className="card-body border-bottom">
+          <div className="alert alert-danger mb-0" role="alert">
+            {loadError}
+          </div>
         </div>
       )}
 
-      {loading ? (
+      <div className={showTable ? "card-body p-0" : "card-body"}>
+        {loading ? (
         <div className="d-flex justify-content-center py-4">
           <div className="spinner-border text-primary" role="status">
             <span className="visually-hidden">Loading...</span>
@@ -311,6 +326,7 @@ function EntityTable({
           )}
         />
       )}
+      </div>
     </div>
   );
 }

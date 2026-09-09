@@ -22,6 +22,9 @@ vi.mock("./registry", () => ({
       fields: [{ name: "name", label: "Name", type: "string", required: true }],
     },
   },
+  entityLabelByKey: {
+    widgets: "Widgets",
+  },
 }));
 
 vi.mock("../../lib/api/entityCrud", async (importOriginal) => {

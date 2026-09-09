@@ -103,6 +103,17 @@ export const entityConfigByKey: Record<string, EntityConfig> = Object.fromEntrie
 );
 
 /**
+ * Flat `:entity` key -> nav-label map, so page components (`EntityListPage`'s
+ * heading + "New <label>" modal title) render the same human-readable label
+ * `AppSidebar`/`ProjectDetail` nav generation already uses, instead of
+ * re-deriving one from the raw route slug (which is always lowercase and
+ * plural, e.g. "requirements" -> "New requirements").
+ */
+export const entityLabelByKey: Record<string, string> = Object.fromEntries(
+  allEntities.map((e) => [e.key, e.label]),
+);
+
+/**
  * **Bugfix (found writing ADMIN-2 UI E2E coverage):** every `refEntity`
  * value used across every `entityConfigs/*.ts` file's `fields[]`,
  * `scopeSelector`, and `scopeResolution.viaEntity` is the entity's singular
