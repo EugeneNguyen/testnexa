@@ -32,6 +32,8 @@ This document is the implementation-level schema, refined from the [07 ERD](../p
 
 **PROJ-4** ([ADR-0047](../adr/0047-proj-4-projects-page-sidebar-entry.md), FR-PROJ-3/FR-PROJ-4) — reviewed, no schema impact. Relocating Project CRUD from `OrgHome`/"Dashboard" to its own `ProjectsPage`/`/orgs/:orgId/projects` is a frontend route/component move — the `Project` table (§3.5) and every route/query it already backed are unchanged. Noted here explicitly so the gap isn't mistaken for an oversight.
 
+**BRAND-1** ([ADR-0048](../adr/0048-brand-1-logo-brand-system.md), FR-BRAND-1) — reviewed, no schema impact. The entire logo/brand system (SVG assets, favicon, `BrandLogo`/`AppHeader`/`AppSidebar` markup) is frontend-only presentation — no table, column, index, or query reads/writes any differently. Noted here explicitly so the gap isn't mistaken for an oversight.
+
 ---
 
 ## 1. Entity count reconciliation

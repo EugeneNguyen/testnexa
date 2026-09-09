@@ -1,0 +1,44 @@
+# ADR-0048: BRAND-1 logo/brand system — checkmark-in-shield mark, currentColor SVG, AdminLTE's own logo-xs/logo-xl swap
+
+**Date:** 2026-09-09
+**Status:** Accepted
+**Deciders:** xuanbinh91@gmail.com (CTO)
+**Related:** [ADR-0042](0042-adminlte-design-system.md) (AdminLTE v4 design system — this ADR uses AdminLTE's own documented `.brand-image`/`.logo-xs`/`.logo-xl` sidebar-brand mechanism and Font Awesome-adjacent raw-SVG convention, no new library), [ADR-0018](0018-admin-shell-sidebar-layout.md) (sidebar shell, `.sidebar-brand` slot this story fills for the first time with a real mark), [ADR-0046](0046-shell-7-sidebar-mini-org-crud-restructure.md) (sidebar-mini collapsed rail — the exact context `.logo-xs`/`.logo-xl` exist to serve)
+
+## Context
+
+TestNexa has never had a real visual brand. `BrandLogo` (`atoms/brand-logo/brand-logo.tsx`) — the login/signup screen's wordmark — still hardcodes the literal text `"AdminLTE"` (a `<b>Admin</b>LTE` bold-prefix pattern lifted verbatim from an AdminLTE demo screen during the ADR-0042 migration and never corrected). `AppHeader.tsx`'s navbar-brand and `AppSidebar.tsx`'s `.sidebar-brand` both render plain text `"TestNexa"`, no icon, no mark. There is no favicon and no `frontend/public/` directory at all — `index.html` has no `<link rel="icon">`.
+
+This story's ask: a simple, icon-based brand system that reads correctly in both light and dark mode, has a full lockup (icon + wordmark) and a small mark (icon only), and applies across the app (login, header, sidebar, browser tab).
+
+AdminLTE v4's own shipped CSS (`adminlte.css`) already defines the exact mechanism a full/small logo pair needs for the sidebar's collapsed (`sidebar-mini`) rail: `.brand-image-xl`/`.logo-xl` (full lockup, shown expanded) and `.brand-image-xs`/`.logo-xs` (small mark, shown collapsed) cross-fade via plain CSS (`visibility`/`opacity`, `fadeIn`/`fadeOut` keyframes) keyed off `.sidebar-mini.sidebar-collapse` — no JavaScript, matching ADR-0042's "no vendored plugin JS" rule and SHELL-7's already-shipped `sidebar-mini` toggle exactly.
+
+## Decision
+
+1. **Icon concept: checkmark-in-shield.** A single geometric mark — a shield outline (trust/governance, fitting an ISTQB/IEEE 829-aligned tool) with a checkmark inside (test pass/verification) — simple enough to read at 16px (favicon) and as a 24-32px sidebar/header mark.
+2. **One `currentColor` SVG asset per lockup, not per theme.** `frontend/src/assets/brand/logo-mark.svg` (icon only) and `logo-full.svg` (icon + wordmark) both use `fill="currentColor"` throughout — no hardcoded hex, no separate light/dark file pair. They inherit whatever text color already applies at their mount point, which is how the app's existing `data-bs-theme` (ADR-0042) light/dark toggle already governs every other piece of UI — the mark needs no new theme-awareness logic of its own.
+3. **Wordmark: system font stack, bold "Test" + regular "Nexa"**, mirroring the bold-prefix convention the deleted `<b>Admin</b>LTE` markup already established (kept, only the literal text was ever wrong). No new font import — AdminLTE's `"Source Sans 3"` is already not bundled (ADR-0042's own noted gotcha) and this story doesn't reopen that decision.
+4. **No new brand color.** The mark/wordmark render in `currentColor`; wherever a fixed (non-inherited) accent is needed, it reuses the existing Bootstrap `--bs-primary` (the app's only color token today — confirmed no override exists in `frontend/src/index.css`, so this is stock Bootstrap blue, `#0d6efd`) rather than introducing a new brand hue and a second color system to keep in sync.
+5. **Favicon: SVG only**, `frontend/public/favicon.svg`, referenced via `<link rel="icon" type="image/svg+xml" href="/favicon.svg">` in `index.html`. No `.ico`/PNG multi-size fallback set — every browser this app needs to support renders an SVG favicon; adding an ICO/PNG pipeline for zero additional real-world reach is out of scope. The favicon **cannot** use `currentColor` (browser chrome has no app theme to inherit) — it gets its own fixed, always-legible two-tone treatment (dark mark on a transparent/white-safe background) verified against both a light and dark OS/browser chrome, not just the app's own `data-bs-theme`.
+6. **Sidebar brand slot uses AdminLTE's own `.brand-image-xl`/`.brand-image-xs` pair, not a bespoke React state toggle.** `AppSidebar.tsx`'s `.sidebar-brand` renders both `logo-full.svg` (`.brand-image-xl.logo-xl`) and `logo-mark.svg` (`.brand-image-xs.logo-xs`) unconditionally, side by side in the markup — the existing shipped CSS (`sidebar-mini.sidebar-collapse`'s `.logo-xl`/`.logo-xs` visibility rules, already active since SHELL-7 added `sidebar-mini`) does the expand/collapse cross-fade with zero new JS.
+7. **Header brand slot (`AppHeader.tsx`'s `navbar-brand`) renders the small mark only** — the header is a fixed-height single row, not a widening/collapsing rail, so there's no "full vs. small" state to swap; a lone icon plus the app name already spoken by the page `<title>`/sidebar keeps the header compact, matching AdminLTE's own demo header convention (icon-only or short-text brand, not a full lockup, in the top bar).
+8. **`BrandLogo` atom (login/signup) renders the full lockup**, fixing the "AdminLTE" text bug as part of this change — it gets a `size` prop (`"full" | "small"`, default `"full"`) so the same atom serves both the auth screens (full) and header (small) rather than two near-duplicate components.
+9. **Real `<a>` link semantics preserved everywhere** (already true today) with an explicit `aria-label="TestNexa home"` added on every mount — the icon-only header/sidebar-collapsed variants convey no readable text on their own without it.
+
+No backend, database, or API change anywhere in this story — every affected file is a frontend asset or component; nothing here reads or writes any entity.
+
+## Consequences
+
+**Positive:** TestNexa has a real, consistent visual identity for the first time — one pair of SVG assets serves every mount point (login, header, sidebar expanded, sidebar collapsed, browser tab-adjacent favicon) with no per-theme asset duplication, and the sidebar's full/small swap costs zero new JavaScript by reusing a mechanism AdminLTE already ships and this app already activates (`sidebar-mini`). Fixes a real, shipped bug (`BrandLogo`'s hardcoded "AdminLTE" text) as a side effect.
+
+**Negative / accepted trade-offs:**
+
+- **The favicon is a second, independently-maintained asset**, not generated from the same SVG as the theme-aware mark — a future visual refresh of the mark needs a matching manual favicon update, not an automatic one. Accepted: a shared-source-generates-favicon build step is more tooling than a "simple" brand system (this story's own literal ask) justifies right now.
+- **No ICO/PNG fallback** — a legacy browser with no SVG-favicon support renders no favicon at all rather than a lower-fidelity fallback. Accepted per Decision §5; revisit only if a real legacy-browser requirement surfaces.
+- **The header's icon-only brand loses the wordmark** a first-time visitor might expect for orientation — mitigated by `aria-label`/`title` for accessibility, and by the sidebar (always showing at least the small mark, and the full lockup whenever `sidebar-mini` isn't collapsed) carrying the wordmark instead.
+
+## Alternatives considered
+
+- **Separate light/dark SVG file pairs instead of `currentColor`.** Rejected — doubles the asset count for a value `currentColor` already provides for free, and risks the two files drifting out of visual sync over time (a smaller-scope version of the same duplication risk ADR-0042 itself avoided by not shipping CoreUI-and-AdminLTE together).
+- **A new brand accent color distinct from Bootstrap's default primary.** Rejected for this pass — no existing brand color exists to preserve, and introducing one is a bigger, more subjective design decision than "add an icon" strictly requires; `--bs-primary` is free, already themed, and already used everywhere else in the app.
+- **JS-driven full/small logo swap (React state + resize/collapse listener), matching how the sidebar's own `sidebar-collapse` toggle is implemented.** Rejected — AdminLTE's shipped CSS already solves exactly this problem for exactly this element (`.logo-xs`/`.logo-xl`), and ADR-0042's "no vendored plugin JS, but *do* use the library's own CSS classes" rule applies here as directly as it did to every other shell toggle.
