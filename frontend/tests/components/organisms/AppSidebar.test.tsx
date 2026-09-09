@@ -151,7 +151,7 @@ describe("AppSidebar", () => {
   });
 
   // ------------------------------------------------------------------
-  // SHELL-7 (ADR-0044): org-scoped CRUD nav restructure.
+  // SHELL-7 (ADR-0046): org-scoped CRUD nav restructure.
   //
   // Scope note: TC-SHELL-022/023's *width* claims are deliberately NOT
   // asserted here — jsdom does no layout (see `AppShell.tsx`'s docstring and
@@ -162,7 +162,7 @@ describe("AppSidebar", () => {
   // what order they render in.
   // ------------------------------------------------------------------
 
-  /** The 3-way partition ADR-0044 specifies, as the test's own source of truth. */
+  /** The 3-way partition ADR-0046 specifies, as the test's own source of truth. */
   const EXPECTED_PARTITION: Record<string, string[]> = {
     "sidebar-nav-group-access-control": [
       "roles",
@@ -278,7 +278,7 @@ describe("AppSidebar", () => {
   });
 
   // The new groups use the same `openGroups` state shape as `UI Elements`
-  // (ADR-0044: "no new state shape, just more group keys") — and they are
+  // (ADR-0046: "no new state shape, just more group keys") — and they are
   // independent, so opening one must not open another.
   it("toggles each new group independently via the existing menu-open mechanism", () => {
     renderSidebar("/orgs/org-1");

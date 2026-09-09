@@ -1,4 +1,4 @@
-# ADR-0044: SHELL-7 sidebar-mini layout + org-scoped CRUD nav restructure
+# ADR-0046: SHELL-7 sidebar-mini layout + org-scoped CRUD nav restructure
 
 **Date:** 2026-09-08
 **Status:** Accepted — no code written this pass, per explicit instruction (docs-only, plan already confirmed with the CTO; implementation is a separate, later authorization). **Addendum (2026-09-09):** implemented same branch, commit `eb0dd91` — see that commit and `e2e/tests/shell7-sidebar-mini.spec.ts` for the live-measurement corrections to this ADR's own `3.1rem`/hover-flyout guesses, called out inline below rather than silently edited.

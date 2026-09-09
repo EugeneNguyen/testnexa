@@ -1,6 +1,6 @@
 # Sitemap — Project Scaffold
 
-**Date:** 2026-09-05 (last content update 2026-09-08 — [SHELL-7 UI Design Document](../ui-design/2026-09-08-shell-7-sidebar-mini-org-crud-restructure-ui-design.md), [ADR-0044](../adr/0044-shell-7-sidebar-mini-org-crud-restructure.md))
+**Date:** 2026-09-05 (last content update 2026-09-08 — [SHELL-7 UI Design Document](../ui-design/2026-09-08-shell-7-sidebar-mini-org-crud-restructure-ui-design.md), [ADR-0046](../adr/0046-shell-7-sidebar-mini-org-crud-restructure.md))
 **Owner:** xuanbinh91@gmail.com (CTO)
 **Sources:** `frontend/src/App.tsx` (route source of truth — this document tracks it, not the reverse), [Generic Admin CRUD UI Design Document](../ui-design/2026-09-05-generic-admin-crud-ui-design.md), [ADR-0027](../adr/0027-generic-admin-crud-ui-and-backend-completion.md), [REQ-3 UI Design Document](../ui-design/2026-09-06-req-3-test-condition-rigor-path-ui-design.md), [ADR-0028](../adr/0028-req3-test-condition-rigor-path-bespoke-routes.md), [ADR-0029](../adr/0029-testcase-resolver-direct-link-fallback.md), [REQ-4 UI Design Document](../ui-design/2026-09-06-req-4-test-suite-membership-ui-design.md), [ADR-0030](../adr/0030-req4-test-suite-membership-bespoke-routes.md), [PLAN-1 UI Design Document](../ui-design/2026-09-06-plan-1-test-plan-membership-ui-design.md), [ADR-0031](../adr/0031-plan1-test-plan-membership-and-status-transition-routes.md), [PLAN-2 UI Design Document](../ui-design/2026-09-06-plan-2-entry-exit-criteria-visibility-ui-design.md), [ADR-0032](../adr/0032-plan2-entry-exit-criteria-visibility.md), [PLAN-3 UI Design Document](../ui-design/2026-09-06-plan-3-test-cycle-creation-ui-design.md), [ADR-0033](../adr/0033-plan3-test-cycle-creation-and-execution-scope-check.md), [EXEC-1 UI Design Document](../ui-design/2026-09-07-exec-1-test-execution-recording-ui-design.md), [ADR-0034](../adr/0034-exec-1-test-execution-recording-dashboard.md), [DASH-1 UI Design Document](../ui-design/2026-09-07-dash-1-root-redirect-dashboard-ui-design.md), [ADR-0035](../adr/0035-dash-1-root-redirect-and-dashboard-placeholder.md), [SHELL-6 UI Design Document](../ui-design/2026-09-07-shell-6-org-switcher-ui-design.md), [ADR-0036](../adr/0036-shell-6-organization-switcher-header-dropdown.md)
 
@@ -57,7 +57,7 @@ First sitemap for this repo — no prior one existed; routes accreted story-by-s
 
 Two page components (`EntityListPage`, `EntityFormPage`), routed generically off an entity registry — the rows below are the registry's contents, not 28 separate `<Route>` declarations in `App.tsx`.
 
-**Org/global-scoped** — `/orgs/:orgId/admin/:entity`. **Restructured 2026-09-08 ([ADR-0044](../adr/0044-shell-7-sidebar-mini-org-crud-restructure.md), SHELL-7):** the single flat "Admin" nav group is replaced by 3 named groups — routes/entities below are unchanged, only which sidebar group reaches each one changed.
+**Org/global-scoped** — `/orgs/:orgId/admin/:entity`. **Restructured 2026-09-08 ([ADR-0046](../adr/0046-shell-7-sidebar-mini-org-crud-restructure.md), SHELL-7):** the single flat "Admin" nav group is replaced by 3 named groups — routes/entities below are unchanged, only which sidebar group reaches each one changed.
 
 | `:entity` | Backs | Sidebar group (as of SHELL-7) |
 |---|---|---|

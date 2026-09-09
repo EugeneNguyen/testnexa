@@ -34,7 +34,7 @@
  * `/dashboard` placeholder (ADR-0035/DASH-1) — that route is untouched, see
  * this story's own ADR for the naming-collision call.
  *
- * **SHELL-7 (2026-09-08, ADR-0044):** the single flat `Admin` group (8
+ * **SHELL-7 (2026-09-08, ADR-0046):** the single flat `Admin` group (8
  * org-scoped CRUD entities, testid `sidebar-nav-group-admin`) is retired and
  * replaced by three named, individually-iconed groups — `Access Control`,
  * `Catalogs`, `Organization` (see `ORG_ENTITY_GROUPS` below) — rendered
@@ -131,7 +131,7 @@ interface SidebarNavGroup {
   /**
    * Font Awesome classes, e.g. `"fa-solid fa-user-shield"`. Optional because
    * `UI Elements` (ADR-0020 scaffolding) deliberately still has none —
-   * SHELL-7/ADR-0044 only added icons to the three groups it created plus the
+   * SHELL-7/ADR-0046 only added icons to the three groups it created plus the
    * `Members` flat item, and explicitly does not touch `UI Elements`.
    */
   icon?: string;
@@ -139,7 +139,7 @@ interface SidebarNavGroup {
 }
 
 /**
- * SHELL-7 (ADR-0044): the presentation-layer partition of the 8 org-scoped
+ * SHELL-7 (ADR-0046): the presentation-layer partition of the 8 org-scoped
  * CRUD entities into 3 named, individually-iconed groups. Keyed off each
  * registry entry's own `key` — `orgScopedEntities` itself is NOT reordered or
  * re-keyed (that registry is also consumed by `App.tsx`'s route wiring and
@@ -149,7 +149,7 @@ interface SidebarNavGroup {
  * Labels come from the registry, never hardcoded here, so this stays a pure
  * grouping decision. Order *within* a group is this array's own order, which
  * is deliberately not the registry's (Access Control reads Role → Permission
- * → RoleAssignment → OrgMembership, matching ADR-0044's own listing).
+ * → RoleAssignment → OrgMembership, matching ADR-0046's own listing).
  *
  * This must remain a complete, non-overlapping partition of all 8 entries —
  * enforced by `AppSidebar.test.tsx`'s TC-SHELL-025 test, which fails if an
@@ -226,7 +226,7 @@ function AppSidebar() {
           to: `/orgs/${orgId}/members`,
           end: false,
           testId: "sidebar-nav-org-members",
-          // SHELL-7 (ADR-0044): under `sidebar-mini` the collapsed rail shows
+          // SHELL-7 (ADR-0046): under `sidebar-mini` the collapsed rail shows
           // icons only, so a nav row with no icon renders as an empty slot.
           // This is the one flat item the restructure doesn't regroup, so it
           // needed the icon added rather than inherited from a new group.
@@ -238,7 +238,7 @@ function AppSidebar() {
   // ADR-0025 generic admin CRUD surface: the 8 org/global-scoped entities
   // (Sitemap's own table), generated from the registry
   // (`pages/admin/registry.ts`) — one item per registry entry, never a
-  // hardcoded literal per entity. SHELL-7 (ADR-0044) replaced the single flat
+  // hardcoded literal per entity. SHELL-7 (ADR-0046) replaced the single flat
   // `Admin` group with the 3-way `ORG_ENTITY_GROUPS` partition above; the
   // *child* testids keep the original `sidebar-nav-admin-<key>` convention
   // (only the parent group changed, so churn is limited to what actually
@@ -329,7 +329,7 @@ function AppSidebar() {
                       is `display: none` and `.menu-open > .nav-treeview` is
                       `display: block` in AdminLTE's own CSS.
 
-                      SHELL-7 (ADR-0044) flagged "what does a `menu-open` group
+                      SHELL-7 (ADR-0046) flagged "what does a `menu-open` group
                       do under `sidebar-mini` + `sidebar-collapse`?" as an open
                       question to answer live, not from source. Measured
                       against a real browser on the isolated stack (2026-09-08,
@@ -348,7 +348,7 @@ function AppSidebar() {
                       around here: those child rows show **nothing** while
                       un-hovered — `.sidebar-mini.sidebar-collapse .nav-link p`
                       is `width: 0`, and children deliberately carry no icon
-                      (ADR-0044's icon-exclusivity rule, TC-SHELL-026), so an
+                      (ADR-0046's icon-exclusivity rule, TC-SHELL-026), so an
                       open group reads as N blank 40px rows until hovered.
                       Hovering restores the full 250px width and every label.
                       Giving children icons purely to fill that rail would

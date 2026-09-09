@@ -93,7 +93,7 @@ describe("AppShell", () => {
 
     expect(document.body).toHaveClass("layout-fixed");
     expect(document.body).toHaveClass("sidebar-expand-lg");
-    // SHELL-7 (ADR-0044).
+    // SHELL-7 (ADR-0046).
     expect(document.body).toHaveClass("sidebar-mini");
     // `app-loaded` is added a frame after mount (while absent, AdminLTE forces
     // `transition: none`, which suppresses a first-paint slide).

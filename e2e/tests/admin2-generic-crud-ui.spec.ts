@@ -297,7 +297,7 @@ test.describe("ADMIN-2 UI: generic admin CRUD surface", () => {
       // a bare `page.goto`, per this story's own coverage requirement — proves
       // the nav wiring itself, not just the destination route.
       //
-      // SHELL-7 (ADR-0044) retired the single flat `Admin` group; `TestLevel`
+      // SHELL-7 (ADR-0046) retired the single flat `Admin` group; `TestLevel`
       // now lives under `Catalogs`. The child testid
       // (`sidebar-nav-admin-test-levels`) is deliberately unchanged — only the
       // parent group moved — so only the expand step needed retargeting. This

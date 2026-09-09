@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { expect, test } from "@playwright/test";
 
 /**
- * SHELL-7 E2E ([ADR-0044](../../docs/adr/0044-shell-7-sidebar-mini-org-crud-restructure.md)):
+ * SHELL-7 E2E ([ADR-0046](../../docs/adr/0046-shell-7-sidebar-mini-org-crud-restructure.md)):
  * AdminLTE's `sidebar-mini` layout modifier + the org-scoped CRUD nav
  * restructure. Covers TC-SHELL-022, -023, -024 and -028 from
  * `docs/test-cases/2026-09-03-test-cases.md`.
@@ -40,7 +40,7 @@ const TEST_PASSWORD = "E2ETestPass123!";
  *
  *   .sidebar-mini.sidebar-collapse .app-sidebar { min-width: 4.6rem; max-width: 4.6rem }
  *
- * Note ADR-0044's prose also mentions `3.1rem` "when the pointer isn't hovering
+ * Note ADR-0046's prose also mentions `3.1rem` "when the pointer isn't hovering
  * it" — that narrower value is real in the stylesheet but gated on
  * `.compact-mode`, a class this app never sets, so it never applies here. The
  * measured value on a live instance is 4.6rem in BOTH the hovering-away and
@@ -169,7 +169,7 @@ async function sidebarMetrics(page: import("@playwright/test").Page) {
   });
 }
 
-/** The 3-way partition ADR-0044 specifies, keyed by the new parent group. */
+/** The 3-way partition ADR-0046 specifies, keyed by the new parent group. */
 const NEW_GROUPS: { testId: string; label: string; entityKeys: string[] }[] = [
   {
     testId: "sidebar-nav-group-access-control",
@@ -273,7 +273,7 @@ test.describe("SHELL-7 sidebar-mini + org-scoped CRUD nav restructure", () => {
   });
 
   /**
-   * Locks in the behavior ADR-0044 and the Test Plan's own risk row flagged as
+   * Locks in the behavior ADR-0046 and the Test Plan's own risk row flagged as
    * UNVERIFIED — answered by observing a real browser, not by reading
    * AdminLTE's source (root `CLAUDE.md`: "reading a library's own source to
    * predict its runtime behavior is not the same as observing it").
@@ -286,11 +286,11 @@ test.describe("SHELL-7 sidebar-mini + org-scoped CRUD nav restructure", () => {
    * render inline inside the ~4.6rem rail — still laid out, still hit-testable,
    * still navigating correctly — but visually blank, because the child `<p>`
    * labels collapse to `width: 0` and children deliberately carry no icon
-   * (ADR-0044's icon-exclusivity rule). This test asserts that actual behavior
+   * (ADR-0046's icon-exclusivity rule). This test asserts that actual behavior
    * so a future change to it is a deliberate decision rather than a silent
    * regression.
    */
-  test("SHELL-7 (ADR-0044 open point): a menu-open group stays open and stays clickable in the mini rail — no hover flyout", async ({
+  test("SHELL-7 (ADR-0046 open point): a menu-open group stays open and stays clickable in the mini rail — no hover flyout", async ({
     page,
   }) => {
     // Playwright's 30s default is not enough here: each test pays for a
