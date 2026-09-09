@@ -6,7 +6,7 @@ import { expect, test } from "@playwright/test";
  * Covers the two clauses of TC-SHELL-017/TC-SHELL-018
  * (`docs/test-cases/2026-09-03-test-cases.md`) that need a real backend and
  * two real roles — the fast/deterministic halves of both TCs already live
- * in `frontend/tests/AppHeader.OrgSwitcher.test.tsx` (mocked `getMyOrgs`);
+ * in `frontend/src/components/organisms/app-header/AppHeader.OrgSwitcher.test.tsx` (mocked `getMyOrgs`);
  * this file is the pair's real-browser, real-permission-check half.
  *
  * Fixture: one user, TWO active `OrgMembership`s (Org A, Org B) — `org_admin`
