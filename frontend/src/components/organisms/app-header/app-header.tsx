@@ -120,6 +120,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../../auth/AuthContext";
 import { getMyOrgs, type OrgSummary } from "../../../lib/api/auth";
+import { BrandLogo } from "../../atoms/brand-logo";
 import { Button } from "../../atoms/button";
 
 interface AppHeaderProps {
@@ -320,7 +321,11 @@ function AppHeader({ onToggleSidebar }: AppHeaderProps) {
           >
             <i className="fa-solid fa-bars fa-lg" aria-hidden="true" />
           </button>
-          <a className="navbar-brand mb-0">TestNexa</a>
+          {/* BRAND-1 (ADR-0048 Decision §7): the header carries the small
+              mark only, not the full lockup — it's a fixed-height single row,
+              not a widening rail, so there is no full/small state to swap.
+              The wordmark lives in the sidebar instead. */}
+          <BrandLogo href="/dashboard" size="small" className="navbar-brand mb-0" />
         </div>
         <div className="d-flex align-items-center">
           <div

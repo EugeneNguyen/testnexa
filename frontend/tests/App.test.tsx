@@ -44,16 +44,22 @@ describe("App routing", () => {
     renderAppAt("/");
 
     await waitFor(() => {
-      // TNX-0056 (AdminLTE re-skin): the page's own "Log in" heading is gone —
-      // `BrandLogo`'s "AdminLTE" wordmark (accessible name has a space
-      // inserted between the <b>Admin</b> and LTE text nodes) is now the
-      // unique marker that the real `Login` screen rendered.
-      expect(screen.getByRole("heading", { name: /admin\s*lte/i })).toBeInTheDocument();
+      // TNX-0056 (AdminLTE re-skin): the page's own "Log in" heading is gone,
+      // so `BrandLogo` is the unique marker that the real `Login` screen
+      // rendered. BRAND-1 (ADR-0048) replaced that atom's hardcoded "AdminLTE"
+      // wordmark with the real brand lockup, so the marker is now the brand
+      // link's own accessible name.
+      expect(screen.getByRole("link", { name: /TestNexa home/i })).toBeInTheDocument();
     });
 
     // The deleted LandingPage's product-name heading and pitch CTAs must not
     // paint at any point — `/` has no content of its own anymore.
-    expect(screen.queryByRole("heading", { name: /testnexa/i })).not.toBeInTheDocument();
+    // Anchored on purpose (BRAND-1, ADR-0048): the deleted LandingPage's own
+    // heading was exactly "TestNexa". `BrandLogo`'s full lockup now renders
+    // inside an `h1` whose accessible name is "TestNexa home", so an unanchored
+    // /testnexa/i would match the *brand* and fail for the wrong reason. The
+    // assertion's intent — "the LandingPage did not render" — is unchanged.
+    expect(screen.queryByRole("heading", { name: /^testnexa$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /^log in$/i })).not.toBeInTheDocument();
     expect(screen.queryByTestId("health-status")).not.toBeInTheDocument();
   });
@@ -65,11 +71,12 @@ describe("App routing", () => {
     renderAppAt("/dashboard");
 
     await waitFor(() => {
-      // TNX-0056 (AdminLTE re-skin): the page's own "Log in" heading is gone —
-      // `BrandLogo`'s "AdminLTE" wordmark (accessible name has a space
-      // inserted between the <b>Admin</b> and LTE text nodes) is now the
-      // unique marker that the real `Login` screen rendered.
-      expect(screen.getByRole("heading", { name: /admin\s*lte/i })).toBeInTheDocument();
+      // TNX-0056 (AdminLTE re-skin): the page's own "Log in" heading is gone,
+      // so `BrandLogo` is the unique marker that the real `Login` screen
+      // rendered. BRAND-1 (ADR-0048) replaced that atom's hardcoded "AdminLTE"
+      // wordmark with the real brand lockup, so the marker is now the brand
+      // link's own accessible name.
+      expect(screen.getByRole("link", { name: /TestNexa home/i })).toBeInTheDocument();
     });
 
     expect(screen.queryByRole("heading", { name: /^dashboard$/i })).not.toBeInTheDocument();

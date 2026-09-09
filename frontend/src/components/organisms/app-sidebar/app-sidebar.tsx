@@ -112,6 +112,7 @@
  */
 import { useState } from "react";
 import { NavLink, useParams } from "react-router-dom";
+import logoMarkUrl from "../../../assets/brand/logo-mark.svg";
 import { orgScopedEntities } from "../../../pages/admin/registry";
 
 interface SidebarNavItem {
@@ -305,8 +306,44 @@ function AppSidebar() {
 
   return (
     <aside className="app-sidebar bg-body-secondary shadow">
+      {/* BRAND-1 (ADR-0048 Decision §6, UI Design Document §3.3): BOTH logo
+          slots render unconditionally, with AdminLTE's own
+          `.brand-image-xl`/`.logo-xl` + `.brand-image-xs`/`.logo-xs` class
+          pair. AdminLTE's shipped CSS cross-fades which one is visible off the
+          existing `sidebar-mini`/`sidebar-collapse` body classes (SHELL-7,
+          ADR-0046) — deliberately no React state and no new JS here, per
+          ADR-0042's "use the library's own CSS, don't vendor its plugins".
+
+          DEVIATION from ADR-0048/UI-Design §3.3/TC-DS-027, flagged not
+          absorbed: those specify `logo-full.svg` (icon + wordmark) for the
+          `.brand-image-xl` slot. It cannot go here. AdminLTE positions
+          `.logo-xl`/`.logo-xs` ABSOLUTELY (`top:6px;left:12px`), while
+          `.brand-text` stays in normal flow at x~89 — so a lockup carrying
+          its own wordmark renders *underneath* the `.brand-text` wordmark,
+          painting "TestNexa" twice, overlapping (confirmed on a live
+          instance, BRAND-1, 2026-09-09). `.brand-text` cannot simply be
+          dropped to make room: the already-shipped TC-SHELL-005
+          (`e2e/tests/shell-nav.spec.ts`) asserts `.app-sidebar`'s "TestNexa"
+          text is VISIBLE, so removing it would regress another story's
+          coverage. Both slots therefore use the mark; `logo-full.svg` is
+          still used at the login/signup mount, where it stands alone with no
+          adjacent `.brand-text` to collide with. */}
       <div className="sidebar-brand">
-        <a className="brand-link">
+        <a className="brand-link" href="/dashboard" aria-label="TestNexa home" data-testid="sidebar-brand-link">
+          <img
+            src={logoMarkUrl}
+            className="brand-image-xl logo-xl"
+            alt=""
+            style={{ height: "2.5rem", width: "auto" }}
+            data-testid="sidebar-brand-logo-xl"
+          />
+          <img
+            src={logoMarkUrl}
+            className="brand-image-xs logo-xs"
+            alt=""
+            style={{ height: "2rem", width: "auto" }}
+            data-testid="sidebar-brand-logo-xs"
+          />
           <span className="brand-text fw-light">TestNexa</span>
         </a>
       </div>

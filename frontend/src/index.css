@@ -3,6 +3,47 @@
    Awesome are imported once in main.tsx. This file is for app-specific
    overrides only. */
 
+/* BRAND-1 (ADR-0048) — brand marks track the active light/dark theme.
+
+   ADR-0048 Decision §2 says the `fill="currentColor"` assets "inherit whatever
+   text color already applies at their mount point". That is true of the ASSET,
+   but NOT of how it is mounted: an `<img src="...svg">` loads the SVG as an
+   independent document, so `currentColor` inside it resolves against that
+   document's own initial color (black) rather than the host page's. The
+   `<img>` element is what ADR-0048 Decision §6 / UI Design Document §3.3
+   mandate for the sidebar (AdminLTE's own `.brand-image-*` mechanism), so the
+   inheritance simply does not reach the glyph.
+
+   Measured on a live instance (BRAND-1, 2026-09-09, isolated stack): in dark
+   mode the sidebar and header marks painted BLACK against a dark background —
+   effectively invisible — while `getComputedStyle(img).color` reported
+   `rgb(110, 168, 254)`. That computed value is the element's inherited CSS
+   `color`, which the replaced <img> content never consults: reading it as
+   proof of theme-tracking is a false pass, exactly the trap the Test Plan's
+   own BRAND-1 risk row warns about.
+
+   So the theme swap is done here instead, in the host document where the
+   theme actually lives. `brightness(0)` normalises the glyph to solid black
+   regardless of what `currentColor` resolved to inside the SVG document
+   (deterministic rather than relying on that default); dark mode adds
+   `invert(1)` to render it solid white. Keyed off `data-bs-theme`, the same
+   attribute ADR-0042's color-mode toggle already owns, so it follows the theme
+   rather than hardcoding a per-theme asset pair — which is ADR-0048 Decision
+   §2's actual intent (one asset, no duplication), delivered by the mechanism
+   that works for an `<img>` mount. The SVG sources stay `currentColor`-only
+   (TC-DS-025 unaffected). */
+.brand-logo img,
+.sidebar-brand .brand-image-xl,
+.sidebar-brand .brand-image-xs {
+  filter: brightness(0);
+}
+
+[data-bs-theme="dark"] .brand-logo img,
+[data-bs-theme="dark"] .sidebar-brand .brand-image-xl,
+[data-bs-theme="dark"] .sidebar-brand .brand-image-xs {
+  filter: brightness(0) invert(1);
+}
+
 /* `btn-ghost-*` is a CoreUI-only button variant with no Bootstrap/AdminLTE
    equivalent (ADR-0042). The `Button` atom still accepts `ghost` and still
    emits these classes, so callers and their tests keep working, but nothing
