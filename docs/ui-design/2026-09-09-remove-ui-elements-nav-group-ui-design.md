@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-09
 **Owner:** xuanbinh91@gmail.com (CTO)
-**Sources:** [ADR-0049](../adr/0049-remove-ui-elements-nav-group.md), the SHELL-7 UI Design Document this removal also touches ([ui-design/2026-09-08-shell-7-sidebar-mini-org-crud-restructure-ui-design.md](2026-09-08-shell-7-sidebar-mini-org-crud-restructure-ui-design.md))
+**Sources:** [ADR-0052](../adr/0052-remove-ui-elements-nav-group.md), the SHELL-7 UI Design Document this removal also touches ([ui-design/2026-09-08-shell-7-sidebar-mini-org-crud-restructure-ui-design.md](2026-09-08-shell-7-sidebar-mini-org-crud-restructure-ui-design.md))
 
 ## 1. Scope
 
@@ -47,4 +47,4 @@ The pre-existing treeview-toggle contract test currently uses `sidebar-nav-group
 
 ## 5. Docs touched
 
-Per ADR-0049's own `Decision §1–§6 / Doc-propagation scope` block: `docs/adr/README.md` (new row + Date line + ADR-0020 `Status`), `docs/wbs/2026-09-03-project-scaffold-wbs.md` (11.32), `docs/test-design/2026-09-03-test-design.md` (§40), `docs/test-cases/2026-09-03-test-cases.md` (TC-SHELL-014 struck + TC-SHELL-027 corrected + TC-SHELL-029 added), `docs/sitemap/2026-09-05-project-scaffold-sitemap.md` (route row + tree branch removed), `docs/requirements/2026-09-03-project-scaffold-requirements.md` ("Not an FR" paragraph struck), `docs/test-plan/2026-09-03-master-test-plan.md` (scope-creep risk row retired), and the SHELL-7 UI Design Document (ASCII sketch line removed — same correction this document's §2 "AFTER" column already shows).
+Per ADR-0052's own `Decision §1–§6 / Doc-propagation scope` block: `docs/adr/README.md` (new row + Date line + ADR-0020 `Status`), `docs/wbs/2026-09-03-project-scaffold-wbs.md` (11.35), `docs/test-design/2026-09-03-test-design.md` (§43), `docs/test-cases/2026-09-03-test-cases.md` (TC-SHELL-014 struck + TC-SHELL-027 corrected + TC-SHELL-039 added), `docs/sitemap/2026-09-05-project-scaffold-sitemap.md` (route row + tree branch removed), `docs/requirements/2026-09-03-project-scaffold-requirements.md` ("Not an FR" paragraph struck), `docs/test-plan/2026-09-03-master-test-plan.md` (scope-creep risk row retired), and the SHELL-7 UI Design Document (ASCII sketch line removed — same correction this document's §2 "AFTER" column already shows).

@@ -12,13 +12,81 @@ An expand-in-place pattern (a table row that, when clicked, renders a child list
 
 **Use a flat `<ul>`/`<li>` for the nested level instead**, same convention the pre-existing Release→TestCycle view already used and REQ-2's Requirement→TestCase→TestStep section was refactored to match. Reserve `<table>` for the outermost, non-nested list in a given screen.
 
-## Unit tests live in `frontend/tests/`, not co-located next to their source in `src/`
+## Unit tests live co-located with their source in `frontend/src/`, not in `frontend/tests/`
 
-Every Vitest + RTL spec in this repo is under `frontend/tests/` (mirroring `src/`'s own directory shape — e.g. `src/pages/workflows/ProjectDetail.tsx` → `tests/pages/workflows/ProjectDetail.*.test.tsx`), **never** a `*.test.tsx` file sitting next to its component in `src/`. This is the opposite of the more common industry default (co-located tests), so a `find src -iname "*.test.*"` search comes back empty and *looks* like zero coverage exists — the actual answer requires checking `frontend/tests/` specifically before concluding a gap is real (a REQ-4 verification pass wasted a round-trip on exactly this before finding `tests/pages/workflows/ProjectDetail.TestConditions.test.tsx`, 2026-09-06). A per-story test file follows the shipping story's own name (`ProjectDetail.TestConditions.test.tsx`, `ProjectDetail.TestSuites.test.tsx`, ...) rather than one giant `ProjectDetail.test.tsx` — grep for the screen name across `frontend/tests/`, don't just check one filename.
+Every Vitest + RTL spec lives next to the source file it covers, under `frontend/src/`, **never** in a separate `frontend/tests/` tree mirroring `src/`'s shape. Components that use the per-folder-with-barrel convention (`atoms/button/button.tsx` + `index.ts`, ADR-0043) keep that convention for tests too — the test sits at `src/components/atoms/button/button.test.tsx`, alongside the source, not at `src/components/atoms/button.test.tsx`. Per-story multi-file test naming (`ProjectDetail.test.tsx` + `ProjectDetail.TestConditions.test.tsx` + ...) lands in the same folder as `ProjectDetail.tsx` (flat at `src/pages/workflows/` in this repo's current layout). The jsdom polyfill `setup.ts` lives at `frontend/test-setup/setup.ts`, renamed from the old `frontend/tests/` folder to match its contents (test *infrastructure*, not test *files*). `find frontend/src -iname "*.test.*"` is now the universal answer to "where are the tests" — see [ADR-0049](docs/adr/0049-frontend-co-locate-unit-tests.md) for the rationale and the pre-2026-09-09 historical layout this paragraph supersedes.
 
 ## No frontend unit-test convention existed before ADMIN-2 (2026-09-05)
 
-`frontend/tests/` (Vitest + RTL) only started getting real coverage with ADMIN-2's generic CRUD UI — earlier bespoke screens (`Login`, `OrgHome`, `ProjectDetail`, etc.) shipped with e2e (Playwright) coverage only, no per-component unit tests. Both are legitimate per the root `CLAUDE.md`'s three-layer testing model, but don't assume a bespoke screen has Vitest coverage just because the layer exists in the repo now — check `frontend/tests/` for that specific component before assuming a gap is actually a regression.
+`frontend/tests/` (Vitest + RTL) only started getting real coverage with ADMIN-2's generic CRUD UI — earlier bespoke screens (`Login`, `OrgHome`, `ProjectDetail`, etc.) shipped with e2e (Playwright) coverage only, no per-component unit tests. Both are legitimate per the root `CLAUDE.md`'s three-layer testing model, but don't assume a bespoke screen has Vitest coverage just because the layer exists in the repo now — check `frontend/src/**` for that specific component before assuming a gap is actually a regression.
+
+## If you ever flip the test layout, the per-tier placement convention is not uniform — don't assume all sources use subfolders
+
+When a future story co-locates Vitest specs with their source under `frontend/src/`, the destination folder for each test depends on which directory tier the source lives in (not on a single repo-wide rule). This repo has two coexisting conventions from [ADR-0043](docs/adr/0043-atomic-design-tiering-for-frontend-components.md):
+
+| Source location | Convention | Test destination |
+|---|---|---|
+| `components/atoms/<x>/<x>.tsx` | per-component subfolder with `index.ts` barrel | `components/atoms/<x>/<x>.test.tsx` — **inside** the source's subfolder |
+| `components/molecules/<x>/<x>.tsx` | same | `components/molecules/<x>/<x>.test.tsx` — **inside** |
+| `components/organisms/<x>/<x>.tsx` | same | `components/organisms/<x>/<x>.test.tsx` — **inside** |
+| `components/templates/<x>/<x>.tsx` | same | `components/templates/<x>/<x>.test.tsx` — **inside** |
+| `components/<X>.tsx` (root-level, e.g. `RoleAssignmentsPanel.tsx`, `AuthLoadingSpinner.tsx`) | flat | `components/<X>.test.tsx` — sibling of source, **not** inside a subfolder |
+| `pages/<tier>/<X>.tsx` (e.g. `pages/workflows/ProjectDetail.tsx`, `pages/admin/EntityFormPage.tsx`) | flat | `pages/<tier>/<X>.test.tsx` — flat |
+| `pages/<tier>/<X>.<Section>.test.tsx` (per-story multi-section, e.g. `ProjectDetail.TestConditions.test.tsx`) | flat, beside the main `X.test.tsx` | `pages/<tier>/<X>.<Section>.test.tsx` — flat |
+| `auth/<X>.tsx` | flat | `auth/<X>.test.tsx` |
+| `lib/api/<X>.ts`, `lib/auth/<X>.ts` | flat | `lib/api/<X>.test.ts`, `lib/auth/<X>.test.ts` |
+| `entityConfigs/<X>.ts` | flat | `entityConfigs/<X>.test.ts` |
+| `container/<X>.tsx` | flat (one-file) | `container/<X>.test.tsx` |
+| `assets/<tier>/<file>` (assets that *are* the source, not a backing of one) | per-leaf-folder | `assets/<tier>/<file>.test.<ext>` — same folder as the asset itself |
+
+The check is mechanical: does `src/<path>.tsx` (or `.ts`) exist as a single file? If yes, the test lands at `src/<path>.test.<ext>`. If the source is `src/<tier>/<stem>/<stem>.tsx` (subfolder with barrel), the test lands INSIDE that subfolder — NOT flattened to `src/<tier>/<stem>.test.tsx`. A bulk move that flattens everything loses the per-source-file co-location guarantee and forces every future reader to re-derive the convention. Verified the hard way on the FRONTEND-1 implementation pass (2026-09-09): one script that put everything flat produced 1 collision (`AppHeader.test.tsx` and `AppHeader.OrgSwitcher.test.tsx` both wanted the same flat path) and would have required a full revert if it hadn't been caught at move time.
+
+## Bulk mechanical file moves (sed/Python/Awk across many files): validate on 2–3 representative cases before scaling to the whole set
+
+A scripted bulk edit (the FRONTEND-1 unit-test relocation, 69 files, ran in this session) is a place where one-off script bugs scale into N-off bugs. Concretely: a regex that misses one shape of `import` is fine on 5 files, but on 69 files it produces 30 files of broken tests that all share the same root cause — and you don't find out until the verification gate (`tsc --noEmit` + `npm run test`) runs, by which point you've moved 30 files that all need the same fix. The pattern that scales safely:
+
+1. **Pick the 3 most-different representative cases** before scaling — e.g. for a test-layout move, pick one file from each of: an atom/molecule/organism/template (subfolder convention), a page (flat), a `lib/api` flat file, a file with `vi.mock(..., async () => { ...typeof import("...")... })` (nested import shape that a naive regex misses), and a file with non-`src/` imports (e.g. `?raw` SVG or `public/` paths).
+2. **Move + rewrite imports for just those 3.** Run `tsc --noEmit` on each. Run `vitest run <each-file>` on each.
+3. **If any fails, fix the script before scaling.** A regex that breaks one representative case will break the same shape across the full set.
+4. **Only then scale to the rest.** Run the same `tsc` + `vitest` once at the end as the gate — but you'll know the script is right because the representative cases already passed.
+
+A cheaper proxy when 3 representative cases aren't worth picking manually: **scale to all files, but run `tsc --noEmit` after every ~10 files moved**, not at the end. A `tsc` failure on file 11 of 69 is a 2-minute fix; a `tsc` failure on file 69 of 69 is a 30-minute fix with much higher chance of a full revert + redo.
+
+The `tsc --noEmit` check is the gate, not the script's own return code — a Python script that does 69 `git mv` calls and 69 regex substitutions can exit `0` with every import still pointing at the old path, because both `git mv` and the regex substitution only fail on their own syntax errors, not on "the regex doesn't match this particular file." Vitest is the runtime gate; `tsc` is the static gate. Run both, ideally after every logical phase, definitely before declaring done.
+
+## If you ever flip the test layout, the per-tier placement convention is not uniform — don't assume all sources use subfolders
+
+When a future story co-locates Vitest specs with their source under `frontend/src/`, the destination folder for each test depends on which directory tier the source lives in (not on a single repo-wide rule). This repo has two coexisting conventions from [ADR-0043](docs/adr/0043-atomic-design-tiering-for-frontend-components.md):
+
+| Source location | Convention | Test destination |
+|---|---|---|
+| `components/atoms/<x>/<x>.tsx` | per-component subfolder with `index.ts` barrel | `components/atoms/<x>/<x>.test.tsx` — **inside** the source's subfolder |
+| `components/molecules/<x>/<x>.tsx` | same | `components/molecules/<x>/<x>.test.tsx` — **inside** |
+| `components/organisms/<x>/<x>.tsx` | same | `components/organisms/<x>/<x>.test.tsx` — **inside** |
+| `components/templates/<x>/<x>.tsx` | same | `components/templates/<x>/<x>.test.tsx` — **inside** |
+| `components/<X>.tsx` (root-level, e.g. `RoleAssignmentsPanel.tsx`, `AuthLoadingSpinner.tsx`) | flat | `components/<X>.test.tsx` — sibling of source, **not** inside a subfolder |
+| `pages/<tier>/<X>.tsx` (e.g. `pages/workflows/ProjectDetail.tsx`, `pages/admin/EntityFormPage.tsx`) | flat | `pages/<tier>/<X>.test.tsx` — flat |
+| `pages/<tier>/<X>.<Section>.test.tsx` (per-story multi-section, e.g. `ProjectDetail.TestConditions.test.tsx`) | flat, beside the main `X.test.tsx` | `pages/<tier>/<X>.<Section>.test.tsx` — flat |
+| `auth/<X>.tsx` | flat | `auth/<X>.test.tsx` |
+| `lib/api/<X>.ts`, `lib/auth/<X>.ts` | flat | `lib/api/<X>.test.ts`, `lib/auth/<X>.test.ts` |
+| `entityConfigs/<X>.ts` | flat | `entityConfigs/<X>.test.ts` |
+| `container/<X>.tsx` | flat (one-file) | `container/<X>.test.tsx` |
+| `assets/<tier>/<file>` (assets that *are* the source, not a backing of one) | per-leaf-folder | `assets/<tier>/<file>.test.<ext>` — same folder as the asset itself |
+
+The check is mechanical: does `src/<path>.tsx` (or `.ts`) exist as a single file? If yes, the test lands at `src/<path>.test.<ext>`. If the source is `src/<tier>/<stem>/<stem>.tsx` (subfolder with barrel), the test lands INSIDE that subfolder — NOT flattened to `src/<tier>/<stem>.test.tsx`. A bulk move that flattens everything loses the per-source-file co-location guarantee and forces every future reader to re-derive the convention. Verified the hard way on the FRONTEND-1 implementation pass (2026-09-09): one script that put everything flat produced 1 collision (`AppHeader.test.tsx` and `AppHeader.OrgSwitcher.test.tsx` both wanted the same flat path) and would have required a full revert if it hadn't been caught at move time.
+
+## Bulk mechanical file moves (sed/Python/Awk across many files): validate on 2–3 representative cases before scaling to the whole set
+
+A scripted bulk edit (the FRONTEND-1 unit-test relocation, 69 files, ran in this session) is a place where one-off script bugs scale into N-off bugs. Concretely: a regex that misses one shape of `import` is fine on 5 files, but on 69 files it produces 30 files of broken tests that all share the same root cause — and you don't find out until the verification gate (`tsc --noEmit` + `npm run test`) runs, by which point you've moved 30 files that all need the same fix. The pattern that scales safely:
+
+1. **Pick the 3 most-different representative cases** before scaling — e.g. for a test-layout move, pick one file from each of: an atom/molecule/organism/template (subfolder convention), a page (flat), a `lib/api` flat file, a file with `vi.mock(..., async () => { ...typeof import("...")... })` (nested import shape that a naive regex misses), and a file with non-`src/` imports (e.g. `?raw` SVG or `public/` paths).
+2. **Move + rewrite imports for just those 3.** Run `tsc --noEmit` on each. Run `vitest run <each-file>` on each.
+3. **If any fails, fix the script before scaling.** A regex that breaks one representative case will break the same shape across the full set.
+4. **Only then scale to the rest.** Run the same `tsc` + `vitest` once at the end as the gate — but you'll know the script is right because the representative cases already passed.
+
+A cheaper proxy when 3 representative cases aren't worth picking manually: **scale to all files, but run `tsc --noEmit` after every ~10 files moved**, not at the end. A `tsc` failure on file 11 of 69 is a 2-minute fix; a `tsc` failure on file 69 of 69 is a 30-minute fix with much higher chance of a full revert + redo.
+
+The `tsc --noEmit` check is the gate, not the script's own return code — a Python script that does 69 `git mv` calls and 69 regex substitutions can exit `0` with every import still pointing at the old path, because both `git mv` and the regex substitution only fail on their own syntax errors, not on "the regex doesn't match this particular file." Vitest is the runtime gate; `tsc` is the static gate. Run both, ideally after every logical phase, definitely before declaring done.
 
 ## A "Cannot find module 'react'" diagnostic right after adding a new file can be stale, not real
 
@@ -95,6 +163,12 @@ Before removing a `@coreui/react` (or any UI library) import to hand-roll the sa
 DASH-2 (2026-09-07) established "Dashboard is the only nav item with an icon" as an explicit, tested invariant (its own dedicated negative-check TC). SHELL-7 (2026-09-08/09) broke it without correcting that specific claim everywhere it was written down — `Members` got `fa-solid fa-users` (an icon-less row is an empty slot in the collapsed `sidebar-mini` rail), SHELL-7's own new TC correctly described the resulting shape, but the older TC's "ONLY" wording was left stating the now-false claim, undetected until a later, unrelated pass happened to re-read it closely. PROJ-4 (2026-09-09) then wrote a brand-new sidebar item with a comment explicitly *preserving* DASH-2's invariant — already false by the time that comment was written, since SHELL-7 was invisible to PROJ-4's worktree at the time — before reversing the decision entirely two turns later on direct CTO instruction after a live manual test (`Projects` now gets `fa-solid fa-folder` too, same glyph the Project-count dashboard widget already used).
 
 **Current rule as of 2026-09-09: `Dashboard`/`Members`/`Projects` (all three flat items) and the 3 admin nav groups each get exactly one icon; only the 8 individual entity children within those groups and the `UI Elements` group toggle stay icon-less.** But given this has already reversed itself three times across three separate stories, each time via a code path that produced zero merge conflicts, **don't trust this paragraph either without checking `app-sidebar.tsx`'s own `navItems`/`navGroups` array literals directly for whatever the actual current state is** — and check `AppSidebar.test.tsx`'s own icon-presence/icon-exclusivity tests (not this file) for the assertion of record. See root `CLAUDE.md`'s "Git / worktrees" section for the fuller incident write-up of how a clean, conflict-free rebase can carry forward a comment's claim that a sibling branch had already invalidated.
+
+## Gating rendered content on only the first-available piece of combined async/route state, when the design explicitly wants to wait for ALL of it, produces a real (if narrow) inconsistent-content window
+
+`useResolvedOrgId()` (SHELL-9/ADR-0049) resolves two logically-paired values on a project-scoped route: `projectId` (synchronous, from the route match, available on first render) and `orgId` (asynchronous, from a `GET /projects/{id}` fetch). SHELL-10's own first implementation draft (2026-09-09, caught during a died-agent-recovery pass, not by any test) gated its new sidebar entity-group content on `projectId` alone, since that's the only value the JSX literally needs to build each group's `to` URL — but the design's own already-stated intent (ADR-0048/0049 §4's "one fetch's worth of blank sidebar, no partial nav" trade-off) meant the groups should wait for `orgId` too, since the sidebar's own bottom "Back to Projects" link needs it, and a nav with working group links but a dead/absent back-link for one fetch's duration is exactly the inconsistent partial state that trade-off exists to avoid.
+
+**When a component consumes two pieces of state from the same combined-resolution hook that resolve at different times, gate rendered content on the hook's own "fully resolved" signal (here, both `projectId` AND `orgId` truthy) — not on whichever single field happens to be all the JSX in front of you literally dereferences.** The narrower gate compiles fine and passes any test that doesn't specifically probe the timing window, so this class of bug is essentially invisible to `tsc`/a shallow test pass and only shows up as a live UX flash, or a test written specifically to hold the fetch pending and inspect that exact moment (see root `CLAUDE.md`'s own "Working with agents" note on reading a died agent's diff for logic gaps, not just stray markers, for the fuller incident).
 
 ## `fill="currentColor"` inside an `<img src="*.svg">` does NOT inherit the host page's color — the SVG loads as its own document, and `getComputedStyle` on the `<img>` is a false-pass trap for checking it
 

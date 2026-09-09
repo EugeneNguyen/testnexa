@@ -15,10 +15,10 @@ import { expect, test } from "@playwright/test";
  * assertion at the unit layer would read 0 and prove nothing. The *class
  * application* half of TC-SHELL-022 — that `sidebar-mini` lands on `<body>` and
  * survives both directions of the collapse toggle — IS real jsdom ground and is
- * covered in `frontend/tests/components/templates/AppShell.test.tsx`; this file
+ * covered in `frontend/src/components/templates/app-shell/app-shell.test.tsx`; this file
  * covers the half that needs a real browser. TC-SHELL-025/026/027 (markup,
  * grouping, icons, order) are the mirror image and live entirely in
- * `frontend/tests/components/organisms/AppSidebar.test.tsx`.
+ * `frontend/src/components/organisms/app-sidebar/app-sidebar.test.tsx`.
  *
  * Fixture seeding follows this directory's established convention
  * (`shell-nav.spec.ts`, `org-create-second.spec.ts`): direct

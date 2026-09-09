@@ -8,6 +8,8 @@ This document is the implementation-level schema, refined from the [07 ERD](../p
 
 **SHELL-1** ([ADR-0018](../adr/0018-admin-shell-sidebar-layout.md), FR-SHELL-1) — reviewed, no schema impact. The admin shell (sidebar + navbar) is frontend-only: no new table, column, or index. Noted here explicitly so the gap isn't mistaken for an oversight.
 
+**FRONTEND-1** ([ADR-0049](../adr/0049-frontend-co-locate-unit-tests.md), NFR-54) — reviewed, no schema impact. Vitest unit-test files move from `frontend/tests/**.test.{ts,tsx}` to live co-located next to their source under `frontend/src/`; the single non-test file (`frontend/test-setup/setup.ts`, the jsdom-polyfill setup) moves to a renamed folder of the same level. No table, column, index, migration, or seed change — purely frontend file-layout. Noted here explicitly so the gap isn't mistaken for an oversight (same posture this section's other "no schema impact" annotations take for prior frontend-only ADRs).
+
 **MCP-1** ([ADR-0033](../adr/0033-mcp-server-architecture.md), FR-MCP-1, NFR-43) — reviewed, no schema impact. The MCP server is a thin client over the existing service layer: same `AIAgent` (already covered §3.4), same `RoleAssignment`/`RolePermission` permission resolution (no new codes — `test_case.create`/`.read` already in the RBAC-4 catalog), same `Requirement`/`TestCase`/`RequirementTestCaseLink` tables (REQ-2's pre-existing schema). The `_actor_membership_exists` route-side helper added in `app/api/routes/assets.py` is application-layer logic, not schema; `OrgMembership.user_id` FKs `user.actor_id` exactly as §3.1 already documents (Database Document §3.1's "AIAgent has no `user` row of its own, org relationship is transitive via `acting_on_behalf_of_user_id`" note already covers the constraint the new helper enforces). Noted here explicitly so the gap isn't mistaken for an oversight.
 
 **Sidebar dark color scheme** ([ADR-0026](../adr/0026-sidebar-dark-color-scheme.md), FR-SHELL-5) — reviewed, no schema impact. A `CSidebar` prop value; no table, column, or index change.
@@ -33,6 +35,10 @@ This document is the implementation-level schema, refined from the [07 ERD](../p
 **PROJ-4** ([ADR-0047](../adr/0047-proj-4-projects-page-sidebar-entry.md), FR-PROJ-3/FR-PROJ-4) — reviewed, no schema impact. Relocating Project CRUD from `OrgHome`/"Dashboard" to its own `ProjectsPage`/`/orgs/:orgId/projects` is a frontend route/component move — the `Project` table (§3.5) and every route/query it already backed are unchanged. Noted here explicitly so the gap isn't mistaken for an oversight.
 
 **BRAND-1** ([ADR-0048](../adr/0048-brand-1-logo-brand-system.md), FR-BRAND-1) — reviewed, no schema impact. The entire logo/brand system (SVG assets, favicon, `BrandLogo`/`AppHeader`/`AppSidebar` markup) is frontend-only presentation — no table, column, index, or query reads/writes any differently. Noted here explicitly so the gap isn't mistaken for an oversight.
+
+**SHELL-9** ([ADR-0050](../adr/0050-shell-9-project-scope-nav-context-resolution.md), FR-SHELL-8) — reviewed, no schema impact. `useResolvedOrgId()`'s fetch-when-absent branch reads the `Project` table's own existing `org_id` column (§3.5) via the already-shipped `GET /projects/{id}`; no new table, column, index, or query shape. Noted here explicitly so the gap isn't mistaken for an oversight.
+
+**SHELL-10** ([ADR-0051](../adr/0051-shell-10-project-scope-entity-nav.md), FR-SHELL-9) — reviewed, no schema impact. A sidebar presentation change only — every entity `PROJECT_ENTITY_GROUPS` groups is already fully specified in the sections below, reached via its already-shipped `/projects/:projectId/admin/<entity>` route (ADR-0025/ADR-0027's registry). No table, column, index, or route reads/writes any differently. Noted here explicitly so the gap isn't mistaken for an oversight.
 
 ---
 

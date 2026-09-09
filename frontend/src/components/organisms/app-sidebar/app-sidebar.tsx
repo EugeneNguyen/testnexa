@@ -104,9 +104,10 @@
  * in `AppShell`, next to the state it actually decides.
  */
 import { useState } from "react";
-import { NavLink, useParams } from "react-router-dom";
+import { NavLink, useMatch } from "react-router-dom";
 import logoMarkUrl from "../../../assets/brand/logo-mark.svg";
-import { orgScopedEntities } from "../../../pages/admin/registry";
+import { orgScopedEntities, projectScopedEntities } from "../../../pages/admin/registry";
+import { useResolvedOrgId } from "../../../hooks/useResolvedOrgId";
 
 interface SidebarNavItem {
   key: string;
@@ -183,9 +184,115 @@ const ORG_ENTITY_GROUPS: OrgEntityGroup[] = [
   },
 ];
 
+/**
+ * SHELL-10 (ADR-0050): the project-mode counterpart to `ORG_ENTITY_GROUPS`
+ * above — a complete, non-overlapping partition of the *included* subset of
+ * `projectScopedEntities` into 4 named, individually-iconed groups.
+ *
+ * Same discipline as the org side: labels come from the registry (never
+ * hardcoded here), the registry itself is not reordered or re-keyed, and
+ * `AppSidebar.test.tsx`'s partition test fails if an entity is missing,
+ * duplicated, or added to the registry without landing in a group *or* in
+ * `PROJECT_EXCLUDED_ENTITY_KEYS` below.
+ *
+ * Order within a group is this array's own, deliberately following the
+ * ISTQB-ish lifecycle (design → plan → execute → supporting setup) rather than
+ * the registry's insertion order.
+ */
+export const PROJECT_ENTITY_GROUPS: OrgEntityGroup[] = [
+  {
+    key: "test-design",
+    label: "Test Design",
+    testId: "sidebar-nav-group-test-design",
+    icon: "fa-solid fa-pen-ruler",
+    entityKeys: ["requirements", "test-conditions", "test-cases", "test-suites"],
+  },
+  {
+    key: "test-planning",
+    label: "Test Planning",
+    testId: "sidebar-nav-group-test-planning",
+    icon: "fa-solid fa-calendar-check",
+    entityKeys: ["test-plans", "entry-exit-criteria", "test-cycles", "releases"],
+  },
+  {
+    key: "execution-defects",
+    label: "Execution & Defects",
+    testId: "sidebar-nav-group-execution-defects",
+    icon: "fa-solid fa-bug",
+    entityKeys: ["test-executions", "test-logs", "defects"],
+  },
+  {
+    key: "setup",
+    label: "Setup",
+    testId: "sidebar-nav-group-setup",
+    icon: "fa-solid fa-sliders",
+    entityKeys: ["environments", "risk-items"],
+  },
+];
+
+/**
+ * SHELL-10 (ADR-0050): `projectScopedEntities` entries deliberately given no
+ * top-level project-nav slot. Declared explicitly (rather than left as
+ * "whatever isn't in a group") so the partition test can assert
+ * groups + exclusions === the whole registry, and so adding a new
+ * project-scoped entity to the registry forces a conscious decision here
+ * instead of silently vanishing from the nav.
+ *
+ * - `test-steps`, `attachments` and the 4 link tables are reached through
+ *   their parent entity's own UI (a TestStep only exists inside a TestCase, a
+ *   link row only inside the pair it links), so a top-level slot would be a
+ *   second, worse path to something already reachable.
+ * - `projects` and `organizations` have no meaning *inside* a single project's
+ *   own nav — you are already in one; the two bottom "back" links cover
+ *   leaving it.
+ */
+/**
+ * Shared renderer for a flat (non-group) nav row. Extracted by SHELL-10
+ * (ADR-0050) purely so the org-mode items above the groups and the project-mode
+ * "back" links below them render byte-identical markup — the two lists are
+ * mutually exclusive at runtime, but duplicating the JSX would let them drift.
+ */
+function renderFlatItem(item: SidebarNavItem) {
+  return (
+    <li className="nav-item" key={item.key}>
+      <NavLink to={item.to} end={item.end} className="nav-link" data-testid={item.testId}>
+        {item.icon && <i className={`nav-icon ${item.icon}`} aria-hidden="true" />}
+        <p>{item.label}</p>
+      </NavLink>
+    </li>
+  );
+}
+
+export const PROJECT_EXCLUDED_ENTITY_KEYS: string[] = [
+  "test-steps",
+  "attachments",
+  "requirement-test-case-links",
+  "requirement-test-condition-links",
+  "test-condition-test-case-links",
+  "test-case-defect-links",
+  "projects",
+];
+
 function AppSidebar() {
-  const { orgId } = useParams<{ orgId?: string }>();
+  // SHELL-9 (ADR-0050): was a raw `useParams<{orgId?: string}>()` read, which
+  // resolved to `undefined` on every `/projects/:projectId/...` screen and left
+  // this whole nav empty there. `useResolvedOrgId()` returns the same value on
+  // `/orgs/:orgId/...` routes (no fetch) and resolves it via `GET
+  // /projects/{id}` on project-scoped ones. Everything below is unchanged: it
+  // already branched on "is `orgId` truthy," never on which route produced it.
+  // SHELL-10 (ADR-0050) additionally reads `mode`: SHELL-9 made project-scoped
+  // routes resolve the same `orgId` an org route would (which is what made the
+  // org nav render there at all), so "is `orgId` truthy" can no longer tell the
+  // two route kinds apart. `mode` is the explicit signal.
+  const { orgId, projectId, mode } = useResolvedOrgId();
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
+
+  // "Project Overview" points at `/projects/:projectId` itself, so it is a dead
+  // affordance while already on that exact route. `end: true` mirrors the
+  // exact-match convention the Dashboard nav item already uses, rather than
+  // hand-comparing pathnames. Hooks must run unconditionally, so this is
+  // computed before the `mode` branch below, not inside it.
+  const isOnProjectOverview = useMatch({ path: "/projects/:projectId", end: true }) !== null;
 
   function toggleGroup(key: string) {
     setOpenGroups((prev) => {
@@ -201,7 +308,11 @@ function AppSidebar() {
 
   // The single, obvious extension point (ADR-0018 AC5): a future story adds
   // its own screen's nav entry here, and nowhere else.
-  const navItems: SidebarNavItem[] = orgId
+  //
+  // SHELL-10 (ADR-0050): org-mode only. On a project-scoped route these flat
+  // org items are replaced wholesale by the project-mode nav below — the org
+  // nav is not rendered alongside it, and not rendered at all.
+  const navItems: SidebarNavItem[] = orgId && mode === "org"
     ? [
         {
           key: "org-home",
@@ -258,7 +369,7 @@ function AppSidebar() {
   // moved).
   const entityByKey = new Map(orgScopedEntities.map((item) => [item.key, item]));
 
-  const navGroups: SidebarNavGroup[] = orgId
+  const orgNavGroups: SidebarNavGroup[] = orgId && mode === "org"
     ? [
         ...ORG_ENTITY_GROUPS.map((group) => ({
           key: group.key,
@@ -280,6 +391,85 @@ function AppSidebar() {
         })),
       ]
     : [];
+
+  // SHELL-10 (ADR-0050): project-mode nav. Same generated-from-the-registry
+  // discipline as the org side — child labels and routes come from
+  // `projectScopedEntities`, never hardcoded, and each group links to the
+  // already-shipped generic-admin route (`/projects/:projectId/admin/<entity>`,
+  // ADR-0025). No new backend route.
+  //
+  // Gated on `orgId` too, not just `projectId` — `projectId` alone is
+  // available synchronously from the route, but waiting for `orgId` (i.e. for
+  // `useResolvedOrgId()`'s fetch to actually resolve) preserves the same
+  // "one fetch's worth of blank sidebar, no partial/flickering nav" trade-off
+  // ADR-0050 §4 already established for the org nav this replaces — content
+  // that depends on a project genuinely existing (its group links point at
+  // `/projects/:projectId/admin/...` routes) shouldn't render before that's
+  // confirmed.
+  const projectEntityByKey = new Map(projectScopedEntities.map((item) => [item.key, item]));
+
+  const projectNavGroups: SidebarNavGroup[] =
+    mode === "project" && projectId && orgId
+      ? PROJECT_ENTITY_GROUPS.map((group) => ({
+          key: group.key,
+          label: group.label,
+          testId: group.testId,
+          icon: group.icon,
+          items: group.entityKeys.flatMap((entityKey) => {
+            const entry = projectEntityByKey.get(entityKey);
+            return entry
+              ? [
+                  {
+                    to: `/projects/${projectId}/admin/${entry.key}`,
+                    label: entry.label,
+                    testId: `sidebar-nav-admin-${entry.key}`,
+                  },
+                ]
+              : [];
+          }),
+        }))
+      : [];
+
+  const navGroups: SidebarNavGroup[] = mode === "project" ? projectNavGroups : orgNavGroups;
+
+  // SHELL-10 (ADR-0050): the two "back" links, rendered *below* the 4 entity
+  // groups (hence a separate array — `navItems` renders above `navGroups`).
+  //
+  // "Back to Projects" is PROJ-4's existing `/orgs/:orgId/projects` item
+  // repositioned, not a new destination — ADR-0050 already established that
+  // reusing it beats inventing a second entry pointing at the same place. It
+  // needs `orgId`, which on this route only exists once SHELL-9's fetch has
+  // resolved, so it is omitted while pending/failed rather than rendered as a
+  // dead link (the same graceful-degradation posture as ADR-0050 §4).
+  const bottomNavItems: SidebarNavItem[] =
+    mode === "project" && projectId
+      ? [
+          ...(isOnProjectOverview
+            ? []
+            : [
+                {
+                  key: "project-overview",
+                  label: "Project Overview",
+                  to: `/projects/${projectId}`,
+                  end: true,
+                  testId: "sidebar-nav-project-overview",
+                  icon: "fa-solid fa-circle-info",
+                },
+              ]),
+          ...(orgId
+            ? [
+                {
+                  key: "back-to-projects",
+                  label: "Back to Projects",
+                  to: `/orgs/${orgId}/projects`,
+                  end: false,
+                  testId: "sidebar-nav-back-to-projects",
+                  icon: "fa-solid fa-arrow-left",
+                },
+              ]
+            : []),
+        ]
+      : [];
 
   return (
     <aside className="app-sidebar bg-body-secondary shadow">
@@ -329,14 +519,7 @@ function AppSidebar() {
       <div className="sidebar-wrapper">
         <nav className="mt-2">
           <ul className="nav sidebar-menu flex-column" data-lte-toggle="treeview" role="menu">
-            {navItems.map((item) => (
-              <li className="nav-item" key={item.key}>
-                <NavLink to={item.to} end={item.end} className="nav-link" data-testid={item.testId}>
-                  {item.icon && <i className={`nav-icon ${item.icon}`} aria-hidden="true" />}
-                  <p>{item.label}</p>
-                </NavLink>
-              </li>
-            ))}
+            {navItems.map(renderFlatItem)}
             {navGroups.map((group) => {
               const isOpen = openGroups.has(group.key);
               return (
@@ -401,6 +584,10 @@ function AppSidebar() {
                 </li>
               );
             })}
+            {/* SHELL-10 (ADR-0050): the project-mode "back" links, below the 4
+                entity groups. Identical markup to the flat `navItems` above —
+                same `renderFlatItem` helper, so the two can't drift apart. */}
+            {bottomNavItems.map(renderFlatItem)}
           </ul>
         </nav>
       </div>
