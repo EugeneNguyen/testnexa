@@ -71,11 +71,33 @@ describe("OrgHome — Dashboard (widgets + RoleAssignmentsPanel only, PROJ-4)", 
     );
   });
 
+  /**
+   * TC-PROJ-026's negative half.
+   *
+   * The row's literal expected result names four separate absences: no "New
+   * Project" button, **no Project table**, and neither of the table's two
+   * empty-state strings ("No projects yet." / "No projects match your
+   * search."). The last two were added by a coverage audit (2026-09-09) — the
+   * original version of this test asserted only the button and "No projects
+   * yet.", so a partial migration that left, say, the table itself behind
+   * would still have passed.
+   *
+   * "No Project table" is asserted against the Project table's own signature
+   * column header rather than `queryByRole("table")`: `RoleAssignmentsPanel`
+   * legitimately renders its own table on this page (ADR-0047 Decision §3
+   * keeps it here), so a blanket no-table assertion would be wrong.
+   */
   it("no longer renders a Project table or a New Project action (moved to ProjectsPage, PROJ-4)", () => {
     renderOrgHome();
 
     expect(screen.queryByRole("button", { name: /^new project$/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/no projects yet/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/no projects match your search/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("columnheader", { name: /standards profile/i }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/search projects/i)).not.toBeInTheDocument();
+    expect(screen.queryByTestId("project-table-pagination")).not.toBeInTheDocument();
   });
 
   it("the Project-count widget links to the dedicated Projects page", () => {

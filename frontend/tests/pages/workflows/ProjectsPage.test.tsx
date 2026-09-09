@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import ProjectsPage from "../../../src/pages/workflows/ProjectsPage";
@@ -230,6 +230,69 @@ describe("ProjectsPage — New Project modal", () => {
     expect(await screen.findByText("IEEE-829")).toBeInTheDocument();
   });
 
+  /**
+   * TC-PROJ-020 gap-fill (coverage audit, 2026-09-09).
+   *
+   * The test above proves the Edit round trip against a ONE-project fixture,
+   * so three clauses of TC-PROJ-020's own literal wording had nothing to
+   * assert against: "`PATCH /projects/{id}` called **once**", "modal closes",
+   * and — the clause its own `Given` explicitly sets up ("2+ Projects exist,
+   * one with a non-null `standards_profile`") — "the other row's values
+   * unchanged". A single-row fixture structurally cannot catch a mutation
+   * handler that rewrites every row instead of the edited one.
+   */
+  it("TC-PROJ-020: one PATCH carrying both fields, modal closes, the other row's values unchanged", async () => {
+    mockListProjects.mockResolvedValueOnce([
+      { id: "proj-edit-1", org_id: ORG_ID, name: "Alpha", standards_profile: "ISO-29119" },
+      { id: "proj-edit-2", org_id: ORG_ID, name: "Beta", standards_profile: "IEEE-829" },
+    ]);
+    mockUpdateProject.mockResolvedValue({
+      id: "proj-edit-1",
+      org_id: ORG_ID,
+      name: "Alpha Renamed",
+      standards_profile: "ISTQB-CTFL-v4.0.1",
+    });
+
+    renderProjectsPage();
+    await screen.findByText("Alpha");
+
+    // Scoped to the target row specifically — with 2 rows there are 2 "Edit"
+    // buttons, and an unscoped `getByRole` would be ambiguous.
+    const alphaRow = screen.getByRole("row", { name: /Alpha/ });
+    fireEvent.click(within(alphaRow).getByRole("button", { name: /^edit$/i }));
+    expect(screen.getByRole("heading", { name: /^edit project$/i })).toBeInTheDocument();
+
+    const nameInputs = screen.getAllByLabelText(/^name$/i);
+    fireEvent.change(nameInputs[nameInputs.length - 1], { target: { value: "Alpha Renamed" } });
+    const profileInputs = screen.getAllByLabelText(/standards profile/i);
+    fireEvent.change(profileInputs[profileInputs.length - 1], {
+      target: { value: "ISTQB-CTFL-v4.0.1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    // ...called ONCE, with both fields in the same body.
+    await waitFor(() => expect(mockUpdateProject).toHaveBeenCalledTimes(1));
+    expect(mockUpdateProject).toHaveBeenCalledWith("proj-edit-1", {
+      name: "Alpha Renamed",
+      standards_profile: "ISTQB-CTFL-v4.0.1",
+    });
+
+    // ...the modal closes...
+    await waitFor(() =>
+      expect(screen.queryByRole("heading", { name: /^edit project$/i })).not.toBeInTheDocument(),
+    );
+
+    // ...the edited row shows both new values (and neither old one)...
+    expect(await screen.findByText("Alpha Renamed")).toBeInTheDocument();
+    expect(screen.getByText("ISTQB-CTFL-v4.0.1")).toBeInTheDocument();
+    expect(screen.queryByText("ISO-29119")).not.toBeInTheDocument();
+
+    // ...and the other row is untouched, name and profile both.
+    const betaRow = screen.getByRole("row", { name: /Beta/ });
+    expect(within(betaRow).getByRole("link", { name: "Beta" })).toBeInTheDocument();
+    expect(within(betaRow).getByText("IEEE-829")).toBeInTheDocument();
+  });
+
   it("deletes a project via a confirm modal + deleteProject()", async () => {
     mockCreateProject.mockResolvedValue({
       id: "proj-4",
@@ -300,6 +363,46 @@ describe("ProjectsPage — New Project modal", () => {
     expect(screen.getByRole("link", { name: "Undeletable" })).toBeInTheDocument();
   });
 
+  /**
+   * TC-PROJ-021's positive half, gap-fill (coverage audit, 2026-09-09).
+   *
+   * The "deletes a project via a confirm modal" test above uses a ONE-project
+   * fixture, so TC-PROJ-021's literal "`DELETE /projects/{id}` called for that
+   * project's id **only**" and "**the other row remains**" clauses (its own
+   * `Given` says "2+ Projects exist") had nothing to assert against — with one
+   * row, "the row disappears" and "the whole list was cleared" are the same
+   * observable outcome.
+   */
+  it("TC-PROJ-021 (positive half): deletes only the confirmed row's id, leaving the other row in the table", async () => {
+    mockListProjects.mockResolvedValueOnce([
+      { id: "proj-del-1", org_id: ORG_ID, name: "Doomed", standards_profile: null },
+      { id: "proj-del-2", org_id: ORG_ID, name: "Survivor", standards_profile: null },
+    ]);
+    mockDeleteProject.mockResolvedValue(undefined);
+
+    renderProjectsPage();
+    await screen.findByText("Doomed");
+
+    const doomedRow = screen.getByRole("row", { name: /Doomed/ });
+    fireEvent.click(within(doomedRow).getByRole("button", { name: /^delete$/i }));
+    expect(screen.getByRole("heading", { name: /^delete project$/i })).toBeInTheDocument();
+
+    // The confirm button is the last "Delete" in DOM order — both modals
+    // render after the table in `ProjectsPage`'s own JSX.
+    const confirmButtons = screen.getAllByRole("button", { name: /^delete$/i });
+    fireEvent.click(confirmButtons[confirmButtons.length - 1]);
+
+    await waitFor(() => expect(mockDeleteProject).toHaveBeenCalledTimes(1));
+    expect(mockDeleteProject).toHaveBeenCalledWith("proj-del-1");
+
+    // Asserted via each row's own link (unique to the table) rather than
+    // `getByText`, matching the negative-half test's own reasoning below.
+    await waitFor(() =>
+      expect(screen.queryByRole("link", { name: "Doomed" })).not.toBeInTheDocument(),
+    );
+    expect(screen.getByRole("link", { name: "Survivor" })).toBeInTheDocument();
+  });
+
   it("filters the list by name via the search box", async () => {
     mockListProjects.mockResolvedValueOnce([
       { id: "proj-a", org_id: ORG_ID, name: "Alpha", standards_profile: null },
@@ -314,6 +417,39 @@ describe("ProjectsPage — New Project modal", () => {
 
     expect(screen.getByText("Alpha")).toBeInTheDocument();
     expect(screen.queryByText("Beta")).not.toBeInTheDocument();
+  });
+
+  /**
+   * TC-PROJ-022's second clause, gap-fill (coverage audit, 2026-09-09).
+   *
+   * The filter test above only covers the "one row matches" case. TC-PROJ-022
+   * also requires the DISTINCT zero-match empty state — "No projects match
+   * your search." and specifically **not** "No projects yet." (which means
+   * something different: the org genuinely has none). `ProjectsPage.tsx`
+   * renders both strings from two different branches, and nothing anywhere in
+   * `frontend/tests/` or `e2e/tests/` asserted the search one until now.
+   */
+  it("TC-PROJ-022: a zero-match search shows 'No projects match your search.', never 'No projects yet.'", async () => {
+    mockListProjects.mockResolvedValueOnce([
+      { id: "proj-a", org_id: ORG_ID, name: "Alpha", standards_profile: null },
+      { id: "proj-b", org_id: ORG_ID, name: "Beta", standards_profile: null },
+    ]);
+
+    renderProjectsPage();
+    await screen.findByText("Alpha");
+
+    fireEvent.change(screen.getByLabelText(/search projects/i), { target: { value: "zzz" } });
+
+    expect(screen.getByText("No projects match your search.")).toBeInTheDocument();
+    expect(screen.queryByText(/no projects yet/i)).not.toBeInTheDocument();
+    // The table itself is replaced by the empty state, not left rendered empty.
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+
+    // Clearing the search restores the full list — proves the empty state is
+    // filter-driven, not a terminal state the component gets stuck in.
+    fireEvent.change(screen.getByLabelText(/search projects/i), { target: { value: "" } });
+    expect(screen.getByText("Alpha")).toBeInTheDocument();
+    expect(screen.getByText("Beta")).toBeInTheDocument();
   });
 
   it("sorts by Name descending on header click, toggling back to ascending on a second click", async () => {
@@ -333,6 +469,67 @@ describe("ProjectsPage — New Project modal", () => {
 
     fireEvent.click(screen.getByRole("columnheader", { name: /^name/i }));
     expect(rowsOrder()[0]).toContain("Alpha");
+  });
+
+  /**
+   * TC-PROJ-023's third clause, gap-fill (coverage audit, 2026-09-09).
+   *
+   * The sort test above covers "click `Name` once, then again" but never
+   * clicks the `ID` header, so TC-PROJ-023's own final clause — "clicking
+   * `ID` resets to ascending on `ID`, **not carrying over `Name`'s
+   * direction**" — was entirely unasserted. That branch is real code
+   * (`ProjectsPage.tsx`'s `handleSort` sets `sortDir` back to `"asc"` only
+   * when the field changes), and a regression dropping the reset would have
+   * gone unnoticed.
+   *
+   * Fixture is chosen so ID order and BOTH Name directions are three
+   * different sequences — an ID-ascending assertion can't pass by accident.
+   */
+  it("TC-PROJ-023: clicking the ID header resets to ascending on ID rather than carrying Name's direction", async () => {
+    mockListProjects.mockResolvedValueOnce([
+      { id: "proj-1", org_id: ORG_ID, name: "Charlie", standards_profile: null },
+      { id: "proj-2", org_id: ORG_ID, name: "Alpha", standards_profile: null },
+      { id: "proj-3", org_id: ORG_ID, name: "Bravo", standards_profile: null },
+    ]);
+
+    renderProjectsPage();
+    await screen.findByText("Alpha");
+
+    // Actual rendered row order, read from each row's own name link.
+    const order = () =>
+      screen
+        .getAllByRole("row")
+        .slice(1)
+        .map((row) => within(row).getByRole("link").textContent);
+
+    const nameHeader = () => screen.getByRole("columnheader", { name: /^name/i });
+    const idHeader = () => screen.getByRole("columnheader", { name: /^id/i });
+
+    // Default active sort: Name ascending.
+    expect(order()).toEqual(["Alpha", "Bravo", "Charlie"]);
+
+    fireEvent.click(nameHeader()); // first click -> descending
+    expect(order()).toEqual(["Charlie", "Bravo", "Alpha"]);
+
+    fireEvent.click(nameHeader()); // second click -> reverses back to ascending
+    expect(order()).toEqual(["Alpha", "Bravo", "Charlie"]);
+
+    // Third step of TC-PROJ-023's literal sequence: switch to the ID column.
+    // id asc = proj-1/proj-2/proj-3 = Charlie/Alpha/Bravo — a sequence neither
+    // Name direction produces.
+    fireEvent.click(idHeader());
+    expect(order()).toEqual(["Charlie", "Alpha", "Bravo"]);
+
+    // The "not carrying over Name's direction" half specifically: leave Name
+    // in DESCENDING, then switch to ID and assert ID-*ascending*. Without the
+    // reset this would render ID-descending (Bravo, Alpha, Charlie).
+    fireEvent.click(nameHeader()); // field change -> Name ascending
+    fireEvent.click(nameHeader()); // -> Name descending
+    expect(order()).toEqual(["Charlie", "Bravo", "Alpha"]);
+
+    fireEvent.click(idHeader());
+    expect(order()).toEqual(["Charlie", "Alpha", "Bravo"]);
+    expect(order()).not.toEqual(["Bravo", "Alpha", "Charlie"]);
   });
 
   it("paginates the list at 10 rows per page", async () => {
@@ -356,6 +553,64 @@ describe("ProjectsPage — New Project modal", () => {
 
     expect(await screen.findByText("Project 11")).toBeInTheDocument();
     expect(screen.queryByText("Project 00")).not.toBeInTheDocument();
+  });
+
+  /**
+   * TC-PROJ-024 gap-fill (coverage audit, 2026-09-09).
+   *
+   * The pagination test above proves the 12-project split only partially — it
+   * checks one row's presence/absence per page, not TC-PROJ-024's literal
+   * "page 1 shows exactly its first 10, **none of the last 2**; page 2 shows
+   * **the remaining 2**, none of the first 10."
+   *
+   * Its second sentence — "A ≤10-project fixture renders **no pagination
+   * control at all**" — had no Vitest coverage either. The nearest existing
+   * assertion (`ds2-table-container.spec.ts`) proves the control disappears
+   * when the *page-size selector* is raised to 25, which exercises the same
+   * `totalPages > 1` gate but is not the ≤10-fixture case the TC names.
+   */
+  const twelveProjects = () =>
+    Array.from({ length: 12 }, (_, i) => ({
+      id: `proj-${String(i).padStart(2, "0")}`,
+      org_id: ORG_ID,
+      name: `Project ${String(i).padStart(2, "0")}`,
+      standards_profile: null,
+    }));
+
+  it("TC-PROJ-024: page 1 holds exactly the first 10 and page 2 exactly the remaining 2", async () => {
+    mockListProjects.mockResolvedValueOnce(twelveProjects());
+
+    renderProjectsPage();
+    await screen.findByText("Project 00");
+
+    // Page 1: exactly its first 10, NONE of the last 2.
+    expect(screen.getAllByRole("row")).toHaveLength(11); // header + 10 data rows
+    expect(screen.queryByText("Project 10")).not.toBeInTheDocument();
+    expect(screen.queryByText("Project 11")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("2", { selector: "button.page-link" }));
+
+    // Page 2: exactly the remaining 2, none of the first 10.
+    expect(await screen.findByText("Project 11")).toBeInTheDocument();
+    expect(screen.getByText("Project 10")).toBeInTheDocument();
+    expect(screen.getAllByRole("row")).toHaveLength(3); // header + 2 data rows
+    expect(screen.queryByText("Project 00")).not.toBeInTheDocument();
+    expect(screen.queryByText("Project 09")).not.toBeInTheDocument();
+  });
+
+  it("TC-PROJ-024: a 10-project fixture renders no pagination control at all", async () => {
+    mockListProjects.mockResolvedValueOnce(twelveProjects().slice(0, 10));
+
+    renderProjectsPage();
+    await screen.findByText("Project 00");
+
+    expect(screen.getAllByRole("row")).toHaveLength(11); // header + all 10 data rows
+    expect(screen.getByText("Project 09")).toBeInTheDocument();
+    // `container/Table.tsx` gates the whole pagination row — nav AND the
+    // page-size selector that shares it — on `totalPages > 1`, so at exactly
+    // the threshold neither renders.
+    expect(screen.queryByTestId("project-table-pagination")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("project-table-page-size")).not.toBeInTheDocument();
   });
 });
 
