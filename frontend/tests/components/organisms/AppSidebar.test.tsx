@@ -24,6 +24,7 @@ function renderSidebar(initialEntry: string) {
       <Routes>
         <Route path="/orgs/pick" element={<AppSidebar />} />
         <Route path="/orgs/:orgId" element={<AppSidebar />} />
+        <Route path="/orgs/:orgId/projects" element={<AppSidebar />} />
         <Route path="/orgs/:orgId/members" element={<AppSidebar />} />
       </Routes>
     </MemoryRouter>,
@@ -31,11 +32,25 @@ function renderSidebar(initialEntry: string) {
 }
 
 describe("AppSidebar", () => {
-  it("renders both nav items when orgId is present", () => {
+  it("renders all three nav items when orgId is present", () => {
     renderSidebar("/orgs/org-1");
 
     expect(screen.getByTestId("sidebar-nav-org-home")).toBeInTheDocument();
+    expect(screen.getByTestId("sidebar-nav-projects")).toBeInTheDocument();
     expect(screen.getByTestId("sidebar-nav-org-members")).toBeInTheDocument();
+  });
+
+  // PROJ-4 (ADR-0047): the new "Projects" item sits between "Dashboard" and
+  // "Members" (this file's own extension-point docstring), plain text label,
+  // no icon — DASH-2/TC-SHELL-021's "Dashboard is the only icon item"
+  // invariant is unaffected by this addition.
+  it("labels the projects item 'Projects' with no icon, linking to /orgs/:orgId/projects", () => {
+    renderSidebar("/orgs/org-1");
+
+    const projectsLink = screen.getByTestId("sidebar-nav-projects");
+    expect(projectsLink).toHaveTextContent("Projects");
+    expect(projectsLink.querySelector("i.nav-icon")).toBeNull();
+    expect(projectsLink).toHaveAttribute("href", "/orgs/org-1/projects");
   });
 
   // DASH-2: label text is "Dashboard" (testid/route unchanged), with an icon
@@ -118,11 +133,18 @@ describe("AppSidebar", () => {
     expect(screen.getByTestId("sidebar-nav-org-members").className).toMatch(/\bactive\b/);
   });
 
+  it("marks the projects item active on /orgs/:orgId/projects, and the dashboard item not active there", () => {
+    renderSidebar("/orgs/org-1/projects");
+    expect(screen.getByTestId("sidebar-nav-projects").className).toMatch(/\bactive\b/);
+    expect(screen.getByTestId("sidebar-nav-org-home").className).not.toMatch(/\bactive\b/);
+  });
+
   it("renders an empty nav-item list (brand only, no org-home/org-members links) when orgId is absent", () => {
     renderSidebar("/orgs/pick");
 
     expect(screen.getByText("TestNexa")).toBeInTheDocument();
     expect(screen.queryByTestId("sidebar-nav-org-home")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("sidebar-nav-projects")).not.toBeInTheDocument();
     expect(screen.queryByTestId("sidebar-nav-org-members")).not.toBeInTheDocument();
   });
 

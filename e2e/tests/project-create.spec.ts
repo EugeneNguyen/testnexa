@@ -178,8 +178,14 @@ test.describe("PROJ-1: create a Project via OrgHome's New Project modal", () => 
 
       // Single active OrgMembership -> org_context "auto" -> Login.tsx's own
       // redirect effect lands here automatically.
-      await page.waitForURL(new RegExp(`/orgs/${admin.orgId}`));
+      await page.waitForURL(new RegExp(`/orgs/${admin.orgId}$`));
       await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+
+      // PROJ-4 (ADR-0047): Project CRUD moved off "Dashboard" onto its own
+      // page, reached via the sidebar's "Projects" nav item.
+      await page.getByTestId("sidebar-nav-projects").click();
+      await page.waitForURL(new RegExp(`/orgs/${admin.orgId}/projects$`));
+      await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
       await expect(page.getByText(/no projects yet/i)).toBeVisible();
 
       // --- Create a Project via the "New Project" modal ---------------------------------
@@ -227,11 +233,11 @@ test.describe("PROJ-1: create a Project via OrgHome's New Project modal", () => 
       await expect(row.getByText(initialProfile)).not.toBeVisible();
 
       // --- Prove the edit persisted server-side, not just in React state ----------------
-      // OrgHome's Project list is local-only (no GET /orgs/{org_id}/projects
-      // route in this story's scope), so a page reload would lose the list
-      // entirely rather than prove persistence — re-fetch via a fresh,
-      // independent login + GET /projects/{id} instead, using Playwright's
-      // own `request` context (not the browser's in-memory token store).
+      // Re-fetch independently of the browser's own in-memory query cache —
+      // a fresh login + GET /projects/{id} via Playwright's own `request`
+      // context — rather than trusting the row's rendered value, which could
+      // in principle be showing an optimistic client-side write that never
+      // actually round-tripped through the server.
       const loginResponse = await request.post("/api/v1/auth/login", {
         data: { email: admin.email, password: admin.password },
       });
@@ -247,15 +253,17 @@ test.describe("PROJ-1: create a Project via OrgHome's New Project modal", () => 
       expect(persisted.standards_profile).toBe(updatedProfile);
 
       // --- The literal reported bug: navigate into the project, then back --------------
-      // Before the fix, OrgHome's list was local-only state — navigating away
-      // unmounted it, and coming back rendered an empty list even though the
-      // project still existed. Reproduced here exactly as reported: click
-      // into the project's own detail page, then browser-back to OrgHome.
+      // Before the fix, the Project list was local-only state — navigating
+      // away unmounted it, and coming back rendered an empty list even
+      // though the project still existed. Reproduced here exactly as
+      // reported: click into the project's own detail page, then
+      // browser-back to the Projects page (PROJ-4: was OrgHome/Dashboard;
+      // the list itself, and this regression's own fix, are unchanged).
       await row.getByRole("link", { name: projectName }).click();
       await expect(page).toHaveURL(new RegExp(`/projects/${createdProject.id}$`));
 
       await page.goBack();
-      await expect(page).toHaveURL(new RegExp(`/orgs/${admin.orgId}$`));
+      await expect(page).toHaveURL(new RegExp(`/orgs/${admin.orgId}/projects$`));
       await expect(page.getByRole("row", { name: new RegExp(projectName) })).toBeVisible();
       await expect(page.getByText(/no projects yet/i)).not.toBeVisible();
     } finally {

@@ -19,6 +19,7 @@ function renderBreadcrumb(initialEntry: string) {
       <Routes>
         <Route path="/orgs/pick" element={<AppBreadcrumb />} />
         <Route path="/orgs/:orgId" element={<AppBreadcrumb />} />
+        <Route path="/orgs/:orgId/projects" element={<AppBreadcrumb />} />
         <Route path="/orgs/:orgId/members" element={<AppBreadcrumb />} />
         <Route path="/orgs/:orgId/ui-elements/colors" element={<AppBreadcrumb />} />
         <Route path="/orgs/:orgId/admin/:entity" element={<AppBreadcrumb />} />
@@ -53,6 +54,15 @@ describe("AppBreadcrumb", () => {
 
     expect(screen.getByText("Dashboard")).toBeInTheDocument();
     expect(screen.getByText("Dashboard").closest("a")).toBeNull();
+  });
+
+  it("PROJ-4: resolves Dashboard -> Projects on /orgs/:orgId/projects, Dashboard linked", () => {
+    renderBreadcrumb("/orgs/org-1/projects");
+
+    expect(screen.getByText("Dashboard")).toBeInTheDocument();
+    expect(screen.getByText("Dashboard").closest("a")).toHaveAttribute("href", "/orgs/org-1");
+    expect(screen.getByText("Projects")).toBeInTheDocument();
+    expect(screen.getByText("Projects").closest("a")).toBeNull();
   });
 
   it("resolves a nested UI-elements route with 3 segments", () => {

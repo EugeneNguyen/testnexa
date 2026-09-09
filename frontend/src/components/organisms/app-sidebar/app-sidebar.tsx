@@ -221,6 +221,20 @@ function AppSidebar() {
           icon: "fa-solid fa-gauge-high",
         },
         {
+          // PROJ-4 (ADR-0047): Project CRUD's own dedicated page
+          // (`ProjectsPage.tsx`, extracted out of "Dashboard") gets its own
+          // flat nav entry — the single extension point this file's own
+          // docstring names (AC5), same as every other flat item above/below
+          // it. No icon (DASH-2/TC-SHELL-021's "Dashboard is the only nav
+          // item with an icon" invariant is deliberately left unchanged, not
+          // expanded — same posture as `Members` below).
+          key: "projects",
+          label: "Projects",
+          to: `/orgs/${orgId}/projects`,
+          end: false,
+          testId: "sidebar-nav-projects",
+        },
+        {
           key: "org-members",
           label: "Members",
           to: `/orgs/${orgId}/members`,
