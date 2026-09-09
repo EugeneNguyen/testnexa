@@ -1,4 +1,7 @@
 .claude/worktrees/
+.claude/agent-memory/
+.omo/
+.playwright-mcp/
 
 # Local-only, per-developer isolated test-environment port overrides
 # (CLAUDE.md "Running the stack": never commit this — it exists solely so a

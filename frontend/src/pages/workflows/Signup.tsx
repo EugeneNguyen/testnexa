@@ -46,7 +46,7 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { useAuth } from "../../auth/AuthContext";
 import { ApiError } from "../../lib/api/client";
-import FormField from "../../components/shared/FormField";
+import FormField from "../../components/molecules/form-field";
 
 const SLUG_PATTERN = /^[a-z0-9-]+$/;
 

@@ -118,7 +118,7 @@ import { ApiError } from "../../lib/api/client";
 import { getActiveMemberTotal, getProjectsTotal } from "../../lib/api/dashboard";
 import { createProject, deleteProject, listProjects, ProjectSummary, updateProject } from "../../lib/api/projects";
 import RoleAssignmentsPanel from "../../components/RoleAssignmentsPanel";
-import { InfoBox } from "../../components/shared/info-box";
+import { InfoBox } from "../../components/molecules/info-box";
 
 /**
  * DS-2/ADR-0041: previously a hardcoded slice size with no UI to change it;

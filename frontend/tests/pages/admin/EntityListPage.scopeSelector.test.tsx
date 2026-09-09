@@ -37,7 +37,7 @@ vi.mock("../../../src/pages/admin/registry", async () => {
   };
 });
 
-vi.mock("../../../src/components/crud/ScopeSelector", () => ({
+vi.mock("../../../src/components/molecules/scope-selector", () => ({
   default: ({
     options,
     onResolved,

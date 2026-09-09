@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it } from "vitest";
-import AppSidebar from "../src/components/AppSidebar";
+import AppSidebar from "../src/components/organisms/app-sidebar";
 import Colors from "../src/pages/ui-elements/Colors";
 import Icons from "../src/pages/ui-elements/Icons";
 import Typography from "../src/pages/ui-elements/Typography";
