@@ -21,7 +21,6 @@ Desktop, expanded (unchanged from today):
 │ [🛡]  Access Control      ▸ │
 │ [▤]  Catalogs            ▸ │
 │ [🏢] Organization         ▸ │
-│ [—]  UI Elements          ▸ │
 └────────────────────────────┘
 ```
 

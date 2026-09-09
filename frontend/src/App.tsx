@@ -13,9 +13,6 @@ import RootRedirect from "./pages/workflows/RootRedirect";
 import Signup from "./pages/workflows/Signup";
 import TestCycleDetail from "./pages/workflows/TestCycleDetail";
 import TestPlanDetail from "./pages/workflows/TestPlanDetail";
-import Colors from "./pages/ui-elements/Colors";
-import Icons from "./pages/ui-elements/Icons";
-import Typography from "./pages/ui-elements/Typography";
 import EntityFormPage from "./pages/admin/EntityFormPage";
 import EntityListPage from "./pages/admin/EntityListPage";
 
@@ -147,38 +144,6 @@ function App() {
           element={
             <ProtectedRoute>
               <TestCycleDetail />
-            </ProtectedRoute>
-          }
-        />
-        {/*
-          SHELL-2/3/4 (ADR-0020) "UI Elements" reference pages — template-parity
-          scaffolding only, no FR/NFR/story backs these three routes (see
-          `AppSidebar.tsx`'s and each page's own docstring). Org-scoped
-          (`/orgs/:orgId/ui-elements/*`) to match the sidebar nav group's own
-          `orgId`-gated visibility, same posture as the org-home/members
-          routes above.
-        */}
-        <Route
-          path="/orgs/:orgId/ui-elements/colors"
-          element={
-            <ProtectedRoute>
-              <Colors />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/orgs/:orgId/ui-elements/typography"
-          element={
-            <ProtectedRoute>
-              <Typography />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/orgs/:orgId/ui-elements/icons"
-          element={
-            <ProtectedRoute>
-              <Icons />
             </ProtectedRoute>
           }
         />

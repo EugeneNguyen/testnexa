@@ -20,13 +20,6 @@
  * prefix-match regression this story calls out. The members item doesn't
  * need `end` since nothing is nested under it today.
  *
- * SHELL-8 (ADR-0020) adds a "UI Elements" nav group (Colors/Typography/
- * Icons) below the flat org nav-item list — template-parity scaffolding
- * only, **not backed by any FR/NFR or user story** (see that ADR and the
- * three reference pages' own docstrings). Gated on `orgId` the same way the
- * flat list above is (absent entirely on `/orgs/pick`, not disabled
- * controls) for the same reasoning: there is no org context to link into.
- *
  * **DASH-2 (2026-09-07):** "Org home" relabeled "Dashboard" (label text
  * only — `key`/`testId`/`to` all stay `org-home`/`sidebar-nav-org-home`/
  * `/orgs/:orgId`, so no test needs updating for those, only the visible
@@ -396,22 +389,6 @@ function AppSidebar() {
               : [];
           }),
         })),
-        // ADR-0020 template-parity scaffolding, unconditionally last and
-        // explicitly out of SHELL-7's scope (no icon, not regrouped).
-        {
-          key: "ui-elements",
-          label: "UI Elements",
-          testId: "sidebar-nav-group-ui-elements",
-          items: [
-            { to: `/orgs/${orgId}/ui-elements/colors`, label: "Colors", testId: "sidebar-nav-ui-colors" },
-            {
-              to: `/orgs/${orgId}/ui-elements/typography`,
-              label: "Typography",
-              testId: "sidebar-nav-ui-typography",
-            },
-            { to: `/orgs/${orgId}/ui-elements/icons`, label: "Icons", testId: "sidebar-nav-ui-icons" },
-          ],
-        },
       ]
     : [];
 

@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import App from "../../App";
 import AppSidebar from "./app-sidebar";
 import { orgScopedEntities } from "../../pages/admin/registry";
 import { ApiError } from "../../lib/api/client";
@@ -134,7 +135,7 @@ describe("AppSidebar", () => {
   it("toggles a nav group with AdminLTE's menu-open/nav-treeview classes", async () => {
     const { container } = renderSidebar("/orgs/org-1");
 
-    const group = screen.getByTestId("sidebar-nav-group-ui-elements");
+    const group = screen.getByTestId("sidebar-nav-group-access-control");
     expect(group).toHaveClass("nav-item");
     expect(group).not.toHaveClass("menu-open");
 
@@ -358,12 +359,6 @@ describe("AppSidebar", () => {
       const child = screen.getByTestId(`sidebar-nav-admin-${entityEntry.key}`);
       expect(child.querySelectorAll("i")).toHaveLength(0);
     }
-
-    // `UI Elements` is explicitly out of SHELL-7's scope and keeps no icon.
-    const uiToggle = screen
-      .getByTestId("sidebar-nav-group-ui-elements")
-      .querySelector(":scope > a.nav-link")!;
-    expect(uiToggle.querySelectorAll("i.nav-icon")).toHaveLength(0);
   });
 
   // TC-SHELL-027: asserted as an ORDERED sequence read from the DOM, not six
@@ -390,7 +385,6 @@ describe("AppSidebar", () => {
       "Access Control",
       "Catalogs",
       "Organization",
-      "UI Elements",
     ]);
   });
 
@@ -423,6 +417,70 @@ describe("AppSidebar", () => {
 
     for (const groupTestId of Object.keys(EXPECTED_PARTITION)) {
       expect(screen.queryByTestId(groupTestId)).not.toBeInTheDocument();
+    }
+  });
+
+  // TC-SHELL-029 (REMOVE-UI-1, ADR-0052): the `UI Elements` nav group + its
+  // 3 reference routes are absent under `/orgs/:orgId`. Asserted as an
+  // explicit negative — partial-removal (e.g. `navGroups` block deleted but
+  // the page files left orphaned, or the routes still present) would
+  // otherwise pass on the order-check alone. Per Test Design §43's group-
+  // absence + route-absent equivalence classes.
+  it("TC-SHELL-029: UI Elements nav group is absent under /orgs/:orgId", () => {
+    renderSidebar("/orgs/org-1");
+
+    expect(
+      screen.queryByTestId("sidebar-nav-group-ui-elements"),
+    ).not.toBeInTheDocument();
+    // The 3 child testids must also be absent — a half-removed group with
+    // stale children would still be caught by this assertion.
+    expect(screen.queryByTestId("sidebar-nav-ui-colors")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("sidebar-nav-ui-typography"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByTestId("sidebar-nav-ui-icons")).not.toBeInTheDocument();
+  });
+
+  it("TC-SHELL-029: deep-nav to /orgs/:orgId/ui-elements/* renders no Colors/Typography/Icons page", () => {
+    // Mount the actual `<App>` (not the sidebar alone) so the React Router
+    // route declarations themselves are under test — a regression where the
+    // routes still exist but the page components are gone would render to a
+    // missing module and 404 for the *wrong* reason than "the route is
+    // deleted," which the sidebar-only test cannot catch.
+    //
+    // `App` has no catch-all route (ADR-0018's explicit posture: the sidebar
+    // is the only nav surface), so React Router emits a "No routes matched"
+    // warning to the test stderr when a deep-link to a deleted route is
+    // mounted — that warning *is* the proof the routes are gone (vs. a
+    // future regression where they're silently reintroduced and match
+    // again). Assert it.
+    for (const segment of ["colors", "typography", "icons"]) {
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      const { unmount } = render(
+        <MemoryRouter initialEntries={[`/orgs/org-1/ui-elements/${segment}`]}>
+          <App />
+        </MemoryRouter>,
+      );
+
+      const allCalls = [
+        ...errorSpy.mock.calls,
+        ...warnSpy.mock.calls,
+        ...logSpy.mock.calls,
+      ];
+      expect(
+        allCalls.some((call) =>
+          String(call[0] ?? "").includes(
+            `No routes matched location "/orgs/org-1/ui-elements/${segment}"`,
+          ),
+        ),
+      ).toBe(true);
+
+      errorSpy.mockRestore();
+      warnSpy.mockRestore();
+      logSpy.mockRestore();
+      unmount();
     }
   });
 
