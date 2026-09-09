@@ -28,6 +28,8 @@ REST over HTTPS, JSON bodies, base path `/api/v1`. FastAPI auto-generates the Op
 
 **SHELL-7** ([ADR-0046](../adr/0046-shell-7-sidebar-mini-org-crud-restructure.md), FR-SHELL-7) — reviewed, no API impact. Sidebar-mini is a frontend body-class toggle; the org-scoped CRUD nav restructure only regroups the sidebar's presentation of the existing `orgScopedEntities` registry — every `:entity` route those 8 entities already answer to (§3/§5) is unchanged, no new route, no changed request/response shape.
 
+**PROJ-4** ([ADR-0047](../adr/0047-proj-4-projects-page-sidebar-entry.md), FR-PROJ-3/FR-PROJ-4) — reviewed, no API impact. `ProjectsPage.tsx` calls exactly the routes `OrgHome`'s Project table already called (`POST /orgs/{org_id}/projects`, `GET /projects/{id}`, `PATCH /projects/{id}`, `GET /projects?org_id=`, `DELETE /projects/{id}`, all §2/§3-documented) — moving which frontend screen calls them is not a route/shape change.
+
 ---
 
 ## 1. Conventions

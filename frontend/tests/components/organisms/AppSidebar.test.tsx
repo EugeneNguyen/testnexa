@@ -24,6 +24,7 @@ function renderSidebar(initialEntry: string) {
       <Routes>
         <Route path="/orgs/pick" element={<AppSidebar />} />
         <Route path="/orgs/:orgId" element={<AppSidebar />} />
+        <Route path="/orgs/:orgId/projects" element={<AppSidebar />} />
         <Route path="/orgs/:orgId/members" element={<AppSidebar />} />
       </Routes>
     </MemoryRouter>,
@@ -31,15 +32,34 @@ function renderSidebar(initialEntry: string) {
 }
 
 describe("AppSidebar", () => {
-  it("renders both nav items when orgId is present", () => {
+  it("renders all three nav items when orgId is present", () => {
     renderSidebar("/orgs/org-1");
 
     expect(screen.getByTestId("sidebar-nav-org-home")).toBeInTheDocument();
+    expect(screen.getByTestId("sidebar-nav-projects")).toBeInTheDocument();
     expect(screen.getByTestId("sidebar-nav-org-members")).toBeInTheDocument();
   });
 
-  // DASH-2: label text is "Dashboard" (testid/route unchanged), with an icon
-  // — the only sidebar nav item that gets one.
+  // PROJ-4 (ADR-0047, icon added 2026-09-09 per CTO direct instruction): the
+  // new "Projects" item sits between "Dashboard" and "Members" (this file's
+  // own extension-point docstring), with the same `fa-solid fa-folder` icon
+  // `ProjectCountWidget` (`OrgHome.tsx`) already uses for this entity.
+  it("labels the projects item 'Projects' with a folder icon, linking to /orgs/:orgId/projects", () => {
+    renderSidebar("/orgs/org-1");
+
+    const projectsLink = screen.getByTestId("sidebar-nav-projects");
+    expect(projectsLink).toHaveTextContent("Projects");
+    const icon = projectsLink.querySelector("i.nav-icon");
+    expect(icon).not.toBeNull();
+    expect(icon).toHaveClass("fa-solid", "fa-folder");
+    expect(icon).toHaveAttribute("aria-hidden", "true");
+    expect(projectsLink).toHaveAttribute("href", "/orgs/org-1/projects");
+  });
+
+  // DASH-2: label text is "Dashboard" (testid/route unchanged), with an icon.
+  // **No longer the only flat item with one** — SHELL-7 added one to
+  // `Members`, PROJ-4 added one to `Projects` (see TC-SHELL-026's own test
+  // below, extended for both).
   //
   // ADR-0042: the icon was `cilSpeedometer` rendered by `CIcon` as an
   // `<svg>`; it is now Font Awesome's `fa-gauge-high`, which renders as an
@@ -118,11 +138,18 @@ describe("AppSidebar", () => {
     expect(screen.getByTestId("sidebar-nav-org-members").className).toMatch(/\bactive\b/);
   });
 
+  it("marks the projects item active on /orgs/:orgId/projects, and the dashboard item not active there", () => {
+    renderSidebar("/orgs/org-1/projects");
+    expect(screen.getByTestId("sidebar-nav-projects").className).toMatch(/\bactive\b/);
+    expect(screen.getByTestId("sidebar-nav-org-home").className).not.toMatch(/\bactive\b/);
+  });
+
   it("renders an empty nav-item list (brand only, no org-home/org-members links) when orgId is absent", () => {
     renderSidebar("/orgs/pick");
 
     expect(screen.getByText("TestNexa")).toBeInTheDocument();
     expect(screen.queryByTestId("sidebar-nav-org-home")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("sidebar-nav-projects")).not.toBeInTheDocument();
     expect(screen.queryByTestId("sidebar-nav-org-members")).not.toBeInTheDocument();
   });
 
@@ -214,12 +241,14 @@ describe("AppSidebar", () => {
     expect(screen.queryByText("Admin")).not.toBeInTheDocument();
   });
 
-  // TC-SHELL-026: icon-exclusivity. Only the 3 new groups and `Members` get an
-  // icon; the 8 entity children get none (matching TC-SHELL-021's pre-existing
-  // convention rather than silently reinterpreting it). `nav-arrow` is the
-  // group's disclosure caret, not a nav icon — counted separately so an
-  // assertion of "exactly one icon" can't be satisfied by the arrow.
-  it("TC-SHELL-026: only the 3 groups and Members render a nav icon, never the 8 entity children", () => {
+  // TC-SHELL-026: icon-exclusivity. Only the 3 groups and the flat items
+  // `Members`/`Projects` get an icon; the 8 entity children get none
+  // (matching TC-SHELL-021's pre-existing convention rather than silently
+  // reinterpreting it — `Dashboard` already has its own icon, asserted in
+  // its own test above, not repeated here). `nav-arrow` is the group's
+  // disclosure caret, not a nav icon — counted separately so an assertion of
+  // "exactly one icon" can't be satisfied by the arrow.
+  it("TC-SHELL-026: the 3 groups + Members + Projects render a nav icon, never the 8 entity children", () => {
     renderSidebar("/orgs/org-1");
 
     const groupIcons: Record<string, string> = {
@@ -236,12 +265,17 @@ describe("AppSidebar", () => {
       expect(toggle.querySelectorAll("i.nav-arrow")).toHaveLength(1);
     }
 
-    // Members: the one flat item SHELL-7 adds an icon to (an icon-less row is
-    // an empty slot in the collapsed mini rail).
+    // Members (SHELL-7) and Projects (PROJ-4): flat items with their own icon
+    // (an icon-less row is an empty slot in the collapsed mini rail).
     const members = screen.getByTestId("sidebar-nav-org-members");
     const memberIcons = members.querySelectorAll("i.nav-icon");
     expect(memberIcons).toHaveLength(1);
     expect(memberIcons[0]).toHaveClass("fa-solid", "fa-users");
+
+    const projects = screen.getByTestId("sidebar-nav-projects");
+    const projectIcons = projects.querySelectorAll("i.nav-icon");
+    expect(projectIcons).toHaveLength(1);
+    expect(projectIcons[0]).toHaveClass("fa-solid", "fa-folder");
 
     // The 8 children carry no icon of any kind.
     for (const entityEntry of orgScopedEntities) {
@@ -258,6 +292,12 @@ describe("AppSidebar", () => {
 
   // TC-SHELL-027: asserted as an ORDERED sequence read from the DOM, not six
   // independent presence checks (which would pass on a scrambled order).
+  //
+  // PROJ-4 (ADR-0047, 2026-09-09): a new "Projects" flat item inserts between
+  // "Dashboard" and "Members" — TC-SHELL-027's own row in the Test Cases doc
+  // was corrected in place for this same cross-story interaction (found
+  // while writing that docs pass, not by SHELL-7's own). Order is otherwise
+  // unchanged.
   it("TC-SHELL-027: renders the org-scoped nav in the specified top-to-bottom order", () => {
     const { container } = renderSidebar("/orgs/org-1");
 
@@ -269,6 +309,7 @@ describe("AppSidebar", () => {
     );
     expect(labels).toEqual([
       "Dashboard",
+      "Projects",
       "Members",
       "Access Control",
       "Catalogs",

@@ -227,7 +227,7 @@ test.describe("DS-2: shared Table container", () => {
     }
   });
 
-  test("OrgHome/Dashboard Project table (client mode): page-size selector paginates the already-fetched list", async ({
+  test("ProjectsPage Project table (client mode): page-size selector paginates the already-fetched list", async ({
     page,
   }) => {
     const fixture = seedFixture();
@@ -236,15 +236,19 @@ test.describe("DS-2: shared Table container", () => {
       await page.getByLabel(/email/i).fill(fixture.email);
       await page.getByLabel(/password/i).fill(fixture.password);
       await page.getByRole("button", { name: /log in|sign in/i }).click();
-      await page.waitForURL(new RegExp(`/orgs/${fixture.orgId}`));
-      await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+      await page.waitForURL(new RegExp(`/orgs/${fixture.orgId}$`));
+
+      // PROJ-4 (ADR-0047): Project CRUD moved off "Dashboard" onto its own
+      // page, reached via the sidebar's "Projects" nav item.
+      await page.getByTestId("sidebar-nav-projects").click();
+      await page.waitForURL(new RegExp(`/orgs/${fixture.orgId}/projects$`));
+      await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
 
       // 13 total projects (1 primary + 12 extra), default page size 10 ->
       // pagination visible immediately, unlike the server-mode case above.
-      // Scoped to the Project table specifically (the page's first table) --
-      // the seeded org_admin's own auto-granted org-wide RoleAssignment
-      // means `RoleAssignmentsPanel`'s table below it has 1 row of its own,
-      // which an unscoped `page.getByRole("row")` would also pick up.
+      // The Project table is now the only table on this page (PROJ-4 moved
+      // `RoleAssignmentsPanel` off it, onto "Dashboard") — `.first()` kept
+      // defensively rather than assuming that'll always stay true.
       const projectTable = page.getByRole("table").first();
       await expect(page.getByTestId("project-table-pagination")).toBeVisible();
       await expect(projectTable.getByRole("row")).toHaveCount(11); // header + 10 data rows
