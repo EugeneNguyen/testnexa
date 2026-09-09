@@ -34,6 +34,8 @@ This document is the implementation-level schema, refined from the [07 ERD](../p
 
 **SHELL-9** ([ADR-0049](../adr/0049-shell-9-project-scope-nav-context-resolution.md), FR-SHELL-8) — reviewed, no schema impact. `useResolvedOrgId()`'s fetch-when-absent branch reads the `Project` table's own existing `org_id` column (§3.5) via the already-shipped `GET /projects/{id}`; no new table, column, index, or query shape. Noted here explicitly so the gap isn't mistaken for an oversight.
 
+**SHELL-10** ([ADR-0050](../adr/0050-shell-10-project-scope-entity-nav.md), FR-SHELL-9) — reviewed, no schema impact. A sidebar presentation change only — every entity `PROJECT_ENTITY_GROUPS` groups is already fully specified in the sections below, reached via its already-shipped `/projects/:projectId/admin/<entity>` route (ADR-0025/ADR-0027's registry). No table, column, index, or route reads/writes any differently. Noted here explicitly so the gap isn't mistaken for an oversight.
+
 ---
 
 ## 1. Entity count reconciliation

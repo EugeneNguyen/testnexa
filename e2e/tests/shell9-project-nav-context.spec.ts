@@ -365,7 +365,7 @@ test.describe("SHELL-9: project-scope nav context (sidebar + breadcrumb)", () =>
    * land on the already-shipped generic-admin route and actually render it —
    * an `href` alone would pass even if the route were broken.
    */
-  test("SHELL-10: clicking a project-nav group's entity child navigates to its real CRUD screen", async ({
+  test("TC-SHELL-038: clicking a project-nav group's entity child navigates to its real CRUD screen", async ({
     page,
   }) => {
     const fixture = runBackendPython<NavContextFixture>(SEED_SCRIPT);

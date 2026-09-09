@@ -40,6 +40,8 @@ No backend, schema, or RBAC change is required — `GET /projects/{id}` (ADR-001
 
 **Positive:** every project-scoped screen (`ProjectDetail`, `TestPlanDetail`, `TestCycleDetail`, all 20 project-admin pages) gains a fully populated sidebar and a real, name-bearing breadcrumb trail for the first time — closing the exact dead-end this task named, via the org-scoped nav that already exists rather than a bespoke new affordance. `useResolvedOrgId()` is reusable by any future project-scoped bespoke screen that needs `orgId` outside the admin surface.
 
+**Addendum (2026-09-09):** the sidebar-content decision this ADR made (render the org nav verbatim on project routes) was reversed the same day, on direct CTO instruction after reviewing the live result — see [ADR-0050](0050-shell-10-project-scope-entity-nav.md). This ADR's own text above is left as-written; it correctly describes what was built and why, at the time. `useResolvedOrgId()` itself (the hook, its `orgId` resolution) and the breadcrumb work are unaffected by that reversal and remain exactly as this ADR describes.
+
 **Negative / accepted trade-offs:**
 
 - **One extra network round trip on first paint of any project-scoped screen** that doesn't already fetch the `Project` row itself (`ProjectDetail` already does, for its own header; `TestPlanDetail`/`TestCycleDetail` do not today) — mitigated, not eliminated, by the shared `["project", projectId]` react-query cache key: a screen that also calls `getProject(projectId)` under that same key dedupes against the sidebar's/breadcrumb's own fetch instead of tripling it. See NFR-54.

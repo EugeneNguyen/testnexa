@@ -32,6 +32,8 @@ REST over HTTPS, JSON bodies, base path `/api/v1`. FastAPI auto-generates the Op
 
 **SHELL-9** ([ADR-0049](../adr/0049-shell-9-project-scope-nav-context-resolution.md), FR-SHELL-8) — reviewed, no API impact. `useResolvedOrgId()` calls only the already-documented `GET /projects/{id}` (§2/§3) when `:orgId` is absent from the route — no new route, no changed request/response shape. The response's existing `org_id` field (already read by `useAdminRouteContext`'s own independent caller of the same route) is the only field this new caller reads.
 
+**SHELL-10** ([ADR-0050](../adr/0050-shell-10-project-scope-entity-nav.md), FR-SHELL-9) — reviewed, no API impact. Every route the sidebar's new entity-group links point at (`/projects/:projectId/admin/<entity>` for the 13 grouped entities) is the already-documented generic-admin route (§3) — no new route, no changed request/response shape, this is purely which existing routes the sidebar now links to.
+
 ---
 
 ## 1. Conventions

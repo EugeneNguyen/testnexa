@@ -558,7 +558,7 @@ describe("AppSidebar", () => {
 
   // SHELL-10 (ADR-0049), new coverage — the org-mode/project-mode swap is
   // total in both directions, not just "project routes gained a new nav."
-  it("SHELL-10: the org nav does not render on a project-scoped route, and the project nav does not render on an org-scoped route", async () => {
+  it("TC-SHELL-037: the org nav does not render on a project-scoped route, and the project nav does not render on an org-scoped route", async () => {
     mockGetProject.mockResolvedValue(PROJECT_FIXTURE);
     const onProjectRoute = renderSidebarAtProjectRoute(`/projects/${PROJECT_ID}`);
     await waitFor(() => {
@@ -588,7 +588,7 @@ describe("AppSidebar", () => {
   // SHELL-10 (ADR-0049), new coverage, mirrors TC-SHELL-025's partition-
   // completeness discipline for the org side: every entity in exactly one
   // group or explicitly excluded, none missing, none duplicated.
-  it("SHELL-10: PROJECT_ENTITY_GROUPS + PROJECT_EXCLUDED_ENTITY_KEYS is a complete, non-overlapping partition of projectScopedEntities", async () => {
+  it("TC-SHELL-035: PROJECT_ENTITY_GROUPS + PROJECT_EXCLUDED_ENTITY_KEYS is a complete, non-overlapping partition of projectScopedEntities", async () => {
     const { PROJECT_ENTITY_GROUPS, PROJECT_EXCLUDED_ENTITY_KEYS } = await import(
       "../../../src/components/organisms/app-sidebar/app-sidebar"
     );
@@ -607,7 +607,7 @@ describe("AppSidebar", () => {
 
   // SHELL-10 (ADR-0049), new coverage, mirrors TC-SHELL-026's icon-exclusivity
   // check for the org side.
-  it("SHELL-10: each of the 4 project-nav groups renders exactly one icon, its own entity children render none", async () => {
+  it("TC-SHELL-036: each of the 4 project-nav groups renders exactly one icon, its own entity children render none", async () => {
     mockGetProject.mockResolvedValue(PROJECT_FIXTURE);
     renderSidebarAtProjectRoute(`/projects/${PROJECT_ID}`);
     await waitFor(() => {
