@@ -1,7 +1,8 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 import AppSidebar from "../../../src/components/organisms/app-sidebar";
+import { orgScopedEntities } from "../../../src/pages/admin/registry";
 
 /**
  * SHELL-1 (ADR-0018) sidebar unit tests.
@@ -147,5 +148,164 @@ describe("AppSidebar", () => {
     // `vh-100` existed only to cap the sidebar against `AppShell`'s old
     // `d-flex` row; the `.app-wrapper` grid makes it unnecessary and wrong.
     expect(sidebar).not.toHaveClass("vh-100");
+  });
+
+  // ------------------------------------------------------------------
+  // SHELL-7 (ADR-0044): org-scoped CRUD nav restructure.
+  //
+  // Scope note: TC-SHELL-022/023's *width* claims are deliberately NOT
+  // asserted here — jsdom does no layout (see `AppShell.tsx`'s docstring and
+  // root CLAUDE.md's CSS-layout rule), so a width assertion at this layer
+  // would be measuring nothing. Those live in `e2e/tests/shell7-sidebar-
+  // mini.spec.ts` against a real browser. What IS real jsdom ground here is
+  // the markup: which groups exist, what they contain, which carry icons, and
+  // what order they render in.
+  // ------------------------------------------------------------------
+
+  /** The 3-way partition ADR-0044 specifies, as the test's own source of truth. */
+  const EXPECTED_PARTITION: Record<string, string[]> = {
+    "sidebar-nav-group-access-control": [
+      "roles",
+      "permissions",
+      "role-assignments",
+      "org-memberships",
+    ],
+    "sidebar-nav-group-catalogs": ["test-design-techniques", "test-levels", "test-types"],
+    "sidebar-nav-group-organization": ["organizations"],
+  };
+
+  // TC-SHELL-025: asserted as a complete, non-overlapping partition — every
+  // registry entry present exactly once across the 3 groups, nothing
+  // duplicated, nothing missing — not spot-checked on 2-3 entities. Derived
+  // from `orgScopedEntities` itself, so adding a 9th entity to the registry
+  // without assigning it a group fails this test rather than silently
+  // dropping it out of the sidebar.
+  it("TC-SHELL-025: renders all 8 org-scoped entities as a complete, non-overlapping 3-group partition", () => {
+    renderSidebar("/orgs/org-1");
+
+    const seen: string[] = [];
+    for (const [groupTestId, entityKeys] of Object.entries(EXPECTED_PARTITION)) {
+      const group = screen.getByTestId(groupTestId);
+      // Children of THIS group, in DOM order, as their registry keys.
+      const renderedKeys = [...group.querySelectorAll("ul.nav-treeview [data-testid]")].map((el) =>
+        el.getAttribute("data-testid")!.replace("sidebar-nav-admin-", ""),
+      );
+      expect(renderedKeys).toEqual(entityKeys);
+      seen.push(...renderedKeys);
+    }
+
+    // Completeness + non-overlap, against the registry rather than a literal.
+    const registryKeys = orgScopedEntities.map((e) => e.key);
+    expect(registryKeys).toHaveLength(8);
+    expect([...seen].sort()).toEqual([...registryKeys].sort());
+    expect(new Set(seen).size).toBe(seen.length);
+
+    // Labels still come from the registry, not hardcoded in the sidebar.
+    for (const entityEntry of orgScopedEntities) {
+      expect(screen.getByTestId(`sidebar-nav-admin-${entityEntry.key}`)).toHaveTextContent(
+        entityEntry.label,
+      );
+    }
+
+    // Negative assertion: the retired flat group must be GONE, not merely
+    // accompanied by the new ones — a regression leaving both rendered would
+    // pass every positive check above.
+    expect(screen.queryByTestId("sidebar-nav-group-admin")).not.toBeInTheDocument();
+    expect(screen.queryByText("Admin")).not.toBeInTheDocument();
+  });
+
+  // TC-SHELL-026: icon-exclusivity. Only the 3 new groups and `Members` get an
+  // icon; the 8 entity children get none (matching TC-SHELL-021's pre-existing
+  // convention rather than silently reinterpreting it). `nav-arrow` is the
+  // group's disclosure caret, not a nav icon — counted separately so an
+  // assertion of "exactly one icon" can't be satisfied by the arrow.
+  it("TC-SHELL-026: only the 3 groups and Members render a nav icon, never the 8 entity children", () => {
+    renderSidebar("/orgs/org-1");
+
+    const groupIcons: Record<string, string> = {
+      "sidebar-nav-group-access-control": "fa-user-shield",
+      "sidebar-nav-group-catalogs": "fa-layer-group",
+      "sidebar-nav-group-organization": "fa-building",
+    };
+    for (const [groupTestId, iconClass] of Object.entries(groupIcons)) {
+      const toggle = screen.getByTestId(groupTestId).querySelector(":scope > a.nav-link")!;
+      const icons = toggle.querySelectorAll("i.nav-icon");
+      expect(icons).toHaveLength(1);
+      expect(icons[0]).toHaveClass("fa-solid", iconClass);
+      expect(icons[0]).toHaveAttribute("aria-hidden", "true");
+      expect(toggle.querySelectorAll("i.nav-arrow")).toHaveLength(1);
+    }
+
+    // Members: the one flat item SHELL-7 adds an icon to (an icon-less row is
+    // an empty slot in the collapsed mini rail).
+    const members = screen.getByTestId("sidebar-nav-org-members");
+    const memberIcons = members.querySelectorAll("i.nav-icon");
+    expect(memberIcons).toHaveLength(1);
+    expect(memberIcons[0]).toHaveClass("fa-solid", "fa-users");
+
+    // The 8 children carry no icon of any kind.
+    for (const entityEntry of orgScopedEntities) {
+      const child = screen.getByTestId(`sidebar-nav-admin-${entityEntry.key}`);
+      expect(child.querySelectorAll("i")).toHaveLength(0);
+    }
+
+    // `UI Elements` is explicitly out of SHELL-7's scope and keeps no icon.
+    const uiToggle = screen
+      .getByTestId("sidebar-nav-group-ui-elements")
+      .querySelector(":scope > a.nav-link")!;
+    expect(uiToggle.querySelectorAll("i.nav-icon")).toHaveLength(0);
+  });
+
+  // TC-SHELL-027: asserted as an ORDERED sequence read from the DOM, not six
+  // independent presence checks (which would pass on a scrambled order).
+  it("TC-SHELL-027: renders the org-scoped nav in the specified top-to-bottom order", () => {
+    const { container } = renderSidebar("/orgs/org-1");
+
+    const topLevel = [...container.querySelectorAll("ul.sidebar-menu > li.nav-item")];
+    const labels = topLevel.map((li) =>
+      within(li as HTMLElement)
+        .getAllByText(/.+/)[0]
+        .textContent?.trim(),
+    );
+    expect(labels).toEqual([
+      "Dashboard",
+      "Members",
+      "Access Control",
+      "Catalogs",
+      "Organization",
+      "UI Elements",
+    ]);
+  });
+
+  // The new groups use the same `openGroups` state shape as `UI Elements`
+  // (ADR-0044: "no new state shape, just more group keys") — and they are
+  // independent, so opening one must not open another.
+  it("toggles each new group independently via the existing menu-open mechanism", () => {
+    renderSidebar("/orgs/org-1");
+
+    const access = screen.getByTestId("sidebar-nav-group-access-control");
+    const catalogs = screen.getByTestId("sidebar-nav-group-catalogs");
+    expect(access).not.toHaveClass("menu-open");
+    expect(catalogs).not.toHaveClass("menu-open");
+
+    fireEvent.click(access.querySelector(":scope > a.nav-link")!);
+    expect(access).toHaveClass("menu-open");
+    expect(catalogs).not.toHaveClass("menu-open");
+
+    fireEvent.click(catalogs.querySelector(":scope > a.nav-link")!);
+    expect(access).toHaveClass("menu-open");
+    expect(catalogs).toHaveClass("menu-open");
+
+    fireEvent.click(access.querySelector(":scope > a.nav-link")!);
+    expect(access).not.toHaveClass("menu-open");
+    expect(catalogs).toHaveClass("menu-open");
+  });
+
+  it("renders none of the 3 new groups when orgId is absent", () => {
+    renderSidebar("/orgs/pick");
+
+    for (const groupTestId of Object.keys(EXPECTED_PARTITION)) {
+      expect(screen.queryByTestId(groupTestId)).not.toBeInTheDocument();
+    }
   });
 });

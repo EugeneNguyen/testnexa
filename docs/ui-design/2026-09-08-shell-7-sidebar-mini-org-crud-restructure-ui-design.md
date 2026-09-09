@@ -25,7 +25,7 @@ Desktop, expanded (unchanged from today):
 └────────────────────────────┘
 ```
 
-Desktop, collapsed (`sidebar-collapse sidebar-mini`, pointer not hovering — `3.1rem` rail, labels/group-arrows hidden, icon only):
+Desktop, collapsed (`sidebar-collapse sidebar-mini`, pointer not hovering — `4.6rem` rail, labels/group-arrows hidden, icon only):
 
 ```
 ┌───┐
@@ -40,9 +40,15 @@ Desktop, collapsed (`sidebar-collapse sidebar-mini`, pointer not hovering — `3
 └───┘
 ```
 
-Hovering the collapsed rail (still `sidebar-collapse`, AdminLTE's own `:hover` CSS rule) widens to `4.6rem`+ and reveals labels again — no JS, no click required, matches AdminLTE's own shipped stylesheet behavior. Toggling stays on the existing header hamburger (`AppShell`'s `toggleSidebar`) — `sidebar-mini` changes what "collapsed" *looks like*, not how collapse/expand is triggered.
+Hovering the collapsed rail (still `sidebar-collapse`, AdminLTE's own `:hover` CSS rule) widens it to the full `--lte-sidebar-width` (250px) and reveals labels again — no JS, no click required, matches AdminLTE's own shipped stylesheet behavior.
+
+> **Correction, added at implementation time (2026-09-08), matching [ADR-0044](../adr/0044-shell-7-sidebar-mini-org-crud-restructure.md)'s own correction note:** this section originally said the un-hovered rail is `3.1rem` and that hover widens it to "`4.6rem`+". Both figures were wrong. `3.1rem` comes from a `.compact-mode`-gated rule this app never activates; the applicable rule is a flat `4.6rem`, and hover goes to the full sidebar width. Corrected here from a live measurement (73.59px collapsed / 250px hovered at a 16px root font size), not from a second reading of the stylesheet. Toggling stays on the existing header hamburger (`AppShell`'s `toggleSidebar`) — `sidebar-mini` changes what "collapsed" *looks like*, not how collapse/expand is triggered.
 
 **Group-toggle interaction while collapsed** — needs live verification against a real AdminLTE instance before implementation locks this in (ADR-0044's own flagged open point): AdminLTE's stock JS shows a group's children as a hover flyout when mini-collapsed; since that JS isn't vendored (ADR-0042), the existing click-based `menu-open` toggle may behave differently under `sidebar-mini` than under plain `sidebar-collapse`. Implementation must observe this live (per root `CLAUDE.md`'s "verify empirically" testing note) and document whatever the actual behavior turns out to be — this doc does not prescribe a specific flyout mechanism.
+
+> **Observed, 2026-09-08 (real browser, isolated stack, real hover + real click at 1400x900) — this closes the open point above.** **There is no hover flyout.** AdminLTE's stock mini-mode flyout is JS-driven (`push-menu.ts`), which ADR-0042 does not vendor, and nothing in the shipped CSS closes a `menu-open` treeview when the rail is un-hovered. So the existing click-based toggle keeps working unchanged, and a group opened while hovering the rail **stays open when the pointer leaves**: its `.nav-treeview` remains `display: block` and renders *inline inside* the 4.6rem rail — each child laid out at ~57.6x40px, still hit-testable, and still navigating correctly (verified by clicking one and landing on `/orgs/:orgId/admin/roles`).
+>
+> The cosmetic consequence, accepted rather than worked around: while un-hovered those child rows are **visually blank**, because `.sidebar-mini.sidebar-collapse .sidebar-menu .nav-link p` collapses the label to `width: 0` (computed 8px — padding survives the zeroed content box) and the children deliberately carry no icon of their own (§3's icon-exclusivity rule, TC-SHELL-026). Hovering restores the full 250px width and every label. Giving children icons purely to fill the rail would contradict §3's own decision, so the behavior is recorded here and locked in by a regression test (`e2e/tests/shell7-sidebar-mini.spec.ts`) rather than changed. If it is ever judged a real usability problem, that is a new decision needing its own ADR — not a silent tweak.
 
 ## 3. Org-scoped CRUD nav restructure
 

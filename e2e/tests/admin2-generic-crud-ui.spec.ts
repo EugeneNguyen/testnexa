@@ -285,23 +285,33 @@ test.describe("ADMIN-2 UI: generic admin CRUD surface", () => {
   // this file's own concurrency with *other* spec files in a full-suite run.
   test.describe.configure({ mode: "serial" });
 
-  test("org-scoped admin page (test levels), reached via the sidebar's Admin nav group, renders a real seeded list", async ({
+  test("org-scoped admin page (test levels), reached via the sidebar's Catalogs nav group, renders a real seeded list", async ({
     page,
   }) => {
     const fixture = seedFixture();
     try {
       await login(page, fixture.orgAdmin.email, fixture.orgAdmin.password, fixture.orgId);
 
-      // Navigate via the real sidebar nav (AppSidebar.tsx's "Admin" CNavGroup,
-      // generated from the registry's org-scoped entities) rather than a bare
-      // `page.goto`, per this story's own coverage requirement — proves the
-      // nav wiring itself, not just the destination route.
+      // Navigate via the real sidebar nav (AppSidebar.tsx's org-scoped nav
+      // groups, generated from the registry's org-scoped entities) rather than
+      // a bare `page.goto`, per this story's own coverage requirement — proves
+      // the nav wiring itself, not just the destination route.
+      //
+      // SHELL-7 (ADR-0044) retired the single flat `Admin` group; `TestLevel`
+      // now lives under `Catalogs`. The child testid
+      // (`sidebar-nav-admin-test-levels`) is deliberately unchanged — only the
+      // parent group moved — so only the expand step needed retargeting. This
+      // is TC-SHELL-028's own claim for this entity: the same route, the same
+      // list screen, reached through the NEW parent group.
       const [response] = await Promise.all([
         page.waitForResponse(
           (res) => res.url().includes("/api/v1/test-levels") && res.request().method() === "GET",
         ),
         (async () => {
-          await page.getByTestId("sidebar-nav-group-admin").getByRole("link", { name: "Admin" }).click();
+          await page
+            .getByTestId("sidebar-nav-group-catalogs")
+            .getByRole("link", { name: "Catalogs" })
+            .click();
           await page.getByTestId("sidebar-nav-admin-test-levels").click();
         })(),
       ]);
