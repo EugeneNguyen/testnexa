@@ -30,6 +30,8 @@ This document is the implementation-level schema, refined from the [07 ERD](../p
 
 **SHELL-7** ([ADR-0046](../adr/0046-shell-7-sidebar-mini-org-crud-restructure.md), FR-SHELL-7) — reviewed, no schema impact. The sidebar-mini layout is a body-class CSS toggle; the org-scoped CRUD nav restructure only regroups `AppSidebar.tsx`'s presentation of the existing `orgScopedEntities` registry (`Role`, `Permission`, `RoleAssignment`, `OrgMembership`, `TestDesignTechnique`, `TestLevel`, `TestType`, `Organization`) into 3 named groups — no table, column, index, or route reads/writes any differently. Noted here explicitly so the gap isn't mistaken for an oversight.
 
+**PROJ-4** ([ADR-0047](../adr/0047-proj-4-projects-page-sidebar-entry.md), FR-PROJ-3/FR-PROJ-4) — reviewed, no schema impact. Relocating Project CRUD from `OrgHome`/"Dashboard" to its own `ProjectsPage`/`/orgs/:orgId/projects` is a frontend route/component move — the `Project` table (§3.5) and every route/query it already backed are unchanged. Noted here explicitly so the gap isn't mistaken for an oversight.
+
 ---
 
 ## 1. Entity count reconciliation

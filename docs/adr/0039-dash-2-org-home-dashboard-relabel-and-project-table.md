@@ -33,6 +33,8 @@ Two requests landed together for `OrgHome` (`/orgs/:orgId`, PROJ-1/ADR-0017's or
 
 **Resolved the same day, [ADR-0040](0040-role-assignment-project-cascade-delete.md):** `role_assignment.project_id`'s FK now `CASCADE`s instead of `RESTRICT`s — a Project created through the UI can now actually be deleted, and its auto-granted creator `RoleAssignment` (and any other project-scoped grants) are removed along with it. This ADR's own text above is left as originally written (the defect as first found, not fixed) per this repo's "flag drift, don't silently absorb" convention — see ADR-0040 for the fix and its own accepted trade-offs.
 
+**Placement amended 2026-09-09, [ADR-0047](0047-proj-4-projects-page-sidebar-entry.md):** the Project table (and its Edit/Delete/New-Project modals) described in Decision §2 above moves off this screen onto its own dedicated page, `/orgs/:orgId/projects`, reached via a new sidebar nav item. This ADR's own Decision/Consequences text is left exactly as written — it correctly describes what shipped and when, including *why* the table was placed here (no sidebar entry existed for it yet) — see ADR-0047 for the full reasoning behind the move and what stayed on this screen ("Dashboard" keeps only the two stat widgets and `RoleAssignmentsPanel`).
+
 ## Alternatives considered
 
 - **Consolidate `/dashboard` and `/orgs/:orgId` into one screen right now**, resolving the naming collision instead of just flagging it. Rejected for this pass — no story asked for that consolidation, and ADR-0035 explicitly scoped that decision to a future story once `/dashboard` actually needed real content; deciding it as a side effect of an "Org Home" relabel task would be scope creep past what was asked.
