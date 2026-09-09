@@ -1,43 +1,104 @@
-import { render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import AppBreadcrumb from "./app-breadcrumb";
 import { allEntities } from "../../pages/admin/registry";
+import { ApiError } from "../../lib/api/client";
+import { getProject } from "../../lib/api/projects";
 
 /**
- * SHELL-2 (ADR-0020) breadcrumb unit tests, TC-SHELL-007/008 and
- * TC-SHELL-016/017/018/019 (the 2026-09-07 coverage correction).
+ * SHELL-2 (ADR-0020) breadcrumb unit tests, TC-SHELL-007/008 plus the
+ * 2026-09-07 route-coverage correction, extended by SHELL-9 (ADR-0050) with
+ * TC-SHELL-032/033.
  *
  * Same per-route-pattern render approach as `AppSidebar.test.tsx`: mount
  * `AppBreadcrumb` as a `Route`'s element so `useLocation()`/`matchPath`
  * resolve against the same path patterns a real `ProtectedRoute` screen
  * would use.
+ *
+ * **SHELL-9 changed two things about this file, both structural:**
+ *
+ * 1. A `QueryClientProvider` is now mandatory around every render — the
+ *    component calls `useResolvedOrgId()`, which calls `useQuery`
+ *    unconditionally (a hook cannot sit behind a route-shape branch), so
+ *    without a provider every test in this file throws "No QueryClient set"
+ *    regardless of which route it exercises.
+ * 2. **The three project-scoped route tests below previously asserted a bare,
+ *    unlinked "Project" crumb — the exact behavior ADR-0050 replaces.** Those
+ *    assertions are rewritten here to the resolved `Projects -> {project name}`
+ *    trail, in the same change as the implementation, per ADR-0050's own
+ *    Consequences ("every existing e2e/Vitest assertion on those trails' exact
+ *    segment count/text needs updating"). They previously carried
+ *    `TC-SHELL-016/017/019` labels; those IDs in
+ *    `docs/test-cases/2026-09-03-test-cases.md` in fact belong to SHELL-6's
+ *    org-switcher rows, not to any breadcrumb row — a pre-existing labelling
+ *    drift this story did not create and does not renumber. The tests are
+ *    relabelled here against the row that genuinely pins their (new) behavior,
+ *    TC-SHELL-032, rather than carrying a wrong pointer forward.
  */
+
+vi.mock("../../lib/api/projects", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../lib/api/projects")>();
+  return { ...actual, getProject: vi.fn() };
+});
+
+const mockGetProject = vi.mocked(getProject);
+
+const PROJECT_ID = "9f1d2c3b-4a5e-6f70-8192-a3b4c5d6e7f8";
+const PROJECT_ORG_ID = "22222222-2222-2222-2222-222222222222";
+/**
+ * A real, distinctive name — TC-SHELL-032 explicitly requires asserting against
+ * "a seeded fixture's actual name string, not a placeholder", so that a
+ * resolution which silently fell back to the old bare "Project" label fails
+ * this file even though *a* breadcrumb still renders.
+ */
+const PROJECT_NAME = "Acme Payments Gateway";
+const PROJECT_FIXTURE = {
+  id: PROJECT_ID,
+  org_id: PROJECT_ORG_ID,
+  name: PROJECT_NAME,
+  standards_profile: null,
+};
+
 function renderBreadcrumb(initialEntry: string) {
   return render(
-    <MemoryRouter initialEntries={[initialEntry]}>
-      <Routes>
-        <Route path="/orgs/pick" element={<AppBreadcrumb />} />
-        <Route path="/orgs/:orgId" element={<AppBreadcrumb />} />
-        <Route path="/orgs/:orgId/projects" element={<AppBreadcrumb />} />
-        <Route path="/orgs/:orgId/members" element={<AppBreadcrumb />} />
-        <Route path="/orgs/:orgId/ui-elements/colors" element={<AppBreadcrumb />} />
-        <Route path="/orgs/:orgId/admin/:entity" element={<AppBreadcrumb />} />
-        <Route path="/orgs/:orgId/admin/:entity/:id/edit" element={<AppBreadcrumb />} />
-        <Route path="/projects/:projectId" element={<AppBreadcrumb />} />
-        <Route path="/projects/:projectId/test-plans/:testPlanId" element={<AppBreadcrumb />} />
-        <Route
-          path="/projects/:projectId/test-plans/:testPlanId/test-cycles/:testCycleId"
-          element={<AppBreadcrumb />}
-        />
-        <Route path="/projects/:projectId/admin/:entity" element={<AppBreadcrumb />} />
-        <Route path="/projects/:projectId/admin/:entity/:id/edit" element={<AppBreadcrumb />} />
-      </Routes>
-    </MemoryRouter>,
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <MemoryRouter initialEntries={[initialEntry]}>
+        <Routes>
+          <Route path="/orgs/pick" element={<AppBreadcrumb />} />
+          <Route path="/orgs/:orgId" element={<AppBreadcrumb />} />
+          <Route path="/orgs/:orgId/projects" element={<AppBreadcrumb />} />
+          <Route path="/orgs/:orgId/members" element={<AppBreadcrumb />} />
+          <Route path="/orgs/:orgId/ui-elements/colors" element={<AppBreadcrumb />} />
+          <Route path="/orgs/:orgId/admin/:entity" element={<AppBreadcrumb />} />
+          <Route path="/orgs/:orgId/admin/:entity/:id/edit" element={<AppBreadcrumb />} />
+          <Route path="/projects/:projectId" element={<AppBreadcrumb />} />
+          <Route path="/projects/:projectId/test-plans/:testPlanId" element={<AppBreadcrumb />} />
+          <Route
+            path="/projects/:projectId/test-plans/:testPlanId/test-cycles/:testCycleId"
+            element={<AppBreadcrumb />}
+          />
+          <Route path="/projects/:projectId/admin/:entity" element={<AppBreadcrumb />} />
+          <Route path="/projects/:projectId/admin/:entity/:id/edit" element={<AppBreadcrumb />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
+/** The trail's crumb texts, in DOM order — used for exact-sequence assertions. */
+function crumbTexts(container: HTMLElement): string[] {
+  return [...container.querySelectorAll("ol.breadcrumb > li.breadcrumb-item")].map(
+    (li) => li.textContent?.trim() ?? "",
   );
 }
 
 describe("AppBreadcrumb", () => {
+  beforeEach(() => {
+    mockGetProject.mockReset();
+  });
+
   it("TC-SHELL-007: resolves known route segments on /orgs/:orgId/members", () => {
     renderBreadcrumb("/orgs/org-1/members");
 
@@ -81,31 +142,6 @@ describe("AppBreadcrumb", () => {
     expect(screen.queryByText("pick")).not.toBeInTheDocument();
   });
 
-  it("TC-SHELL-016: renders a single unlinked crumb on /projects/:projectId, no Dashboard ancestor", () => {
-    renderBreadcrumb("/projects/proj-1");
-
-    expect(screen.getByText("Project")).toBeInTheDocument();
-    expect(screen.getByText("Project").closest("a")).toBeNull();
-    // The TC's own title says "no Dashboard ancestor" — the route carries no
-    // `orgId` param to link back with, so the trail must be exactly one crumb.
-    expect(screen.queryByText("Dashboard")).not.toBeInTheDocument();
-  });
-
-  it("TC-SHELL-017: resolves the TestPlan/TestCycle chain nested under Project, not Dashboard", () => {
-    renderBreadcrumb("/projects/proj-1/test-plans/plan-1/test-cycles/cycle-1");
-
-    expect(screen.getByText("Project")).toBeInTheDocument();
-    expect(screen.getByText("Project").closest("a")).toHaveAttribute("href", "/projects/proj-1");
-    expect(screen.getByText("Test Plan")).toBeInTheDocument();
-    expect(screen.getByText("Test Plan").closest("a")).toHaveAttribute(
-      "href",
-      "/projects/proj-1/test-plans/plan-1",
-    );
-    expect(screen.getByText("Test Cycle")).toBeInTheDocument();
-    expect(screen.getByText("Test Cycle").closest("a")).toBeNull();
-    expect(screen.queryByText("Dashboard")).not.toBeInTheDocument();
-  });
-
   it("TC-SHELL-018: resolves an org-scoped admin list route's entity label from the registry", () => {
     renderBreadcrumb("/orgs/org-1/admin/roles");
 
@@ -119,17 +155,170 @@ describe("AppBreadcrumb", () => {
     expect(screen.getByText("Roles").closest("a")).toBeNull();
   });
 
-  it("TC-SHELL-019: resolves a project-scoped admin edit route as Project -> entity label -> Edit", () => {
-    renderBreadcrumb("/projects/proj-1/admin/test-cases/tc-1/edit");
+  // ------------------------------------------------------------------
+  // SHELL-9 (ADR-0050) / TC-SHELL-032: the resolved project trail.
+  //
+  // The TC requires `/projects/:projectId` AND "each of its 4 nested route
+  // patterns in turn", each asserted for its own full segment sequence per UI
+  // Design Document §1b — not just the shared two-segment prefix checked once.
+  // Each case below therefore asserts the ENTIRE ordered crumb list, so a trail
+  // that grew or lost a segment fails rather than passing on a substring match.
+  // ------------------------------------------------------------------
 
-    expect(screen.getByText("Project")).toBeInTheDocument();
-    expect(screen.getByText("Project").closest("a")).toHaveAttribute("href", "/projects/proj-1");
-    expect(screen.getByText("Test cases")).toBeInTheDocument();
-    expect(screen.getByText("Test cases").closest("a")).toHaveAttribute(
+  it("TC-SHELL-032: /projects/:projectId resolves Projects (linked) -> {project name} (active)", async () => {
+    mockGetProject.mockResolvedValue(PROJECT_FIXTURE);
+
+    const { container } = renderBreadcrumb(`/projects/${PROJECT_ID}`);
+
+    await waitFor(() => {
+      expect(crumbTexts(container)).toEqual(["Projects", PROJECT_NAME]);
+    });
+    // "Projects" links to the resolved org's own list route — the whole point
+    // of the story: a click-path back out of the project.
+    expect(screen.getByText("Projects").closest("a")).toHaveAttribute(
       "href",
-      "/projects/proj-1/admin/test-cases",
+      `/orgs/${PROJECT_ORG_ID}/projects`,
     );
-    expect(screen.getByText("Edit")).toBeInTheDocument();
+    // The project's real name is the active, unlinked final segment.
+    const active = container.querySelector("li.breadcrumb-item.active")!;
+    expect(active).toHaveTextContent(PROJECT_NAME);
+    expect(active).toHaveAttribute("aria-current", "page");
+    expect(active.querySelector("a")).toBeNull();
+    // "never the old bare unlinked 'Project' label" — the literal negative the
+    // TC's own Expected-result cell names.
+    expect(screen.queryByText("Project")).not.toBeInTheDocument();
+    expect(screen.queryByText("Dashboard")).not.toBeInTheDocument();
+  });
+
+  it("TC-SHELL-032: /projects/:projectId/test-plans/:testPlanId resolves Projects -> {name} -> Test Plan", async () => {
+    mockGetProject.mockResolvedValue(PROJECT_FIXTURE);
+
+    const { container } = renderBreadcrumb(`/projects/${PROJECT_ID}/test-plans/plan-1`);
+
+    await waitFor(() => {
+      expect(crumbTexts(container)).toEqual(["Projects", PROJECT_NAME, "Test Plan"]);
+    });
+    expect(screen.getByText("Projects").closest("a")).toHaveAttribute(
+      "href",
+      `/orgs/${PROJECT_ORG_ID}/projects`,
+    );
+    // On a nested pattern the project's name links back to its own detail screen.
+    expect(screen.getByText(PROJECT_NAME).closest("a")).toHaveAttribute(
+      "href",
+      `/projects/${PROJECT_ID}`,
+    );
+    expect(screen.getByText("Test Plan").closest("a")).toBeNull();
+    expect(screen.queryByText("Project")).not.toBeInTheDocument();
+  });
+
+  it("TC-SHELL-032: the test-cycles route resolves Projects -> {name} -> Test Plan -> Test Cycle", async () => {
+    mockGetProject.mockResolvedValue(PROJECT_FIXTURE);
+
+    const { container } = renderBreadcrumb(
+      `/projects/${PROJECT_ID}/test-plans/plan-1/test-cycles/cycle-1`,
+    );
+
+    await waitFor(() => {
+      expect(crumbTexts(container)).toEqual([
+        "Projects",
+        PROJECT_NAME,
+        "Test Plan",
+        "Test Cycle",
+      ]);
+    });
+    expect(screen.getByText("Projects").closest("a")).toHaveAttribute(
+      "href",
+      `/orgs/${PROJECT_ORG_ID}/projects`,
+    );
+    expect(screen.getByText(PROJECT_NAME).closest("a")).toHaveAttribute(
+      "href",
+      `/projects/${PROJECT_ID}`,
+    );
+    expect(screen.getByText("Test Plan").closest("a")).toHaveAttribute(
+      "href",
+      `/projects/${PROJECT_ID}/test-plans/plan-1`,
+    );
+    expect(screen.getByText("Test Cycle").closest("a")).toBeNull();
+    expect(screen.queryByText("Project")).not.toBeInTheDocument();
+    expect(screen.queryByText("Dashboard")).not.toBeInTheDocument();
+  });
+
+  it("TC-SHELL-032: a project-scoped admin list route resolves Projects -> {name} -> {entity label}", async () => {
+    mockGetProject.mockResolvedValue(PROJECT_FIXTURE);
+
+    const { container } = renderBreadcrumb(`/projects/${PROJECT_ID}/admin/test-cases`);
+
+    // The entity label comes from the registry, not a hardcoded string here.
+    const testCasesLabel = allEntities.find((e) => e.key === "test-cases")!.label;
+    await waitFor(() => {
+      expect(crumbTexts(container)).toEqual(["Projects", PROJECT_NAME, testCasesLabel]);
+    });
+    expect(screen.getByText(testCasesLabel).closest("a")).toBeNull();
+    expect(screen.queryByText("Project")).not.toBeInTheDocument();
+  });
+
+  it("TC-SHELL-032: a project-scoped admin edit route resolves Projects -> {name} -> {entity label} -> Edit", async () => {
+    mockGetProject.mockResolvedValue(PROJECT_FIXTURE);
+
+    const { container } = renderBreadcrumb(`/projects/${PROJECT_ID}/admin/test-cases/tc-1/edit`);
+
+    const testCasesLabel = allEntities.find((e) => e.key === "test-cases")!.label;
+    await waitFor(() => {
+      expect(crumbTexts(container)).toEqual(["Projects", PROJECT_NAME, testCasesLabel, "Edit"]);
+    });
+    expect(screen.getByText("Projects").closest("a")).toHaveAttribute(
+      "href",
+      `/orgs/${PROJECT_ORG_ID}/projects`,
+    );
+    expect(screen.getByText(PROJECT_NAME).closest("a")).toHaveAttribute(
+      "href",
+      `/projects/${PROJECT_ID}`,
+    );
+    expect(screen.getByText(testCasesLabel).closest("a")).toHaveAttribute(
+      "href",
+      `/projects/${PROJECT_ID}/admin/test-cases`,
+    );
     expect(screen.getByText("Edit").closest("a")).toBeNull();
+    expect(screen.queryByText("Project")).not.toBeInTheDocument();
+  });
+
+  // ------------------------------------------------------------------
+  // SHELL-9 / TC-SHELL-033, breadcrumb half — two DISTINCT cases (pending vs.
+  // a real 404), per test-design §39: "a resolver that only handles 'still
+  // loading' but throws unhandled on a real 404 would pass a pending-only
+  // check". The sidebar half lives in `AppSidebar.test.tsx`.
+  // ------------------------------------------------------------------
+
+  it("TC-SHELL-033(a): renders nothing at all (no partial trail, no raw id) while resolution is pending", () => {
+    mockGetProject.mockReturnValue(new Promise(() => {}));
+
+    const { container } = renderBreadcrumb(`/projects/${PROJECT_ID}/test-plans/plan-1`);
+
+    // The existing `segments.length === 0 -> null` path — TC-SHELL-008's own
+    // invariant, now proven to also cover this new failure source.
+    expect(container.querySelector(".breadcrumb")).not.toBeInTheDocument();
+    expect(container.querySelector("nav[aria-label='breadcrumb']")).not.toBeInTheDocument();
+    // Specifically NOT a rootless partial trail ("Test Plan" with no ancestors).
+    expect(screen.queryByText("Test Plan")).not.toBeInTheDocument();
+    expect(screen.queryByText(PROJECT_ID)).not.toBeInTheDocument();
+    expect(screen.queryByText("undefined")).not.toBeInTheDocument();
+    expect(container.textContent).not.toContain("undefined");
+  });
+
+  it("TC-SHELL-033(b): renders nothing at all (no crash) when the project 404s", async () => {
+    mockGetProject.mockRejectedValue(new ApiError("Not Found", 404, { code: "not_found" }));
+
+    const { container } = renderBreadcrumb(`/projects/${PROJECT_ID}/test-plans/plan-1`);
+
+    await waitFor(() => {
+      expect(mockGetProject).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(container.querySelector(".breadcrumb")).not.toBeInTheDocument();
+    });
+    expect(screen.queryByText("Test Plan")).not.toBeInTheDocument();
+    expect(screen.queryByText("Projects")).not.toBeInTheDocument();
+    expect(screen.queryByText(PROJECT_ID)).not.toBeInTheDocument();
+    expect(container.textContent).not.toContain("undefined");
   });
 });

@@ -36,6 +36,10 @@ This document is the implementation-level schema, refined from the [07 ERD](../p
 
 **BRAND-1** ([ADR-0048](../adr/0048-brand-1-logo-brand-system.md), FR-BRAND-1) — reviewed, no schema impact. The entire logo/brand system (SVG assets, favicon, `BrandLogo`/`AppHeader`/`AppSidebar` markup) is frontend-only presentation — no table, column, index, or query reads/writes any differently. Noted here explicitly so the gap isn't mistaken for an oversight.
 
+**SHELL-9** ([ADR-0050](../adr/0050-shell-9-project-scope-nav-context-resolution.md), FR-SHELL-8) — reviewed, no schema impact. `useResolvedOrgId()`'s fetch-when-absent branch reads the `Project` table's own existing `org_id` column (§3.5) via the already-shipped `GET /projects/{id}`; no new table, column, index, or query shape. Noted here explicitly so the gap isn't mistaken for an oversight.
+
+**SHELL-10** ([ADR-0051](../adr/0051-shell-10-project-scope-entity-nav.md), FR-SHELL-9) — reviewed, no schema impact. A sidebar presentation change only — every entity `PROJECT_ENTITY_GROUPS` groups is already fully specified in the sections below, reached via its already-shipped `/projects/:projectId/admin/<entity>` route (ADR-0025/ADR-0027's registry). No table, column, index, or route reads/writes any differently. Noted here explicitly so the gap isn't mistaken for an oversight.
+
 ---
 
 ## 1. Entity count reconciliation
