@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-09
 **Story:** [SHELL-9](../user-stories/2026-09-04-admin-shell-sidebar-stories.md)
-**ADR:** [ADR-0049](../adr/0049-shell-9-project-scope-nav-context-resolution.md)
+**ADR:** [ADR-0050](../adr/0050-shell-9-project-scope-nav-context-resolution.md)
 
 ## 1. What changes visually
 

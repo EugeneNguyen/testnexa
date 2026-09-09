@@ -23,7 +23,7 @@ PR #42 also left one question dangling that this ADR has to answer: `components/
 
 - **AdminLTE v4 (`admin-lte@4.9.1`) is the project's design system**, with its declared peer dependency **`bootstrap@^5.3.8`**. AdminLTE v4 *is* Bootstrap 5 plus a layout/skin layer, so Bootstrap is the base contract and AdminLTE supplies the admin shell (`.app-wrapper` grid, sidebar, content header) on top of it.
 - **CSS entry, imported once in `frontend/src/main.tsx`, in this order**: `bootstrap/dist/css/bootstrap.min.css`, then `admin-lte/dist/css/adminlte.min.css`, then `@fortawesome/fontawesome-free/css/all.min.css`, then `./index.css`. Order is load-bearing — AdminLTE's rules are authored to override Bootstrap's, not to be overridden by them.
-- `@coreui/react`, `@coreui/coreui`, `@coreui/icons`, and `@coreui/icons-react` are **removed**. Zero `@coreui/*` imports remain anywhere in `frontend/src` or `frontend/tests`.
+- `@coreui/react`, `@coreui/coreui`, `@coreui/icons`, and `@coreui/icons-react` are **removed**. Zero `@coreui/*` imports remain anywhere in `frontend/src` (or `frontend/tests/` — historical layout, superseded 2026-09-09 by [ADR-0049](0049-frontend-co-locate-unit-tests.md), Vitest specs now live co-located next to their source).
 
 ### Icons: Font Awesome Free
 

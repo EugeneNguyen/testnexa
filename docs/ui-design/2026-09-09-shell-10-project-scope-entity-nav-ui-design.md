@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-09
 **Story:** [SHELL-10](../user-stories/2026-09-04-admin-shell-sidebar-stories.md)
-**ADR:** [ADR-0050](../adr/0050-shell-10-project-scope-entity-nav.md)
+**ADR:** [ADR-0051](../adr/0051-shell-10-project-scope-entity-nav.md)
 
 ## 1. What changes visually
 
@@ -57,11 +57,11 @@ Icon-per-group, no icon on entity children — same convention `ORG_ENTITY_GROUP
 
 ## 3. Loading / error states
 
-Same posture ADR-0049 §4 already established, now applied to the entity groups too (ADR-0050 Decision §4): while `useResolvedOrgId()`'s fetch is pending or fails, the sidebar shows brand-only (its pre-existing empty-nav state) — no group content, no back links, until `orgId` resolves. This is a deliberate widening of the gate from "just `projectId`" (an earlier implementation draft) to "`projectId` AND `orgId`" — see ADR-0050 Consequences for why the narrower gate was wrong.
+Same posture ADR-0050 §4 already established, now applied to the entity groups too (ADR-0051 Decision §4): while `useResolvedOrgId()`'s fetch is pending or fails, the sidebar shows brand-only (its pre-existing empty-nav state) — no group content, no back links, until `orgId` resolves. This is a deliberate widening of the gate from "just `projectId`" (an earlier implementation draft) to "`projectId` AND `orgId`" — see ADR-0051 Consequences for why the narrower gate was wrong.
 
 ## 4. Alternatives considered
 
-See ADR-0050's own Alternatives section (stacked org+project nav; linking to `ProjectDetail`'s bespoke sections instead of generic-admin; a flat ungrouped list) — not repeated here, the ADR is the record.
+See ADR-0051's own Alternatives section (stacked org+project nav; linking to `ProjectDetail`'s bespoke sections instead of generic-admin; a flat ungrouped list) — not repeated here, the ADR is the record.
 
 ## 5. Open question (flagged, not silently decided)
 

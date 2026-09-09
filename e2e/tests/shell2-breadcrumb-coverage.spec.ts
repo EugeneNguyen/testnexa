@@ -22,11 +22,11 @@ import { expect, test } from "@playwright/test";
  *
  * **What each test asserts, against each TC's literal wording:**
  *
- * **SHELL-9 (ADR-0049, 2026-09-09) rewrote three of the four sections below.**
+ * **SHELL-9 (ADR-0050, 2026-09-09) rewrote three of the four sections below.**
  * Every project-scoped trail now opens with a resolved `Projects ->
  * {project name}` prefix instead of a bare, unlinked `Project` label, so each
  * of those trails grew by exactly one segment and the old assertions became
- * false. ADR-0049's own Consequences section names this file as one of the two
+ * false. ADR-0050's own Consequences section names this file as one of the two
  * that had to change in the same commit. The `/orgs/:orgId/admin/roles`
  * section (org-scoped) is untouched — no org-scoped trail changed.
  *
@@ -77,7 +77,7 @@ interface BreadcrumbFixture {
   orgId: string;
   projectId: string;
   /**
-   * SHELL-9 (ADR-0049): the seeded Project's real `name`. The breadcrumb now
+   * SHELL-9 (ADR-0050): the seeded Project's real `name`. The breadcrumb now
    * renders it as a trail segment, so the assertions need the exact string the
    * seed generated (it carries a random suffix) rather than a literal.
    */
@@ -364,7 +364,7 @@ test.describe("SHELL-2: breadcrumb coverage for the previously unmapped routes",
 
       // =======================================================================
       // TC-SHELL-016 — /projects/:projectId
-      // REVISED by SHELL-9 (ADR-0049): expected is now the resolved two-crumb
+      // REVISED by SHELL-9 (ADR-0050): expected is now the resolved two-crumb
       // trail `Projects / {project name}`, replacing the bare unlinked
       // "Project" this section used to assert. "No Dashboard ancestor" still
       // holds — the new root is `Projects`, not `Dashboard`.
@@ -395,7 +395,7 @@ test.describe("SHELL-2: breadcrumb coverage for the previously unmapped routes",
       // =======================================================================
       // TC-SHELL-017 — /projects/:projectId/test-plans/:testPlanId
       //                /test-cycles/:testCycleId
-      // REVISED by SHELL-9 (ADR-0049): four crumbs now —
+      // REVISED by SHELL-9 (ADR-0050): four crumbs now —
       // "Projects / {project name} / Test Plan / Test Cycle". The first three
       // are links, "Test Cycle" is active text; still no "Dashboard" segment
       // anywhere in the trail.
@@ -471,7 +471,7 @@ test.describe("SHELL-2: breadcrumb coverage for the previously unmapped routes",
 
       // =======================================================================
       // TC-SHELL-019 — /projects/:projectId/admin/test-cases/:id/edit
-      // REVISED by SHELL-9 (ADR-0049): four crumbs now —
+      // REVISED by SHELL-9 (ADR-0050): four crumbs now —
       // "Projects / {project name} / Test cases / Edit". The project's name
       // carries the `/projects/:projectId` link the old bare "Project" crumb
       // used to; "Test cases" links to the list route; "Edit" is active text.

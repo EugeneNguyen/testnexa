@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { expect, test } from "@playwright/test";
 
 /**
- * SHELL-9 (ADR-0049) project-scope nav context E2E — TC-SHELL-029,
+ * SHELL-9 (ADR-0050) project-scope nav context E2E — TC-SHELL-029,
  * TC-SHELL-031 and TC-SHELL-032 from `docs/test-cases/2026-09-03-test-cases.md`.
  *
  * **What this story fixed, and therefore what must be proven in a real
@@ -249,7 +249,7 @@ test.describe("SHELL-9: project-scope nav context (sidebar + breadcrumb)", () =>
       // which is precisely the case that would otherwise let a stale in-memory
       // `orgId` mask a real resolution gap.
       //
-      // **Revised 2026-09-09 (SHELL-10, ADR-0049):** the expected nav here is
+      // **Revised 2026-09-09 (SHELL-10, ADR-0050):** the expected nav here is
       // now the project-mode nav (4 entity groups + "Back to Projects"), NOT
       // "identical to the org nav" — SHELL-10 makes project-scoped routes
       // render a distinct nav from org-scoped ones. The negative half (org nav
@@ -334,7 +334,7 @@ test.describe("SHELL-9: project-scope nav context (sidebar + breadcrumb)", () =>
       // would pass an attribute check while leaving the dead end intact, which
       // is the exact defect this story exists to fix.
       //
-      // **Revised 2026-09-09 (SHELL-10, ADR-0049):** the click target is now
+      // **Revised 2026-09-09 (SHELL-10, ADR-0050):** the click target is now
       // "Back to Projects" (bottom of the project-mode nav) — PROJ-4's own
       // `sidebar-nav-projects` item this test originally clicked no longer
       // renders on a project-scoped route at all, since SHELL-10 replaces the
@@ -358,7 +358,7 @@ test.describe("SHELL-9: project-scope nav context (sidebar + breadcrumb)", () =>
   });
 
   /**
-   * SHELL-10 (ADR-0049), new coverage — the literal ask this story exists to
+   * SHELL-10 (ADR-0050), new coverage — the literal ask this story exists to
    * satisfy: the project-mode sidebar's entity-group children are real,
    * clickable links to the project's own CRUD screens (Requirement, Test
    * Case, Test Condition, etc.), not just visible labels. Clicking one must

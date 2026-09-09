@@ -112,6 +112,7 @@
  */
 import { useState } from "react";
 import { NavLink, useMatch } from "react-router-dom";
+import logoMarkUrl from "../../../assets/brand/logo-mark.svg";
 import { orgScopedEntities, projectScopedEntities } from "../../../pages/admin/registry";
 import { useResolvedOrgId } from "../../../hooks/useResolvedOrgId";
 
@@ -191,7 +192,7 @@ const ORG_ENTITY_GROUPS: OrgEntityGroup[] = [
 ];
 
 /**
- * SHELL-10 (ADR-0049): the project-mode counterpart to `ORG_ENTITY_GROUPS`
+ * SHELL-10 (ADR-0050): the project-mode counterpart to `ORG_ENTITY_GROUPS`
  * above — a complete, non-overlapping partition of the *included* subset of
  * `projectScopedEntities` into 4 named, individually-iconed groups.
  *
@@ -237,7 +238,7 @@ export const PROJECT_ENTITY_GROUPS: OrgEntityGroup[] = [
 ];
 
 /**
- * SHELL-10 (ADR-0049): `projectScopedEntities` entries deliberately given no
+ * SHELL-10 (ADR-0050): `projectScopedEntities` entries deliberately given no
  * top-level project-nav slot. Declared explicitly (rather than left as
  * "whatever isn't in a group") so the partition test can assert
  * groups + exclusions === the whole registry, and so adding a new
@@ -254,7 +255,7 @@ export const PROJECT_ENTITY_GROUPS: OrgEntityGroup[] = [
  */
 /**
  * Shared renderer for a flat (non-group) nav row. Extracted by SHELL-10
- * (ADR-0049) purely so the org-mode items above the groups and the project-mode
+ * (ADR-0050) purely so the org-mode items above the groups and the project-mode
  * "back" links below them render byte-identical markup — the two lists are
  * mutually exclusive at runtime, but duplicating the JSX would let them drift.
  */
@@ -280,13 +281,13 @@ export const PROJECT_EXCLUDED_ENTITY_KEYS: string[] = [
 ];
 
 function AppSidebar() {
-  // SHELL-9 (ADR-0049): was a raw `useParams<{orgId?: string}>()` read, which
+  // SHELL-9 (ADR-0050): was a raw `useParams<{orgId?: string}>()` read, which
   // resolved to `undefined` on every `/projects/:projectId/...` screen and left
   // this whole nav empty there. `useResolvedOrgId()` returns the same value on
   // `/orgs/:orgId/...` routes (no fetch) and resolves it via `GET
   // /projects/{id}` on project-scoped ones. Everything below is unchanged: it
   // already branched on "is `orgId` truthy," never on which route produced it.
-  // SHELL-10 (ADR-0049) additionally reads `mode`: SHELL-9 made project-scoped
+  // SHELL-10 (ADR-0050) additionally reads `mode`: SHELL-9 made project-scoped
   // routes resolve the same `orgId` an org route would (which is what made the
   // org nav render there at all), so "is `orgId` truthy" can no longer tell the
   // two route kinds apart. `mode` is the explicit signal.
@@ -315,7 +316,7 @@ function AppSidebar() {
   // The single, obvious extension point (ADR-0018 AC5): a future story adds
   // its own screen's nav entry here, and nowhere else.
   //
-  // SHELL-10 (ADR-0049): org-mode only. On a project-scoped route these flat
+  // SHELL-10 (ADR-0050): org-mode only. On a project-scoped route these flat
   // org items are replaced wholesale by the project-mode nav below — the org
   // nav is not rendered alongside it, and not rendered at all.
   const navItems: SidebarNavItem[] = orgId && mode === "org"
@@ -414,7 +415,7 @@ function AppSidebar() {
       ]
     : [];
 
-  // SHELL-10 (ADR-0049): project-mode nav. Same generated-from-the-registry
+  // SHELL-10 (ADR-0050): project-mode nav. Same generated-from-the-registry
   // discipline as the org side — child labels and routes come from
   // `projectScopedEntities`, never hardcoded, and each group links to the
   // already-shipped generic-admin route (`/projects/:projectId/admin/<entity>`,
@@ -424,7 +425,7 @@ function AppSidebar() {
   // available synchronously from the route, but waiting for `orgId` (i.e. for
   // `useResolvedOrgId()`'s fetch to actually resolve) preserves the same
   // "one fetch's worth of blank sidebar, no partial/flickering nav" trade-off
-  // ADR-0049 §4 already established for the org nav this replaces — content
+  // ADR-0050 §4 already established for the org nav this replaces — content
   // that depends on a project genuinely existing (its group links point at
   // `/projects/:projectId/admin/...` routes) shouldn't render before that's
   // confirmed.
@@ -454,15 +455,15 @@ function AppSidebar() {
 
   const navGroups: SidebarNavGroup[] = mode === "project" ? projectNavGroups : orgNavGroups;
 
-  // SHELL-10 (ADR-0049): the two "back" links, rendered *below* the 4 entity
+  // SHELL-10 (ADR-0050): the two "back" links, rendered *below* the 4 entity
   // groups (hence a separate array — `navItems` renders above `navGroups`).
   //
   // "Back to Projects" is PROJ-4's existing `/orgs/:orgId/projects` item
-  // repositioned, not a new destination — ADR-0049 already established that
+  // repositioned, not a new destination — ADR-0050 already established that
   // reusing it beats inventing a second entry pointing at the same place. It
   // needs `orgId`, which on this route only exists once SHELL-9's fetch has
   // resolved, so it is omitted while pending/failed rather than rendered as a
-  // dead link (the same graceful-degradation posture as ADR-0049 §4).
+  // dead link (the same graceful-degradation posture as ADR-0050 §4).
   const bottomNavItems: SidebarNavItem[] =
     mode === "project" && projectId
       ? [
@@ -495,8 +496,46 @@ function AppSidebar() {
 
   return (
     <aside className="app-sidebar bg-body-secondary shadow">
+      {/* BRAND-1 (ADR-0048 Decision §6, UI Design Document §3.3): BOTH logo
+          slots render unconditionally, with AdminLTE's own
+          `.brand-image-xl`/`.logo-xl` + `.brand-image-xs`/`.logo-xs` class
+          pair. AdminLTE's shipped CSS cross-fades which one is visible off the
+          existing `sidebar-mini`/`sidebar-collapse` body classes (SHELL-7,
+          ADR-0046) — deliberately no React state and no new JS here, per
+          ADR-0042's "use the library's own CSS, don't vendor its plugins".
+
+          DEVIATION from ADR-0048/UI-Design §3.3/TC-DS-027 as originally
+          written: those specified `logo-full.svg` (icon + wordmark) for the
+          `.brand-image-xl` slot. It cannot go here. AdminLTE positions
+          `.logo-xl`/`.logo-xs` ABSOLUTELY (`top:6px;left:12px`), while
+          `.brand-text` stays in normal flow at x~89 — so a lockup carrying
+          its own wordmark renders *underneath* the `.brand-text` wordmark,
+          painting "TestNexa" twice, overlapping (confirmed on a live
+          instance, BRAND-1, 2026-09-09). `.brand-text` cannot simply be
+          dropped to make room: the already-shipped TC-SHELL-005
+          (`e2e/tests/shell-nav.spec.ts`) asserts `.app-sidebar`'s "TestNexa"
+          text is VISIBLE, so removing it would regress another story's
+          coverage. Both slots therefore use the mark; `logo-full.svg` is
+          still used at the login/signup mount, where it stands alone with no
+          adjacent `.brand-text` to collide with. All three documents were
+          corrected in place 2026-09-09 to match what actually ships — see
+          ADR-0048's Consequences amendment for the full reasoning. */}
       <div className="sidebar-brand">
-        <a className="brand-link">
+        <a className="brand-link" href="/dashboard" aria-label="TestNexa home" data-testid="sidebar-brand-link">
+          <img
+            src={logoMarkUrl}
+            className="brand-image-xl logo-xl"
+            alt=""
+            style={{ height: "2.5rem", width: "auto" }}
+            data-testid="sidebar-brand-logo-xl"
+          />
+          <img
+            src={logoMarkUrl}
+            className="brand-image-xs logo-xs"
+            alt=""
+            style={{ height: "2rem", width: "auto" }}
+            data-testid="sidebar-brand-logo-xs"
+          />
           <span className="brand-text fw-light">TestNexa</span>
         </a>
       </div>
@@ -568,7 +607,7 @@ function AppSidebar() {
                 </li>
               );
             })}
-            {/* SHELL-10 (ADR-0049): the project-mode "back" links, below the 4
+            {/* SHELL-10 (ADR-0050): the project-mode "back" links, below the 4
                 entity groups. Identical markup to the flat `navItems` above —
                 same `renderFlatItem` helper, so the two can't drift apart. */}
             {bottomNavItems.map(renderFlatItem)}
