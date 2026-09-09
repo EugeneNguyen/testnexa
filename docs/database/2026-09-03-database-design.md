@@ -247,6 +247,8 @@ Unique: `(org_id, name)`.
 
 **DS-2** ([ADR-0041](../adr/0041-ds-2-table-container-shared-pagination.md)) — reviewed, no schema impact. The shared `Table` container, the `page_size` ceiling change (25→100), and adding pagination to `GET /orgs/{org_id}/role-assignments` are all API/frontend-layer changes — no new column, no new table, no FK/constraint change. `role_assignment`'s columns (including `project_id`'s `ON DELETE CASCADE`, [ADR-0040](../adr/0040-role-assignment-project-cascade-delete.md) above) are unaffected; the route's response envelope changes shape, not the underlying query's `WHERE`/join.
 
+**DS-3** ([ADR-0045](../adr/0045-ds-3-infobox-widget-consolidation.md)) — reviewed, no schema impact. A frontend-only markup swap (new `InfoBox` component, retires `WidgetStatsTile`/`StatTile`) over data both retired components already sourced from existing routes' `total` fields — no new column, table, FK, or query shape.
+
 **Release**
 | Column | Type | Constraints |
 |---|---|---|
@@ -448,9 +450,11 @@ Index: `(test_execution_id, logged_at)` — ordered timeline reads (EXEC-2).
 | status | varchar | not null, default `open` |
 | created_at, updated_at | timestamptz | not null |
 
+**EXEC-3 ([ADR-0044](../adr/0044-exec-3-raise-defect-from-execution.md)) introduces no schema change to this table or `trace.py`'s `TestCaseDefectLink` (§3.9).** Every column above already existed since ADR-0027; this story is the first to actually write a `Defect`+`TestCaseDefectLink` pair, via the new bespoke `POST /executions/{id}/defects` (`test_execution_id` and `reported_by_actor_id` populated exactly as this table already specifies, `test_case_id` for the link row derived from the target `TestExecution`'s own `test_case_id`, not client-supplied). `status` stays the plain `varchar` it always was — `Defect`'s own `create` never needed a new controlled vocabulary, only a request schema exposing what the column already allows. The new read side, `GET /test-cases/{id}/defects`, is a plain `SELECT ... ORDER BY defect.created_at DESC` join against the two tables above — no new index required at scaffold scale (`TestCaseDefectLink.test_case_id` is already indexed, §3.9).
+
 ### 3.9 `trace.py` — the 4 dedicated link tables ([ADR-0005](../adr/0005-traceability-link-dedicated-join-tables.md))
 
-All four share the same shape: surrogate `uuid` PK, two FK columns, unique constraint on the pair, `created_at` only (links are immutable — delete-and-recreate, never edited). List/get routes only ([ADR-0027](../adr/0027-generic-admin-crud-ui-and-backend-completion.md)) — a row is still only ever written as a side effect of the bespoke routes in API Document §4, never via a direct `POST`/`PATCH`/`DELETE` on the link table itself. `RequirementTestConditionLink` and `TestConditionTestCaseLink` rows are populated this way by [ADR-0028](../adr/0028-req3-test-condition-rigor-path-bespoke-routes.md)'s two REQ-3 routes; `RequirementTestCaseLink` rows are populated this way by REQ-2's direct-link `POST /requirements/{id}/test-cases` route ([ADR-0029](../adr/0029-testcase-resolver-direct-link-fallback.md)).
+All four share the same shape: surrogate `uuid` PK, two FK columns, unique constraint on the pair, `created_at` only (links are immutable — delete-and-recreate, never edited). List/get routes only ([ADR-0027](../adr/0027-generic-admin-crud-ui-and-backend-completion.md)) — a row is still only ever written as a side effect of the bespoke routes in API Document §4, never via a direct `POST`/`PATCH`/`DELETE` on the link table itself. `RequirementTestConditionLink` and `TestConditionTestCaseLink` rows are populated this way by [ADR-0028](../adr/0028-req3-test-condition-rigor-path-bespoke-routes.md)'s two REQ-3 routes; `RequirementTestCaseLink` rows are populated this way by REQ-2's direct-link `POST /requirements/{id}/test-cases` route ([ADR-0029](../adr/0029-testcase-resolver-direct-link-fallback.md)); `TestCaseDefectLink` rows are populated this way by EXEC-3's `POST /executions/{id}/defects` route ([ADR-0044](../adr/0044-exec-3-raise-defect-from-execution.md)) — the last of the four link tables to actually have a row written to it.
 
 | Table | FK 1 | FK 2 |
 |---|---|---|

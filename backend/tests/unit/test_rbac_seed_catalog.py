@@ -247,6 +247,70 @@ def test_tester_bundle_has_no_approval_or_role_permissions() -> None:
     assert "test_plan.approve" not in tester
 
 
+def test_test_manager_bundle_gains_defect_create_only() -> None:
+    """EXEC-3/ADR-0044: `test_manager` gains `defect.create` — it held only
+    `.read` before (RBAC-4's original seed). `.update`/`.delete` deliberately
+    NOT granted, same restraint ADR-0033 already took for `test_execution.*`
+    (no FR-EXEC-3 AC asks `test_manager` to edit/delete a raised Defect).
+    """
+    all_codes = {code for code, _resource, _action in build_permission_catalog()}
+    test_manager = build_role_bundles(all_codes)["test_manager"]
+
+    assert "defect.create" in test_manager
+    assert "defect.read" in test_manager
+    assert "defect.update" not in test_manager
+    assert "defect.delete" not in test_manager
+
+
+def test_test_manager_and_tester_both_gain_test_case_defect_link_read() -> None:
+    """EXEC-3/ADR-0044: neither role held `test_case_defect_link.read` before
+    (only `org_admin`/`auditor` did) — both need it to reach the new
+    `GET /test-cases/{id}/defects` view (AC3).
+    """
+    all_codes = {code for code, _resource, _action in build_permission_catalog()}
+    bundles = build_role_bundles(all_codes)
+
+    assert "test_case_defect_link.read" in bundles["test_manager"]
+    assert "test_case_defect_link.read" in bundles["tester"]
+
+
+def test_exec3_migration_code_sets_match_the_catalog_delta() -> None:
+    """The codes the new Alembic data migration backfills for each role must
+    be exactly what each role gained in `rbac_seed_catalog.py` — same
+    both-halves-required rule `test_plan3_migration_code_set_matches_the_catalog_delta`
+    already established for `e5b21d7c8f40`, applied here for `f19a7c3e5b62`.
+    """
+    import importlib.util
+    from pathlib import Path
+
+    migration_path = (
+        Path(__file__).resolve().parents[2]
+        / "alembic"
+        / "versions"
+        / "f19a7c3e5b62_seed_defect_permissions_test_manager_tester.py"
+    )
+    assert migration_path.exists(), migration_path
+    spec = importlib.util.spec_from_file_location("_exec3_migration", migration_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    all_codes = {code for code, _resource, _action in build_permission_catalog()}
+    bundles = build_role_bundles(all_codes)
+
+    assert set(module._TEST_MANAGER_NEW_CODES) == {"defect.create", "test_case_defect_link.read"}
+    assert set(module._TESTER_NEW_CODES) == {"test_case_defect_link.read"}
+
+    # Every code the migration inserts per role is one the catalog also grants
+    # that role...
+    assert set(module._TEST_MANAGER_NEW_CODES) <= bundles["test_manager"]
+    assert set(module._TESTER_NEW_CODES) <= bundles["tester"]
+    # ...and every one of them is a real catalogued Permission, so the
+    # migration's own "len mismatch -> skip" guard can never silently no-op.
+    assert set(module._ALL_NEW_CODES) <= all_codes
+    assert module.down_revision == "6a11a6a1d803"
+
+
 def test_all_bundle_codes_are_a_subset_of_the_full_catalog() -> None:
     all_codes = {code for code, _resource, _action in build_permission_catalog()}
     bundles = build_role_bundles(all_codes)

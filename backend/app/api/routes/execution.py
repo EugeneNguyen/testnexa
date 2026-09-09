@@ -55,6 +55,7 @@ from typing import Any
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.crud_factory import (
@@ -66,14 +67,19 @@ from app.api.crud_factory import (
     ResolveOrgId,
     chain_resolver,
     make_crud_router,
+    resolve_test_case_org_id,
 )
 from app.api.deps import get_current_actor, get_db
 from app.core.rbac import has_permission
 from app.models.actor import AIAgent, User
+from app.models.assets import TestCase
 from app.models.execution import Defect, TestExecution, TestExecutionResult, TestLog, TestLogEventType
 from app.models.planning import TestCycle, TestPlan
+from app.models.trace import TestCaseDefectLink
 from app.schemas.execution import (
     AddTestLogCommentRequest,
+    CreateDefectForExecutionRequest,
+    DefectListResponse,
     DefectSummary,
     TestExecutionSummary,
     TestLogListResponse,
@@ -353,6 +359,153 @@ async def list_test_execution_logs(
                 logged_at=row.logged_at,
                 event_type=row.event_type.value if hasattr(row.event_type, "value") else row.event_type,
                 payload=row.payload,
+            )
+            for row in rows
+        ],
+        total=total or 0,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@router.post(
+    "/executions/{id}/defects",
+    response_model=DefectSummary,
+    status_code=201,
+)
+async def raise_defect_for_execution(
+    id: uuid.UUID,
+    payload: CreateDefectForExecutionRequest,
+    actor: User | AIAgent = Depends(get_current_actor),
+    db: AsyncSession = Depends(get_db),
+) -> DefectSummary | JSONResponse:
+    """FR-EXEC-3 AC1 (EXEC-3, ADR-0044): raise a `Defect` from a failed
+    `TestExecution`, atomically linking it to the originating `TestCase` via
+    `TestCaseDefectLink`.
+
+    Reuses `_fetch_execution_gated`/`_resolve_test_execution_org_id` verbatim
+    — no new resolver. Past the 404-vs-403 boundary, a target execution whose
+    `result != fail` is a business-rule rejection (`422`, never `404` — the
+    caller has already proven org membership and the execution genuinely
+    exists), AC1's own literal precondition.
+    """
+    execution, error = await _fetch_execution_gated(db, actor, id, "defect.create")
+    if error is not None:
+        return error
+    assert execution is not None
+
+    if execution.result != TestExecutionResult.fail:
+        return _error(
+            422,
+            "validation_error",
+            "Defects can only be raised against a failed test execution.",
+        )
+
+    defect = Defect(
+        test_execution_id=execution.id,
+        reported_by_actor_id=actor.actor_id,
+        external_ref=payload.external_ref,
+        severity=payload.severity,
+        **({"status": payload.status} if payload.status is not None else {}),
+    )
+    db.add(defect)
+    try:
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+        return _error(422, "validation_error", "Request failed validation.")
+
+    db.add(TestCaseDefectLink(test_case_id=execution.test_case_id, defect_id=defect.id))
+    try:
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+        return _error(422, "validation_error", "Request failed validation.")
+
+    await db.commit()
+    await db.refresh(defect)
+
+    return DefectSummary(
+        id=defect.id,
+        test_execution_id=defect.test_execution_id,
+        reported_by_actor_id=defect.reported_by_actor_id,
+        external_ref=defect.external_ref,
+        severity=defect.severity.value if hasattr(defect.severity, "value") else defect.severity,
+        status=defect.status,
+    )
+
+
+async def _fetch_test_case_gated(
+    db: AsyncSession, actor: "User | AIAgent", id: uuid.UUID, permission: str
+) -> tuple[TestCase | None, JSONResponse | None]:
+    """Flat 404-vs-403 gate for `GET /test-cases/{id}/defects`, reusing
+    `TestCase`'s existing 3-branch resolver (ADR-0029) rather than a new one.
+    """
+    test_case = await db.get(TestCase, id)
+    if test_case is None:
+        return None, _error(404, "not_found", "Test case not found.")
+
+    org_id = await resolve_test_case_org_id(db, test_case)
+    if org_id is None or not await _actor_membership_exists(db, org_id, actor):
+        return None, _error(404, "not_found", "Test case not found.")
+
+    if not await has_permission(str(actor.actor_id), str(org_id), permission):
+        return None, _error(403, "permission_denied", _PERMISSION_DENIED_MESSAGE)
+
+    return test_case, None
+
+
+@router.get(
+    "/test-cases/{id}/defects",
+    response_model=DefectListResponse,
+)
+async def list_defects_for_test_case(
+    id: uuid.UUID,
+    page: int = 1,
+    page_size: int = _DEFAULT_PAGE_SIZE,
+    actor: User | AIAgent = Depends(get_current_actor),
+    db: AsyncSession = Depends(get_db),
+) -> DefectListResponse | JSONResponse:
+    """FR-EXEC-3 AC3 (EXEC-3, ADR-0044): every Defect ever raised against any
+    of this TestCase's executions, most recent first.
+
+    Not the generic factory's `GET /test-case-defect-links?test_case_id=`
+    equivalent (bare link rows, no `Defect` fields, no ordering guarantee) —
+    this is the ordering-guaranteed, `Defect`-field-bearing purpose-built
+    read, same relationship `GET /executions/{id}/logs` (EXEC-2) already has
+    to its own generic-list equivalent.
+    """
+    test_case, error = await _fetch_test_case_gated(db, actor, id, "defect.read")
+    if error is not None:
+        return error
+    assert test_case is not None
+
+    page_size = min(max(page_size, 1), _MAX_PAGE_SIZE)
+    page = max(page, 1)
+
+    base_query = (
+        select(Defect)
+        .join(TestCaseDefectLink, TestCaseDefectLink.defect_id == Defect.id)
+        .where(TestCaseDefectLink.test_case_id == id)
+    )
+    total = await db.scalar(select(func.count()).select_from(base_query.subquery()))
+    rows = (
+        await db.scalars(
+            base_query.order_by(Defect.created_at.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+    ).all()
+
+    return DefectListResponse(
+        items=[
+            DefectSummary(
+                id=row.id,
+                test_execution_id=row.test_execution_id,
+                reported_by_actor_id=row.reported_by_actor_id,
+                external_ref=row.external_ref,
+                severity=row.severity.value if hasattr(row.severity, "value") else row.severity,
+                status=row.status,
             )
             for row in rows
         ],

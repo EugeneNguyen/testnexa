@@ -106,10 +106,15 @@ import {
   listTestExecutionLogs,
   type TestLogSummary,
 } from "../../lib/api/testLogs";
+import {
+  createDefectForExecution,
+  type DefectSeverityValue,
+} from "../../lib/api/defects";
 import { getProject } from "../../lib/api/projects";
 import { listMembers } from "../../lib/api/members";
 import { listEntities, getEntity, type EntityRow } from "../../lib/api/entityCrud";
 import FkAutocomplete from "../../components/molecules/fk-autocomplete";
+import { InfoBox } from "../../components/molecules/info-box";
 import testExecutionConfig from "../../entityConfigs/test-execution";
 import testCycleConfig from "../../entityConfigs/test-cycle";
 import testCaseConfig from "../../entityConfigs/test-case";
@@ -184,6 +189,17 @@ const commentSchema = z.object({
 });
 
 type CommentFormValues = z.infer<typeof commentSchema>;
+
+/** UI Design Document §2 (EXEC-3, ADR-0044): all four `DefectSeverity` values. */
+const DEFECT_SEVERITIES: DefectSeverityValue[] = ["low", "medium", "high", "critical"];
+
+const raiseDefectSchema = z.object({
+  externalRef: z.string().trim().optional(),
+  severity: z.enum(["low", "medium", "high", "critical"]),
+  status: z.string().trim().optional(),
+});
+
+type RaiseDefectFormValues = z.infer<typeof raiseDefectSchema>;
 
 /**
  * `TestLog.payload`'s per-`event_type` shape (`app/api/routes/execution.py`'s
@@ -271,34 +287,35 @@ function errorMessage(err: unknown): string {
 }
 
 /**
- * One dashboard stat tile (UI Design Document §3) — always rendered, `0`
- * included. `xs={6} md={3}` was CoreUI's grid API; Bootstrap's own `xs` tier has
- * no infix, hence `col-6 col-md-3` (ADR-0042 §2).
+ * DS-3 ([ADR-0045](docs/adr/0045-ds-3-infobox-widget-consolidation.md), 2026-09-08)
+ * deleted this file's local `StatTile` function, which used to live here and
+ * render the 4 dashboard tiles as a hand-rolled `div.card.h-100.text-center`
+ * composition. The tiles now call the shared `InfoBox` (AdminLTE's own Info Box
+ * widget) directly, at their own call sites below.
+ *
+ * Two contract differences that moved responsibility *to* the call site, both
+ * deliberate (UI Design Document §2/§3):
+ *
+ *   - **The grid column is caller-owned.** `StatTile` wrapped itself in
+ *     `div.col-6.col-md-3.mb-3`; `InfoBox` renders only `.info-box`, matching
+ *     `WidgetStatsTile`'s existing no-wrapper contract (and `OrgHome`'s own
+ *     `col-sm-6` wrappers) rather than `StatTile`'s self-wrapping one. So each
+ *     of the 4 call sites below supplies that same column div itself — same
+ *     classes, same `xs`-tier-has-no-infix reasoning as before (ADR-0042 §2).
+ *   - **The `null` → `"—"` sentinel is caller-owned.** `InfoBox`'s `number` prop
+ *     is a bare `ReactNode` and stays agnostic to sentinel conventions (it also
+ *     carries `OrgHome`'s completely different Loading…/Unable-to-load
+ *     tri-state — TC-DS-022 asserts the two coexist without either leaking into
+ *     the other's screen), so the ternary moves inline to each call site.
+ *
+ * `data-testid`s are unchanged: `dashboard-tile-{pass,fail,blocked,skipped}` on
+ * the `.info-box` root via `testId`, and each tile's `-count` suffix on the
+ * `.info-box-number` element via `numberTestId` — the same logical elements the
+ * pre-migration testids resolved to, which is TC-DS-020's whole claim. The 4
+ * tiles pass no `icon` (no natural glyph exists for a bare pass/fail/blocked/
+ * skipped count — ADR-0043 rejected inventing one), so they render no
+ * `.info-box-icon` element at all rather than an empty one (TC-DS-021).
  */
-function StatTile({
-  label,
-  value,
-  color,
-  testId,
-}: {
-  label: string;
-  value: number | null;
-  color: string;
-  testId: string;
-}) {
-  return (
-    <div className="col-6 col-md-3 mb-3">
-      <div className="card h-100 text-center" data-testid={testId}>
-        <div className="card-body py-3">
-          <div className="text-body-secondary small text-uppercase">{label}</div>
-          <div className={`fs-3 fw-semibold text-${color}`} data-testid={`${testId}-count`}>
-            {value === null ? "—" : value}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 /**
  * The former `CSpinner color="primary"`, hand-written (ADR-0042). The explicit
@@ -471,6 +488,21 @@ function TestCycleDetail() {
   } = useForm<CommentFormValues>({
     resolver: zodResolver(commentSchema),
     defaultValues: { text: "", attachmentUrl: "", fileName: "" },
+  });
+
+  // --- EXEC-3: "Raise Defect" modal (ADR-0044) --------------------------
+  const [showRaiseDefectModal, setShowRaiseDefectModal] = useState(false);
+  const [raiseDefectExecutionId, setRaiseDefectExecutionId] = useState<string | null>(null);
+  const [raiseDefectError, setRaiseDefectError] = useState<string | null>(null);
+
+  const {
+    register: registerRaiseDefect,
+    handleSubmit: handleSubmitRaiseDefect,
+    reset: resetRaiseDefect,
+    formState: { errors: raiseDefectErrors, isSubmitting: isSubmittingRaiseDefect },
+  } = useForm<RaiseDefectFormValues>({
+    resolver: zodResolver(raiseDefectSchema),
+    defaultValues: { externalRef: "", severity: "low", status: "" },
   });
 
   /** `GET /test-cycles/{id}` — the generic factory item route. */
@@ -794,6 +826,42 @@ function TestCycleDetail() {
     }
   }
 
+  /**
+   * `POST /executions/{id}/defects` — a `fail`-row-only affordance (§2 of the
+   * UI Design Document: the button itself renders only on `fail` rows, the
+   * backend's own `422` on a non-fail execution is the real enforcement
+   * boundary). No list to refresh here — the Defects list this raises a row
+   * into lives on `EntityFormPage`'s `test-case` edit page, not this screen.
+   */
+  function openRaiseDefectModal(executionId: string) {
+    setRaiseDefectExecutionId(executionId);
+    setRaiseDefectError(null);
+    resetRaiseDefect({ externalRef: "", severity: "low", status: "" });
+    setShowRaiseDefectModal(true);
+  }
+
+  function closeRaiseDefectModal() {
+    setShowRaiseDefectModal(false);
+    setRaiseDefectExecutionId(null);
+  }
+
+  async function onSubmitRaiseDefect(values: RaiseDefectFormValues) {
+    if (!raiseDefectExecutionId) {
+      return;
+    }
+    setRaiseDefectError(null);
+    try {
+      await createDefectForExecution(raiseDefectExecutionId, {
+        external_ref: values.externalRef ? values.externalRef : null,
+        severity: values.severity,
+        status: values.status ? values.status : null,
+      });
+      setShowRaiseDefectModal(false);
+    } catch (err) {
+      setRaiseDefectError(errorMessage(err));
+    }
+  }
+
   const cycleName = useMemo(
     () => (cycle && cycle.name ? String(cycle.name) : "Test cycle"),
     [cycle],
@@ -905,30 +973,44 @@ function TestCycleDetail() {
 
                 {/* The former `CRow` — the testid stays on the `.row` itself. */}
                 <div className="row" data-testid="execution-dashboard">
-                  <StatTile
-                    label="Pass"
-                    value={counts.pass}
-                    color="success"
-                    testId="dashboard-tile-pass"
-                  />
-                  <StatTile
-                    label="Fail"
-                    value={counts.fail}
-                    color="danger"
-                    testId="dashboard-tile-fail"
-                  />
-                  <StatTile
-                    label="Blocked"
-                    value={counts.blocked}
-                    color="warning"
-                    testId="dashboard-tile-blocked"
-                  />
-                  <StatTile
-                    label="Skipped"
-                    value={counts.skipped}
-                    color="secondary"
-                    testId="dashboard-tile-skipped"
-                  />
+                  {/* Column wrappers are caller-owned since DS-3 — see the note
+                      above where `StatTile` used to be defined. */}
+                  <div className="col-6 col-md-3 mb-3">
+                    <InfoBox
+                      color="success"
+                      text="Pass"
+                      number={counts.pass === null ? "—" : counts.pass}
+                      testId="dashboard-tile-pass"
+                      numberTestId="dashboard-tile-pass-count"
+                    />
+                  </div>
+                  <div className="col-6 col-md-3 mb-3">
+                    <InfoBox
+                      color="danger"
+                      text="Fail"
+                      number={counts.fail === null ? "—" : counts.fail}
+                      testId="dashboard-tile-fail"
+                      numberTestId="dashboard-tile-fail-count"
+                    />
+                  </div>
+                  <div className="col-6 col-md-3 mb-3">
+                    <InfoBox
+                      color="warning"
+                      text="Blocked"
+                      number={counts.blocked === null ? "—" : counts.blocked}
+                      testId="dashboard-tile-blocked"
+                      numberTestId="dashboard-tile-blocked-count"
+                    />
+                  </div>
+                  <div className="col-6 col-md-3 mb-3">
+                    <InfoBox
+                      color="secondary"
+                      text="Skipped"
+                      number={counts.skipped === null ? "—" : counts.skipped}
+                      testId="dashboard-tile-skipped"
+                      numberTestId="dashboard-tile-skipped-count"
+                    />
+                  </div>
                 </div>
               </div>
             </div>
@@ -995,6 +1077,21 @@ function TestCycleDetail() {
                             >
                               History
                             </button>
+                            {/*
+                              EXEC-3 (ADR-0044): only on `fail` rows — the
+                              backend's own `422` (result != fail) stays the
+                              real enforcement boundary regardless.
+                            */}
+                            {execution.result === "fail" && (
+                              <button
+                                type="button"
+                                className="btn btn-outline-danger btn-sm"
+                                data-testid={`execution-${execution.id}-raise-defect`}
+                                onClick={() => openRaiseDefectModal(execution.id)}
+                              >
+                                Raise Defect
+                              </button>
+                            )}
                           </div>
                           {execution.actual_result && (
                             <div className="small" data-testid={`execution-${execution.id}-notes`}>
@@ -1290,6 +1387,107 @@ function TestCycleDetail() {
             Close
           </button>
         </div>
+      </Modal>
+
+      {/* --- "Raise Defect" modal (EXEC-3, ADR-0044) ------------------------ */}
+      <Modal
+        visible={showRaiseDefectModal}
+        onClose={closeRaiseDefectModal}
+        title="Raise Defect"
+        testId="raise-defect-modal"
+      >
+        <form onSubmit={handleSubmitRaiseDefect(onSubmitRaiseDefect)} noValidate>
+          <div className="modal-body">
+            {/*
+              UI Design Document §3: a `422` (execution no longer `fail`, a
+              narrow race) or `403` renders here, inside the modal, dismissible
+              — the modal stays open so typed input survives the failure, same
+              convention `onSubmitRecord`/EXEC-2's comment form already use.
+            */}
+            {raiseDefectError && (
+              <div
+                className="alert alert-danger alert-dismissible fade show"
+                role="alert"
+                data-testid="raise-defect-error"
+              >
+                {raiseDefectError}
+                <button
+                  type="button"
+                  className="btn-close"
+                  aria-label="Close"
+                  onClick={() => setRaiseDefectError(null)}
+                />
+              </div>
+            )}
+
+            <div className="mb-3">
+              <label className="form-label" htmlFor="raiseDefectExternalRef">
+                External ref (optional)
+              </label>
+              <input
+                className="form-control"
+                id="raiseDefectExternalRef"
+                data-testid="raise-defect-external-ref"
+                {...registerRaiseDefect("externalRef")}
+              />
+              <div className="form-text">
+                e.g. a Jira/GitHub/GitLab issue URL or id — plain text, no live integration
+                in this scaffold.
+              </div>
+            </div>
+
+            <div className="mb-3">
+              <label className="form-label" htmlFor="raiseDefectSeverity">
+                Severity
+              </label>
+              <select
+                className={`form-select${raiseDefectErrors.severity ? " is-invalid" : ""}`}
+                id="raiseDefectSeverity"
+                data-testid="raise-defect-severity"
+                {...registerRaiseDefect("severity")}
+              >
+                {DEFECT_SEVERITIES.map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+              {raiseDefectErrors.severity && (
+                <div className="invalid-feedback d-block">{raiseDefectErrors.severity.message}</div>
+              )}
+            </div>
+
+            <div className="mb-3">
+              <label className="form-label" htmlFor="raiseDefectStatus">
+                Status (optional, defaults to "open")
+              </label>
+              <input
+                className="form-control"
+                id="raiseDefectStatus"
+                data-testid="raise-defect-status"
+                {...registerRaiseDefect("status")}
+              />
+            </div>
+          </div>
+          <div className="modal-footer">
+            <button
+              type="button"
+              className="btn btn-outline-secondary"
+              data-testid="raise-defect-cancel"
+              onClick={closeRaiseDefectModal}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              data-testid="raise-defect-submit"
+              disabled={isSubmittingRaiseDefect}
+            >
+              {isSubmittingRaiseDefect ? "Raising..." : "Raise Defect"}
+            </button>
+          </div>
+        </form>
       </Modal>
     </div>
   );
