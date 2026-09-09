@@ -1,7 +1,7 @@
 # ADR-0044: SHELL-7 sidebar-mini layout + org-scoped CRUD nav restructure
 
 **Date:** 2026-09-08
-**Status:** Accepted — no code written this pass, per explicit instruction (docs-only, plan already confirmed with the CTO; implementation is a separate, later authorization)
+**Status:** Accepted — no code written this pass, per explicit instruction (docs-only, plan already confirmed with the CTO; implementation is a separate, later authorization). **Addendum (2026-09-09):** implemented same branch, commit `eb0dd91` — see that commit and `e2e/tests/shell7-sidebar-mini.spec.ts` for the live-measurement corrections to this ADR's own `3.1rem`/hover-flyout guesses, called out inline below rather than silently edited.
 **Deciders:** xuanbinh91@gmail.com (CTO)
 **Related:** [ADR-0018](0018-admin-shell-sidebar-layout.md) (original sidebar), [ADR-0020](0020-admin-shell-full-template-parity.md) ("UI Elements" nav group, unaffected), [ADR-0022](0022-generic-crud-router-factory.md) (generic CRUD router factory — `orgScopedEntities` registry this ADR regroups, no route change), [ADR-0036](0036-shell-6-organization-switcher-header-dropdown.md) (org switcher, unaffected — different header control), [ADR-0042](0042-adminlte-design-system.md) (AdminLTE v4 — `sidebar-mini` is one of its own shipped body-class modifiers, not a new mechanism), [ADR-0043](0043-atomic-design-tiering-for-frontend-components.md) (`AppSidebar`/`AppShell` current locations: `components/organisms/app-sidebar/`, `components/templates/app-shell/`), [SHELL-7 user story](../user-stories/2026-09-04-admin-shell-sidebar-stories.md#story-shell-7-mini-sidebar--org-scoped-crud-nav-restructure), [SHELL-7 UI Design Document](../ui-design/2026-09-08-shell-7-sidebar-mini-org-crud-restructure-ui-design.md)
 
