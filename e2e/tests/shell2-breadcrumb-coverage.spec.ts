@@ -22,24 +22,40 @@ import { expect, test } from "@playwright/test";
  *
  * **What each test asserts, against each TC's literal wording:**
  *
- * - TC-SHELL-016 ("Renders 'Project' only, not a link"): exactly ONE crumb on
- *   `/projects/:projectId`, its text `Project`, and it is not a link. The
- *   "no Dashboard ancestor" half of the TC title is asserted as its own claim —
- *   `/projects/:projectId` carries no `orgId` route param to link back with.
- * - TC-SHELL-017 ("'Project' and 'Test Plan' are links (to their own routes),
- *   'Test Cycle' is active text; no 'Dashboard' segment anywhere in the trail"):
- *   all three crumbs in order, both links asserted by `href` *and* actually
- *   clicked — a link that renders the right `href` but is not wired for
- *   client-side navigation would still pass an href-only assertion.
+ * **SHELL-9 (ADR-0048, 2026-09-09) rewrote three of the four sections below.**
+ * Every project-scoped trail now opens with a resolved `Projects ->
+ * {project name}` prefix instead of a bare, unlinked `Project` label, so each
+ * of those trails grew by exactly one segment and the old assertions became
+ * false. ADR-0048's own Consequences section names this file as one of the two
+ * that had to change in the same commit. The `/orgs/:orgId/admin/roles`
+ * section (org-scoped) is untouched — no org-scoped trail changed.
+ *
+ * - TC-SHELL-016 (**revised, SHELL-9**): `/projects/:projectId` renders exactly
+ *   TWO crumbs — `Projects`, linked to the resolved org's own list route, then
+ *   the project's *real seeded name* as active text. Asserted against the
+ *   fixture's actual `projectName` string, not a placeholder, so a resolution
+ *   that silently fell back to the old bare label fails here even though *a*
+ *   breadcrumb still renders. The TC's original "no Dashboard ancestor" claim
+ *   still holds and is still asserted — the new root is `Projects`, not
+ *   `Dashboard`.
+ * - TC-SHELL-017 (**revised, SHELL-9**): four crumbs now —
+ *   `Projects / {project name} / Test Plan / Test Cycle`. The first three are
+ *   links, `Test Cycle` is active text, and there is still no `Dashboard`
+ *   segment anywhere. The two links the original TC named are asserted by
+ *   `href` *and* actually clicked — a link that renders the right `href` but is
+ *   not wired for client-side navigation would still pass an href-only
+ *   assertion.
  * - TC-SHELL-018 ("Renders 'Dashboard / Roles' ('Roles' sourced from
  *   `pages/admin/registry.ts`'s `allEntities` map, not a hardcoded string);
  *   'Dashboard' links, 'Roles' is active text"): the trail on
  *   `/orgs/:orgId/admin/roles`, plus a second visit to a *different* entity
  *   slug (`test-levels` -> "Test levels") from the same registry, which is what
  *   distinguishes a registry lookup from a hardcoded "Roles" string.
- * - TC-SHELL-019 ("Renders 'Project / Test cases / Edit'; 'Project' links to
- *   `/projects/:projectId`, 'Test cases' links to the list route, 'Edit' is
- *   active text"): all three crumbs, both hrefs asserted literally.
+ * - TC-SHELL-019 (**revised, SHELL-9**): four crumbs now —
+ *   `Projects / {project name} / Test cases / Edit`; the project's name links
+ *   to `/projects/:projectId` (the target the old bare `Project` crumb used to
+ *   carry), `Test cases` links to the list route, `Edit` is active text. All
+ *   hrefs asserted literally.
  *
  * "Active text" is asserted as CoreUI's own rendered contract for
  * `CBreadcrumbItem active` — `<li class="breadcrumb-item active"
@@ -60,6 +76,12 @@ interface BreadcrumbFixture {
   userId: string;
   orgId: string;
   projectId: string;
+  /**
+   * SHELL-9 (ADR-0048): the seeded Project's real `name`. The breadcrumb now
+   * renders it as a trail segment, so the assertions need the exact string the
+   * seed generated (it carries a random suffix) rather than a literal.
+   */
+  projectName: string;
   testPlanId: string;
   testCycleId: string;
   testCaseId: string;
@@ -179,6 +201,7 @@ async def main():
             "userId": str(user.actor_id),
             "orgId": str(org.id),
             "projectId": str(project.id),
+            "projectName": project.name,
             "testPlanId": str(plan.id),
             "testCycleId": str(cycle.id),
             "testCaseId": str(case.id),
@@ -341,63 +364,84 @@ test.describe("SHELL-2: breadcrumb coverage for the previously unmapped routes",
 
       // =======================================================================
       // TC-SHELL-016 — /projects/:projectId
-      // Expected: "Renders 'Project' only, not a link"; no Dashboard ancestor.
+      // REVISED by SHELL-9 (ADR-0048): expected is now the resolved two-crumb
+      // trail `Projects / {project name}`, replacing the bare unlinked
+      // "Project" this section used to assert. "No Dashboard ancestor" still
+      // holds — the new root is `Projects`, not `Dashboard`.
       // =======================================================================
       await gotoProtected(page, `/projects/${fixture.projectId}`);
       await expect(breadcrumb).toBeVisible();
-      await expect(crumbs).toHaveCount(1);
-      await expect(crumbs.nth(0)).toHaveText("Project");
-      // "not a link" — the route carries no `orgId` to link back with.
-      await expect(breadcrumb.getByRole("link")).toHaveCount(0);
-      // "no Dashboard ancestor", the other half of the TC's own title.
+      await expect(crumbs).toHaveCount(2);
+      await expect(crumbs.nth(0)).toHaveText("Projects");
+      // The project's REAL seeded name, not a placeholder — a fallback to the
+      // old bare label would fail here even though a breadcrumb still renders.
+      await expect(crumbs.nth(1)).toHaveText(fixture.projectName);
+      // The root crumb links back to the resolved org's own Projects list —
+      // the click-path out of a project this whole story exists to add.
+      await expect(breadcrumb.getByRole("link", { name: "Projects", exact: true })).toHaveAttribute(
+        "href",
+        `/orgs/${fixture.orgId}/projects`,
+      );
+      // "no Dashboard ancestor", the surviving half of the TC's own title.
       await expect(breadcrumb.getByText("Dashboard")).toHaveCount(0);
-      // Active text, per CoreUI's own rendered contract.
-      await expect(activeCrumb).toHaveText("Project");
+      // The old bare label must be gone outright, not merely accompanied.
+      await expect(breadcrumb.getByText("Project", { exact: true })).toHaveCount(0);
+      // Active text, per the rendered `<li class="breadcrumb-item active">`
+      // contract — the name is the current page, so it carries no link.
+      await expect(activeCrumb).toHaveText(fixture.projectName);
       await expect(activeCrumb).toHaveAttribute("aria-current", "page");
+      await expect(activeCrumb.getByRole("link")).toHaveCount(0);
 
       // =======================================================================
       // TC-SHELL-017 — /projects/:projectId/test-plans/:testPlanId
       //                /test-cycles/:testCycleId
-      // Expected: "Project / Test Plan / Test Cycle"; "Project" and "Test Plan"
-      // are links (to their own routes), "Test Cycle" is active text; no
-      // "Dashboard" segment anywhere in the trail.
+      // REVISED by SHELL-9 (ADR-0048): four crumbs now —
+      // "Projects / {project name} / Test Plan / Test Cycle". The first three
+      // are links, "Test Cycle" is active text; still no "Dashboard" segment
+      // anywhere in the trail.
       // =======================================================================
       const cyclePath = `/projects/${fixture.projectId}/test-plans/${fixture.testPlanId}/test-cycles/${fixture.testCycleId}`;
       await gotoProtected(page, cyclePath);
-      await expect(crumbs).toHaveCount(3);
-      await expect(crumbs.nth(0)).toHaveText("Project");
-      await expect(crumbs.nth(1)).toHaveText("Test Plan");
-      await expect(crumbs.nth(2)).toHaveText("Test Cycle");
+      await expect(crumbs).toHaveCount(4);
+      await expect(crumbs.nth(0)).toHaveText("Projects");
+      await expect(crumbs.nth(1)).toHaveText(fixture.projectName);
+      await expect(crumbs.nth(2)).toHaveText("Test Plan");
+      await expect(crumbs.nth(3)).toHaveText("Test Cycle");
 
-      const projectLink = breadcrumb.getByRole("link", { name: "Project", exact: true });
+      const projectsRootLink = breadcrumb.getByRole("link", { name: "Projects", exact: true });
+      const projectLink = breadcrumb.getByRole("link", { name: fixture.projectName, exact: true });
       const planLink = breadcrumb.getByRole("link", { name: "Test Plan", exact: true });
+      await expect(projectsRootLink).toHaveAttribute(
+        "href",
+        `/orgs/${fixture.orgId}/projects`,
+      );
       await expect(projectLink).toHaveAttribute("href", `/projects/${fixture.projectId}`);
       await expect(planLink).toHaveAttribute(
         "href",
         `/projects/${fixture.projectId}/test-plans/${fixture.testPlanId}`,
       );
       // "Test Cycle" is active text — no `<a>` inside that crumb at all.
-      await expect(crumbs.nth(2).getByRole("link")).toHaveCount(0);
+      await expect(crumbs.nth(3).getByRole("link")).toHaveCount(0);
       await expect(activeCrumb).toHaveText("Test Cycle");
       await expect(activeCrumb).toHaveAttribute("aria-current", "page");
       // "no 'Dashboard' segment anywhere in the trail".
       await expect(breadcrumb.getByText("Dashboard")).toHaveCount(0);
 
-      // The TC says the two earlier crumbs are links **to their own routes** —
+      // The TC says the earlier crumbs are links **to their own routes** —
       // assert that by actually following them, not by `href` alone. An `href`
       // that never navigates (or hard-reloads) would still pass above.
       await planLink.click();
       await page.waitForURL(
         new RegExp(`/projects/${fixture.projectId}/test-plans/${fixture.testPlanId}$`),
       );
-      await expect(crumbs).toHaveCount(2);
-      await expect(crumbs.nth(1)).toHaveText("Test Plan");
+      await expect(crumbs).toHaveCount(3);
+      await expect(crumbs.nth(2)).toHaveText("Test Plan");
 
       await gotoProtected(page, cyclePath);
-      await breadcrumb.getByRole("link", { name: "Project", exact: true }).click();
+      await breadcrumb.getByRole("link", { name: fixture.projectName, exact: true }).click();
       await page.waitForURL(new RegExp(`/projects/${fixture.projectId}$`));
-      await expect(crumbs).toHaveCount(1);
-      await expect(crumbs.nth(0)).toHaveText("Project");
+      await expect(crumbs).toHaveCount(2);
+      await expect(crumbs.nth(1)).toHaveText(fixture.projectName);
 
       // =======================================================================
       // TC-SHELL-018 — /orgs/:orgId/admin/roles
@@ -427,27 +471,32 @@ test.describe("SHELL-2: breadcrumb coverage for the previously unmapped routes",
 
       // =======================================================================
       // TC-SHELL-019 — /projects/:projectId/admin/test-cases/:id/edit
-      // Expected: "Project / Test cases / Edit"; "Project" links to
-      // /projects/:projectId, "Test cases" links to the list route, "Edit" is
-      // active text.
+      // REVISED by SHELL-9 (ADR-0048): four crumbs now —
+      // "Projects / {project name} / Test cases / Edit". The project's name
+      // carries the `/projects/:projectId` link the old bare "Project" crumb
+      // used to; "Test cases" links to the list route; "Edit" is active text.
       // =======================================================================
       await gotoProtected(
         page,
         `/projects/${fixture.projectId}/admin/test-cases/${fixture.testCaseId}/edit`,
       );
-      await expect(crumbs).toHaveCount(3);
-      await expect(crumbs.nth(0)).toHaveText("Project");
-      await expect(crumbs.nth(1)).toHaveText("Test cases");
-      await expect(crumbs.nth(2)).toHaveText("Edit");
-      await expect(breadcrumb.getByRole("link", { name: "Project", exact: true })).toHaveAttribute(
+      await expect(crumbs).toHaveCount(4);
+      await expect(crumbs.nth(0)).toHaveText("Projects");
+      await expect(crumbs.nth(1)).toHaveText(fixture.projectName);
+      await expect(crumbs.nth(2)).toHaveText("Test cases");
+      await expect(crumbs.nth(3)).toHaveText("Edit");
+      await expect(breadcrumb.getByRole("link", { name: "Projects", exact: true })).toHaveAttribute(
         "href",
-        `/projects/${fixture.projectId}`,
+        `/orgs/${fixture.orgId}/projects`,
       );
+      await expect(
+        breadcrumb.getByRole("link", { name: fixture.projectName, exact: true }),
+      ).toHaveAttribute("href", `/projects/${fixture.projectId}`);
       await expect(breadcrumb.getByRole("link", { name: "Test cases", exact: true })).toHaveAttribute(
         "href",
         `/projects/${fixture.projectId}/admin/test-cases`,
       );
-      await expect(crumbs.nth(2).getByRole("link")).toHaveCount(0);
+      await expect(crumbs.nth(3).getByRole("link")).toHaveCount(0);
       await expect(activeCrumb).toHaveText("Edit");
       await expect(activeCrumb).toHaveAttribute("aria-current", "page");
     } finally {

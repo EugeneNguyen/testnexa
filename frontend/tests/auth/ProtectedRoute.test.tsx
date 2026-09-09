@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -33,20 +34,28 @@ function mockAuth(overrides: Partial<ReturnType<typeof useAuth>>) {
 }
 
 function renderProtected() {
+  // SHELL-9 (ADR-0048): `ProtectedRoute` renders `<AppShell>`, whose
+  // `AppSidebar`/`AppBreadcrumb` now call `useResolvedOrgId()` -> `useQuery`.
+  // The provider mirrors `main.tsx`'s own; `/protected` carries no `projectId`
+  // so no fetch is ever issued here.
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
   return render(
-    <MemoryRouter initialEntries={["/protected"]}>
-      <Routes>
-        <Route
-          path="/protected"
-          element={
-            <ProtectedRoute>
-              <div>Protected content</div>
-            </ProtectedRoute>
-          }
-        />
-        <Route path="/login" element={<div>Login page</div>} />
-      </Routes>
-    </MemoryRouter>,
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={["/protected"]}>
+        <Routes>
+          <Route
+            path="/protected"
+            element={
+              <ProtectedRoute>
+                <div>Protected content</div>
+              </ProtectedRoute>
+            }
+          />
+          <Route path="/login" element={<div>Login page</div>} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 

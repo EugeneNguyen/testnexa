@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it } from "vitest";
@@ -31,12 +32,18 @@ describe("UI Elements reference pages", () => {
 
   it("sidebar's 'UI Elements' nav group reaches all 3 pages, only when orgId is present", () => {
     const ORG_ID = "org-1";
+    // SHELL-9 (ADR-0048): `AppSidebar` now reads its `orgId` through
+    // `useResolvedOrgId()` -> `useQuery`, so it needs a `QueryClientProvider`
+    // to mount. Org-scoped route, so the hook resolves from the route param
+    // and never fetches.
     render(
-      <MemoryRouter initialEntries={[`/orgs/${ORG_ID}`]}>
-        <Routes>
-          <Route path="/orgs/:orgId" element={<AppSidebar />} />
-        </Routes>
-      </MemoryRouter>,
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={[`/orgs/${ORG_ID}`]}>
+          <Routes>
+            <Route path="/orgs/:orgId" element={<AppSidebar />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
     );
 
     const group = screen.getByTestId("sidebar-nav-group-ui-elements");
@@ -56,11 +63,13 @@ describe("UI Elements reference pages", () => {
 
   it("'UI Elements' nav group is absent with no org selected (/orgs/pick), same posture as the org-scoped nav items", () => {
     render(
-      <MemoryRouter initialEntries={["/orgs/pick"]}>
-        <Routes>
-          <Route path="/orgs/pick" element={<AppSidebar />} />
-        </Routes>
-      </MemoryRouter>,
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/orgs/pick"]}>
+          <Routes>
+            <Route path="/orgs/pick" element={<AppSidebar />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
     );
 
     expect(screen.queryByTestId("sidebar-nav-group-ui-elements")).not.toBeInTheDocument();

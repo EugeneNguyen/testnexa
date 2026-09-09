@@ -111,8 +111,9 @@
  * in `AppShell`, next to the state it actually decides.
  */
 import { useState } from "react";
-import { NavLink, useParams } from "react-router-dom";
+import { NavLink } from "react-router-dom";
 import { orgScopedEntities } from "../../../pages/admin/registry";
+import { useResolvedOrgId } from "../../../hooks/useResolvedOrgId";
 
 interface SidebarNavItem {
   key: string;
@@ -190,7 +191,13 @@ const ORG_ENTITY_GROUPS: OrgEntityGroup[] = [
 ];
 
 function AppSidebar() {
-  const { orgId } = useParams<{ orgId?: string }>();
+  // SHELL-9 (ADR-0048): was a raw `useParams<{orgId?: string}>()` read, which
+  // resolved to `undefined` on every `/projects/:projectId/...` screen and left
+  // this whole nav empty there. `useResolvedOrgId()` returns the same value on
+  // `/orgs/:orgId/...` routes (no fetch) and resolves it via `GET
+  // /projects/{id}` on project-scoped ones. Everything below is unchanged: it
+  // already branched on "is `orgId` truthy," never on which route produced it.
+  const { orgId } = useResolvedOrgId();
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
 
   function toggleGroup(key: string) {

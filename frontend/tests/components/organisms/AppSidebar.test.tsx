@@ -1,8 +1,25 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import AppSidebar from "../../../src/components/organisms/app-sidebar";
 import { orgScopedEntities } from "../../../src/pages/admin/registry";
+import { ApiError } from "../../../src/lib/api/client";
+import { getProject } from "../../../src/lib/api/projects";
+
+/**
+ * SHELL-9 (ADR-0048): `AppSidebar` reads its `orgId` through
+ * `useResolvedOrgId()`, which issues a real `getProject(projectId)` on
+ * project-scoped routes. Same partial-mock pattern the rest of this repo's
+ * Vitest suite uses (`ProjectsPage.test.tsx`, `Signup.test.tsx`) — keep the
+ * real module shape, replace only the one function the hook calls.
+ */
+vi.mock("../../../src/lib/api/projects", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../src/lib/api/projects")>();
+  return { ...actual, getProject: vi.fn() };
+});
+
+const mockGetProject = vi.mocked(getProject);
 
 /**
  * SHELL-1 (ADR-0018) sidebar unit tests.
@@ -18,16 +35,29 @@ import { orgScopedEntities } from "../../../src/pages/admin/registry";
  * `document.body` that `AppShell` owns, not in a prop on this component (see
  * `AppShell.test.tsx` for that half's coverage).
  */
+function newQueryClient() {
+  return new QueryClient({ defaultOptions: { queries: { retry: false } } });
+}
+
+/**
+ * SHELL-9 (ADR-0048): the `QueryClientProvider` is newly required — it is what
+ * lets `useResolvedOrgId()`'s `useQuery` mount at all. On every entry this
+ * helper serves (all `/orgs/...`) the hook still resolves purely from the
+ * route param and issues no fetch, so no assertion below changed.
+ * Project-scoped routes get their own helper further down.
+ */
 function renderSidebar(initialEntry: string) {
   return render(
-    <MemoryRouter initialEntries={[initialEntry]}>
-      <Routes>
-        <Route path="/orgs/pick" element={<AppSidebar />} />
-        <Route path="/orgs/:orgId" element={<AppSidebar />} />
-        <Route path="/orgs/:orgId/projects" element={<AppSidebar />} />
-        <Route path="/orgs/:orgId/members" element={<AppSidebar />} />
-      </Routes>
-    </MemoryRouter>,
+    <QueryClientProvider client={newQueryClient()}>
+      <MemoryRouter initialEntries={[initialEntry]}>
+        <Routes>
+          <Route path="/orgs/pick" element={<AppSidebar />} />
+          <Route path="/orgs/:orgId" element={<AppSidebar />} />
+          <Route path="/orgs/:orgId/projects" element={<AppSidebar />} />
+          <Route path="/orgs/:orgId/members" element={<AppSidebar />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 
@@ -336,5 +366,207 @@ describe("AppSidebar", () => {
     for (const groupTestId of Object.keys(EXPECTED_PARTITION)) {
       expect(screen.queryByTestId(groupTestId)).not.toBeInTheDocument();
     }
+  });
+
+  // ------------------------------------------------------------------
+  // SHELL-9 (ADR-0048): project-scope nav context resolution.
+  //
+  // Before this story `AppSidebar` read `useParams<{orgId}>()` directly, which
+  // is `undefined` on every `/projects/:projectId/...` route, so the entire nav
+  // computed to empty arrays and the sidebar rendered brand-only. It now reads
+  // `useResolvedOrgId()`, which fetches the Project row and returns its
+  // `org_id`. The tests below drive that fetch through the mocked
+  // `getProject` above.
+  // ------------------------------------------------------------------
+
+  const PROJECT_ID = "9f1d2c3b-4a5e-6f70-8192-a3b4c5d6e7f8";
+  const PROJECT_ORG_ID = "22222222-2222-2222-2222-222222222222";
+  const PROJECT_FIXTURE = {
+    id: PROJECT_ID,
+    org_id: PROJECT_ORG_ID,
+    name: "Acme Payments Gateway",
+    standards_profile: null,
+  };
+
+  beforeEach(() => {
+    mockGetProject.mockReset();
+  });
+
+  /**
+   * Mount `AppSidebar` at a project-scoped route. Separate from `renderSidebar`
+   * above because these patterns carry `:projectId` instead of `:orgId`, and
+   * because `/orgs/:orgId/projects` here must render a distinguishable
+   * destination (not another sidebar) so TC-SHELL-031 can assert a real
+   * click actually navigated.
+   */
+  function renderSidebarAtProjectRoute(initialEntry: string) {
+    return render(
+      <QueryClientProvider client={newQueryClient()}>
+        <MemoryRouter initialEntries={[initialEntry]}>
+          <Routes>
+            <Route path="/projects/:projectId" element={<AppSidebar />} />
+            <Route path="/projects/:projectId/test-plans/:testPlanId" element={<AppSidebar />} />
+            <Route
+              path="/projects/:projectId/test-plans/:testPlanId/test-cycles/:testCycleId"
+              element={<AppSidebar />}
+            />
+            <Route path="/projects/:projectId/admin/:entity" element={<AppSidebar />} />
+            <Route
+              path="/orgs/:orgId/projects"
+              element={<div data-testid="projects-page-stub">Projects page</div>}
+            />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+  }
+
+  /** The sidebar's top-level nav labels, in DOM order — TC-SHELL-027's technique. */
+  function topLevelLabels(container: HTMLElement): (string | undefined)[] {
+    return [...container.querySelectorAll("ul.sidebar-menu > li.nav-item")].map((li) =>
+      within(li as HTMLElement)
+        .getAllByText(/.+/)[0]
+        .textContent?.trim(),
+    );
+  }
+
+  const FULL_ORG_NAV = [
+    "Dashboard",
+    "Projects",
+    "Members",
+    "Access Control",
+    "Catalogs",
+    "Organization",
+    "UI Elements",
+  ];
+
+  // TC-SHELL-029: "Navigate directly to `/projects/:projectId` (no prior
+  // in-session visit to `/orgs/:orgId`)" — a fresh `MemoryRouter` whose only
+  // entry is the project route is exactly that: no earlier route ever mounted,
+  // so no stale in-memory `orgId` can mask a real resolution gap. "identical to
+  // `/orgs/:orgId`'s own nav" is asserted literally, by rendering the org route
+  // too and comparing the two label sequences — not by restating a hardcoded
+  // list and hoping it matches.
+  it("TC-SHELL-029: resolves the full org nav on a direct landing at /projects/:projectId", async () => {
+    mockGetProject.mockResolvedValue(PROJECT_FIXTURE);
+
+    const { container } = renderSidebarAtProjectRoute(`/projects/${PROJECT_ID}`);
+
+    // Nav is empty until the fetch resolves (ADR-0048 §4) — then fully populated.
+    await waitFor(() => {
+      expect(screen.getByTestId("sidebar-nav-org-home")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("sidebar-nav-projects")).toBeInTheDocument();
+    expect(screen.getByTestId("sidebar-nav-org-members")).toBeInTheDocument();
+    expect(screen.getByTestId("sidebar-nav-group-access-control")).toBeInTheDocument();
+    expect(screen.getByTestId("sidebar-nav-group-catalogs")).toBeInTheDocument();
+    expect(screen.getByTestId("sidebar-nav-group-organization")).toBeInTheDocument();
+    expect(screen.getByTestId("sidebar-nav-group-ui-elements")).toBeInTheDocument();
+    expect(topLevelLabels(container)).toEqual(FULL_ORG_NAV);
+
+    // The resolution came from the fetched Project's own `org_id`, not from
+    // anywhere in the URL (which contains no org id at all).
+    expect(mockGetProject).toHaveBeenCalledWith(PROJECT_ID);
+    expect(screen.getByTestId("sidebar-nav-org-home")).toHaveAttribute(
+      "href",
+      `/orgs/${PROJECT_ORG_ID}`,
+    );
+
+    // "identical to `/orgs/:orgId`'s own nav, not empty" — compared directly.
+    const onOrgRoute = renderSidebar(`/orgs/${PROJECT_ORG_ID}`);
+    expect(topLevelLabels(container)).toEqual(topLevelLabels(onOrgRoute.container));
+  });
+
+  // TC-SHELL-030: asserted on each of the three OTHER project-scoped route
+  // shapes independently, each its own `render` (its own `AppSidebar` mount and
+  // its own `QueryClient`, so nothing can be inherited from a sibling), rather
+  // than spot-checking `ProjectDetail` and assuming it generalizes.
+  it("TC-SHELL-030: full-nav resolution holds on TestPlanDetail, TestCycleDetail, and a project-scoped admin route", async () => {
+    const routes = [
+      `/projects/${PROJECT_ID}/test-plans/plan-1`,
+      `/projects/${PROJECT_ID}/test-plans/plan-1/test-cycles/cycle-1`,
+      `/projects/${PROJECT_ID}/admin/test-cases`,
+    ];
+
+    for (const route of routes) {
+      mockGetProject.mockReset();
+      mockGetProject.mockResolvedValue(PROJECT_FIXTURE);
+
+      const view = renderSidebarAtProjectRoute(route);
+      await waitFor(() => {
+        expect(view.getByTestId("sidebar-nav-org-home")).toBeInTheDocument();
+      });
+      expect(topLevelLabels(view.container)).toEqual(FULL_ORG_NAV);
+      expect(view.getByTestId("sidebar-nav-projects")).toHaveAttribute(
+        "href",
+        `/orgs/${PROJECT_ORG_ID}/projects`,
+      );
+      // Each route mounted its own component and did its own resolution.
+      expect(mockGetProject).toHaveBeenCalledTimes(1);
+      view.unmount();
+    }
+  });
+
+  // TC-SHELL-031: "Click the sidebar's 'Projects' nav item -> URL becomes
+  // `/orgs/:orgId/projects` with the project's correct `org_id`". Asserted as a
+  // real click that really navigates (the stub route's content appears), not
+  // only as an `href` — an `href` that never navigates would pass a
+  // string-equality check. The `org_id` asserted is the fetched project's, and
+  // deliberately differs from any value present in the URL.
+  it("TC-SHELL-031: clicking the sidebar's Projects item navigates to the project's own org Projects list", async () => {
+    mockGetProject.mockResolvedValue(PROJECT_FIXTURE);
+
+    renderSidebarAtProjectRoute(`/projects/${PROJECT_ID}`);
+
+    const projectsLink = await screen.findByTestId("sidebar-nav-projects");
+    expect(projectsLink).toHaveAttribute("href", `/orgs/${PROJECT_ORG_ID}/projects`);
+
+    fireEvent.click(projectsLink);
+
+    // Real client-side navigation happened: the destination route rendered.
+    expect(await screen.findByTestId("projects-page-stub")).toBeInTheDocument();
+    // ...and the sidebar it navigated away from is gone, so this cannot be a
+    // false pass from the old screen still being mounted.
+    expect(screen.queryByTestId("sidebar-nav-org-home")).not.toBeInTheDocument();
+  });
+
+  // TC-SHELL-033 (sidebar half; the breadcrumb half lives in
+  // `AppBreadcrumb.test.tsx`). Two DISTINCT cases, per test-design §39 — a
+  // resolver that handles "still loading" but throws on a real 404 would pass a
+  // pending-only check.
+  it("TC-SHELL-033(a): renders its existing empty-nav state (no crash, no partial nav) while resolution is pending", () => {
+    // A promise that never settles — the query stays `pending` for the whole test.
+    mockGetProject.mockReturnValue(new Promise(() => {}));
+
+    const { container } = renderSidebarAtProjectRoute(`/projects/${PROJECT_ID}`);
+
+    // Brand only — byte-identical to the pre-existing `/orgs/pick` state.
+    expect(screen.getByText("TestNexa")).toBeInTheDocument();
+    expect(topLevelLabels(container)).toEqual([]);
+    expect(screen.queryByTestId("sidebar-nav-org-home")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("sidebar-nav-projects")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("sidebar-nav-group-access-control")).not.toBeInTheDocument();
+    // Never a raw id or an `undefined` fragment anywhere in the rendered output.
+    expect(screen.queryByText(PROJECT_ID)).not.toBeInTheDocument();
+    expect(container.textContent).not.toContain("undefined");
+  });
+
+  it("TC-SHELL-033(b): renders its existing empty-nav state (no crash) when the project 404s", async () => {
+    mockGetProject.mockRejectedValue(new ApiError("Not Found", 404, { code: "not_found" }));
+
+    const { container } = renderSidebarAtProjectRoute(`/projects/${PROJECT_ID}`);
+
+    await waitFor(() => {
+      expect(mockGetProject).toHaveBeenCalledTimes(1);
+    });
+    // Settled into `error`, not `pending` — and still the same empty nav.
+    await waitFor(() => {
+      expect(topLevelLabels(container)).toEqual([]);
+    });
+    expect(screen.getByText("TestNexa")).toBeInTheDocument();
+    expect(screen.queryByTestId("sidebar-nav-org-home")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("sidebar-nav-projects")).not.toBeInTheDocument();
+    expect(screen.queryByText(PROJECT_ID)).not.toBeInTheDocument();
+    expect(container.textContent).not.toContain("undefined");
   });
 });

@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -30,12 +31,21 @@ function renderShell() {
     logout: vi.fn(),
   });
 
+  // SHELL-9 (ADR-0048): `AppShell` mounts `AppSidebar`/`AppBreadcrumb`, both of
+  // which now call `useResolvedOrgId()` -> `useQuery`, so this tree needs a
+  // `QueryClientProvider` exactly like the real app's `main.tsx` supplies. This
+  // route is org-scoped, so the hook short-circuits without ever fetching — the
+  // provider is required for the hook to *mount*, not for any network call.
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
   return render(
-    <MemoryRouter initialEntries={["/orgs/org-1"]}>
-      <Routes>
-        <Route path="/orgs/:orgId" element={<AppShell>{"page content"}</AppShell>} />
-      </Routes>
-    </MemoryRouter>,
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={["/orgs/org-1"]}>
+        <Routes>
+          <Route path="/orgs/:orgId" element={<AppShell>{"page content"}</AppShell>} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 
