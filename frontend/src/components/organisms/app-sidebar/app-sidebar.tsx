@@ -34,6 +34,17 @@
  * `/dashboard` placeholder (ADR-0035/DASH-1) — that route is untouched, see
  * this story's own ADR for the naming-collision call.
  *
+ * **SHELL-7 (2026-09-08, ADR-0046):** the single flat `Admin` group (8
+ * org-scoped CRUD entities, testid `sidebar-nav-group-admin`) is retired and
+ * replaced by three named, individually-iconed groups — `Access Control`,
+ * `Catalogs`, `Organization` (see `ORG_ENTITY_GROUPS` below) — rendered
+ * *before* `UI Elements`, which stays unconditionally last. The 8 children keep
+ * their `sidebar-nav-admin-<key>` testids; only the parent changed. `Members`
+ * gains an icon, because under the new `sidebar-mini` body class (owned by
+ * `AppShell`) an icon-less row collapses to an empty rail slot. See the
+ * `nav-treeview` comment in the JSX below for what a `menu-open` group
+ * actually does in the mini rail — measured live, not inferred.
+ *
  * ## AdminLTE v4 (ADR-0042) — what changed from the CoreUI markup
  *
  * Raw HTML, same as under ADR-0037, but every class is now AdminLTE v4's,
@@ -117,8 +128,66 @@ interface SidebarNavGroup {
   key: string;
   label: string;
   testId: string;
+  /**
+   * Font Awesome classes, e.g. `"fa-solid fa-user-shield"`. Optional because
+   * `UI Elements` (ADR-0020 scaffolding) deliberately still has none —
+   * SHELL-7/ADR-0046 only added icons to the three groups it created plus the
+   * `Members` flat item, and explicitly does not touch `UI Elements`.
+   */
+  icon?: string;
   items: { to: string; label: string; testId: string }[];
 }
+
+/**
+ * SHELL-7 (ADR-0046): the presentation-layer partition of the 8 org-scoped
+ * CRUD entities into 3 named, individually-iconed groups. Keyed off each
+ * registry entry's own `key` — `orgScopedEntities` itself is NOT reordered or
+ * re-keyed (that registry is also consumed by `App.tsx`'s route wiring and
+ * `FkAutocomplete`'s ref lookups, so regrouping it there to serve one
+ * consumer would have blast radius outside this file).
+ *
+ * Labels come from the registry, never hardcoded here, so this stays a pure
+ * grouping decision. Order *within* a group is this array's own order, which
+ * is deliberately not the registry's (Access Control reads Role → Permission
+ * → RoleAssignment → OrgMembership, matching ADR-0046's own listing).
+ *
+ * This must remain a complete, non-overlapping partition of all 8 entries —
+ * enforced by `AppSidebar.test.tsx`'s TC-SHELL-025 test, which fails if an
+ * entity is missing, duplicated, or added to the registry without landing in
+ * a group here.
+ */
+interface OrgEntityGroup {
+  key: string;
+  label: string;
+  testId: string;
+  icon: string;
+  /** `orgScopedEntities` keys, in the order they should render in this group. */
+  entityKeys: string[];
+}
+
+const ORG_ENTITY_GROUPS: OrgEntityGroup[] = [
+  {
+    key: "access-control",
+    label: "Access Control",
+    testId: "sidebar-nav-group-access-control",
+    icon: "fa-solid fa-user-shield",
+    entityKeys: ["roles", "permissions", "role-assignments", "org-memberships"],
+  },
+  {
+    key: "catalogs",
+    label: "Catalogs",
+    testId: "sidebar-nav-group-catalogs",
+    icon: "fa-solid fa-layer-group",
+    entityKeys: ["test-design-techniques", "test-levels", "test-types"],
+  },
+  {
+    key: "organization",
+    label: "Organization",
+    testId: "sidebar-nav-group-organization",
+    icon: "fa-solid fa-building",
+    entityKeys: ["organizations"],
+  },
+];
 
 function AppSidebar() {
   const { orgId } = useParams<{ orgId?: string }>();
@@ -157,12 +226,47 @@ function AppSidebar() {
           to: `/orgs/${orgId}/members`,
           end: false,
           testId: "sidebar-nav-org-members",
+          // SHELL-7 (ADR-0046): under `sidebar-mini` the collapsed rail shows
+          // icons only, so a nav row with no icon renders as an empty slot.
+          // This is the one flat item the restructure doesn't regroup, so it
+          // needed the icon added rather than inherited from a new group.
+          icon: "fa-solid fa-users",
         },
       ]
     : [];
 
+  // ADR-0025 generic admin CRUD surface: the 8 org/global-scoped entities
+  // (Sitemap's own table), generated from the registry
+  // (`pages/admin/registry.ts`) — one item per registry entry, never a
+  // hardcoded literal per entity. SHELL-7 (ADR-0046) replaced the single flat
+  // `Admin` group with the 3-way `ORG_ENTITY_GROUPS` partition above; the
+  // *child* testids keep the original `sidebar-nav-admin-<key>` convention
+  // (only the parent group changed, so churn is limited to what actually
+  // moved).
+  const entityByKey = new Map(orgScopedEntities.map((item) => [item.key, item]));
+
   const navGroups: SidebarNavGroup[] = orgId
     ? [
+        ...ORG_ENTITY_GROUPS.map((group) => ({
+          key: group.key,
+          label: group.label,
+          testId: group.testId,
+          icon: group.icon,
+          items: group.entityKeys.flatMap((entityKey) => {
+            const entry = entityByKey.get(entityKey);
+            return entry
+              ? [
+                  {
+                    to: `/orgs/${orgId}/admin/${entry.key}`,
+                    label: entry.label,
+                    testId: `sidebar-nav-admin-${entry.key}`,
+                  },
+                ]
+              : [];
+          }),
+        })),
+        // ADR-0020 template-parity scaffolding, unconditionally last and
+        // explicitly out of SHELL-7's scope (no icon, not regrouped).
         {
           key: "ui-elements",
           label: "UI Elements",
@@ -176,20 +280,6 @@ function AppSidebar() {
             },
             { to: `/orgs/${orgId}/ui-elements/icons`, label: "Icons", testId: "sidebar-nav-ui-icons" },
           ],
-        },
-        {
-          key: "admin",
-          label: "Admin",
-          testId: "sidebar-nav-group-admin",
-          // ADR-0025 generic admin CRUD surface: the 8 org/global-scoped
-          // entities (Sitemap's own table), generated from the registry
-          // (`pages/admin/registry.ts`) — one item per registry entry,
-          // never a hardcoded literal per entity.
-          items: orgScopedEntities.map((item) => ({
-            to: `/orgs/${orgId}/admin/${item.key}`,
-            label: item.label,
-            testId: `sidebar-nav-admin-${item.key}`,
-          })),
         },
       ]
     : [];
@@ -229,6 +319,7 @@ function AppSidebar() {
                       toggleGroup(group.key);
                     }}
                   >
+                    {group.icon && <i className={`nav-icon ${group.icon}`} aria-hidden="true" />}
                     <p>
                       {group.label}
                       <i className="nav-arrow fa-solid fa-angle-right" aria-hidden="true" />
@@ -236,7 +327,33 @@ function AppSidebar() {
                   </a>
                   {/* No inline display style: `.sidebar-menu .nav-treeview`
                       is `display: none` and `.menu-open > .nav-treeview` is
-                      `display: block` in AdminLTE's own CSS. */}
+                      `display: block` in AdminLTE's own CSS.
+
+                      SHELL-7 (ADR-0046) flagged "what does a `menu-open` group
+                      do under `sidebar-mini` + `sidebar-collapse`?" as an open
+                      question to answer live, not from source. Measured
+                      against a real browser on the isolated stack (2026-09-08,
+                      1400x900, real hover + real click):
+
+                      **There is no hover flyout.** AdminLTE's stock flyout is
+                      JS-driven (`push-menu.ts`) and we don't vendor that JS
+                      (ADR-0042), and no CSS rule closes a `menu-open` treeview
+                      when the rail is un-hovered. So an open group simply stays
+                      open and its `.nav-treeview` renders *inline inside* the
+                      73.59px (4.6rem) rail: submenu `display: block`, each
+                      child 57.59x40px and still hit-testable. A rail-row click
+                      navigates correctly (verified: reached `/admin/roles`).
+
+                      The cosmetic consequence, accepted rather than worked
+                      around here: those child rows show **nothing** while
+                      un-hovered — `.sidebar-mini.sidebar-collapse .nav-link p`
+                      is `width: 0`, and children deliberately carry no icon
+                      (ADR-0046's icon-exclusivity rule, TC-SHELL-026), so an
+                      open group reads as N blank 40px rows until hovered.
+                      Hovering restores the full 250px width and every label.
+                      Giving children icons purely to fill that rail would
+                      contradict the ADR's own decision, so it is left as-is
+                      and recorded here instead of silently "fixed". */}
                   <ul className="nav nav-treeview">
                     {group.items.map((item) => (
                       <li className="nav-item" key={item.testId}>

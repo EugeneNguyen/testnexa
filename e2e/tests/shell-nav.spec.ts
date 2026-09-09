@@ -266,7 +266,23 @@ test.describe("SHELL-1 persistent sidebar + navbar shell", () => {
       // JS injects it at runtime; we don't load that JS, so `AppShell` must
       // render it — if it were missing, there would be no way to dismiss the
       // sidebar on mobile except the toggler itself.
-      await page.locator(".app-wrapper > .sidebar-overlay").click();
+      //
+      // **Pre-existing bug in this line, found and fixed during SHELL-7
+      // (2026-09-08), NOT caused by it.** A bare `.click()` targets the
+      // element's CENTER; the overlay spans the whole `.app-wrapper` (375px
+      // wide, taller than the viewport at 375x812), so its center lands at
+      // x≈187 — *inside* the 250px-wide open sidebar, which carries `z-index:
+      // 1038` against the overlay's `1037` and therefore intercepts the
+      // pointer. Playwright retries the click until the test times out, and
+      // the failure reads exactly like "the overlay stopped working."
+      // Attribution was settled empirically with an A/B probe run against the
+      // same live stack with and without SHELL-7's new `sidebar-mini` body
+      // class: byte-identical interception both ways, and a click at any point
+      // genuinely outside the sidebar collapses correctly in both. Passing an
+      // explicit `position` is the fix — do not revert it to a bare `.click()`.
+      await page
+        .locator(".app-wrapper > .sidebar-overlay")
+        .click({ position: { x: 340, y: 700 } });
       await expect(body).toHaveClass(/\bsidebar-collapse\b/);
       await expect(body).not.toHaveClass(/\bsidebar-open\b/);
     } finally {

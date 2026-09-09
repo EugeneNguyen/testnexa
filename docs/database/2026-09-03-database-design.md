@@ -28,6 +28,8 @@ This document is the implementation-level schema, refined from the [07 ERD](../p
 
 **ADR-0027** (generic admin CRUD UI + execution/traceability backend completion, FR-ADMIN-2 completion) — reviewed, no schema impact. `TestExecution`/`TestLog` (§3.8) and the 4 link tables (§3.9) were already fully specified below — this pass only adds application-layer routes/permission-check wiring over tables already defined, same posture ADR-0022's own note above already established for the other 20 entities. `GET /orgs/{org_id}/permissions/mine` reads existing `RoleAssignment`/`Role`/`RolePermission`/`Permission` rows (§3.3) — no new table/column/index.
 
+**SHELL-7** ([ADR-0046](../adr/0046-shell-7-sidebar-mini-org-crud-restructure.md), FR-SHELL-7) — reviewed, no schema impact. The sidebar-mini layout is a body-class CSS toggle; the org-scoped CRUD nav restructure only regroups `AppSidebar.tsx`'s presentation of the existing `orgScopedEntities` registry (`Role`, `Permission`, `RoleAssignment`, `OrgMembership`, `TestDesignTechnique`, `TestLevel`, `TestType`, `Organization`) into 3 named groups — no table, column, index, or route reads/writes any differently. Noted here explicitly so the gap isn't mistaken for an oversight.
+
 ---
 
 ## 1. Entity count reconciliation
