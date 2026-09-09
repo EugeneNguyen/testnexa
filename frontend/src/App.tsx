@@ -8,6 +8,7 @@ import OrgHome from "./pages/workflows/OrgHome";
 import OrgMembers from "./pages/workflows/OrgMembers";
 import OrgPicker from "./pages/workflows/OrgPicker";
 import ProjectDetail from "./pages/workflows/ProjectDetail";
+import ProjectsPage from "./pages/workflows/ProjectsPage";
 import RootRedirect from "./pages/workflows/RootRedirect";
 import Signup from "./pages/workflows/Signup";
 import TestCycleDetail from "./pages/workflows/TestCycleDetail";
@@ -71,6 +72,19 @@ function App() {
           element={
             <ProtectedRoute>
               <OrgHome />
+            </ProtectedRoute>
+          }
+        />
+        {/*
+          PROJ-4 (ADR-0047): Project CRUD's own dedicated page, extracted out
+          of `OrgHome`/"Dashboard" — reached via `AppSidebar`'s new "Projects"
+          nav item and the Dashboard's Project-count widget link.
+        */}
+        <Route
+          path="/orgs/:orgId/projects"
+          element={
+            <ProtectedRoute>
+              <ProjectsPage />
             </ProtectedRoute>
           }
         />

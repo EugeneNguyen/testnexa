@@ -168,6 +168,13 @@ const ROUTE_BREADCRUMBS: RouteBreadcrumbConfig[] = [
     ],
   },
   {
+    // PROJ-4 (ADR-0047): must precede the generic `/orgs/:orgId` catch-all
+    // below, same ordering rule the module docstring already explains for
+    // `/orgs/pick`.
+    pattern: "/orgs/:orgId/projects",
+    segments: (params) => [{ label: "Dashboard", to: `/orgs/${params.orgId}` }, { label: "Projects" }],
+  },
+  {
     pattern: "/orgs/:orgId",
     segments: () => [{ label: "Dashboard" }],
   },

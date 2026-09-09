@@ -164,10 +164,15 @@ test.describe("PROJ-2: create Releases via ProjectDetail's New Release modal", (
 
       // Single active OrgMembership -> org_context "auto" -> Login.tsx's own
       // redirect effect lands here automatically.
-      await page.waitForURL(new RegExp(`/orgs/${admin.orgId}`));
+      await page.waitForURL(new RegExp(`/orgs/${admin.orgId}$`));
       await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
 
-      // --- Create a Project via OrgHome's "New Project" modal -----------------------------
+      // PROJ-4 (ADR-0047): Project CRUD moved off "Dashboard" onto its own
+      // page, reached via the sidebar's "Projects" nav item.
+      await page.getByTestId("sidebar-nav-projects").click();
+      await page.waitForURL(new RegExp(`/orgs/${admin.orgId}/projects$`));
+
+      // --- Create a Project via the "New Project" modal -----------------------------
       await page.getByRole("button", { name: /new project/i }).click();
       await expect(page.getByRole("heading", { name: /new project/i })).toBeVisible();
 
@@ -187,7 +192,7 @@ test.describe("PROJ-2: create Releases via ProjectDetail's New Release modal", (
 
       await expect(page.getByRole("heading", { name: /new project/i })).not.toBeVisible();
 
-      // --- Navigate to the Project's detail page via the OrgHome link ---------------------
+      // --- Navigate to the Project's detail page via the Projects-page link ---------------
       await page.getByRole("link", { name: projectName }).click();
       await page.waitForURL(new RegExp(`/projects/${createdProject.id}`));
       await expect(page.getByRole("heading", { name: `Project: ${createdProject.id}` })).toBeVisible();
