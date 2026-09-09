@@ -203,7 +203,6 @@ async function markPaint(page: Page, selector: string) {
 }
 
 const LOGIN_MARK = '[data-testid="brand-logo-mark"]';
-const HEADER_MARK = '.navbar-brand [data-testid="brand-logo-mark"]';
 const SIDEBAR_XL = '[data-testid="sidebar-brand-logo-xl"]';
 const SIDEBAR_XS = '[data-testid="sidebar-brand-logo-xs"]';
 
@@ -255,16 +254,22 @@ test.describe("BRAND-1 logo/brand system", () => {
     expect(html).toMatch(/<link\s+rel="icon"\s+type="image\/svg\+xml"\s+href="\/favicon\.svg"/);
   });
 
-  test("TC-DS-026/029: the header renders the small mark only, resolvable by accessible name", async ({ page }) => {
+  // TC-DS-026, revised 2026-09-09 (direct CTO instruction): the header
+  // originally got the small mark; that's reversed — no logo in the header at
+  // all, sidebar is the sole brand mount. Asserted as an explicit negative
+  // over a real running page, not just the jsdom unit test, so a future
+  // re-add can't silently reintroduce a duplicate mark unnoticed.
+  test("TC-DS-026: the header carries no brand mark or link (sidebar is the sole mount)", async ({ page }) => {
     await login(page, user);
 
-    const brand = page.locator(".navbar-brand");
-    await expect(brand).toHaveAttribute("aria-label", "TestNexa home");
-    await expect(brand).toHaveAttribute("data-brand-logo-size", "small");
-    await expect(page.locator(HEADER_MARK)).toHaveAttribute("src", /logo-mark/);
-
-    // ADR-0048 §7: mark only — the header carries no wordmark text of its own.
-    await expect(page.locator(".navbar-brand")).toHaveText("");
+    await expect(page.locator(".navbar-brand")).toHaveCount(0);
+    await expect(page.getByRole("link", { name: /TestNexa home/i })).toHaveCount(1);
+    // The one remaining "TestNexa home" link is the sidebar's — not a second,
+    // header-mounted one hiding behind a different selector.
+    await expect(page.locator(SIDEBAR_XL).locator("..")).toHaveAttribute(
+      "aria-label",
+      "TestNexa home",
+    );
   });
 
   /**
@@ -289,22 +294,22 @@ test.describe("BRAND-1 logo/brand system", () => {
     expect(loginLight.filter).toBe("brightness(0)");
     expect(loginDark.filter).toBe("brightness(0) invert(1)");
 
-    // --- Mount points 2 and 3: header + sidebar, via the REAL toggle. ---
+    // --- Mount point 2: sidebar, via the REAL toggle. (Header dropped
+    // 2026-09-09, direct CTO instruction — no longer a brand mount at all,
+    // see TC-DS-026's own revised assertion above.) ---
     await login(page, user);
 
     await setTheme(page, "light");
     const lightPaint = {
-      header: await markPaint(page, HEADER_MARK),
       sidebar: await markPaint(page, SIDEBAR_XL),
     };
 
     await setTheme(page, "dark");
     const darkPaint = {
-      header: await markPaint(page, HEADER_MARK),
       sidebar: await markPaint(page, SIDEBAR_XL),
     };
 
-    for (const mount of ["header", "sidebar"] as const) {
+    for (const mount of ["sidebar"] as const) {
       const light = lightPaint[mount];
       const dark = darkPaint[mount];
 

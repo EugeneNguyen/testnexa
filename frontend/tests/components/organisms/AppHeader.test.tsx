@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import AppHeader from "../../../src/components/organisms/app-header";
@@ -52,25 +52,19 @@ describe("AppHeader", () => {
     localStorage.clear();
   });
 
-  // TC-DS-026 (BRAND-1, ADR-0048 Decision §7). Before BRAND-1 this asserted
-  // `getByText("TestNexa")` — the header's plain-text brand. The header now
-  // renders the icon-only mark, which carries no text content at all, so a
-  // text match would be a false negative. Test Design §39 calls for resolving
-  // it by the mark's own accessible name/role instead, which is what this does.
-  it("TC-DS-026: renders the small brand mark (not plain 'TestNexa' text) and a Log out button", () => {
+  // TC-DS-026 (BRAND-1, ADR-0048 Decision §7 — revised 2026-09-09, direct CTO
+  // instruction). BRAND-1 originally put the small mark here; that was
+  // reversed the same day after a manual look at the running app — the
+  // sidebar (always visible) is now the single source of the brand mark, and
+  // the header carries none at all. This asserts the negative explicitly
+  // (not just "no crash") so a future re-add doesn't silently duplicate the
+  // sidebar's own mark without anyone noticing.
+  it("TC-DS-026: renders no brand mark/link (sidebar is the sole brand mount) and a Log out button", () => {
     renderHeader();
 
-    const brand = screen.getByRole("link", { name: /TestNexa home/i });
-    expect(brand).toHaveClass("navbar-brand");
-    expect(brand).toHaveAttribute("href", "/dashboard");
-    // ADR-0048 §7: the header gets the mark only, never the full lockup.
-    expect(brand).toHaveAttribute("data-brand-logo-size", "small");
-    expect(within(brand).getByTestId("brand-logo-mark")).toHaveAttribute(
-      "src",
-      expect.stringContaining("logo-mark"),
-    );
-
-    // The old plain-text brand is gone, not merely supplemented.
+    expect(screen.queryByRole("link", { name: /TestNexa home/i })).toBeNull();
+    expect(screen.queryByTestId("brand-logo")).toBeNull();
+    expect(screen.queryByTestId("brand-logo-mark")).toBeNull();
     expect(screen.queryByText("TestNexa")).toBeNull();
 
     expect(screen.getByTestId("logout-button")).toBeInTheDocument();

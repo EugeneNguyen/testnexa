@@ -40,7 +40,9 @@ export interface BrandLogoProps {
 
 ### 3.2 `AppHeader` (`components/organisms/app-header/`)
 
-`navbar-brand` (currently plain text `"TestNexa"`, `app-header.tsx:323`) becomes `<BrandLogo href="/dashboard" size="small" className="navbar-brand" />` — icon only, no wordmark (the header is a fixed single row, not a widening rail; see ADR-0048 Decision §7 for why no full/small state toggle is needed here).
+> **Corrected in place 2026-09-09 (direct CTO instruction, after manual review of the isolated stack).** This section originally put `<BrandLogo size="small">` here. Reversed: **the header carries no brand mark at all** — the `BrandLogo` import and JSX are removed outright, not swapped for anything else. The sidebar (§3.3, always visible per SHELL-1) is now the sole brand mount in the authenticated app. See ADR-0048's second Consequences amendment.
+
+`navbar-brand` (currently plain text `"TestNexa"`, `app-header.tsx:323`) becomes ~~`<BrandLogo href="/dashboard" size="small" className="navbar-brand" />` — icon only, no wordmark (the header is a fixed single row, not a widening rail; see ADR-0048 Decision §7 for why no full/small state toggle is needed here)~~ nothing — the plain-text brand is deleted with no replacement.
 
 ### 3.3 `AppSidebar` (`components/organisms/app-sidebar/`)
 
