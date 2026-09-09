@@ -14,6 +14,8 @@ First sitemap for this repo — no prior one existed; routes accreted story-by-s
 
 **BRAND-1** ([ADR-0048](../adr/0048-brand-1-logo-brand-system.md), FR-BRAND-1, [UI Design Document](../ui-design/2026-09-09-brand-1-logo-brand-system-ui-design.md)) — no new route. The logo/brand system touches persistent chrome present on (almost) every screen — `AppHeader`'s navbar-brand, `AppSidebar`'s `.sidebar-brand`, `AuthBoxLayout`'s `BrandLogo` (login/signup, public routes) — plus `index.html`'s favicon, not a route the tables below track. Noted here for the same reason as SHELL-6's note above: this document's route-scoped tables would otherwise never mention a change this visible.
 
+**FRONTEND-1** ([ADR-0049](../adr/0049-frontend-co-locate-unit-tests.md), NFR-54) — no new route, no removed route, no changed screen, no changed chrome. Vitest unit-test files move from `frontend/tests/**.test.{ts,tsx}` to live co-located next to their source under `frontend/src/` — pure frontend file-layout, no `App.tsx` change, no router change. Noted here so the absence of any Sitemap impact isn't mistaken for an oversight (same posture this document takes for every prior frontend-only ADR's "no new route" annotation).
+
 ## Public (unauthenticated)
 
 **Correction (2026-09-07, DASH-1):** `/` is no longer a screen. `LandingPage` is deleted ([ADR-0035](../adr/0035-dash-1-root-redirect-and-dashboard-placeholder.md), supersedes [ADR-0024](../adr/0024-public-landing-page.md)) — `/` is now a pure redirect guard (spinner while `isInitializing`, else `/login` or `/dashboard` on `accessToken` alone, never `orgContext`). See the Route tree below and the Protected table's new `/dashboard` row.
