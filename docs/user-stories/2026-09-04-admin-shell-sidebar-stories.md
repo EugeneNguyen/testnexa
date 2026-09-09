@@ -70,3 +70,22 @@
 - Out of scope, explicitly: the `UI Elements` nav group (ADR-0020 scaffolding) — untouched, not folded into the new groups, not reordered relative to itself.
 
 **Traceability:** [FR-SHELL-7](../requirements/2026-09-03-project-scaffold-requirements.md), [ADR-0046](../adr/0046-shell-7-sidebar-mini-org-crud-restructure.md), [UI Design Document](../ui-design/2026-09-08-shell-7-sidebar-mini-org-crud-restructure-ui-design.md). Presentation-only change over the existing `orgScopedEntities` registry (ADR-0025) — no new/changed entity, no new API route, no schema change.
+
+---
+
+## Story SHELL-9: Sidebar and breadcrumb work inside a project, not just inside an org
+
+**As** Priya (QA Lead who opens a specific Project to work its Releases, Requirements, Test Plans, and Test Cycles),
+**I want** the sidebar and breadcrumb to keep working normally while I'm inside a project — full nav, a real trail, and a click-path back to the Projects list — instead of going blank,
+**so that** opening a project doesn't strand me the way `OrgMembers.tsx` once stranded a user with no link back to `OrgHome` (the exact defect SHELL-1 closed for org-scoped screens, now recurring one level deeper for project-scoped ones).
+
+**Acceptance criteria:**
+
+- Given an authenticated user navigates directly to `/projects/:projectId` (e.g. from a bookmark, a shared link, or `ProjectsPage`'s own table), when the page renders, then the sidebar shows the full org-scoped nav — Dashboard, Projects, Members, Access Control, Catalogs, Organization, UI Elements — identical to what renders on `/orgs/:orgId`, not an empty list.
+- Given the same is true for every other project-scoped route (`TestPlanDetail`, `TestCycleDetail`, and any `/projects/:projectId/admin/:entity` page), when each renders, then its sidebar is equally fully populated — this is not scoped to `ProjectDetail` alone.
+- Given the user is on any project-scoped screen and wants to return to the org's project list, when they click the sidebar's "Projects" item, then they land on `/orgs/:orgId/projects` — the literal "way back to the list" this story exists to provide, via the nav item PROJ-4 already ships, not a new one.
+- Given the user is on `/projects/:projectId` (or any of its nested routes), when they inspect the breadcrumb, then it shows a real, clickable trail rooted at "Projects" and naming the current project by its actual name — not the bare, unlinked "Project" placeholder that renders today.
+- Given the `:projectId` in the URL doesn't resolve (deleted, foreign-org, or malformed), when the page attempts to render its shell, then the sidebar/breadcrumb degrade to their existing empty/graceful states (same as `/orgs/pick` today) — no crash, no raw ID ever shown as a label.
+- Out of scope, explicitly: any change to `useAdminRouteContext`/`useEntityScope` or the project-scoped admin pages' own permission-check plumbing — those already resolve org context correctly for their own purposes; this story only extends the same resolving idea to `AppSidebar`/`AppBreadcrumb`.
+
+**Traceability:** [FR-SHELL-8](../requirements/2026-09-03-project-scaffold-requirements.md), [NFR-53](../requirements/2026-09-03-project-scaffold-requirements.md), [ADR-0048](../adr/0048-shell-9-project-scope-nav-context-resolution.md), [UI Design Document](../ui-design/2026-09-09-shell-9-project-scope-nav-context-ui-design.md). Closes, for project-scoped routes specifically, the same class of dead-end SHELL-1's own story first closed for org-scoped ones — see that story's own "so that" clause above for the precedent.

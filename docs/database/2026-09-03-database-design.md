@@ -32,6 +32,8 @@ This document is the implementation-level schema, refined from the [07 ERD](../p
 
 **PROJ-4** ([ADR-0047](../adr/0047-proj-4-projects-page-sidebar-entry.md), FR-PROJ-3/FR-PROJ-4) — reviewed, no schema impact. Relocating Project CRUD from `OrgHome`/"Dashboard" to its own `ProjectsPage`/`/orgs/:orgId/projects` is a frontend route/component move — the `Project` table (§3.5) and every route/query it already backed are unchanged. Noted here explicitly so the gap isn't mistaken for an oversight.
 
+**SHELL-9** ([ADR-0048](../adr/0048-shell-9-project-scope-nav-context-resolution.md), FR-SHELL-8) — reviewed, no schema impact. `useResolvedOrgId()`'s fetch-when-absent branch reads the `Project` table's own existing `org_id` column (§3.5) via the already-shipped `GET /projects/{id}`; no new table, column, index, or query shape. Noted here explicitly so the gap isn't mistaken for an oversight.
+
 ---
 
 ## 1. Entity count reconciliation

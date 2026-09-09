@@ -30,6 +30,8 @@ REST over HTTPS, JSON bodies, base path `/api/v1`. FastAPI auto-generates the Op
 
 **PROJ-4** ([ADR-0047](../adr/0047-proj-4-projects-page-sidebar-entry.md), FR-PROJ-3/FR-PROJ-4) — reviewed, no API impact. `ProjectsPage.tsx` calls exactly the routes `OrgHome`'s Project table already called (`POST /orgs/{org_id}/projects`, `GET /projects/{id}`, `PATCH /projects/{id}`, `GET /projects?org_id=`, `DELETE /projects/{id}`, all §2/§3-documented) — moving which frontend screen calls them is not a route/shape change.
 
+**SHELL-9** ([ADR-0048](../adr/0048-shell-9-project-scope-nav-context-resolution.md), FR-SHELL-8) — reviewed, no API impact. `useResolvedOrgId()` calls only the already-documented `GET /projects/{id}` (§2/§3) when `:orgId` is absent from the route — no new route, no changed request/response shape. The response's existing `org_id` field (already read by `useAdminRouteContext`'s own independent caller of the same route) is the only field this new caller reads.
+
 ---
 
 ## 1. Conventions
