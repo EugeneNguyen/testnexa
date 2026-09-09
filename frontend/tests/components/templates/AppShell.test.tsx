@@ -93,6 +93,8 @@ describe("AppShell", () => {
 
     expect(document.body).toHaveClass("layout-fixed");
     expect(document.body).toHaveClass("sidebar-expand-lg");
+    // SHELL-7 (ADR-0046).
+    expect(document.body).toHaveClass("sidebar-mini");
     // `app-loaded` is added a frame after mount (while absent, AdminLTE forces
     // `transition: none`, which suppresses a first-paint slide).
     await waitFor(() => expect(document.body).toHaveClass("app-loaded"));
@@ -104,12 +106,40 @@ describe("AppShell", () => {
     for (const leaked of [
       "layout-fixed",
       "sidebar-expand-lg",
+      "sidebar-mini",
       "app-loaded",
       "sidebar-collapse",
       "sidebar-open",
     ]) {
       expect(document.body).not.toHaveClass(leaked);
     }
+  });
+
+  // TC-SHELL-022 (class-application half). The *width* half of that TC —
+  // "the rail computes to AdminLTE's narrow width" — is deliberately NOT
+  // asserted here: jsdom does no layout, so any `getBoundingClientRect()` in
+  // this file would read 0 and prove nothing (root CLAUDE.md's CSS-layout
+  // rule). It is covered live in `e2e/tests/shell7-sidebar-mini.spec.ts`.
+  // What this layer CAN prove, and does, is that `sidebar-mini` is applied as
+  // a constant base modifier — present from mount, surviving both directions
+  // of the collapse toggle (it is not a state class), and removed on unmount
+  // along with the rest (a leaked class outlives logout and, in Vitest, the
+  // next test in this file).
+  it("SHELL-7: sidebar-mini is a constant base class, unaffected by collapse/expand toggling", () => {
+    renderShell();
+
+    expect(document.body).toHaveClass("sidebar-mini");
+    expect(document.body).not.toHaveClass("sidebar-collapse");
+
+    fireEvent.click(screen.getByTestId("sidebar-toggler"));
+    expect(document.body).toHaveClass("sidebar-collapse");
+    // The whole point of the story: mini stays put, so "collapsed" now paints
+    // as an icon rail rather than a hidden sidebar.
+    expect(document.body).toHaveClass("sidebar-mini");
+
+    fireEvent.click(screen.getByTestId("sidebar-toggler"));
+    expect(document.body).not.toHaveClass("sidebar-collapse");
+    expect(document.body).toHaveClass("sidebar-mini");
   });
 
   it("toggles AdminLTE's body-level sidebar state when the header toggler is clicked", () => {

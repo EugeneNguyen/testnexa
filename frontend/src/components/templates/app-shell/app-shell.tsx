@@ -125,8 +125,19 @@ import AppSidebar from "../../organisms/app-sidebar";
  */
 const MOBILE_MEDIA_QUERY = "(max-width: 991.98px)";
 
-/** Layout modifiers that are constant for this app's whole shell lifetime. */
-const BASE_BODY_CLASSES = ["layout-fixed", "sidebar-expand-lg"] as const;
+/**
+ * Layout modifiers that are constant for this app's whole shell lifetime.
+ *
+ * SHELL-7 (ADR-0046) added `sidebar-mini`. It is a *constant* modifier, not a
+ * third state: it only changes what CSS the existing `sidebar-collapse` class
+ * paints (an icon-only rail that hover-expands, instead of a hidden sidebar),
+ * so it belongs here alongside `layout-fixed`/`sidebar-expand-lg` rather than
+ * in `STATE_BODY_CLASSES`. Nothing about the collapse/expand/mobile state
+ * machine below changes — see `applyResponsiveLogic`'s own note for the one
+ * place where upstream's `push-menu.ts` *does* branch on mini mode, and why
+ * this port deliberately still doesn't.
+ */
+const BASE_BODY_CLASSES = ["layout-fixed", "sidebar-expand-lg", "sidebar-mini"] as const;
 
 /** State classes written per-transition; also part of the unmount cleanup. */
 const STATE_BODY_CLASSES = ["sidebar-collapse", "sidebar-open"] as const;
@@ -156,10 +167,20 @@ function collapse(): SidebarState {
 }
 
 /**
- * `PushMenu.updateStateByResponsiveLogic()`. The `isMiniMode() && isCollapsed()`
- * guard on the desktop branch is inlined as "always expand" because this app
- * never sets `sidebar-mini`; kept named here so the correspondence to the
- * upstream method is greppable.
+ * `PushMenu.updateStateByResponsiveLogic()`. Upstream's desktop branch is
+ * "expand unless (`isMiniMode()` && `isCollapsed()`)"; this port inlines it as
+ * "always expand".
+ *
+ * **SHELL-7 (ADR-0046) note — deliberate, documented divergence.** That inline
+ * used to be *equivalent* to upstream because the app never set
+ * `sidebar-mini`; it now sets it unconditionally (see `BASE_BODY_CLASSES`), so
+ * the two differ in exactly one situation: crossing the mobile→desktop
+ * breakpoint while collapsed. Upstream would keep the mini rail collapsed;
+ * this keeps the pre-SHELL-7 behavior of expanding. ADR-0046 scopes SHELL-7 to
+ * "no other change to the collapse/expand/mobile state machine", and every
+ * existing TC-SHELL-004 assertion is written against the current behavior, so
+ * the divergence is preserved rather than silently "fixed" here — changing it
+ * is a behavior change needing its own decision, not a drive-by.
  */
 function applyResponsiveLogic(state: SidebarState): SidebarState {
   if (isMobileViewport()) {

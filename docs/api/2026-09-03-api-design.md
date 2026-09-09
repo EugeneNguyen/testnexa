@@ -26,6 +26,8 @@ REST over HTTPS, JSON bodies, base path `/api/v1`. FastAPI auto-generates the Op
 
 **DS-3** ([ADR-0045](../adr/0045-ds-3-infobox-widget-consolidation.md), FR-SHELL-3/FR-EXEC-1) — reviewed, no API impact. Both migrated widgets keep calling the exact same routes they already called (`GET /projects`, `GET /org-memberships`, `GET /test-executions` filtered by `result`) — only the frontend component rendering the returned `total` changes.
 
+**SHELL-7** ([ADR-0046](../adr/0046-shell-7-sidebar-mini-org-crud-restructure.md), FR-SHELL-7) — reviewed, no API impact. Sidebar-mini is a frontend body-class toggle; the org-scoped CRUD nav restructure only regroups the sidebar's presentation of the existing `orgScopedEntities` registry — every `:entity` route those 8 entities already answer to (§3/§5) is unchanged, no new route, no changed request/response shape.
+
 ---
 
 ## 1. Conventions
