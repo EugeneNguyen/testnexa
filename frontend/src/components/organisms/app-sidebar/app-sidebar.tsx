@@ -314,8 +314,8 @@ function AppSidebar() {
           ADR-0046) — deliberately no React state and no new JS here, per
           ADR-0042's "use the library's own CSS, don't vendor its plugins".
 
-          DEVIATION from ADR-0048/UI-Design §3.3/TC-DS-027, flagged not
-          absorbed: those specify `logo-full.svg` (icon + wordmark) for the
+          DEVIATION from ADR-0048/UI-Design §3.3/TC-DS-027 as originally
+          written: those specified `logo-full.svg` (icon + wordmark) for the
           `.brand-image-xl` slot. It cannot go here. AdminLTE positions
           `.logo-xl`/`.logo-xs` ABSOLUTELY (`top:6px;left:12px`), while
           `.brand-text` stays in normal flow at x~89 — so a lockup carrying
@@ -327,7 +327,9 @@ function AppSidebar() {
           text is VISIBLE, so removing it would regress another story's
           coverage. Both slots therefore use the mark; `logo-full.svg` is
           still used at the login/signup mount, where it stands alone with no
-          adjacent `.brand-text` to collide with. */}
+          adjacent `.brand-text` to collide with. All three documents were
+          corrected in place 2026-09-09 to match what actually ships — see
+          ADR-0048's Consequences amendment for the full reasoning. */}
       <div className="sidebar-brand">
         <a className="brand-link" href="/dashboard" aria-label="TestNexa home" data-testid="sidebar-brand-link">
           <img

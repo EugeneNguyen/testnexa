@@ -162,8 +162,9 @@ describe("AppSidebar", () => {
     expect(xl).toHaveClass("brand-image-xl", "logo-xl");
     expect(xs).toHaveClass("brand-image-xs", "logo-xs");
 
-    // DEVIATION from TC-DS-027's literal wording, flagged not absorbed: the row
-    // names `logo-full.svg` for the xl slot. It cannot be used there — AdminLTE
+    // DEVIATION from TC-DS-027 as originally written (the row has since been
+    // corrected in place, 2026-09-09, to match this): it named `logo-full.svg`
+    // for the xl slot. It cannot be used there — AdminLTE
     // positions both marks absolutely while `.brand-text` sits in flow beside
     // them, so a lockup carrying its own wordmark paints "TestNexa" twice,
     // overlapping (measured on a live instance). `.brand-text` can't be dropped

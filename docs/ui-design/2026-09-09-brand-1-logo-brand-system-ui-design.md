@@ -49,7 +49,7 @@ export interface BrandLogoProps {
 ```html
 <div class="sidebar-brand">
   <a class="brand-link" href="/dashboard" aria-label="TestNexa home">
-    <img src="/src/assets/brand/logo-full.svg" class="brand-image-xl logo-xl" alt="" />
+    <img src="/src/assets/brand/logo-mark.svg" class="brand-image-xl logo-xl" alt="" />
     <img src="/src/assets/brand/logo-mark.svg" class="brand-image-xs logo-xs" alt="" />
     <span class="brand-text fw-light">TestNexa</span>
   </a>
@@ -57,6 +57,8 @@ export interface BrandLogoProps {
 ```
 
 AdminLTE's own shipped CSS (`.sidebar-mini.sidebar-collapse`'s `.logo-xl`/`.logo-xs` visibility rules) cross-fades which image shows based on the existing `sidebar-mini`/`sidebar-collapse` body classes (SHELL-7, ADR-0046) — no new JS, no new state. `.brand-text` keeps its existing collapse/hover behavior (SHELL-7's own `.sidebar-mini.sidebar-collapse .brand-text` rule, unchanged).
+
+> **Corrected in place 2026-09-09 (implementation pass, same branch).** The `.brand-image-xl` slot above originally read ~~`logo-full.svg`~~. It cannot: AdminLTE positions `.logo-xl`/`.logo-xs` *absolutely* while `.brand-text` stays in normal flow beside them, so a lockup carrying its own embedded wordmark paints "TestNexa" a second time, overlapping. Dropping `.brand-text` is ruled out independently — TC-SHELL-005 asserts it visible. Both slots therefore use `logo-mark.svg`; `logo-full.svg` remains the login/signup asset (§3.2), where it stands alone. See ADR-0048's Consequences amendment and TC-DS-027's revised row; the resulting "wordmark exactly once, no overlap" constraint is asserted live in `e2e/tests/brand1-logo-system.spec.ts`.
 
 ### 3.4 `index.html`
 
@@ -70,7 +72,9 @@ None. Every asset is static; no `apiFetch` call anywhere in this story.
 
 ## 5. Light/dark verification plan
 
-`logo-mark.svg`/`logo-full.svg` inherit `currentColor` — verify by toggling `data-bs-theme` (ADR-0042's existing color-mode toggle) against a live instance and confirming the rendered mark's computed color tracks the surrounding text color in both modes, same "verify empirically against a live instance" discipline root `CLAUDE.md`'s Testing section already establishes for this class of claim (a CSS-inheritance question, not something to trust from reading the SVG source alone). The favicon is checked separately, against actual light and dark OS/browser chrome — it does not participate in `data-bs-theme` at all.
+~~`logo-mark.svg`/`logo-full.svg` inherit `currentColor` — verify by toggling `data-bs-theme` (ADR-0042's existing color-mode toggle) against a live instance and confirming the rendered mark's computed color tracks the surrounding text color in both modes~~, same "verify empirically against a live instance" discipline root `CLAUDE.md`'s Testing section already establishes for this class of claim (a CSS-inheritance question, not something to trust from reading the SVG source alone). The favicon is checked separately, against actual light and dark OS/browser chrome — it does not participate in `data-bs-theme` at all.
+
+> **Corrected in place 2026-09-09 (implementation pass, same branch) — this plan's own predicted mechanism was wrong, and running it is exactly what found that.** An `<img src="*.svg">` loads the SVG as a **separate document**, so `fill="currentColor"` resolves against *that* document's initial color (black), never the host page's. The marks painted black in dark mode, invisible against the dark sidebar. Worse, the verification step this section originally prescribed would have **falsely passed**: `getComputedStyle(img).color` reports the element's inherited CSS `color` (`rgb(110, 168, 254)`), which replaced `<img>` content never consults. The assets remain `currentColor`-only (TC-DS-025 unchanged); theme tracking is now driven from the host document by a `data-bs-theme`-keyed `filter` pair in `frontend/src/index.css`. **The real verification is therefore the *effective* rendering** — the applied `filter`, plus measured contrast against the actual background behind each mark, at all three mount points — which is what `e2e/tests/brand1-logo-system.spec.ts` asserts. See ADR-0048's Consequences amendment.
 
 ## 6. Open points resolved
 
