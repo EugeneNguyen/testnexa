@@ -419,10 +419,19 @@ function AppSidebar() {
   // `projectScopedEntities`, never hardcoded, and each group links to the
   // already-shipped generic-admin route (`/projects/:projectId/admin/<entity>`,
   // ADR-0025). No new backend route.
+  //
+  // Gated on `orgId` too, not just `projectId` — `projectId` alone is
+  // available synchronously from the route, but waiting for `orgId` (i.e. for
+  // `useResolvedOrgId()`'s fetch to actually resolve) preserves the same
+  // "one fetch's worth of blank sidebar, no partial/flickering nav" trade-off
+  // ADR-0048 §4 already established for the org nav this replaces — content
+  // that depends on a project genuinely existing (its group links point at
+  // `/projects/:projectId/admin/...` routes) shouldn't render before that's
+  // confirmed.
   const projectEntityByKey = new Map(projectScopedEntities.map((item) => [item.key, item]));
 
   const projectNavGroups: SidebarNavGroup[] =
-    mode === "project" && projectId
+    mode === "project" && projectId && orgId
       ? PROJECT_ENTITY_GROUPS.map((group) => ({
           key: group.key,
           label: group.label,

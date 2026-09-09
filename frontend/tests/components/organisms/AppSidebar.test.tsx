@@ -442,58 +442,63 @@ describe("AppSidebar", () => {
     );
   }
 
-  const FULL_ORG_NAV = [
-    "Dashboard",
-    "Projects",
-    "Members",
-    "Access Control",
-    "Catalogs",
-    "Organization",
-    "UI Elements",
-  ];
+  // SHELL-10 (ADR-0049): the project-mode nav's own top-to-bottom order —
+  // 4 entity groups, then the 2 "back" links. "Project Overview" is only
+  // present when NOT already on `/projects/:projectId` itself (see the
+  // dedicated test below), so it's appended per-route, not baked into this
+  // constant.
+  const PROJECT_NAV_GROUPS = ["Test Design", "Test Planning", "Execution & Defects", "Setup"];
 
-  // TC-SHELL-029: "Navigate directly to `/projects/:projectId` (no prior
-  // in-session visit to `/orgs/:orgId`)" — a fresh `MemoryRouter` whose only
-  // entry is the project route is exactly that: no earlier route ever mounted,
-  // so no stale in-memory `orgId` can mask a real resolution gap. "identical to
-  // `/orgs/:orgId`'s own nav" is asserted literally, by rendering the org route
-  // too and comparing the two label sequences — not by restating a hardcoded
-  // list and hoping it matches.
-  it("TC-SHELL-029: resolves the full org nav on a direct landing at /projects/:projectId", async () => {
+  // TC-SHELL-029 (revised 2026-09-09, SHELL-10/ADR-0049): a direct landing at
+  // `/projects/:projectId` now resolves the project-mode nav, NOT the org
+  // nav — SHELL-9's original claim ("identical to `/orgs/:orgId`'s own nav")
+  // no longer holds once SHELL-10 makes project-scoped routes render a
+  // distinct nav; this test asserts the CURRENT, correct behavior rather
+  // than being left failing. A fresh `MemoryRouter` whose only entry is the
+  // project route means no earlier route ever mounted, so no stale
+  // in-memory state can mask a real resolution gap.
+  it("TC-SHELL-029: resolves the full project-mode nav on a direct landing at /projects/:projectId", async () => {
     mockGetProject.mockResolvedValue(PROJECT_FIXTURE);
 
     const { container } = renderSidebarAtProjectRoute(`/projects/${PROJECT_ID}`);
 
-    // Nav is empty until the fetch resolves (ADR-0048 §4) — then fully populated.
+    // Nav is empty until the fetch resolves (ADR-0048 §4, ADR-0049 extends the
+    // same trade-off to the project-mode nav) — then fully populated.
     await waitFor(() => {
-      expect(screen.getByTestId("sidebar-nav-org-home")).toBeInTheDocument();
+      expect(screen.getByTestId("sidebar-nav-group-test-design")).toBeInTheDocument();
     });
-    expect(screen.getByTestId("sidebar-nav-projects")).toBeInTheDocument();
-    expect(screen.getByTestId("sidebar-nav-org-members")).toBeInTheDocument();
-    expect(screen.getByTestId("sidebar-nav-group-access-control")).toBeInTheDocument();
-    expect(screen.getByTestId("sidebar-nav-group-catalogs")).toBeInTheDocument();
-    expect(screen.getByTestId("sidebar-nav-group-organization")).toBeInTheDocument();
-    expect(screen.getByTestId("sidebar-nav-group-ui-elements")).toBeInTheDocument();
-    expect(topLevelLabels(container)).toEqual(FULL_ORG_NAV);
+    expect(screen.getByTestId("sidebar-nav-group-test-planning")).toBeInTheDocument();
+    expect(screen.getByTestId("sidebar-nav-group-execution-defects")).toBeInTheDocument();
+    expect(screen.getByTestId("sidebar-nav-group-setup")).toBeInTheDocument();
+    expect(screen.getByTestId("sidebar-nav-back-to-projects")).toBeInTheDocument();
+    // Already on `/projects/:projectId` itself, so "Project Overview" (which
+    // points at that exact route) is correctly omitted, not rendered as a
+    // dead self-link.
+    expect(screen.queryByTestId("sidebar-nav-project-overview")).not.toBeInTheDocument();
+    expect(topLevelLabels(container)).toEqual([...PROJECT_NAV_GROUPS, "Back to Projects"]);
+
+    // The org nav is NOT rendered alongside or instead of this — negative check.
+    expect(screen.queryByTestId("sidebar-nav-org-home")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("sidebar-nav-group-access-control")).not.toBeInTheDocument();
 
     // The resolution came from the fetched Project's own `org_id`, not from
-    // anywhere in the URL (which contains no org id at all).
+    // anywhere in the URL (which contains no org id at all) — proven via the
+    // back-link's own href, the one project-mode item that needs `orgId`.
     expect(mockGetProject).toHaveBeenCalledWith(PROJECT_ID);
-    expect(screen.getByTestId("sidebar-nav-org-home")).toHaveAttribute(
+    expect(screen.getByTestId("sidebar-nav-back-to-projects")).toHaveAttribute(
       "href",
-      `/orgs/${PROJECT_ORG_ID}`,
+      `/orgs/${PROJECT_ORG_ID}/projects`,
     );
-
-    // "identical to `/orgs/:orgId`'s own nav, not empty" — compared directly.
-    const onOrgRoute = renderSidebar(`/orgs/${PROJECT_ORG_ID}`);
-    expect(topLevelLabels(container)).toEqual(topLevelLabels(onOrgRoute.container));
   });
 
-  // TC-SHELL-030: asserted on each of the three OTHER project-scoped route
-  // shapes independently, each its own `render` (its own `AppSidebar` mount and
-  // its own `QueryClient`, so nothing can be inherited from a sibling), rather
-  // than spot-checking `ProjectDetail` and assuming it generalizes.
-  it("TC-SHELL-030: full-nav resolution holds on TestPlanDetail, TestCycleDetail, and a project-scoped admin route", async () => {
+  // TC-SHELL-030 (revised 2026-09-09, SHELL-10/ADR-0049): asserted on each of
+  // the three OTHER project-scoped route shapes independently, each its own
+  // `render` (its own `AppSidebar` mount and its own `QueryClient`, so
+  // nothing can be inherited from a sibling), rather than spot-checking
+  // `ProjectDetail` and assuming it generalizes. `TestPlanDetail` and
+  // `TestCycleDetail` (nested routes) get "Project Overview" too, since
+  // neither IS `/projects/:projectId` itself.
+  it("TC-SHELL-030: full project-mode nav resolution holds on TestPlanDetail, TestCycleDetail, and a project-scoped admin route", async () => {
     const routes = [
       `/projects/${PROJECT_ID}/test-plans/plan-1`,
       `/projects/${PROJECT_ID}/test-plans/plan-1/test-cycles/cycle-1`,
@@ -506,10 +511,18 @@ describe("AppSidebar", () => {
 
       const view = renderSidebarAtProjectRoute(route);
       await waitFor(() => {
-        expect(view.getByTestId("sidebar-nav-org-home")).toBeInTheDocument();
+        expect(view.getByTestId("sidebar-nav-group-test-design")).toBeInTheDocument();
       });
-      expect(topLevelLabels(view.container)).toEqual(FULL_ORG_NAV);
-      expect(view.getByTestId("sidebar-nav-projects")).toHaveAttribute(
+      expect(topLevelLabels(view.container)).toEqual([
+        ...PROJECT_NAV_GROUPS,
+        "Project Overview",
+        "Back to Projects",
+      ]);
+      expect(view.getByTestId("sidebar-nav-project-overview")).toHaveAttribute(
+        "href",
+        `/projects/${PROJECT_ID}`,
+      );
+      expect(view.getByTestId("sidebar-nav-back-to-projects")).toHaveAttribute(
         "href",
         `/orgs/${PROJECT_ORG_ID}/projects`,
       );
@@ -519,27 +532,99 @@ describe("AppSidebar", () => {
     }
   });
 
-  // TC-SHELL-031: "Click the sidebar's 'Projects' nav item -> URL becomes
-  // `/orgs/:orgId/projects` with the project's correct `org_id`". Asserted as a
-  // real click that really navigates (the stub route's content appears), not
-  // only as an `href` — an `href` that never navigates would pass a
-  // string-equality check. The `org_id` asserted is the fetched project's, and
-  // deliberately differs from any value present in the URL.
-  it("TC-SHELL-031: clicking the sidebar's Projects item navigates to the project's own org Projects list", async () => {
+  // TC-SHELL-031 (revised 2026-09-09, SHELL-10/ADR-0049): "Back to Projects"
+  // is now the bottom-of-nav item this claim is about — PROJ-4's
+  // `sidebar-nav-projects` item no longer renders on a project-scoped route
+  // at all (SHELL-10 replaces the org nav wholesale), so this test's own
+  // literal target moved with it. Asserted as a real click that really
+  // navigates (the stub route's content appears), not only as an `href` — an
+  // `href` that never navigates would pass a string-equality check alone.
+  it("TC-SHELL-031: clicking the sidebar's Back to Projects link navigates to the project's own org Projects list", async () => {
     mockGetProject.mockResolvedValue(PROJECT_FIXTURE);
 
     renderSidebarAtProjectRoute(`/projects/${PROJECT_ID}`);
 
-    const projectsLink = await screen.findByTestId("sidebar-nav-projects");
-    expect(projectsLink).toHaveAttribute("href", `/orgs/${PROJECT_ORG_ID}/projects`);
+    const backLink = await screen.findByTestId("sidebar-nav-back-to-projects");
+    expect(backLink).toHaveAttribute("href", `/orgs/${PROJECT_ORG_ID}/projects`);
 
-    fireEvent.click(projectsLink);
+    fireEvent.click(backLink);
 
     // Real client-side navigation happened: the destination route rendered.
     expect(await screen.findByTestId("projects-page-stub")).toBeInTheDocument();
     // ...and the sidebar it navigated away from is gone, so this cannot be a
     // false pass from the old screen still being mounted.
-    expect(screen.queryByTestId("sidebar-nav-org-home")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("sidebar-nav-group-test-design")).not.toBeInTheDocument();
+  });
+
+  // SHELL-10 (ADR-0049), new coverage — the org-mode/project-mode swap is
+  // total in both directions, not just "project routes gained a new nav."
+  it("SHELL-10: the org nav does not render on a project-scoped route, and the project nav does not render on an org-scoped route", async () => {
+    mockGetProject.mockResolvedValue(PROJECT_FIXTURE);
+    const onProjectRoute = renderSidebarAtProjectRoute(`/projects/${PROJECT_ID}`);
+    await waitFor(() => {
+      expect(
+        within(onProjectRoute.container).getByTestId("sidebar-nav-group-test-design"),
+      ).toBeInTheDocument();
+    });
+    expect(within(onProjectRoute.container).queryByTestId("sidebar-nav-org-home")).not.toBeInTheDocument();
+    expect(within(onProjectRoute.container).queryByTestId("sidebar-nav-projects")).not.toBeInTheDocument();
+    // Two renders now share `document.body` — every query below is scoped to
+    // its own render's `.container`, not RTL's default (whole-`document.body`)
+    // search root, or one render's content would leak into the other's checks.
+    onProjectRoute.unmount();
+
+    const onOrgRoute = renderSidebar(`/orgs/${PROJECT_ORG_ID}`);
+    await waitFor(() => {
+      expect(within(onOrgRoute.container).getByTestId("sidebar-nav-org-home")).toBeInTheDocument();
+    });
+    expect(
+      within(onOrgRoute.container).queryByTestId("sidebar-nav-group-test-design"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(onOrgRoute.container).queryByTestId("sidebar-nav-back-to-projects"),
+    ).not.toBeInTheDocument();
+  });
+
+  // SHELL-10 (ADR-0049), new coverage, mirrors TC-SHELL-025's partition-
+  // completeness discipline for the org side: every entity in exactly one
+  // group or explicitly excluded, none missing, none duplicated.
+  it("SHELL-10: PROJECT_ENTITY_GROUPS + PROJECT_EXCLUDED_ENTITY_KEYS is a complete, non-overlapping partition of projectScopedEntities", async () => {
+    const { PROJECT_ENTITY_GROUPS, PROJECT_EXCLUDED_ENTITY_KEYS } = await import(
+      "../../../src/components/organisms/app-sidebar/app-sidebar"
+    );
+    const { projectScopedEntities } = await import("../../../src/pages/admin/registry");
+
+    const groupedKeys = PROJECT_ENTITY_GROUPS.flatMap((g: { entityKeys: string[] }) => g.entityKeys);
+    const allAccountedFor = [...groupedKeys, ...PROJECT_EXCLUDED_ENTITY_KEYS].sort();
+    const registryKeys = projectScopedEntities.map((e) => e.key).sort();
+
+    expect(allAccountedFor).toEqual(registryKeys);
+    // No duplicates between "grouped" and "excluded" — a key counted in both
+    // would still pass the sorted-array-equality check above.
+    expect(new Set(groupedKeys).size).toBe(groupedKeys.length);
+    expect(groupedKeys.filter((k: string) => PROJECT_EXCLUDED_ENTITY_KEYS.includes(k))).toEqual([]);
+  });
+
+  // SHELL-10 (ADR-0049), new coverage, mirrors TC-SHELL-026's icon-exclusivity
+  // check for the org side.
+  it("SHELL-10: each of the 4 project-nav groups renders exactly one icon, its own entity children render none", async () => {
+    mockGetProject.mockResolvedValue(PROJECT_FIXTURE);
+    renderSidebarAtProjectRoute(`/projects/${PROJECT_ID}`);
+    await waitFor(() => {
+      expect(screen.getByTestId("sidebar-nav-group-test-design")).toBeInTheDocument();
+    });
+
+    for (const testId of [
+      "sidebar-nav-group-test-design",
+      "sidebar-nav-group-test-planning",
+      "sidebar-nav-group-execution-defects",
+      "sidebar-nav-group-setup",
+    ]) {
+      const group = screen.getByTestId(testId);
+      expect(group.querySelectorAll(":scope > a > i.nav-icon")).toHaveLength(1);
+      // None of this group's own child rows carry an icon.
+      expect(group.querySelectorAll("ul.nav-treeview li i.nav-icon")).toHaveLength(0);
+    }
   });
 
   // TC-SHELL-033 (sidebar half; the breadcrumb half lives in

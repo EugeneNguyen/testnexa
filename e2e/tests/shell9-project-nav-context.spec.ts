@@ -227,7 +227,6 @@ test.describe("SHELL-9: project-scope nav context (sidebar + breadcrumb)", () =>
   }) => {
     const fixture = runBackendPython<NavContextFixture>(SEED_SCRIPT);
     try {
-      const sidebar = page.locator("aside.app-sidebar");
       const breadcrumb = page.getByRole("navigation", { name: "breadcrumb" });
       const crumbs = breadcrumb.getByRole("listitem");
 
@@ -238,14 +237,7 @@ test.describe("SHELL-9: project-scope nav context (sidebar + breadcrumb)", () =>
       await page.getByRole("button", { name: /log in|sign in/i }).click();
       await page.waitForURL(new RegExp(`/orgs/${fixture.orgId}`));
 
-      // Capture the org-scoped nav's own item list, to compare against later.
-      // TC-SHELL-029's expected result is "identical to `/orgs/:orgId`'s own
-      // nav" — read from the real page rather than restated as a literal, so
-      // the two cannot drift apart without this test noticing.
-      const orgScopedNavLabels = await sidebar
-        .locator("ul.sidebar-menu > li.nav-item")
-        .allInnerTexts();
-      expect(orgScopedNavLabels.length).toBeGreaterThan(0);
+      await expect(page.getByTestId("sidebar-nav-org-home")).toBeVisible();
 
       // =======================================================================
       // TC-SHELL-029 — direct landing at /projects/:projectId
@@ -255,29 +247,38 @@ test.describe("SHELL-9: project-scope nav context (sidebar + breadcrumb)", () =>
       // torn down and rebooted from scratch at the project URL, so no
       // client-side state at all survives from the login navigation above —
       // which is precisely the case that would otherwise let a stale in-memory
-      // `orgId` mask a real resolution gap. Expected: the FULL org nav, not the
-      // brand-only empty state this story replaced.
+      // `orgId` mask a real resolution gap.
+      //
+      // **Revised 2026-09-09 (SHELL-10, ADR-0049):** the expected nav here is
+      // now the project-mode nav (4 entity groups + "Back to Projects"), NOT
+      // "identical to the org nav" — SHELL-10 makes project-scoped routes
+      // render a distinct nav from org-scoped ones. The negative half (org nav
+      // absent) is exactly the defect-shaped assertion this revision exists to
+      // prove, same posture as every other "confirm the OLD behavior is gone,
+      // not just that new behavior exists" check in this repo's history.
       // =======================================================================
       await gotoProtected(page, `/projects/${fixture.projectId}`);
 
-      await expect(page.getByTestId("sidebar-nav-org-home")).toBeVisible();
-      await expect(page.getByTestId("sidebar-nav-projects")).toBeVisible();
-      await expect(page.getByTestId("sidebar-nav-org-members")).toBeVisible();
-      await expect(page.getByTestId("sidebar-nav-group-access-control")).toBeVisible();
-      await expect(page.getByTestId("sidebar-nav-group-catalogs")).toBeVisible();
-      await expect(page.getByTestId("sidebar-nav-group-organization")).toBeVisible();
-      await expect(page.getByTestId("sidebar-nav-group-ui-elements")).toBeVisible();
+      await expect(page.getByTestId("sidebar-nav-group-test-design")).toBeVisible();
+      await expect(page.getByTestId("sidebar-nav-group-test-planning")).toBeVisible();
+      await expect(page.getByTestId("sidebar-nav-group-execution-defects")).toBeVisible();
+      await expect(page.getByTestId("sidebar-nav-group-setup")).toBeVisible();
+      await expect(page.getByTestId("sidebar-nav-back-to-projects")).toBeVisible();
+      // Already on `/projects/:projectId` itself — "Project Overview" (which
+      // points at this exact route) is correctly absent, not a dead self-link.
+      await expect(page.getByTestId("sidebar-nav-project-overview")).toHaveCount(0);
 
-      // "identical to `/orgs/:orgId`'s own nav, not empty" — the literal claim.
-      await expect
-        .poll(async () => sidebar.locator("ul.sidebar-menu > li.nav-item").allInnerTexts())
-        .toEqual(orgScopedNavLabels);
+      // The org nav this story used to render here is gone — not just
+      // "additional content exists," the old content is actually absent.
+      await expect(page.getByTestId("sidebar-nav-org-home")).toHaveCount(0);
+      await expect(page.getByTestId("sidebar-nav-group-access-control")).toHaveCount(0);
 
       // Resolution came from the Project row's own `org_id` — nothing in this
-      // URL contains an org id at all.
-      await expect(page.getByTestId("sidebar-nav-org-home")).toHaveAttribute(
+      // URL contains an org id at all. Proven via the one project-mode item
+      // that needs it: the back-link's own href.
+      await expect(page.getByTestId("sidebar-nav-back-to-projects")).toHaveAttribute(
         "href",
-        `/orgs/${fixture.orgId}`,
+        `/orgs/${fixture.orgId}/projects`,
       );
 
       // =======================================================================
@@ -313,21 +314,34 @@ test.describe("SHELL-9: project-scope nav context (sidebar + breadcrumb)", () =>
       await expect(
         breadcrumb.getByRole("link", { name: fixture.projectName, exact: true }),
       ).toHaveAttribute("href", `/projects/${fixture.projectId}`);
-      // The sidebar resolved independently on this route too (its own mount).
-      await expect(page.getByTestId("sidebar-nav-projects")).toBeVisible();
+      // The sidebar resolved independently on this route too (its own mount) —
+      // and, being a NESTED route (not `/projects/:projectId` itself), "Project
+      // Overview" is present here, unlike on the bare project route above.
+      await expect(page.getByTestId("sidebar-nav-group-test-design")).toBeVisible();
+      await expect(page.getByTestId("sidebar-nav-project-overview")).toBeVisible();
+      await expect(page.getByTestId("sidebar-nav-project-overview")).toHaveAttribute(
+        "href",
+        `/projects/${fixture.projectId}`,
+      );
 
       // =======================================================================
       // TC-SHELL-031 — the way back out of a project
       //
-      // "On any project-scoped screen, click the sidebar's 'Projects' nav item
-      // -> URL becomes `/orgs/:orgId/projects` with the project's correct
-      // `org_id`; `ProjectsPage` renders." Asserted with a REAL click and a
-      // real navigation, not an `href` string — an `href` that never navigates
+      // "On any project-scoped screen, click the sidebar's back link -> URL
+      // becomes `/orgs/:orgId/projects` with the project's correct `org_id`;
+      // `ProjectsPage` renders." Asserted with a REAL click and a real
+      // navigation, not an `href` string — an `href` that never navigates
       // would pass an attribute check while leaving the dead end intact, which
       // is the exact defect this story exists to fix.
+      //
+      // **Revised 2026-09-09 (SHELL-10, ADR-0049):** the click target is now
+      // "Back to Projects" (bottom of the project-mode nav) — PROJ-4's own
+      // `sidebar-nav-projects` item this test originally clicked no longer
+      // renders on a project-scoped route at all, since SHELL-10 replaces the
+      // org nav wholesale rather than layering on top of it.
       // =======================================================================
       await gotoProtected(page, `/projects/${fixture.projectId}`);
-      await page.getByTestId("sidebar-nav-projects").click();
+      await page.getByTestId("sidebar-nav-back-to-projects").click();
 
       await page.waitForURL(new RegExp(`/orgs/${fixture.orgId}/projects$`));
       // `ProjectsPage` really rendered...
@@ -338,6 +352,54 @@ test.describe("SHELL-9: project-scope nav context (sidebar + breadcrumb)", () =>
       await expect(crumbs).toHaveCount(2);
       await expect(crumbs.nth(0)).toHaveText("Dashboard");
       await expect(crumbs.nth(1)).toHaveText("Projects");
+    } finally {
+      cleanup(fixture);
+    }
+  });
+
+  /**
+   * SHELL-10 (ADR-0049), new coverage — the literal ask this story exists to
+   * satisfy: the project-mode sidebar's entity-group children are real,
+   * clickable links to the project's own CRUD screens (Requirement, Test
+   * Case, Test Condition, etc.), not just visible labels. Clicking one must
+   * land on the already-shipped generic-admin route and actually render it —
+   * an `href` alone would pass even if the route were broken.
+   */
+  test("SHELL-10: clicking a project-nav group's entity child navigates to its real CRUD screen", async ({
+    page,
+  }) => {
+    const fixture = runBackendPython<NavContextFixture>(SEED_SCRIPT);
+    try {
+      await page.goto("/login");
+      await page.getByLabel(/email/i).fill(fixture.email);
+      await page.getByLabel(/password/i).fill(fixture.password);
+      await page.getByRole("button", { name: /log in|sign in/i }).click();
+      await page.waitForURL(new RegExp(`/orgs/${fixture.orgId}`));
+
+      await gotoProtected(page, `/projects/${fixture.projectId}`);
+
+      // Open the "Test Design" group and click through to Requirements. Same
+      // toggle-then-child pattern `shell7-sidebar-mini.spec.ts` already
+      // established for the org side's own groups.
+      await page
+        .getByTestId("sidebar-nav-group-test-design")
+        .getByRole("link", { name: "Test Design" })
+        .click();
+      const requirementsLink = page.getByTestId("sidebar-nav-admin-requirements");
+      await expect(requirementsLink).toBeVisible();
+      await expect(requirementsLink).toHaveAttribute(
+        "href",
+        `/projects/${fixture.projectId}/admin/requirements`,
+      );
+      await requirementsLink.click();
+
+      await page.waitForURL(new RegExp(`/projects/${fixture.projectId}/admin/requirements$`));
+      // The real generic-admin screen rendered, not a 404/blank route.
+      await expect(page.getByRole("heading", { name: "Requirements" })).toBeVisible();
+      // Breadcrumb followed too: `Projects -> {name} -> Requirements`.
+      const breadcrumb = page.getByRole("navigation", { name: "breadcrumb" });
+      await expect(breadcrumb.getByRole("listitem")).toHaveCount(3);
+      await expect(breadcrumb.getByRole("listitem").nth(2)).toHaveText("Requirements");
     } finally {
       cleanup(fixture);
     }
