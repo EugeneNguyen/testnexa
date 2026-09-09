@@ -36,9 +36,10 @@
  * codebase yet to gate a nav link on instead).
  *
  * SHELL-3 (ADR-0020, FR-SHELL-3/NFR-27) adds two dashboard stat widgets —
- * Project count (`WidgetStatsTile` A-variant, with a leading `cilFolder`
- * icon block) and active Org Member count (`WidgetStatsTile` B-variant,
- * no leading icon) — above the project list, sourced from
+ * Project count and active Org Member count (both now the shared `InfoBox`,
+ * AdminLTE's own Info Box widget, each with a leading colored icon block;
+ * see the DS-3 note below for what they were before) — above the project
+ * list, sourced from
  * `lib/api/dashboard.ts`'s `getProjectsTotal`/`getActiveMemberTotal` (see
  * that module's own docstring for the exact endpoints and a flagged
  * backend-not-shipped-yet deviation). Each widget is its own `useQuery`,
@@ -94,6 +95,17 @@
  * `<th>` (`container/Table.tsx`'s `columns`/`renderRow` slots take raw
  * `<tr>`/`<th>`/`<td>` since ADR-0042, not `<CTableRow>`/`<CTableHeaderCell>`
  * /`<CTableDataCell>`).
+ *
+ * **DS-3 (2026-09-08, [ADR-0045](docs/adr/0045-ds-3-infobox-widget-consolidation.md)):**
+ * both count widgets move off `WidgetStatsTile` (deleted by this story) onto
+ * the shared `InfoBox`, which renders AdminLTE's own Info Box markup. A
+ * rendering swap only: each widget's `useQuery` and the shared `widgetValue()`
+ * loading/error/count tri-state below are untouched, and both `data-testid`s
+ * (`widget-project-count`, `widget-active-member-count`) still sit on the root
+ * element — TC-SHELL-010/011's own assertions pass with zero changes, which is
+ * what TC-DS-020 asserts. The one user-visible change is that
+ * `ActiveMemberCountWidget` gains an icon it never had (`fa-solid fa-users`);
+ * see that component's own comment and ADR-0043's Consequences.
  */
 import { ReactNode, useEffect, useId, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -106,7 +118,7 @@ import { ApiError } from "../../lib/api/client";
 import { getActiveMemberTotal, getProjectsTotal } from "../../lib/api/dashboard";
 import { createProject, deleteProject, listProjects, ProjectSummary, updateProject } from "../../lib/api/projects";
 import RoleAssignmentsPanel from "../../components/RoleAssignmentsPanel";
-import { WidgetStatsTile } from "../../components/molecules/widget-stats-tile";
+import { InfoBox } from "../../components/molecules/info-box";
 
 /**
  * DS-2/ADR-0041: previously a hardcoded slice size with no UI to change it;
@@ -181,14 +193,14 @@ function ProjectCountWidget({ orgId }: { orgId: string }) {
   });
 
   return (
-    <WidgetStatsTile
+    <InfoBox
       color="primary"
-      title="Projects"
-      value={widgetValue(isLoading, isError, data)}
+      text="Projects"
+      number={widgetValue(isLoading, isError, data)}
       // ADR-0042: was `"cilFolder"`, a CoreUI icon *name* string that
       // `CIcon` could never resolve without a global icon registry this app
       // never set up — i.e. the A-variant icon block rendered empty. Now a
-      // Font Awesome class string, which `WidgetStatsTile` renders directly.
+      // Font Awesome class string, which `InfoBox` renders directly.
       icon="fa-solid fa-folder"
       testId="widget-project-count"
     />
@@ -208,10 +220,16 @@ function ActiveMemberCountWidget({ orgId }: { orgId: string }) {
   });
 
   return (
-    <WidgetStatsTile
+    <InfoBox
       color="info"
-      title="Active org members"
-      value={widgetValue(isLoading, isError, data)}
+      text="Active org members"
+      number={widgetValue(isLoading, isError, data)}
+      // DS-3/ADR-0043: new. This widget rendered no icon block for its whole
+      // history (`WidgetStatsTile`'s B-variant); AdminLTE's Info Box has no
+      // documented icon-omitted variant, so it gains one, matching the sibling
+      // Project-count widget's own `fa-solid fa-folder`. Called out as a real,
+      // user-visible change in that ADR's Consequences, not an incidental one.
+      icon="fa-solid fa-users"
       testId="widget-active-member-count"
     />
   );
