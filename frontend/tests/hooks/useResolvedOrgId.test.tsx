@@ -209,7 +209,15 @@ describe("useResolvedOrgId", () => {
     await waitFor(() => {
       expect(screen.getByTestId("page-project-name")).toHaveTextContent(PROJECT_NAME);
     });
-    expect(screen.getByTestId("sidebar-nav-projects")).toHaveAttribute(
+    // SHELL-10 (ADR-0049): on a project-scoped route the sidebar now renders
+    // the project-mode nav, so the org nav's `sidebar-nav-projects` item is no
+    // longer present here. The equivalent proof that the sidebar's own
+    // `useResolvedOrgId()` really resolved `org_id` (rather than silently
+    // no-op'ing and letting the page's query alone account for the single
+    // fetch) is the "Back to Projects" link, which is built from that same
+    // resolved `orgId` and is omitted entirely until it resolves. The dedup
+    // property this TC actually asserts is unchanged.
+    expect(screen.getByTestId("sidebar-nav-back-to-projects")).toHaveAttribute(
       "href",
       `/orgs/${PROJECT_ORG_ID}/projects`,
     );

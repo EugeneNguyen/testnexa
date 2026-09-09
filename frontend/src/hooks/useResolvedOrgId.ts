@@ -50,6 +50,27 @@ import { ProjectSummary, getProject } from "../lib/api/projects";
 
 export interface ResolvedOrgContext {
   /**
+   * Which *kind* of route this is, independent of whether `orgId` has resolved
+   * yet — `"project"` whenever the route carries a `:projectId` (the fetch
+   * branch), `"org"` otherwise (the route-param branch, including `/orgs/pick`
+   * where the answer is legitimately `undefined`).
+   *
+   * Added by SHELL-10 (ADR-0049), which renders a *different nav entirely* on
+   * project-scoped routes and so needs to branch on the route's kind rather
+   * than on "did `orgId` come back truthy." `AppSidebar` previously could not
+   * tell the two apart: SHELL-9 deliberately made project routes resolve the
+   * *same* `orgId` an org route would, which is exactly what made the org nav
+   * render there — correct for SHELL-9, but it left no signal to branch on.
+   *
+   * Deriving this from `Boolean(projectId)` is sound because the two params are
+   * mutually exclusive in `App.tsx`'s route table: every path is either
+   * `/orgs/:orgId/...` or `/projects/:projectId/...`, never both (verified
+   * against all 19 route definitions). If a future route ever nests them, this
+   * field — not a scattered `Boolean(projectId)` check at each call site — is
+   * the single place to redefine the precedence.
+   */
+  mode: "org" | "project";
+  /**
    * The `:orgId` route param when present, else the fetched Project's own
    * `org_id`, else `undefined` (`/orgs/pick`, or while the fetch is
    * pending/failed).
@@ -82,6 +103,7 @@ export function useResolvedOrgId(): ResolvedOrgContext {
   // false` keeps this a no-op on every `/orgs/:orgId/...` screen — the hook
   // costs nothing there beyond the `useParams` read it replaced.
   const shouldFetch = Boolean(projectId) && !orgId;
+  const mode: "org" | "project" = projectId ? "project" : "org";
   const projectQuery = useQuery({
     queryKey: ["project", projectId],
     queryFn: () => getProject(projectId as string),
@@ -89,10 +111,11 @@ export function useResolvedOrgId(): ResolvedOrgContext {
   });
 
   if (!shouldFetch) {
-    return { orgId, projectId, project: undefined, status: "success" };
+    return { mode, orgId, projectId, project: undefined, status: "success" };
   }
 
   return {
+    mode,
     orgId: projectQuery.data?.org_id,
     projectId,
     project: projectQuery.data,
