@@ -57,12 +57,13 @@ own prose and the API Document's §3 resolver table both already specify
 malformed one).
 """
 
+import datetime
 import enum
 import types
 import uuid
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal, Union, get_args, get_origin
 
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse
@@ -137,6 +138,35 @@ class NoSchema(BaseModel):
 
 
 @dataclass
+class FieldMeta:
+    """ADR-0053: per-field metadata `derive_entity_schema` cannot get from
+    Pydantic alone — see that function's own docstring for exactly what's
+    auto-derived vs. declared here. Only fields needing an override get an
+    entry in `CrudEntityConfig.field_meta`; a field with no entry is fully
+    auto-derived (type/required/enum-values), which is the common case.
+    """
+
+    # fk only — the ref entity's own `:entity` route slug (this module's own
+    # `_resource_path(resource)`, e.g. "project"/"requirement"). Presence of
+    # this field is what promotes a bare `uuid.UUID` annotation to `type:
+    # "fk"` in the derived schema — nothing about the Python type itself
+    # signals "this UUID is a foreign key," let alone which entity it targets.
+    ref_entity: str | None = None
+    # fk only — which field of the ref entity's own summary schema to
+    # display (e.g. `Project`'s `name`, `TestCase`'s `title`).
+    label_field: str | None = None
+    # enum only — value -> Bootstrap color name, e.g. {"critical": "danger"}.
+    # No correlate in the Python type at all; pure presentation.
+    badge_colors: dict[str, str] | None = None
+    # Overrides the auto-title-cased label ("external_ref" -> "External
+    # ref") for a field whose hand-picked label doesn't match that pattern.
+    label: str | None = None
+    # Hide a field from the table (still in the form) — an arbitrary UI
+    # choice, not derivable from anything Pydantic knows.
+    show_in_table: bool = True
+
+
+@dataclass
 class CrudEntityConfig:
     """Per-entity configuration consumed by `make_crud_router` (ADR-0022).
 
@@ -177,6 +207,17 @@ class CrudEntityConfig:
     # EXEC-2: optional post-mutation side-effect hook on `PATCH`, see
     # `PostUpdateHook`'s own docstring above.
     post_update_hook: PostUpdateHook | None = None
+    # ADR-0053: this entity's own nav-label, served by `GET
+    # /entities/{resource}/schema` (`derive_entity_schema`). Falls back to
+    # `_display_name(resource)` when unset so a config can still compile
+    # before its own ADR-0053 port lands — every entity's config sets this
+    # explicitly once ported, matching the frontend's pre-ADR-0053
+    # `registry.ts` label verbatim.
+    label: str | None = None
+    # ADR-0053: per-field overrides for facts `derive_entity_schema` cannot
+    # get from Pydantic alone — see `FieldMeta`'s own docstring for exactly
+    # what. Only fields needing an override get an entry here.
+    field_meta: dict[str, FieldMeta] = field(default_factory=dict)
 
 
 def _error(
@@ -545,6 +586,122 @@ def _resource_path(resource: str) -> str:
 def _display_name(resource: str) -> str:
     """`"test_condition"` -> `"Test condition"` (for `"{name} not found."` bodies)."""
     return resource.replace("_", " ").capitalize()
+
+
+# --- entity schema derivation (ADR-0053) ---------------------------------------------------------
+
+
+def _unwrap_optional(annotation: Any) -> Any:
+    """`X | None` / `Optional[X]` -> `X`. A field's own optionality is tracked
+    separately via `required_fields` (derived from `create_schema`'s own
+    `is_required()`, not from the annotation) — this only strips the wrapper
+    so the inner type can be classified."""
+    origin = get_origin(annotation)
+    if origin is types.UnionType or origin is Union:
+        args = [a for a in get_args(annotation) if a is not type(None)]
+        if len(args) == 1:
+            return args[0]
+    return annotation
+
+
+def _field_type_and_values(annotation: Any) -> tuple[str, list[str] | None]:
+    """Mechanical half of ADR-0053's hybrid derivation — everything Pydantic's
+    own type annotation can answer without any per-field declaration:
+    `Literal[...]` -> enum + its values, `uuid.UUID`/`datetime.date`/
+    `datetime.datetime`/`bool` -> their obvious counterpart, everything else
+    (str, dict/JSON columns like `TestLog.payload`, etc.) -> "string" as the
+    generic fallback `EntityTable`'s own `displayValue()` already handles.
+    `uuid.UUID` deliberately maps to `"string"` here, not `"fk"` — promoting
+    it requires a `FieldMeta.ref_entity` entry (see that dataclass's own
+    docstring for why this can't be inferred from the type alone).
+    """
+    annotation = _unwrap_optional(annotation)
+    origin = get_origin(annotation)
+    if origin is Literal:
+        return "enum", [str(v) for v in get_args(annotation)]
+    if annotation in (datetime.date, datetime.datetime):
+        return "date", None
+    if annotation is bool:
+        return "boolean", None
+    return "string", None
+
+
+def _label_for(field_name: str) -> str:
+    """`"external_ref"` -> `"External ref"` — the auto-title-cased fallback
+    label, overridden per-field by `FieldMeta.label` where a hand-picked
+    label doesn't match this pattern (e.g. `"project_id"` -> "Project", not
+    "Project id")."""
+    return field_name.replace("_", " ").capitalize()
+
+
+def derive_entity_schema(config: CrudEntityConfig) -> dict[str, Any]:
+    """ADR-0053: the `GET /entities/{resource}/schema` response body for one
+    entity — the single source of truth `EntityListPage`/`EntityFormPage`/
+    `EntityTable`/`EntityForm` fetch instead of importing a static
+    `frontend/src/entityConfigs/<entity>.ts`.
+
+    Field-shape source: the **union** of `create_schema` (if any),
+    `update_schema` (if not `NoSchema`), and `summary_schema` (always
+    present, minus `id`) — matching declaration order, writable schemas
+    first. A field present only in `summary_schema` (e.g. `created_at`) is
+    marked `readOnly: true`, mirroring `FieldConfig.readOnly`'s existing
+    frontend contract (table/display only, never part of a submitted
+    payload). `required` is `True` only for a field required by
+    `create_schema` specifically — the same "only ever supplied via
+    `Update*Request` isn't marked required" posture `FieldConfig.required`'s
+    own frontend doc comment already establishes.
+    """
+    writable_schemas = [s for s in (config.create_schema, config.update_schema) if s is not None and s is not NoSchema]
+    writable_fields: dict[str, Any] = {}
+    required_fields: set[str] = set()
+    for schema in writable_schemas:
+        for name, info in schema.model_fields.items():
+            writable_fields.setdefault(name, info)
+            if schema is config.create_schema and info.is_required():
+                required_fields.add(name)
+
+    all_fields: dict[str, Any] = dict(writable_fields)
+    for name, info in config.summary_schema.model_fields.items():
+        if name == "id":
+            continue
+        all_fields.setdefault(name, info)
+
+    fields_out: list[dict[str, Any]] = []
+    for name, info in all_fields.items():
+        meta = config.field_meta.get(name, FieldMeta())
+        field_type, enum_values = _field_type_and_values(info.annotation)
+        if meta.ref_entity:
+            field_type = "fk"
+
+        entry: dict[str, Any] = {
+            "name": name,
+            "label": meta.label or _label_for(name),
+            "type": field_type,
+            "required": name in required_fields,
+            "showInTable": meta.show_in_table,
+        }
+        if field_type == "enum" and enum_values:
+            entry["values"] = enum_values
+        if field_type == "fk":
+            entry["refEntity"] = meta.ref_entity
+            entry["labelField"] = meta.label_field
+        if meta.badge_colors:
+            entry["badgeColors"] = meta.badge_colors
+        if name not in writable_fields:
+            entry["readOnly"] = True
+        fields_out.append(entry)
+
+    scope_field = list(config.scope_field) if isinstance(config.scope_field, tuple) else config.scope_field
+
+    return {
+        "resource": config.resource,
+        "label": config.label or _display_name(config.resource),
+        "methods": sorted(config.methods),
+        "scopeField": scope_field,
+        "searchFields": list(config.search_fields),
+        "filterFields": list(config.filter_fields),
+        "fields": fields_out,
+    }
 
 
 # --- the factory itself -----------------------------------------------------------------------

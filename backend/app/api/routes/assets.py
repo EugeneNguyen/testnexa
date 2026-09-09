@@ -40,6 +40,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.crud_factory import (
     CrudEntityConfig,
+    FieldMeta,
     chain_resolver,
     make_crud_router,
     resolve_test_case_org_id,
@@ -134,6 +135,9 @@ _REQUIREMENT_CONFIG = CrudEntityConfig(
     resolve_org_id=chain_resolver([]),
     filter_fields=("external_ref",),
     search_fields=("title", "description", "external_ref", "source"),
+    # ADR-0053
+    label="Requirements",
+    field_meta={"project_id": FieldMeta(ref_entity="project", label_field="name", label="Project")},
 )
 
 # No `create` — see module docstring (REQ-3/ADR-0028); same posture as
