@@ -1,0 +1,20 @@
+<!--
+  Browser-tab favicon. Independent of `src/assets/brand/logo-mark.svg` on
+  purpose (ADR-0048 Decision §5): browser chrome has no `data-bs-theme` to
+  inherit, so `currentColor` would resolve to the chrome's own default text
+  colour and vanish against one of the two tab-bar themes. This asset gets a
+  fixed two-tone palette instead — the app's existing `--bs-primary` literal
+  (#0d6efd, ADR-0048 Decision §4, no new brand hue) as a filled tile, with the
+  mark knocked out in white — which keeps the same contrast in both light and
+  dark chrome rather than depending on either.
+
+  Accepted trade-off (ADR-0048 Consequences): this is a second, manually kept
+  copy of the mark geometry. A visual refresh of logo-mark.svg needs a matching
+  edit here; there is deliberately no shared-source build step.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect width="32" height="32" rx="7" fill="#0d6efd"/>
+  <g transform="translate(16 16) scale(0.74) translate(-16 -16)">
+    <path fill="#ffffff" fill-rule="evenodd" clip-rule="evenodd" d="M16 2.5 L27.5 6.6 L27.5 15.8 C27.5 22.6 22.6 27.6 16 29.8 C9.4 27.6 4.5 22.6 4.5 15.8 L4.5 6.6 Z M9.14 17.26 L14.2 22.32 L23.26 13.26 L21.14 11.14 L14.2 18.08 L11.26 15.14 Z"/>
+  </g>
+</svg>

@@ -320,7 +320,11 @@ function AppHeader({ onToggleSidebar }: AppHeaderProps) {
           >
             <i className="fa-solid fa-bars fa-lg" aria-hidden="true" />
           </button>
-          <a className="navbar-brand mb-0">TestNexa</a>
+          {/* BRAND-1 follow-up (2026-09-09, direct CTO instruction): the
+              header carries no brand mark at all — the sidebar (always
+              visible, per SHELL-1) is the single source of the brand mark
+              now. ADR-0048 Decision §7 originally put a small mark here;
+              amended in the same ADR's Consequences. */}
         </div>
         <div className="d-flex align-items-center">
           <div

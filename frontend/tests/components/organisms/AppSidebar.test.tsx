@@ -144,9 +144,55 @@ describe("AppSidebar", () => {
     expect(screen.getByTestId("sidebar-nav-org-home").className).not.toMatch(/\bactive\b/);
   });
 
+  // TC-DS-027 (BRAND-1, ADR-0048 Decision §6). Scope is deliberately narrow:
+  // DOM presence + AdminLTE's exact class pair, nothing about the cross-fade
+  // itself. jsdom runs no CSS and does no layout, so the actual expand/collapse
+  // visibility swap is a live-browser claim — see the Test Plan's own BRAND-1
+  // risk row and `e2e/tests/brand1-logo-system.spec.ts`.
+  it("TC-DS-027: renders BOTH brand marks unconditionally with AdminLTE's logo-xl/logo-xs classes", () => {
+    renderSidebar("/orgs/org-1");
+
+    const xl = screen.getByTestId("sidebar-brand-logo-xl");
+    const xs = screen.getByTestId("sidebar-brand-logo-xs");
+
+    // Both present at once, with no state driving which one exists — AdminLTE's
+    // shipped CSS, not React, decides which is visible.
+    expect(xl.tagName).toBe("IMG");
+    expect(xs.tagName).toBe("IMG");
+    expect(xl).toHaveClass("brand-image-xl", "logo-xl");
+    expect(xs).toHaveClass("brand-image-xs", "logo-xs");
+
+    // DEVIATION from TC-DS-027 as originally written (the row has since been
+    // corrected in place, 2026-09-09, to match this): it named `logo-full.svg`
+    // for the xl slot. It cannot be used there — AdminLTE
+    // positions both marks absolutely while `.brand-text` sits in flow beside
+    // them, so a lockup carrying its own wordmark paints "TestNexa" twice,
+    // overlapping (measured on a live instance). `.brand-text` can't be dropped
+    // to make room either: the already-shipped TC-SHELL-005 asserts it visible.
+    // See `app-sidebar.tsx`'s own comment and the BRAND-1 completion report.
+    expect(xl).toHaveAttribute("src", expect.stringContaining("logo-mark"));
+    expect(xs).toHaveAttribute("src", expect.stringContaining("logo-mark"));
+
+    // Decorative: the accessible name comes from the wrapping link (TC-DS-029).
+    expect(xl).toHaveAttribute("alt", "");
+    expect(xs).toHaveAttribute("alt", "");
+  });
+
+  // TC-DS-029 (sidebar mount).
+  it("TC-DS-029: the sidebar brand is a real link named 'TestNexa home'", () => {
+    renderSidebar("/orgs/org-1");
+
+    const link = screen.getByRole("link", { name: /TestNexa home/i });
+    expect(link).toHaveClass("brand-link");
+    expect(link).toHaveAttribute("href", "/dashboard");
+  });
+
   it("renders an empty nav-item list (brand only, no org-home/org-members links) when orgId is absent", () => {
     renderSidebar("/orgs/pick");
 
+    // TC-SHELL-005's own contract, unchanged by BRAND-1: the sidebar's
+    // `.brand-text` wordmark stays in the DOM (and visible — asserted live in
+    // `e2e/tests/shell-nav.spec.ts`) alongside the new mark.
     expect(screen.getByText("TestNexa")).toBeInTheDocument();
     expect(screen.queryByTestId("sidebar-nav-org-home")).not.toBeInTheDocument();
     expect(screen.queryByTestId("sidebar-nav-projects")).not.toBeInTheDocument();

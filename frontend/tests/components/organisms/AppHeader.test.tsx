@@ -52,10 +52,21 @@ describe("AppHeader", () => {
     localStorage.clear();
   });
 
-  it("renders the TestNexa brand and a Log out button", () => {
+  // TC-DS-026 (BRAND-1, ADR-0048 Decision §7 — revised 2026-09-09, direct CTO
+  // instruction). BRAND-1 originally put the small mark here; that was
+  // reversed the same day after a manual look at the running app — the
+  // sidebar (always visible) is now the single source of the brand mark, and
+  // the header carries none at all. This asserts the negative explicitly
+  // (not just "no crash") so a future re-add doesn't silently duplicate the
+  // sidebar's own mark without anyone noticing.
+  it("TC-DS-026: renders no brand mark/link (sidebar is the sole brand mount) and a Log out button", () => {
     renderHeader();
 
-    expect(screen.getByText("TestNexa")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /TestNexa home/i })).toBeNull();
+    expect(screen.queryByTestId("brand-logo")).toBeNull();
+    expect(screen.queryByTestId("brand-logo-mark")).toBeNull();
+    expect(screen.queryByText("TestNexa")).toBeNull();
+
     expect(screen.getByTestId("logout-button")).toBeInTheDocument();
     expect(screen.getByTestId("logout-button")).toHaveTextContent(/log out/i);
   });
