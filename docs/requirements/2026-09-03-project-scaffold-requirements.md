@@ -159,7 +159,7 @@ FR-SHELL-2/3/4 extend the shell to full parity with [CoreUI's free Bootstrap adm
 
 FR-SHELL-5 (ADR-0026) adds one further visual prop to the already-built ADR-0018 sidebar — no structural or nav-item change, and it does not lift or alter ADR-0018/ADR-0020's scope boundaries.
 
-**Not an FR** (explicitly, per ADR-0020): the CoreUI free-template's UI-element reference pages (Colors, Typography, Icons), added as a "UI Elements" nav group for template-parity only. No business case, story, or acceptance criteria backs them — they are not product scope, and carry no FR ID.
+**~~Not an FR** (explicitly, per ADR-0020): the CoreUI free-template's UI-element reference pages (Colors, Typography, Icons), added as a "UI Elements" nav group for template-parity only. No business case, story, or acceptance criteria backs them — they are not product scope, and carry no FR ID.~~ **Superseded by [ADR-0049](../adr/0049-remove-ui-elements-nav-group.md) (2026-09-09):** the "UI Elements" group + Colors/Typography/Icons reference pages are deleted outright — the rows this paragraph asserted "not product scope" no longer exist at all. Coverage note: see the new TC-SHELL-029 in the Test Cases doc, which asserts the absence directly.
 
 **FR-SHELL-7 (2026-09-08, [ADR-0046](../adr/0046-shell-7-sidebar-mini-org-crud-restructure.md))** is frontend-only — no new/changed entity, no new API route, no schema change. The 8 entities it lists under "Entities" above are the same `orgScopedEntities` this doc's own §2.11 admin-CRUD surface already covers (ADR-0025's registry); this FR only regroups their nav presentation, it does not add or remove any of their existing CRUD capability. `UI Elements` (ADR-0020) is unaffected and stays out of FR scope.
 
