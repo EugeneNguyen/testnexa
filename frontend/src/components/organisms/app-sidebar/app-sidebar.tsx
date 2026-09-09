@@ -225,14 +225,19 @@ function AppSidebar() {
           // (`ProjectsPage.tsx`, extracted out of "Dashboard") gets its own
           // flat nav entry — the single extension point this file's own
           // docstring names (AC5), same as every other flat item above/below
-          // it. No icon (DASH-2/TC-SHELL-021's "Dashboard is the only nav
-          // item with an icon" invariant is deliberately left unchanged, not
-          // expanded — same posture as `Members` below).
+          // it. Icon added 2026-09-09 (CTO direct instruction, amending
+          // ADR-0047 §2's original "no icon" call) — reuses the same
+          // `fa-solid fa-folder` glyph `ProjectCountWidget` (`OrgHome.tsx`)
+          // already uses for this entity, so it reads as the same icon
+          // everywhere Projects appears. DASH-2/TC-SHELL-021's "Dashboard is
+          // the only icon item" invariant no longer holds as stated — see
+          // that TC's own row, corrected in place.
           key: "projects",
           label: "Projects",
           to: `/orgs/${orgId}/projects`,
           end: false,
           testId: "sidebar-nav-projects",
+          icon: "fa-solid fa-folder",
         },
         {
           key: "org-members",

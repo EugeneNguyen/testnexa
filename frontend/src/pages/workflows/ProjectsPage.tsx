@@ -327,10 +327,8 @@ function ProjectsPage() {
   return (
     <div className="min-vh-100 bg-body-secondary py-4">
       <div className="container-fluid px-4">
-        <div className="row justify-content-center">
-          <div className="col-md-10 col-lg-8">
-            <div className="card">
-              <div className="card-body p-4">
+        <div className="card">
+          <div className="card-body p-4">
                 <div className="d-flex justify-content-between align-items-center mb-3">
                   <h1 className="fs-4 mb-0">Projects</h1>
                   <button type="button" className="btn btn-primary" onClick={openModal}>
@@ -421,8 +419,6 @@ function ProjectsPage() {
                     )}
                   </>
                 )}
-              </div>
-            </div>
           </div>
         </div>
       </div>
