@@ -20,6 +20,40 @@ Every Vitest + RTL spec in this repo is under `frontend/tests/` (mirroring `src/
 
 `frontend/tests/` (Vitest + RTL) only started getting real coverage with ADMIN-2's generic CRUD UI — earlier bespoke screens (`Login`, `OrgHome`, `ProjectDetail`, etc.) shipped with e2e (Playwright) coverage only, no per-component unit tests. Both are legitimate per the root `CLAUDE.md`'s three-layer testing model, but don't assume a bespoke screen has Vitest coverage just because the layer exists in the repo now — check `frontend/tests/` for that specific component before assuming a gap is actually a regression.
 
+## If you ever flip the test layout, the per-tier placement convention is not uniform — don't assume all sources use subfolders
+
+When a future story co-locates Vitest specs with their source under `frontend/src/`, the destination folder for each test depends on which directory tier the source lives in (not on a single repo-wide rule). This repo has two coexisting conventions from [ADR-0043](docs/adr/0043-atomic-design-tiering-for-frontend-components.md):
+
+| Source location | Convention | Test destination |
+|---|---|---|
+| `components/atoms/<x>/<x>.tsx` | per-component subfolder with `index.ts` barrel | `components/atoms/<x>/<x>.test.tsx` — **inside** the source's subfolder |
+| `components/molecules/<x>/<x>.tsx` | same | `components/molecules/<x>/<x>.test.tsx` — **inside** |
+| `components/organisms/<x>/<x>.tsx` | same | `components/organisms/<x>/<x>.test.tsx` — **inside** |
+| `components/templates/<x>/<x>.tsx` | same | `components/templates/<x>/<x>.test.tsx` — **inside** |
+| `components/<X>.tsx` (root-level, e.g. `RoleAssignmentsPanel.tsx`, `AuthLoadingSpinner.tsx`) | flat | `components/<X>.test.tsx` — sibling of source, **not** inside a subfolder |
+| `pages/<tier>/<X>.tsx` (e.g. `pages/workflows/ProjectDetail.tsx`, `pages/admin/EntityFormPage.tsx`) | flat | `pages/<tier>/<X>.test.tsx` — flat |
+| `pages/<tier>/<X>.<Section>.test.tsx` (per-story multi-section, e.g. `ProjectDetail.TestConditions.test.tsx`) | flat, beside the main `X.test.tsx` | `pages/<tier>/<X>.<Section>.test.tsx` — flat |
+| `auth/<X>.tsx` | flat | `auth/<X>.test.tsx` |
+| `lib/api/<X>.ts`, `lib/auth/<X>.ts` | flat | `lib/api/<X>.test.ts`, `lib/auth/<X>.test.ts` |
+| `entityConfigs/<X>.ts` | flat | `entityConfigs/<X>.test.ts` |
+| `container/<X>.tsx` | flat (one-file) | `container/<X>.test.tsx` |
+| `assets/<tier>/<file>` (assets that *are* the source, not a backing of one) | per-leaf-folder | `assets/<tier>/<file>.test.<ext>` — same folder as the asset itself |
+
+The check is mechanical: does `src/<path>.tsx` (or `.ts`) exist as a single file? If yes, the test lands at `src/<path>.test.<ext>`. If the source is `src/<tier>/<stem>/<stem>.tsx` (subfolder with barrel), the test lands INSIDE that subfolder — NOT flattened to `src/<tier>/<stem>.test.tsx`. A bulk move that flattens everything loses the per-source-file co-location guarantee and forces every future reader to re-derive the convention. Verified the hard way on the FRONTEND-1 implementation pass (2026-09-09): one script that put everything flat produced 1 collision (`AppHeader.test.tsx` and `AppHeader.OrgSwitcher.test.tsx` both wanted the same flat path) and would have required a full revert if it hadn't been caught at move time.
+
+## Bulk mechanical file moves (sed/Python/Awk across many files): validate on 2–3 representative cases before scaling to the whole set
+
+A scripted bulk edit (the FRONTEND-1 unit-test relocation, 69 files, ran in this session) is a place where one-off script bugs scale into N-off bugs. Concretely: a regex that misses one shape of `import` is fine on 5 files, but on 69 files it produces 30 files of broken tests that all share the same root cause — and you don't find out until the verification gate (`tsc --noEmit` + `npm run test`) runs, by which point you've moved 30 files that all need the same fix. The pattern that scales safely:
+
+1. **Pick the 3 most-different representative cases** before scaling — e.g. for a test-layout move, pick one file from each of: an atom/molecule/organism/template (subfolder convention), a page (flat), a `lib/api` flat file, a file with `vi.mock(..., async () => { ...typeof import("...")... })` (nested import shape that a naive regex misses), and a file with non-`src/` imports (e.g. `?raw` SVG or `public/` paths).
+2. **Move + rewrite imports for just those 3.** Run `tsc --noEmit` on each. Run `vitest run <each-file>` on each.
+3. **If any fails, fix the script before scaling.** A regex that breaks one representative case will break the same shape across the full set.
+4. **Only then scale to the rest.** Run the same `tsc` + `vitest` once at the end as the gate — but you'll know the script is right because the representative cases already passed.
+
+A cheaper proxy when 3 representative cases aren't worth picking manually: **scale to all files, but run `tsc --noEmit` after every ~10 files moved**, not at the end. A `tsc` failure on file 11 of 69 is a 2-minute fix; a `tsc` failure on file 69 of 69 is a 30-minute fix with much higher chance of a full revert + redo.
+
+The `tsc --noEmit` check is the gate, not the script's own return code — a Python script that does 69 `git mv` calls and 69 regex substitutions can exit `0` with every import still pointing at the old path, because both `git mv` and the regex substitution only fail on their own syntax errors, not on "the regex doesn't match this particular file." Vitest is the runtime gate; `tsc` is the static gate. Run both, ideally after every logical phase, definitely before declaring done.
+
 ## A "Cannot find module 'react'" diagnostic right after adding a new file can be stale, not real
 
 The harness's own background diagnostics can fire on a just-created `.tsx` file before its module resolution/language-server view has caught up (observed on a freshly-added page component + its imports, 2026-09-06) — every import line (`react`, `react-router-dom`, `@coreui/react`, ...) flagged `Cannot find module`, which reads exactly like a broken `node_modules` or a real compile break. It wasn't: `node_modules` was present and `npx tsc --noEmit` (run directly, not through the diagnostic system) was clean. **Before acting on a wall of module-resolution errors on recently-touched files, run `npx tsc --noEmit` yourself and trust that over the background diagnostic** — it's the ground truth; the diagnostic view can lag. Confirmed again on PLAN-3 (2026-09-06) across a much larger edit (a full page section + a new e2e spec) — same stale-diagnostic shape, `tsc --noEmit` clean both times a sub-agent reported it.
