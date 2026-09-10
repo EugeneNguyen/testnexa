@@ -1,6 +1,11 @@
 <!doctype html>
 <html lang="en">
   <head>
+    <!-- Tabler v1.5.1 (ADR-0053, Phase 1: install only) — placed first so AdminLTE (ADR-0042,
+         injected later via frontend/src/main.tsx's own CSS imports) continues to win every
+         conflicting selector. Zero Tabler markup is emitted anywhere yet; do not remove this
+         comment or reorder this tag until the actual AdminLTE->Tabler migration begins. -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/core@1.5.1/dist/css/tabler.min.css" />
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -9,5 +14,7 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <!-- Tabler v1.5.1 JS (ADR-0053, Phase 1) -->
+    <script src="https://cdn.jsdelivr.net/npm/@tabler/core@1.5.1/dist/js/tabler.min.js"></script>
   </body>
 </html>

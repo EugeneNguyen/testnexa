@@ -38,6 +38,8 @@ REST over HTTPS, JSON bodies, base path `/api/v1`. FastAPI auto-generates the Op
 
 **SHELL-10** ([ADR-0051](../adr/0051-shell-10-project-scope-entity-nav.md), FR-SHELL-9) — reviewed, no API impact. Every route the sidebar's new entity-group links point at (`/projects/:projectId/admin/<entity>` for the 13 grouped entities) is the already-documented generic-admin route (§3) — no new route, no changed request/response shape, this is purely which existing routes the sidebar now links to.
 
+**Tabler CDN install, Phase 1** ([ADR-0053](../adr/0053-tabler-install-phase-1-cdn.md), FR-DS-3) — reviewed, no API impact. A static frontend asset addition only (`frontend/index.html` gains two CDN tags, no component references any Tabler class yet) — no new route, no changed request/response shape, no changed client/server contract.
+
 ---
 
 ## 1. Conventions
