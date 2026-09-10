@@ -22,6 +22,7 @@ export interface BackendFieldConfig {
   type: FieldType;
   required: boolean;
   showInTable: boolean;
+  sortable: boolean;
   values?: string[];
   refEntity?: string;
   labelField?: string;

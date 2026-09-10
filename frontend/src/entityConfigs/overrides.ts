@@ -56,6 +56,11 @@ export const STATIC_ENTITY_CONFIGS: Record<string, EntityConfig> = {
     createPath: "/projects/:projectId/releases",
     scopeField: "project_id",
     methods: ["list", "get", "create"],
+    // ADR-0053 (sort): all three fields marked `sortable: false` — this
+    // entity's `list` (`GET /projects/:projectId/releases`) is a 100%
+    // bespoke route, never registered through `crud_factory.make_crud_router`
+    // (see this file's own note 3), so it has no `?sort=` support at all. A
+    // clickable header here would silently do nothing.
     fields: [
       {
         name: "project_id",
@@ -65,9 +70,10 @@ export const STATIC_ENTITY_CONFIGS: Record<string, EntityConfig> = {
         labelField: "name",
         required: true,
         readOnly: true,
+        sortable: false,
       },
-      { name: "version_label", label: "Version label", type: "string", required: true },
-      { name: "target_date", label: "Target date", type: "date" },
+      { name: "version_label", label: "Version label", type: "string", required: true, sortable: false },
+      { name: "target_date", label: "Target date", type: "date", sortable: false },
     ],
   },
 };

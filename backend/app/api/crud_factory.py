@@ -208,6 +208,13 @@ class FieldMeta:
     # at all — `required_fields` below can only ever see this config's own
     # `create_schema`, which is `None`).
     required: bool | None = None
+    # ADR-0053 (sort): whether `?sort=<name>`/`?sort=-<name>` may target this
+    # column on the generic `list` route. Default `True`, same auto-derive-
+    # unless-overridden posture as `show_in_table` — every field maps 1:1 to a
+    # real model column (`_to_summary`'s own docstring), so ordering by any of
+    # them is always valid SQL; this exists purely for a field where sorting
+    # would be misleading rather than for correctness (none needed yet).
+    sortable: bool = True
 
 
 @dataclass
@@ -621,6 +628,33 @@ def apply_filters_and_search(
     return query
 
 
+def apply_sort(query: Any, model: type[Base], sort_param: str | None, sortable_fields: frozenset[str]) -> Any:
+    """Translate `?sort=<field>`/`?sort=-<field>` (leading `-` = descending)
+    into an `ORDER BY` clause on `query`. A falsy `sort_param` leaves `query`
+    unchanged (today's pre-sort behavior: whatever order the DB returns).
+
+    `sortable_fields` gates which column names are acceptable — never
+    `getattr(model, ...)` an arbitrary caller-supplied string, both because an
+    unknown attribute name would 500 and because the field list is this
+    route's own declared contract (`derive_entity_schema`'s `sortable`
+    flags), not "every column this ORM model happens to have". Raises
+    `ValueError(field_name)` for a name outside that set — the caller maps
+    that to a `422`, matching every other malformed-list-query-param shape
+    this module already 422s (`extract_scope_value`'s missing/ambiguous
+    scope, the list route's own scope-UUID-parse failure). Pure query-
+    building, no DB access — unit-testable without a DB, same posture as
+    `apply_filters_and_search`/`clamp_pagination`.
+    """
+    if not sort_param:
+        return query
+    descending = sort_param.startswith("-")
+    field_name = sort_param[1:] if descending else sort_param
+    if not field_name or field_name not in sortable_fields:
+        raise ValueError(field_name)
+    column = getattr(model, field_name)
+    return query.order_by(column.desc() if descending else column.asc())
+
+
 def clamp_pagination(page: int, page_size: int, max_page_size: int = _MAX_PAGE_SIZE) -> tuple[int, int]:
     """Clamp `page`/`page_size` to the API Document §1/NFR-6 convention.
 
@@ -794,6 +828,7 @@ def derive_entity_schema(config: CrudEntityConfig) -> dict[str, Any]:
             "type": field_type,
             "required": meta.required if meta.required is not None else name in required_fields,
             "showInTable": meta.show_in_table,
+            "sortable": meta.sortable,
         }
         if field_type == "enum" and enum_values:
             entry["values"] = enum_values
@@ -923,6 +958,12 @@ def make_crud_router(config: CrudEntityConfig) -> APIRouter:
 
     if "list" in config.methods:
         assert list_response_schema is not None
+        # ADR-0053 (sort): computed once at router-build time from this
+        # config's own derived schema — the single source of truth for which
+        # columns are sortable is the same `derive_entity_schema` the `GET
+        # /entities/{resource}/schema` route serves, not a second hand-kept
+        # list (the exact drift ADR-0053 already exists to close).
+        sortable_fields = frozenset(f["name"] for f in derive_entity_schema(config)["fields"] if f["sortable"])
 
         async def list_items(
             request: Request,
@@ -957,6 +998,19 @@ def make_crud_router(config: CrudEntityConfig) -> APIRouter:
                 query = query.where(getattr(model, field_name) == scope_uuid)
 
             query = apply_filters_and_search(query, model, config.filter_fields, config.search_fields, query_params)
+
+            sort_param = query_params.get("sort")
+            if sort_param:
+                try:
+                    query = apply_sort(query, model, sort_param, sortable_fields)
+                except ValueError as exc:
+                    field_name = exc.args[0] if exc.args else ""
+                    return _error(
+                        422,
+                        "validation_error",
+                        "Request failed validation.",
+                        field_errors={"sort": [f"'{field_name}' is not a sortable field"]},
+                    )
 
             page_c, page_size_c = clamp_pagination(page, page_size)
             total = await db.scalar(select(func.count()).select_from(query.subquery()))
@@ -1120,6 +1174,7 @@ __all__ = [
     "CrudEntityConfig",
     "NoSchema",
     "apply_filters_and_search",
+    "apply_sort",
     "chain_resolver",
     "clamp_pagination",
     "extract_scope_value",

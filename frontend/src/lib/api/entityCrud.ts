@@ -33,6 +33,12 @@ export interface ListQuery {
   /** Only consulted when the entity config declares `searchFields`. */
   q?: string;
   /**
+   * ADR-0053 (sort): the field name to sort by, `-`-prefixed for descending
+   * (e.g. `"name"` / `"-name"`) — passed straight through to `?sort=` on the
+   * generic `list` route (`crud_factory.apply_sort`'s own contract).
+   */
+  sort?: string;
+  /**
    * Everything else to put on the query string: the resolved scope
    * field/value (e.g. `project_id=<uuid>`) plus any active `filterFields`
    * values. Falsy values are omitted rather than sent as an empty param.
@@ -60,6 +66,9 @@ function buildQueryString(query: ListQuery): string {
   }
   if (query.q) {
     search.set("q", query.q);
+  }
+  if (query.sort) {
+    search.set("sort", query.sort);
   }
   for (const [key, value] of Object.entries(query.params ?? {})) {
     if (value) {

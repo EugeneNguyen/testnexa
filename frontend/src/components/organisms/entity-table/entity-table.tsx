@@ -56,6 +56,13 @@
  *    `"secondary"` fallback stays — an enum with no semantic colouring at all
  *    (`EntryExitCriteria.type`, `TestLog.event_type`) is served with no
  *    `badgeColors` key at all and must keep rendering exactly as before.
+ *
+ * **ADR-0053 (sort):** a `field.sortable !== false` column header renders as a
+ * button (not a bare `<th>`) whenever the caller passes `onSortChange` — this
+ * component owns only the click affordance and the current-sort glyph
+ * (`fa-sort`/`fa-sort-up`/`fa-sort-down`); the sort *state* (which field, which
+ * direction) and the resulting `?sort=` query param are `EntityListPage`'s,
+ * same split as `page`/`pageSize`.
  */
 import { ReactNode, useEffect, useMemo, useState } from "react";
 import Table from "../../../container/Table";
@@ -112,6 +119,17 @@ export interface EntityTableProps {
    * unchanged — `EntityListPage` is the one caller that passes it.
    */
   onPageSizeChange?: (pageSize: number) => void;
+  /**
+   * ADR-0053 (sort). `sortField`/`sortDir` describe the list's current sort
+   * (owned by `EntityListPage`, same posture as `page`/`pageSize`);
+   * `onSortChange`, if given, makes every `field.sortable !== false` column
+   * header a clickable sort toggle. Optional so the existing
+   * `EntityTable.test.tsx` fixtures (no sort needed for the shared-logic
+   * tests) keep compiling unchanged.
+   */
+  sortField?: string;
+  sortDir?: "asc" | "desc";
+  onSortChange?: (field: string) => void;
   loading?: boolean;
   loadError?: string | null;
   filters?: Record<string, string>;
@@ -134,6 +152,9 @@ function EntityTable({
   pageSize,
   onPageChange,
   onPageSizeChange,
+  sortField,
+  sortDir,
+  onSortChange,
   loading,
   loadError,
   search,
@@ -299,11 +320,36 @@ function EntityTable({
           testIdPrefix="entity-table"
           columns={
             <tr>
-              {tableFields.map((field) => (
-                <th scope="col" key={field.name}>
-                  {field.label}
-                </th>
-              ))}
+              {tableFields.map((field) => {
+                const isSortable = Boolean(onSortChange) && field.sortable !== false;
+                const isActive = sortField === field.name;
+                return (
+                  <th
+                    scope="col"
+                    key={field.name}
+                    aria-sort={isActive ? (sortDir === "desc" ? "descending" : "ascending") : undefined}
+                  >
+                    {isSortable ? (
+                      <button
+                        type="button"
+                        className="btn btn-link p-0 text-decoration-none text-body fw-bold"
+                        onClick={() => onSortChange!(field.name)}
+                        data-testid={`entity-table-sort-${field.name}`}
+                      >
+                        {field.label}
+                        <i
+                          className={`fa-solid ms-1 ${
+                            isActive ? (sortDir === "desc" ? "fa-sort-down" : "fa-sort-up") : "fa-sort text-body-tertiary"
+                          }`}
+                          aria-hidden="true"
+                        />
+                      </button>
+                    ) : (
+                      field.label
+                    )}
+                  </th>
+                );
+              })}
               {showActionsColumn && <th scope="col">Actions</th>}
             </tr>
           }

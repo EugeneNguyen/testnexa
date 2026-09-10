@@ -135,6 +135,7 @@ async def test_requirements_project_id_is_a_fk_field(client: httpx.AsyncClient) 
         "type": "fk",
         "required": True,
         "showInTable": True,
+        "sortable": True,
         "refEntity": "project",
         "labelField": "name",
     }

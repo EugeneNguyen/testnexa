@@ -424,10 +424,30 @@ class TestFieldMetaForUnknownFieldIsInert:
         assert "nope" not in _names(schema)
 
 
+class TestSortable:
+    """ADR-0053 (sort) — mirrors `TestShowInTable`'s own shape verbatim; same
+    auto-derive-unless-overridden posture, different `FieldMeta` flag."""
+
+    def test_defaults_to_true_for_every_field(self) -> None:
+        fields = _fields(derive_entity_schema(_widget_config()))
+        assert all(entry["sortable"] is True for entry in fields.values())
+
+    def test_field_meta_can_mark_a_field_unsortable(self) -> None:
+        schema = derive_entity_schema(_widget_config(field_meta={"description": FieldMeta(sortable=False)}))
+        fields = _fields(schema)
+        assert fields["description"]["sortable"] is False
+        # ...and only that field.
+        assert fields["name"]["sortable"] is True
+
+    def test_unsortable_field_is_still_present_in_the_field_list(self) -> None:
+        schema = derive_entity_schema(_widget_config(field_meta={"description": FieldMeta(sortable=False)}))
+        assert "description" in _names(schema)
+
+
 class TestFieldEntryKeys:
-    def test_plain_field_carries_exactly_the_five_base_keys(self) -> None:
+    def test_plain_field_carries_exactly_the_six_base_keys(self) -> None:
         entry = _fields(derive_entity_schema(_widget_config()))["name"]
-        assert set(entry) == {"name", "label", "type", "required", "showInTable"}
+        assert set(entry) == {"name", "label", "type", "required", "showInTable", "sortable"}
 
 
 # --- field_order (ADR-0053 Amendment 1) -------------------------------------------------------------

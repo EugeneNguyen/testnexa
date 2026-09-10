@@ -138,6 +138,10 @@ function EntityListPage() {
 
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  // ADR-0053 (sort): `null` = unsorted (today's pre-sort DB-default order).
+  // Component state only, same posture as `page`/`pageSize`/`filters` above —
+  // not persisted across navigation or reload.
+  const [sort, setSort] = useState<{ field: string; dir: "asc" | "desc" } | null>(null);
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [search, setSearch] = useState("");
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -149,17 +153,36 @@ function EntityListPage() {
   const canList = Boolean(config?.methods.includes("list"));
   const scopeParams = scope.field && scope.value ? { [scope.field]: scope.value } : {};
 
+  const sortParam = sort ? `${sort.dir === "desc" ? "-" : ""}${sort.field}` : undefined;
+
   const listQuery = useQuery({
-    queryKey: ["entity-list", entityKey, scope.field, scope.value, page, pageSize, filters, search],
+    queryKey: ["entity-list", entityKey, scope.field, scope.value, page, pageSize, filters, search, sortParam],
     queryFn: () =>
       listEntities(config!, routeParams, {
         page,
         pageSize,
         q: search || undefined,
+        sort: sortParam,
         params: { ...filters, ...scopeParams },
       }),
     enabled: canList && scope.ready,
   });
+
+  /**
+   * Click-header-to-sort toggle: unsorted -> ascending -> descending ->
+   * unsorted; clicking a *different* column always starts fresh at ascending.
+   * Resets to page 1, same as changing a filter/search term — a sort change
+   * is a new result set, not a new page of the old one.
+   */
+  function handleSortChange(field: string) {
+    setPage(1);
+    setSort((prev) => {
+      if (!prev || prev.field !== field) {
+        return { field, dir: "asc" };
+      }
+      return prev.dir === "asc" ? { field, dir: "desc" } : null;
+    });
+  }
 
   const createMutation = useMutation({
     mutationFn: (values: Record<string, unknown>) => createEntity(config!, routeParams, values),
@@ -277,6 +300,9 @@ function EntityListPage() {
           pageSize={pageSize}
           onPageChange={setPage}
           onPageSizeChange={setPageSize}
+          sortField={sort?.field}
+          sortDir={sort?.dir}
+          onSortChange={handleSortChange}
           loading={listQuery.isLoading}
           loadError={listQuery.isError ? "Something went wrong. Please try again." : null}
           filters={filters}

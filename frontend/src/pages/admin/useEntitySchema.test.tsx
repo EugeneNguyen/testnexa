@@ -45,10 +45,11 @@ function schemaResponse(overrides: Partial<EntitySchemaResponse> = {}): EntitySc
         type: "fk",
         required: true,
         showInTable: true,
+        sortable: true,
         refEntity: "project",
         labelField: "name",
       },
-      { name: "title", label: "Title", type: "string", required: true, showInTable: true },
+      { name: "title", label: "Title", type: "string", required: true, showInTable: true, sortable: true },
     ],
     ...overrides,
   };

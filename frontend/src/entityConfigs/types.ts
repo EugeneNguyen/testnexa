@@ -68,6 +68,14 @@ export interface FieldConfig {
   /** default true; e.g. hide a long text field from the table, still in the form. */
   showInTable?: boolean;
   /**
+   * default true (ADR-0053, sort) — whether clicking this column's header on
+   * `EntityTable` sorts the list by it. Served by `GET
+   * /entities/{resource}/schema`; `false` for the 3 static `Release` fields
+   * (`overrides.ts`), whose list route is 100% bespoke and doesn't support
+   * `?sort=`.
+   */
+  sortable?: boolean;
+  /**
    * Extension (see module doc comment, point 1): true for fields present in
    * a `*Summary` schema but absent from both `Create*Request` and
    * `Update*Request` — table/display only, never part of a submitted
