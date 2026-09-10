@@ -40,6 +40,8 @@ This document is the implementation-level schema, refined from the [07 ERD](../p
 
 **SHELL-10** ([ADR-0051](../adr/0051-shell-10-project-scope-entity-nav.md), FR-SHELL-9) — reviewed, no schema impact. A sidebar presentation change only — every entity `PROJECT_ENTITY_GROUPS` groups is already fully specified in the sections below, reached via its already-shipped `/projects/:projectId/admin/<entity>` route (ADR-0025/ADR-0027's registry). No table, column, index, or route reads/writes any differently. Noted here explicitly so the gap isn't mistaken for an oversight.
 
+**Tabler CDN install, Phase 1** ([ADR-0053](../adr/0053-tabler-install-phase-1-cdn.md), FR-DS-3) — reviewed, no schema impact. A static frontend asset addition only (`frontend/index.html` gains two CDN tags) — no table, column, index, or migration of any kind.
+
 ---
 
 ## 1. Entity count reconciliation

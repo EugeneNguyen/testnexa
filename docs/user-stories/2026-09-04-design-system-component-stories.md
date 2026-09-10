@@ -12,7 +12,9 @@
 
 **Not included here (belongs elsewhere, not as a user story):** the component-location naming convention (`components/shared/` vs `components/crud/` vs page-local) is an **ADR**, per CLAUDE.md's ADR-first rule for architecture choices — not a user story. That ADR is a prerequisite for DS-1 below and should be written before or alongside implementation, not as a separate backlog item competing for story-priority here.
 
-**DS-3 (added 2026-09-08) is a third graduation into this file, same posture as DS-2's own note above** — a direct CTO request (consolidate the org-home count widgets onto AdminLTE's own documented Info Box pattern), widened to repo-wide scope once a fresh audit found a second, independently-hand-rolled stat-tile implementation (`TestCycleDetail`'s local `StatTile`) alongside the one the request already named (`WidgetStatsTile`). **Naming note:** "DS-3" here is unrelated to any full atoms/molecules/organisms tiering buildout — this scope note's own PIVOT finding (previous paragraph) still holds, no tiering work is in scope. A local, uncommitted worktree named `ds3-atomic-tiering` exists elsewhere on this machine as of 2026-09-08 with zero commits and nothing in any doc claiming its own story number — if that separate tiering work is later picked up as a real story, it needs the next free `DS-N` slot (`DS-4` as of this writing), not `DS-3`, which this story claims.
+**DS-3 (added 2026-09-08) is a third graduation into this file, same posture as DS-2's own note above** — a direct CTO request (consolidate the org-home count widgets onto AdminLTE's own documented Info Box pattern), widened to repo-wide scope once a fresh audit found a second, independently-hand-rolled stat-tile implementation (`TestCycleDetail`'s local `StatTile`) alongside the one the request already named (`WidgetStatsTile`). **Naming note:** "DS-3" here is unrelated to any full atoms/molecules/organisms tiering buildout — this scope note's own PIVOT finding (previous paragraph) still holds, no tiering work is in scope. ~~A local, uncommitted worktree named `ds3-atomic-tiering` exists elsewhere on this machine as of 2026-09-08 with zero commits and nothing in any doc claiming its own story number — if that separate tiering work is later picked up as a real story, it needs the next free `DS-N` slot (`DS-4` as of this writing), not `DS-3`, which this story claims.~~ **`DS-4` is claimed below (2026-09-10) by an unrelated story (Tabler CDN install) before the atomic-tiering worktree above was ever picked back up — if that tiering work resumes, it needs `DS-5`, the next free slot as of this writing.**
+
+**DS-4 (added 2026-09-10) is a fourth graduation into this file, a direct CTO request (install Tabler) rather than a business-case discovery** — unlike DS-1/DS-2/DS-3, this one is explicitly *not* a component-duplication closure; it's a design-system-tooling install, Phase 1 of a planned future AdminLTE→Tabler swap ([ADR-0053](../adr/0053-tabler-install-phase-1-cdn.md)). Folded into this file per the same "single-story area, no new stories file" posture BRAND-1 already established, not because it fits DS-1/2/3's own component-extraction shape.
 
 ---
 
@@ -70,3 +72,20 @@
 - Out of scope for this story (explicitly): any AdminLTE small-box/large-box variant beyond Info Box, a progress-bar or trend-chart slot on the tile, or any further atoms/molecules/organisms tiering — none of these have duplication evidence behind them yet, same posture DS-1's own scope note already established.
 
 **Traceability:** [ADR-0045](../adr/0045-ds-3-infobox-widget-consolidation.md). FR-SHELL-3, NFR-27, FR-EXEC-1 AC2, NFR-46 (all unchanged in substance — this story changes the rendering mechanism, not the count-sourcing requirement) — see Requirements Document.
+
+---
+
+## Story DS-4: Tabler CDN install (Phase 1 of a planned AdminLTE→Tabler design-system swap)
+
+**As** the CTO,
+**I want** Tabler v1.5.1 loaded via its own documented CDN tags only, with zero component migration in the same pass,
+**so that** the library's stylesheet/script are available to build against once a future migration actually starts, without changing any live screen's rendered output today.
+
+**Acceptance criteria:**
+
+- Given [docs.tabler.io/ui/getting-started/installation](https://docs.tabler.io/ui/getting-started/installation)'s own documented method is CDN-only (`<link>`+`<script>`, "no build step involved"; framework/npm integration isn't covered on that page), when Tabler is installed, then `frontend/index.html` gains exactly those two tags, pinned to `1.5.1` — no `@tabler/core` npm dependency, per explicit CTO instruction (CDN only, not the package).
+- Given AdminLTE v4 ([ADR-0042](../adr/0042-adminlte-design-system.md)) is the project's live design system and both it and Tabler are Bootstrap-5-based (global, unscoped `.card`/`.btn`/`.table`/grid rules), when Tabler's stylesheet is added to the same page, then it is placed so AdminLTE's rules continue to win every conflicting selector — no existing screen's rendered output changes as a result of this install.
+- Given this is explicitly Phase 1 (install only), when this story ships, then no component is migrated onto Tabler markup, no route/page/shared component references any Tabler class, and `admin-lte`/`bootstrap`/`@fortawesome/fontawesome-free` remain fully in place and untouched.
+- Out of scope for this story (explicitly): any component migration off AdminLTE markup onto Tabler's, vendoring Tabler locally to remove the CDN's third-party-network dependency, and formally superseding [ADR-0042](../adr/0042-adminlte-design-system.md) — all three are the eventual migration's own scope, undertaken only on separate, explicit instruction.
+
+**Traceability:** [ADR-0053](../adr/0053-tabler-install-phase-1-cdn.md). FR-DS-3, NFR-56 — see Requirements Document.
