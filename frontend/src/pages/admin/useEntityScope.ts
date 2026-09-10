@@ -18,12 +18,29 @@
  *   where that's actually true — `Environment`/`TestPlan`/`Requirement`/
  *   `TestSuite`/`Role`/`RoleAssignment`/`Permission`/`OrgMembership`) —
  *   ready immediately, value taken straight from the route.
+ *
+ * **ADR-0053:** the `scopeResolution` branch's "via" config (the entity whose
+ * row carries the value we need — `Project`, today's only case) is fetched via
+ * `useEntitySchema` instead of the deleted `entityConfigByKey` map. Two things
+ * to keep in mind when editing this file:
+ *
+ * - `useEntitySchema` is a **hook**, so it is called unconditionally at the
+ *   top, before any of the early `return`s below. It tolerates an `undefined`
+ *   key (no fetch, no config) — that is what makes the unconditional call
+ *   legal for the entities that have no `scopeResolution` at all.
+ * - `scopeResolution.viaEntity` is **singular** (`"project"`), while schema
+ *   keys are the plural route slugs; `useEntitySchema`'s own
+ *   `resolveEntityKey()` does that mapping, so it is passed through as-is.
+ *
+ * Behavior is unchanged: while the via-entity's schema is in flight the
+ * resolution query stays disabled, so `scope.ready` is `false` — exactly the
+ * state this branch already produced while the Project row itself was loading.
  */
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { EntityConfig } from "../../entityConfigs/types";
 import { EntityRow, getEntity } from "../../lib/api/entityCrud";
-import { entityConfigByKey } from "./registry";
+import { useEntitySchema } from "./useEntitySchema";
 
 export interface ResolvedScope {
   ready: boolean;
@@ -38,7 +55,9 @@ export function useEntityScope(
   const [selector, setSelector] = useState<{ field: string; value: string } | undefined>(undefined);
 
   const scopeResolution = config?.scopeResolution;
-  const viaConfig = scopeResolution ? entityConfigByKey[scopeResolution.viaEntity] : undefined;
+  // Unconditional hook call — see this file's own docstring. `undefined` key
+  // (no `scopeResolution`) means no fetch and no config, not a skipped hook.
+  const { config: viaConfig } = useEntitySchema(scopeResolution?.viaEntity);
   const routeParamValue = scopeResolution ? routeParams[scopeResolution.fromRouteParam] : undefined;
 
   const resolutionQuery = useQuery({

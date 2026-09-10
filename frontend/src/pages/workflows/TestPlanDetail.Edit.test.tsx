@@ -23,6 +23,58 @@ import {
 import { listTestSuites } from "../../lib/api/testSuites";
 import { listEntities } from "../../lib/api/entityCrud";
 
+/**
+ * ADR-0053: this screen's field shape — and every `FkAutocomplete`'s
+ * ref-entity config — now arrives from `useEntitySchema`, a `useQuery` over
+ * `GET /entities/{resource}/schema`, instead of a static `entityConfigs/*.ts`
+ * import. The hook is mocked here rather than the transport stubbed, so these
+ * pre-existing assertions keep exercising what they always did: the screen's
+ * own behaviour, not how its config was obtained.
+ *
+ * **Each schema object is created once and cached by key.** `FkAutocomplete`
+ * lists `refConfig` in an effect's dependency array, so returning a fresh
+ * object literal per call re-runs that effect on every render and drowns the
+ * component in re-renders (a wall of `act(...)` warnings, and a debounce timer
+ * that never fires). The real hook returns a `useMemo`-stable config; a mock
+ * has to honour that contract, not just the shape.
+ */
+const { entitySchemaFor } = vi.hoisted(() => {
+  const FIELDS: Record<string, unknown[]> = {
+    "test-plans": [{"name": "project_id", "label": "Project", "type": "fk", "refEntity": "project", "labelField": "name", "required": true}, {"name": "identifier", "label": "Identifier", "type": "string", "required": true}, {"name": "scope", "label": "Scope", "type": "string", "showInTable": false}, {"name": "approach", "label": "Approach", "type": "string", "showInTable": false}, {"name": "staffing_and_training", "label": "Staffing & training", "type": "string", "showInTable": false}, {"name": "schedule", "label": "Schedule", "type": "string", "showInTable": false}, {"name": "status", "label": "Status", "type": "enum", "values": ["draft", "approved", "superseded"], "required": true}],
+    "entry-exit-criteria": [{"name": "test_plan_id", "label": "Test plan", "type": "fk", "refEntity": "test-plan", "labelField": "identifier", "required": true}, {"name": "type", "label": "Type", "type": "enum", "values": ["entry", "exit", "suspension", "resumption"], "required": true}, {"name": "condition_text", "label": "Condition", "type": "string", "required": true}],
+    "test-cases": [{"name": "test_condition_id", "label": "Test condition", "type": "fk", "refEntity": "test-condition", "labelField": "description"}, {"name": "test_level_id", "label": "Test level", "type": "fk", "refEntity": "test-level", "labelField": "name"}, {"name": "test_type_id", "label": "Test type", "type": "fk", "refEntity": "test-type", "labelField": "name"}, {"name": "title", "label": "Title", "type": "string", "required": true}, {"name": "preconditions", "label": "Preconditions", "type": "string", "showInTable": false}, {"name": "expected_result", "label": "Expected result", "type": "string", "showInTable": false}, {"name": "status", "label": "Status", "type": "enum", "values": ["draft", "reviewed", "approved", "deprecated"], "required": true}],
+    "test-cycles": [{"name": "test_plan_id", "label": "Test plan", "type": "fk", "refEntity": "test-plan", "labelField": "identifier", "readOnly": true}, {"name": "release_id", "label": "Release", "type": "fk", "refEntity": "release", "labelField": "version_label", "readOnly": true}, {"name": "environment_id", "label": "Environment", "type": "fk", "refEntity": "environment", "labelField": "name"}, {"name": "name", "label": "Name", "type": "string"}, {"name": "start_date", "label": "Start date", "type": "date"}, {"name": "end_date", "label": "End date", "type": "date"}],
+    "environments": [{"name": "project_id", "label": "Project", "type": "fk", "refEntity": "project", "labelField": "name", "required": true}, {"name": "name", "label": "Name", "type": "string", "required": true}, {"name": "config_notes", "label": "Config notes", "type": "string"}],
+    "releases": [{"name": "project_id", "label": "Project", "type": "fk", "refEntity": "project", "labelField": "name", "required": true, "readOnly": true}, {"name": "version_label", "label": "Version label", "type": "string", "required": true}, {"name": "target_date", "label": "Target date", "type": "date"}]
+  };
+  const cache: Record<string, unknown> = {};
+  return {
+    entitySchemaFor: (key: string) => {
+      if (!cache[key]) {
+        cache[key] = {
+          resource: key.replace(/-/g, "_").replace(/s$/, ""),
+          path: `/${key}`,
+          methods: ["list", "get", "create", "update", "delete"],
+          fields: FIELDS[key] ?? [],
+        };
+      }
+      return cache[key];
+    },
+  };
+});
+
+vi.mock("../admin/useEntitySchema", () => ({
+  useEntitySchema: (key: string) => ({
+    config: entitySchemaFor(key),
+    label: undefined,
+    isLoading: false,
+    isError: false,
+  }),
+  useEntitySchemas: (keys: string[]) =>
+    Object.fromEntries(keys.map((k) => [k, entitySchemaFor(k)])),
+  resolveEntityKey: (key: string) => key,
+}));
+
 vi.mock("../../lib/api/testPlans", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../lib/api/testPlans")>();
   return {

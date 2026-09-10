@@ -20,7 +20,21 @@ import { listDefectsForTestCase } from "../../lib/api/defects";
 import { ApiError } from "../../lib/api/client";
 
 vi.mock("./registry", () => ({
-  entityConfigByKey: {
+  entityLabelByKey: {
+    "test-cases": "Test cases",
+    projects: "Projects",
+  },
+  ADMIN_ENTITY_KEYS: new Set(["test-cases", "projects"]),
+}));
+
+/**
+ * ADR-0053: same fixture configs as before, injected through the fetch hook
+ * (`./useEntitySchema`) that replaced the registry's `entityConfigByKey` map.
+ * `isLoading: false` keeps them synchronously available, matching the old
+ * lookup's timing so every assertion below is unchanged.
+ */
+vi.mock("./useEntitySchema", () => {
+  const configs: Record<string, unknown> = {
     "test-cases": {
       resource: "test_case",
       path: "/test-cases",
@@ -33,12 +47,32 @@ vi.mock("./registry", () => ({
       methods: ["get", "update"],
       fields: [{ name: "name", label: "Name", type: "string", required: true }],
     },
-  },
-  entityLabelByKey: {
-    "test-cases": "Test cases",
-    projects: "Projects",
-  },
-}));
+  };
+  const labels: Record<string, string> = { "test-cases": "Test cases", projects: "Projects" };
+  const resolveEntityKey = (key: string) => (key.endsWith("s") ? key : `${key}s`);
+  return {
+    resolveEntityKey,
+    useEntitySchema: (key?: string) => {
+      const resolved = key ? resolveEntityKey(key) : undefined;
+      return {
+        config: resolved ? configs[resolved] : undefined,
+        label: resolved ? labels[resolved] : undefined,
+        isLoading: false,
+        isError: false,
+      };
+    },
+    useEntitySchemas: (keys: string[]) => {
+      const out: Record<string, unknown> = {};
+      for (const key of keys) {
+        const resolved = resolveEntityKey(key);
+        if (configs[resolved]) {
+          out[resolved] = configs[resolved];
+        }
+      }
+      return out;
+    },
+  };
+});
 
 vi.mock("../../lib/api/entityCrud", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../lib/api/entityCrud")>();

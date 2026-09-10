@@ -55,7 +55,7 @@ function fieldErrorsFrom(error: unknown): Record<string, string> | undefined {
 function EntityFormPage() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
-  const { entityKey, config, label } = useAdminRouteContext();
+  const { entityKey, config, label, schemaLoading } = useAdminRouteContext();
 
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string> | undefined>(undefined);
@@ -92,6 +92,29 @@ function EntityFormPage() {
     queryFn: () => listDefectsForTestCase(id as string),
     enabled: isTestCaseEntity && Boolean(id),
   });
+
+  /**
+   * ADR-0053: `config` is `undefined` for one round trip while
+   * `GET /entities/{resource}/schema` is in flight, not only for an unknown
+   * `:entity` — gate the error branch below on the fetch having actually
+   * settled, or every edit page flashes "Unknown admin entity" first. Reuses
+   * this page's own item-fetch spinner markup.
+   */
+  if (schemaLoading) {
+    return (
+      <div className="container-fluid px-4 py-4 h-100">
+        <div className="card h-100">
+          <div className="card-body">
+            <div className="d-flex justify-content-center py-4">
+              <div className="spinner-border text-primary" role="status">
+                <span className="visually-hidden">Loading...</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!config) {
     return (

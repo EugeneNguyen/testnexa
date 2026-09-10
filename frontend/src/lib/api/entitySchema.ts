@@ -1,13 +1,20 @@
 /**
  * ADR-0053: `GET /api/v1/entities/{resource}/schema` — the runtime
- * counterpart to the backend's `crud_factory.derive_entity_schema`. Response
- * shape matches `entityConfigs/types.ts`'s `EntityConfig`/`FieldConfig`
- * minus the frontend-only routing fields (`path`, `listPath`, `createPath`,
- * `scopeSelector`, `scopeResolution`) — those stay declared in
- * `entityConfigs/overrides.ts` (see that file's own docstring for why).
+ * counterpart to the backend's `crud_factory.derive_entity_schema`.
+ *
+ * Response shape matches `entityConfigs/types.ts`'s `EntityConfig`/
+ * `FieldConfig` minus only the frontend-only *routing* fields (`path`,
+ * `listPath`, `createPath`) — see `entityConfigs/overrides.ts`.
+ *
+ * `scopeSelector`/`scopeResolution` ARE served here: an earlier draft of this
+ * file listed them as frontend-only, but they moved backend-side (their own
+ * `ScopeSelectorOption`/`ScopeResolution` dataclasses in `crud_factory.py`)
+ * per the CTO's explicit "fully backend-driven, no residual static frontend
+ * file" direction. They describe how an entity's list *resolves its scope*,
+ * which is data shape, not route wiring.
  */
 import { apiFetch } from "./client";
-import { FieldType } from "../../entityConfigs/types";
+import { FieldType, ScopeResolution, ScopeSelectorOption } from "../../entityConfigs/types";
 
 export interface BackendFieldConfig {
   name: string;
@@ -27,6 +34,9 @@ export interface EntitySchemaResponse {
   label: string;
   methods: ("list" | "get" | "create" | "update" | "delete")[];
   scopeField: string | [string, string] | null;
+  /** Single option, or an array for a branching scope (`RiskItem`). */
+  scopeSelector: ScopeSelectorOption | ScopeSelectorOption[] | null;
+  scopeResolution: ScopeResolution | null;
   searchFields: string[];
   filterFields: string[];
   fields: BackendFieldConfig[];

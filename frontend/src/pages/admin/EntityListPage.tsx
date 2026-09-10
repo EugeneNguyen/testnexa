@@ -132,7 +132,7 @@ function fieldErrorsFrom(error: unknown): Record<string, string> | undefined {
 function EntityListPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { entityKey, config, label, orgId, projectId, routeParams } = useAdminRouteContext();
+  const { entityKey, config, label, schemaLoading, orgId, projectId, routeParams } = useAdminRouteContext();
   const { scope, onScopeSelectorResolved } = useEntityScope(config, routeParams);
   const permissions = usePermissions(orgId);
 
@@ -189,6 +189,31 @@ function EntityListPage() {
       setDeleteError(error instanceof ApiError ? error.message : "Something went wrong. Please try again.");
     },
   });
+
+  /**
+   * ADR-0053: the entity's field shape is fetched now
+   * (`GET /entities/{resource}/schema`), so `config` is legitimately
+   * `undefined` for one round trip on every admin page load. Without this
+   * branch that state is indistinguishable from an unknown `:entity` and the
+   * page would flash the "Unknown admin entity" error before the schema
+   * lands. Same `spinner-border role="status"` pattern `EntityFormPage`
+   * already uses for its own item fetch.
+   */
+  if (schemaLoading) {
+    return (
+      <div className="container-fluid px-4 py-4 h-100">
+        <div className="card h-100">
+          <div className="card-body">
+            <div className="d-flex justify-content-center py-4">
+              <div className="spinner-border text-primary" role="status">
+                <span className="visually-hidden">Loading...</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!config) {
     return (

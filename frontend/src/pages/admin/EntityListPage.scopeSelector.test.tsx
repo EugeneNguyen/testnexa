@@ -27,16 +27,52 @@ import { getEntity, listEntities } from "../../lib/api/entityCrud";
  * `test_case_id` through correctly for this specific config, so the moment
  * `test-case.ts` gains a `list` route, the rest of this chain already works.
  */
-vi.mock("./registry", async () => {
-  const actual = await import("../../../src/entityConfigs/attachment");
+/**
+ * **ADR-0053:** the configs are served by `GET /entities/{resource}/schema`
+ * now, so they are injected by mocking `./useEntitySchema` rather than the
+ * deleted `entityConfigByKey` registry map. The `attachments` fixture is still
+ * the *real* shipped `entityConfigs/attachment` object (unchanged intent: the
+ * wiring under test is the actual one, not a stand-in), and `projects` is
+ * still the minimal config `useAdminRouteContext` needs to resolve this
+ * project-scoped route's `org_id`. `./registry` stays mocked for the
+ * frontend-static `entityLabelByKey` half only.
+ */
+vi.mock("./registry", () => ({
+  entityLabelByKey: {
+    attachments: "Attachments",
+    projects: "Projects",
+  },
+  ADMIN_ENTITY_KEYS: new Set(["attachments", "projects"]),
+}));
+
+vi.mock("./useEntitySchema", async () => {
+  const attachmentConfig = (await import("../../entityConfigs/attachment")).default;
+  const configs: Record<string, unknown> = {
+    attachments: attachmentConfig,
+    projects: { resource: "project", path: "/projects", methods: ["list", "get"], fields: [] },
+  };
+  const labels: Record<string, string> = { attachments: "Attachments", projects: "Projects" };
+  const resolveEntityKey = (key: string) => (key.endsWith("s") ? key : `${key}s`);
   return {
-    entityConfigByKey: {
-      attachments: actual.default,
-      projects: { resource: "project", path: "/projects", methods: ["list", "get"], fields: [] },
+    resolveEntityKey,
+    useEntitySchema: (key?: string) => {
+      const resolved = key ? resolveEntityKey(key) : undefined;
+      return {
+        config: resolved ? configs[resolved] : undefined,
+        label: resolved ? labels[resolved] : undefined,
+        isLoading: false,
+        isError: false,
+      };
     },
-    entityLabelByKey: {
-      attachments: "Attachments",
-      projects: "Projects",
+    useEntitySchemas: (keys: string[]) => {
+      const out: Record<string, unknown> = {};
+      for (const key of keys) {
+        const resolved = resolveEntityKey(key);
+        if (configs[resolved]) {
+          out[resolved] = configs[resolved];
+        }
+      }
+      return out;
     },
   };
 });

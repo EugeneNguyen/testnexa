@@ -8,15 +8,28 @@ import type { EntityConfig } from "../../entityConfigs/types";
  * mapping (UI Design Document §3) is what's under test here, once, using a
  * fixture config exercising all 5 `FieldType`s, not a real entity config.
  */
-vi.mock("../../pages/admin/registry", () => ({
-  entityConfigByKey: {
-    "widget-owner": {
-      resource: "widget_owner",
-      path: "/widget-owners",
-      methods: ["list", "get"],
-      fields: [{ name: "name", label: "Name", type: "string" }],
-    },
-  },
+/**
+ * ADR-0053: the fk field's `FkAutocomplete` resolves its ref-entity config
+ * through `useEntitySchema` now, not the retired `entityConfigByKey` registry
+ * map — so that's what this file mocks. Returning the config synchronously
+ * keeps the "renders a search input for an fk field" assertion below testing
+ * the field-type mapping rather than a loading state.
+ */
+vi.mock("../../pages/admin/useEntitySchema", () => ({
+  useEntitySchema: (key: string) => ({
+    config:
+      key === "widget-owner"
+        ? {
+            resource: "widget_owner",
+            path: "/widget-owners",
+            methods: ["list", "get"],
+            fields: [{ name: "name", label: "Name", type: "string" }],
+          }
+        : undefined,
+    label: undefined,
+    isLoading: false,
+    isError: false,
+  }),
 }));
 
 const CONFIG: EntityConfig = {

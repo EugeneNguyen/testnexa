@@ -115,12 +115,54 @@ import { listMembers } from "../../lib/api/members";
 import { listEntities, getEntity, type EntityRow } from "../../lib/api/entityCrud";
 import FkAutocomplete from "../../components/molecules/fk-autocomplete";
 import { InfoBox } from "../../components/molecules/info-box";
-import testExecutionConfig from "../../entityConfigs/test-execution";
-import testCycleConfig from "../../entityConfigs/test-cycle";
-import testCaseConfig from "../../entityConfigs/test-case";
+import { useEntitySchema } from "../admin/useEntitySchema";
+import { pathFor } from "../../entityConfigs/overrides";
 import type { EntityConfig } from "../../entityConfigs/types";
 
 const GENERIC_ERROR = "Something went wrong. Please try again.";
+
+/**
+ * ADR-0053: the 28 per-entity `entityConfigs/*.ts` files are gone — an
+ * entity's *field shape* now comes from `GET /entities/{resource}/schema` via
+ * `useEntitySchema`, and its *route* comes from `entityConfigs/overrides.ts`'s
+ * `pathFor()`.
+ *
+ * This screen's config uses split cleanly along that seam, and each one was
+ * checked against what the consumer actually reads rather than assumed:
+ *
+ * - `listEntities`/`getEntity` (`lib/api/entityCrud.ts`) read only `path`,
+ *   `listPath`, `createPath` and `methods` — so every call here that just
+ *   needs "which URL" takes a `routeOnlyConfig()` below. No fetch, no loading
+ *   state, no new async failure mode for a string this file already knows.
+ * - `FkAutocomplete`, by contrast, is handed a whole config and reads
+ *   `methods` off it to decide whether searching is even possible — that is
+ *   genuinely backend-owned data, so the "Record Result" picker's config is
+ *   derived from a real `useEntitySchema("test-cases")` fetch (see
+ *   `planScopedTestCaseConfig` inside the component).
+ */
+function routeOnlyConfig(resource: string, entityKey: string): EntityConfig {
+  return { resource, path: pathFor(entityKey), methods: [], fields: [] };
+}
+
+/**
+ * `GET /test-executions?...` — the dashboard's four count calls and the
+ * history list. Both read `total`/`items` off the response; neither consults a
+ * field list, so this deliberately carries none (see `routeOnlyConfig`).
+ */
+const TEST_EXECUTION_ROUTE = routeOnlyConfig("test_execution", "test-executions");
+
+/** `GET /test-cycles/{id}` — the header card's own row. */
+const TEST_CYCLE_ROUTE = routeOnlyConfig("test_cycle", "test-cycles");
+
+/**
+ * The three header-decoration label lookups. Each was previously expressed as
+ * `{ ...testCycleConfig, path: "/test-plans" }` — a spread whose only surviving
+ * field was the overridden `path`, i.e. already a route-only descriptor in all
+ * but name.
+ */
+const TEST_PLAN_ROUTE = routeOnlyConfig("test_plan", "test-plans");
+const RELEASE_ROUTE = routeOnlyConfig("release", "releases");
+const ENVIRONMENT_ROUTE = routeOnlyConfig("environment", "environments");
 
 /**
  * The history list's page size. The generic factory's own default page size is
@@ -132,29 +174,13 @@ const GENERIC_ERROR = "Something went wrong. Please try again.";
 const HISTORY_PAGE_SIZE = 200;
 
 /**
- * The `test-case` registry config, re-pointed at PLAN-1's coverage query
- * (`GET /test-plans/{id}/test-cases`, ADR-0031) so the "Record Result" picker
- * offers exactly the `TestCase`s the backend's own scope-check would accept
- * (ADR-0034; TC-EXEC-010).
- *
- * Two overrides, both load-bearing:
- * - `listPath` uses the `:testPlanId` placeholder `entityCrud.interpolate`
- *   already supports, filled from `routeParams` (`frontend/CLAUDE.md`'s
- *   `:paramName` mechanism, added by PLAN-3 for `release`).
- * - `methods` gains `"list"`. The registry's `test-case` config deliberately
- *   omits it — there is no `GET /test-cases` route at all — so without this
- *   `FkAutocomplete` would render its disabled "search unavailable" state.
- *   That structural gap is real and unchanged; this override does not paper
- *   over it, it points at a *different*, plan-scoped route that does exist.
- *
- * Built once at module scope: a pure derivation of a static config, same
- * `{...config, ...}` shape as `TestPlanDetail`'s `editConfig`/`criteriaConfig`.
+ * `planScopedTestCaseConfig`'s `listPath` override — PLAN-1's coverage query
+ * (`GET /test-plans/{id}/test-cases`, ADR-0031), using the `:testPlanId`
+ * placeholder `entityCrud.interpolate` already supports and `FkAutocomplete`
+ * fills from `routeParams` (`frontend/CLAUDE.md`'s `:paramName` mechanism,
+ * added by PLAN-3 for `release`).
  */
-const planScopedTestCaseConfig: EntityConfig = {
-  ...testCaseConfig,
-  listPath: "/test-plans/:testPlanId/test-cases",
-  methods: [...testCaseConfig.methods, "list"],
-};
+const PLAN_SCOPED_TEST_CASES_PATH = "/test-plans/:testPlanId/test-cases";
 
 /**
  * UI Design Document §4's four-colour result mapping (green/red/amber/gray) —
@@ -418,6 +444,42 @@ function TestCycleDetail() {
     testCycleId: string;
   }>();
 
+  // --- ADR-0053: the one genuinely backend-owned config on this screen -------
+  // Called unconditionally at the top of the component, before any early
+  // return, per the Rules of Hooks — `useEntitySchema` wraps `useQuery`.
+  const { config: testCaseConfig } = useEntitySchema("test-cases");
+
+  /**
+   * The backend's own `TestCase` schema, re-pointed at PLAN-1's coverage query
+   * so the "Record Result" picker offers exactly the `TestCase`s the backend's
+   * own scope-check would accept (ADR-0034; TC-EXEC-010).
+   *
+   * Two overrides, both load-bearing:
+   * - `listPath` — see `PLAN_SCOPED_TEST_CASES_PATH` above.
+   * - `methods` gains `"list"`. `TestCase`'s real schema deliberately omits it
+   *   — there is no `GET /test-cases` route at all — so without this
+   *   `FkAutocomplete` would render its disabled "search unavailable" state.
+   *   That structural gap is real and unchanged; this override does not paper
+   *   over it, it points at a *different*, plan-scoped route that does exist.
+   *   Spreading the **fetched** `methods` (rather than a hand-written list) is
+   *   the point of ADR-0053: if the backend ever does gain a plain
+   *   `GET /test-cases`, this keeps agreeing with it for free.
+   *
+   * `undefined` until the schema resolves — the picker renders a disabled
+   * placeholder in that window (see the "Record Result" modal below).
+   */
+  const planScopedTestCaseConfig = useMemo<EntityConfig | undefined>(
+    () =>
+      testCaseConfig
+        ? {
+            ...testCaseConfig,
+            listPath: PLAN_SCOPED_TEST_CASES_PATH,
+            methods: [...testCaseConfig.methods, "list"],
+          }
+        : undefined,
+    [testCaseConfig],
+  );
+
   // --- Header: the cycle itself, plus its plan/release/environment labels ----
   const [cycle, setCycle] = useState<EntityRow | null>(null);
   const [cycleLoading, setCycleLoading] = useState(true);
@@ -513,7 +575,7 @@ function TestCycleDetail() {
     setCycleLoading(true);
     setCycleLoadError(null);
     try {
-      setCycle(await getEntity<EntityRow>(testCycleConfig, testCycleId));
+      setCycle(await getEntity<EntityRow>(TEST_CYCLE_ROUTE, testCycleId));
     } catch (err) {
       setCycleLoadError(errorMessage(err));
     } finally {
@@ -539,7 +601,7 @@ function TestCycleDetail() {
       const totals = await Promise.all(
         TEST_EXECUTION_RESULTS.map(async (result) => {
           const response = await listEntities<TestExecutionSummary>(
-            testExecutionConfig,
+            TEST_EXECUTION_ROUTE,
             {},
             { pageSize: 1, params: { test_cycle_id: testCycleId, result } },
           );
@@ -568,7 +630,7 @@ function TestCycleDetail() {
     setHistoryLoadError(null);
     try {
       const response = await listEntities<TestExecutionSummary>(
-        testExecutionConfig,
+        TEST_EXECUTION_ROUTE,
         {},
         { pageSize: HISTORY_PAGE_SIZE, params: { test_cycle_id: testCycleId } },
       );
@@ -680,24 +742,9 @@ function TestCycleDetail() {
       }
     }
 
-    void resolveLabel(
-      { ...testCycleConfig, path: "/test-plans" },
-      planId,
-      "identifier",
-      setPlanIdentifier,
-    );
-    void resolveLabel(
-      { ...testCycleConfig, path: "/releases" },
-      releaseId,
-      "version_label",
-      setReleaseLabel,
-    );
-    void resolveLabel(
-      { ...testCycleConfig, path: "/environments" },
-      environmentId,
-      "name",
-      setEnvironmentLabel,
-    );
+    void resolveLabel(TEST_PLAN_ROUTE, planId, "identifier", setPlanIdentifier);
+    void resolveLabel(RELEASE_ROUTE, releaseId, "version_label", setReleaseLabel);
+    void resolveLabel(ENVIRONMENT_ROUTE, environmentId, "name", setEnvironmentLabel);
 
     return () => {
       cancelled = true;

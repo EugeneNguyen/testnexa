@@ -12,20 +12,60 @@ import { listEntities } from "../../lib/api/entityCrud";
  * fixture global-catalog config (no `scopeField`, so no scope-selector step
  * to drive through first) — the permission-gating logic under test here is
  * `EntityListPage`'s own, shared across every entity, not entity-specific.
+ *
+ * **ADR-0053:** the fixture config is unchanged, but it is now injected by
+ * mocking `./useEntitySchema` (the fetch hook every admin surface reads its
+ * config from) rather than the deleted `entityConfigByKey` registry map. The
+ * registry mock survives for `entityLabelByKey` only — that half stayed
+ * frontend-static precisely so the nav/heading label never waits on a fetch.
+ *
+ * `schemaState` is `vi.hoisted` so a test can flip the hook into its loading
+ * state; every existing test runs with `isLoading: false`, i.e. exactly the
+ * synchronous config availability the old registry lookup had.
  */
+const schemaState = vi.hoisted(() => ({ isLoading: false }));
+
 vi.mock("./registry", () => ({
-  entityConfigByKey: {
+  entityLabelByKey: {
+    widgets: "Widgets",
+  },
+  ADMIN_ENTITY_KEYS: new Set(["widgets"]),
+}));
+
+vi.mock("./useEntitySchema", () => {
+  const configs: Record<string, unknown> = {
     widgets: {
       resource: "widget",
       path: "/widgets",
       methods: ["list", "get", "create"],
       fields: [{ name: "name", label: "Name", type: "string", required: true }],
     },
-  },
-  entityLabelByKey: {
-    widgets: "Widgets",
-  },
-}));
+  };
+  const labels: Record<string, string> = { widgets: "Widgets" };
+  const resolveEntityKey = (key: string) => (key.endsWith("s") ? key : `${key}s`);
+  return {
+    resolveEntityKey,
+    useEntitySchema: (key?: string) => {
+      const resolved = key ? resolveEntityKey(key) : undefined;
+      return {
+        config: schemaState.isLoading || !resolved ? undefined : configs[resolved],
+        label: resolved ? labels[resolved] : undefined,
+        isLoading: Boolean(resolved) && schemaState.isLoading,
+        isError: false,
+      };
+    },
+    useEntitySchemas: (keys: string[]) => {
+      const out: Record<string, unknown> = {};
+      for (const key of keys) {
+        const resolved = resolveEntityKey(key);
+        if (configs[resolved]) {
+          out[resolved] = configs[resolved];
+        }
+      }
+      return out;
+    },
+  };
+});
 
 vi.mock("../../lib/api/entityCrud", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../lib/api/entityCrud")>();
@@ -56,6 +96,7 @@ function renderPage() {
 describe("EntityListPage — permission-driven create button", () => {
   afterEach(() => {
     vi.clearAllMocks();
+    schemaState.isLoading = false;
   });
 
   it("does not render the New button at all when the actor lacks widget.create", async () => {
@@ -75,5 +116,23 @@ describe("EntityListPage — permission-driven create button", () => {
     renderPage();
 
     expect(await screen.findByRole("button", { name: "New" })).toBeInTheDocument();
+  });
+
+  /**
+   * ADR-0053: the config is fetched now, so `config === undefined` no longer
+   * implies an unknown `:entity`. While the schema is in flight the page must
+   * show a spinner, NOT the "Unknown admin entity" error it renders for a
+   * genuinely unrecognised slug.
+   */
+  it("renders a spinner instead of the unknown-entity error while the schema is still loading", async () => {
+    schemaState.isLoading = true;
+    mockApiFetch.mockResolvedValue({ codes: [] });
+    mockListEntities.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 25 });
+
+    renderPage();
+
+    expect(await screen.findByRole("status")).toBeInTheDocument();
+    expect(screen.queryByText(/Unknown admin entity/)).not.toBeInTheDocument();
+    expect(mockListEntities).not.toHaveBeenCalled();
   });
 });

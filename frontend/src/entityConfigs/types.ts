@@ -51,6 +51,16 @@ export interface FieldConfig {
   required?: boolean;
   /** enum only. */
   values?: string[];
+  /**
+   * enum only (ADR-0053) — value -> Bootstrap theme-colour name, e.g.
+   * `{"critical": "danger"}`. Served by `GET /entities/{resource}/schema`,
+   * replacing `EntityTable`'s own module-level `ENUM_BADGE_COLORS` constant.
+   * Already filtered backend-side to this field's own declared `values`, and
+   * omitted entirely for an enum with no semantic colouring at all
+   * (`EntryExitCriteria.type`, `TestLog.event_type`) — so `EntityTable` still
+   * needs its plain-grey fallback for any value not listed here.
+   */
+  badgeColors?: Record<string, string>;
   /** fk only — key into the registry, not necessarily an entity with its own admin page. */
   refEntity?: string;
   /** fk only — which field of the ref entity's summary to display. */

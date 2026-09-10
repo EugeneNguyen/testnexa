@@ -39,38 +39,29 @@
  * explicitly declines to merge `EntityConfig`-driven columns with the
  * container's generic render-prop API — they stay two call conventions over
  * one shared pagination implementation.
+ *
+ * **ADR-0053 (backend-driven entity schema):** two things this component used
+ * to own itself now arrive with the config.
+ *
+ * 1. FK label resolution reads its ref-entity configs from
+ *    `useEntitySchemas([...])` — called **once, at the top**, over every
+ *    distinct `refEntity` on the config — instead of the old per-field
+ *    `entityConfigByKey[field.refEntity]` registry lookup (that map no longer
+ *    exists). A hook can't be called per-field inside the effect/`renderCell`
+ *    callback, which is exactly the shape `useEntitySchemas` (the batch
+ *    sibling of `useEntitySchema`) exists for.
+ * 2. Enum badge colours come from `field.badgeColors` (backend-served, already
+ *    filtered to that field's own `values`), replacing the module-level
+ *    `ENUM_BADGE_COLORS` constant this file used to carry. The plain-grey
+ *    `"secondary"` fallback stays — an enum with no semantic colouring at all
+ *    (`EntryExitCriteria.type`, `TestLog.event_type`) is served with no
+ *    `badgeColors` key at all and must keep rendering exactly as before.
  */
-import { ReactNode, useEffect, useState } from "react";
+import { ReactNode, useEffect, useMemo, useState } from "react";
 import Table from "../../../container/Table";
 import { EntityConfig, FieldConfig } from "../../../entityConfigs/types";
 import { EntityRow, getEntity } from "../../../lib/api/entityCrud";
-import { entityConfigByKey } from "../../../pages/admin/registry";
-
-const ENUM_BADGE_COLORS: Record<string, string> = {
-  // Status-shaped values that read naturally as a semantic color; every
-  // other enum value falls back to a plain grey badge (UI Design Document
-  // §3: "color by value where the entity has an obvious status semantic...
-  // plain text otherwise" — implemented here as a shared plain-grey default
-  // rather than plain uncolored text, since a Bootstrap badge always carries
-  // some `bg-*` background variant (as CoreUI's `CBadge` did before ADR-0042
-  // — the values here are the Bootstrap theme-color names both use).
-  critical: "danger",
-  high: "danger",
-  fail: "danger",
-  suspended: "warning",
-  blocked: "warning",
-  medium: "warning",
-  invited: "info",
-  draft: "secondary",
-  low: "success",
-  pass: "success",
-  active: "success",
-  approved: "success",
-  reviewed: "info",
-  deprecated: "secondary",
-  superseded: "secondary",
-  skipped: "secondary",
-};
+import { resolveEntityKey, useEntitySchemas } from "../../../pages/admin/useEntitySchema";
 
 function formatDate(value: unknown): string {
   if (!value) {
@@ -158,6 +149,27 @@ function EntityTable({
 
   const showActionsColumn = (config.methods.includes("update") || config.methods.includes("delete")) && (onEdit || onDelete);
 
+  // ADR-0053: every distinct ref-entity schema this config's FK columns need,
+  // fetched once here rather than per-field (the Rules of Hooks make a
+  // per-column `useEntitySchema` illegal). Keyed by the *resolved* (plural)
+  // entity key, so look results up through `resolveEntityKey` — `refEntity`
+  // values are singular.
+  const refEntityKeys = useMemo(
+    () => config.fields.filter((f) => f.refEntity).map((f) => f.refEntity as string),
+    [config.fields],
+  );
+  const refConfigs = useEntitySchemas(refEntityKeys);
+
+  // A *primitive* fingerprint of which ref schemas have actually landed. The
+  // effect below has to re-run when one arrives (they resolve after first
+  // render now, where the old registry lookup was synchronous) — but keying it
+  // on `refConfigs`' object identity would make it re-run on every render for
+  // any caller that passes a fresh `config` object, and each run calls
+  // `setFkLabels`, i.e. a render loop. A joined string can't do that.
+  const refConfigFingerprint = fkFields
+    .map((f) => `${f.name}:${refConfigs[resolveEntityKey(f.refEntity as string)]?.path ?? ""}`)
+    .join("|");
+
   // Batched, deduped FK label resolution — one `getEntity` per distinct id
   // per FK field across the current page, not one per row (§3).
   useEffect(() => {
@@ -166,7 +178,7 @@ function EntityTable({
     async function resolve() {
       const next: Record<string, Record<string, string>> = {};
       for (const field of fkFields) {
-        const refConfig = field.refEntity ? entityConfigByKey[field.refEntity] : undefined;
+        const refConfig = field.refEntity ? refConfigs[resolveEntityKey(field.refEntity)] : undefined;
         if (!refConfig) {
           continue;
         }
@@ -198,7 +210,7 @@ function EntityTable({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows]);
+  }, [rows, refConfigFingerprint]);
 
   function renderCell(field: FieldConfig, row: EntityRow) {
     const raw = row[field.name];
@@ -218,7 +230,11 @@ function EntityTable({
         if (raw === null || raw === undefined || raw === "") {
           return "—";
         }
-        const color = ENUM_BADGE_COLORS[String(raw)] ?? "secondary";
+        // ADR-0053: backend-served, per-field. Anything the backend didn't
+        // colour — including every value of an enum served with no
+        // `badgeColors` at all — stays a plain grey badge, exactly as the old
+        // module-level constant's own default did.
+        const color = field.badgeColors?.[String(raw)] ?? "secondary";
         return <span className={`badge bg-${color}`}>{String(raw)}</span>;
       }
       default:
