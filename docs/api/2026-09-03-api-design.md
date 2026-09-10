@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-03
 **Owner:** xuanbinh91@gmail.com (CTO)
-**Sources:** [Scaffold design spec](../superpowers/specs/2026-09-03-project-scaffold-design.md), [Database Document](../database/2026-09-03-database-design.md), [Requirements Document](../requirements/2026-09-03-project-scaffold-requirements.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md) (refresh rotation policy), [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md) (AI agent credential mechanics), [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md) (organization bootstrap & creation flow), [ADR-0017](../adr/0017-project-creation-flow.md) (project creation flow), [ADR-0021](../adr/0021-role-assignment-creation-flow.md) (role assignment creation flow), [ADR-0022](../adr/0022-generic-crud-router-factory.md) (generic CRUD router factory), [ADR-0025](../adr/0025-requirement-title-field.md) (`Requirement.title` gap-fill), [ADR-0027](../adr/0027-generic-admin-crud-ui-and-backend-completion.md) (generic admin CRUD UI + execution/traceability backend completion), [ADR-0029](../adr/0029-testcase-resolver-direct-link-fallback.md) (`TestCase` resolver direct-link fallback, REQ-2 gap-fill), [ADR-0030](../adr/0030-req4-test-suite-membership-bespoke-routes.md) (REQ-4 TestSuite membership bespoke routes), [ADR-0031](../adr/0031-plan1-test-plan-membership-and-status-transition-routes.md) (PLAN-1 TestPlan↔TestSuite membership routes, coverage query, status-transition guard)
+**Sources:** [Scaffold design spec](../superpowers/specs/2026-09-03-project-scaffold-design.md), [Database Document](../database/2026-09-03-database-design.md), [Requirements Document](../requirements/2026-09-03-project-scaffold-requirements.md), [ADR-0013](../adr/0013-refresh-token-rotation-policy.md) (refresh rotation policy), [ADR-0015](../adr/0015-ai-agent-credential-mechanics.md) (AI agent credential mechanics), [ADR-0016](../adr/0016-organization-bootstrap-creation-flow.md) (organization bootstrap & creation flow), [ADR-0017](../adr/0017-project-creation-flow.md) (project creation flow), [ADR-0021](../adr/0021-role-assignment-creation-flow.md) (role assignment creation flow), [ADR-0022](../adr/0022-generic-crud-router-factory.md) (generic CRUD router factory), [ADR-0025](../adr/0025-requirement-title-field.md) (`Requirement.title` gap-fill), [ADR-0027](../adr/0027-generic-admin-crud-ui-and-backend-completion.md) (generic admin CRUD UI + execution/traceability backend completion), [ADR-0029](../adr/0029-testcase-resolver-direct-link-fallback.md) (`TestCase` resolver direct-link fallback, REQ-2 gap-fill), [ADR-0030](../adr/0030-req4-test-suite-membership-bespoke-routes.md) (REQ-4 TestSuite membership bespoke routes), [ADR-0031](../adr/0031-plan1-test-plan-membership-and-status-transition-routes.md) (PLAN-1 TestPlan↔TestSuite membership routes, coverage query, status-transition guard), [ADR-0053](../adr/0053-admin-3-backend-driven-entity-schema.md) (ADMIN-3 backend-driven entity schema, `GET /entities/{resource}/schema`)
 
 REST over HTTPS, JSON bodies, base path `/api/v1`. FastAPI auto-generates the OpenAPI schema from the implementation — this document is the design-level contract new routes must match, not a substitute for the generated spec once code exists.
 
@@ -37,6 +37,8 @@ REST over HTTPS, JSON bodies, base path `/api/v1`. FastAPI auto-generates the Op
 **SHELL-9** ([ADR-0050](../adr/0050-shell-9-project-scope-nav-context-resolution.md), FR-SHELL-8) — reviewed, no API impact. `useResolvedOrgId()` calls only the already-documented `GET /projects/{id}` (§2/§3) when `:orgId` is absent from the route — no new route, no changed request/response shape. The response's existing `org_id` field (already read by `useAdminRouteContext`'s own independent caller of the same route) is the only field this new caller reads.
 
 **SHELL-10** ([ADR-0051](../adr/0051-shell-10-project-scope-entity-nav.md), FR-SHELL-9) — reviewed, no API impact. Every route the sidebar's new entity-group links point at (`/projects/:projectId/admin/<entity>` for the 13 grouped entities) is the already-documented generic-admin route (§3) — no new route, no changed request/response shape, this is purely which existing routes the sidebar now links to.
+
+**ADMIN-3** ([ADR-0053](../adr/0053-admin-3-backend-driven-entity-schema.md), FR-ADMIN-2/NFR-56/NFR-57) — **has API impact**: one new route, `GET /entities/{resource}/schema` (§3 below, plus a §4 route-table row), serving each factory-registered entity's own field shape so the frontend stops maintaining a second, independent description of it (`frontend/src/entityConfigs/*.ts`, ADR-0027 — partially superseded here, field-shape half only). **No route already documented in this file changes shape, gains a parameter, or changes its permission gate** — this is purely additive, and it is a read of *metadata about* the API, not of any tenant-scoped row. Note the deliberate gate asymmetry (§3, NFR-56): unlike every other route here, this one requires authentication and nothing else.
 
 ---
 
@@ -190,6 +192,58 @@ Entities served by the generic factory (27 total, [ADR-0027](../adr/0027-generic
 
 `Release` is fully bespoke (§2, PROJ-2/[ADR-0019](../adr/0019-release-creation-flow.md)) and excluded from this factory-served list entirely — unlike `Project`'s single-missing-method gap, none of `Release`'s four routes match the factory's shape: `POST`/`GET /projects/{project_id}/releases` are project-path-scoped (the factory's documented shape has no path-nesting precedent), and `GET /releases/{id}/test-cycles`'s triple-permission gate and nested-executions shape are bespoke-only concerns a generic item-route wouldn't produce.
 
+### 3.1 `GET /entities/{resource}/schema` — per-entity field shape ([ADR-0053](../adr/0053-admin-3-backend-driven-entity-schema.md))
+
+The factory's own config is also the *description* of an entity, and the frontend used to keep a second, hand-written copy of that description (`frontend/src/entityConfigs/<entity>.ts`, ADR-0027) with nothing linking the two. This route makes the backend the single source of truth for **field shape** — not for navigation, which stays frontend-static (route wiring, sidebar grouping, icons and nav order are information architecture, not data schema).
+
+| Method | Path | Permission | Notes |
+|---|---|---|---|
+| GET | `/entities/{resource}/schema` | **authenticated only** — no permission code, no org context | `resource` is the **plural, hyphenated API path slug** this section already uses for the entity's own routes (`requirements`, `test-cases`, `entry-exit-criteria`, `role-assignments`, …) — i.e. `/entities/requirements/schema` describes the entity served at `/requirements`. Unregistered slug → `404 not_found` |
+
+- **Two slug conventions coexist and must not be confused.** The `{resource}` *path segment* is the plural API slug above (the registry's own keys); the response body's own `"resource"` and every `"refEntity"` value are the **singular** entity key (`requirement`, `project`, `test-condition`) — the same key the frontend's `:entity` route param and its per-entity module names already use. A client resolving an FK's target route therefore pluralizes `refEntity` the same way it always has, rather than receiving a ready-made path.
+- **One entity per call, deliberately** — not a combined `GET /entities` returning every schema at once: each `EntityListPage`/`EntityFormPage` mount already knows which single entity it needs from its own route param, and per-entity responses stay independently cacheable/invalidatable.
+- **Gate (NFR-56):** requires a valid actor (`401` unauthenticated) and nothing further. Every other route in this document gates on a permission code and, for tenant-scoped entities, on the NFR-1 `OrgMembership` existence boundary; this one cannot meaningfully do either — it returns no row, no id, and no tenant-distinguishable fact, so there is nothing for the 404-vs-403 posture (§1) to protect. The entity's own list/get/create/update/delete routes above are unchanged and remain the enforcement boundary (NFR-10).
+- **Registry:** backed by `app/api/entity_registry.py`, which collects every `CrudEntityConfig` instance the factory registers (this section's 27 entities) into one slug-keyed lookup — they were previously scattered, uncollected, across 7 route-cluster modules. `Release` is absent by construction: it has no `CrudEntityConfig` at all (100% bespoke routes, above), so there is nothing to collect and `GET /entities/releases/schema` is a `404` like any other unregistered slug.
+
+**Response shape** (`200`, example for `requirements`):
+
+```json
+{
+  "resource": "requirement",
+  "label": "Requirements",
+  "methods": ["create", "delete", "get", "list", "update"],
+  "scopeField": "project_id",
+  "scopeSelector": null,
+  "scopeResolution": null,
+  "searchFields": ["title", "description", "external_ref", "source"],
+  "filterFields": ["external_ref"],
+  "fields": [
+    {"name": "project_id", "label": "Project", "type": "fk", "required": true,
+     "showInTable": true, "refEntity": "project", "labelField": "name"},
+    {"name": "title", "label": "Title", "type": "string", "required": true, "showInTable": true},
+    {"name": "external_ref", "label": "External ref", "type": "string", "required": false, "showInTable": true},
+    {"name": "created_at", "label": "Created at", "type": "date", "required": false,
+     "showInTable": true, "readOnly": true}
+  ]
+}
+```
+
+**Derivation is hybrid, not full auto-inference** — the split is exactly what a Pydantic annotation can and cannot answer:
+
+| Served field | Source |
+|---|---|
+| `type` (`string`/`enum`/`date`/`boolean`/`fk`), `values[]` for an enum | auto — the annotation itself (`Literal[...]` → `enum` + its literal members, `date`/`datetime` → `date`, `bool` → `boolean`, everything else → `string`) |
+| `required` | auto — required in `create_schema` specifically; a field reachable only via `update_schema` is **not** marked required |
+| `readOnly` | auto — present in `summary_schema` only (e.g. `created_at`), never part of a submitted payload |
+| field set + order | auto — the union of `create_schema`, `update_schema` and `summary_schema` (minus `id`), writable schemas first, declaration order preserved |
+| `type: "fk"`, `refEntity`, `labelField` | **declared** (`FieldMeta.ref_entity`/`label_field`) — a bare `uuid.UUID` carries no signal that it is a foreign key, let alone which entity it targets, and this codebase has irregular cases (`RiskItem`'s branching `requirement_id`/`test_plan_id`) that a `*_id`-naming-convention guess mis-maps into a silently broken autocomplete. A UUID field with no `FieldMeta` entry is served as `"string"`, never as a guessed FK. |
+| `badgeColors` (enum value → Bootstrap color name) | **declared** (`FieldMeta.badge_colors`) — pure presentation, no type correlate |
+| `label` override, `showInTable` | **declared** (`FieldMeta.label`/`show_in_table`) — labels otherwise auto-title-case (`external_ref` → "External ref"); table visibility is an arbitrary UI choice |
+| `methods` | the entity's own `CrudEntityConfig.methods` — the same restrictions §3's footnotes already document (e.g. `TestLog` list/get only, `TestCase`/`TestCondition`/`TestCycle`/`TestExecution` without factory `create`) surface here verbatim, so the admin UI cannot render a "New" button for a route that does not accept `POST` |
+| `scopeField`, `scopeSelector`, `scopeResolution` | the entity's own config — respectively the list/create scope FK (§3's per-entity scope table above), the "pick a parent row before the list can fetch" step for entities whose scope has no value until an admin chooses one (`RiskItem` is the one entity with more than one option, matching its branching scope), and the auto-resolve-from-a-route-param variant |
+
+Adding a field to a Pydantic schema is therefore sufficient on its own for its `type`/`required`/enum values to appear correctly; only the four declared facts need a `FieldMeta` entry. A field whose `FieldMeta` is forgotten degrades visibly but safely (a raw UUID instead of an autocomplete, an uncolored badge) rather than failing the request.
+
 ## 4. Bespoke routes
 
 | Method | Path | Permission | Maps to |
@@ -216,6 +270,7 @@ Entities served by the generic factory (27 total, [ADR-0027](../adr/0027-generic
 | GET | `/projects/{id}/traceability-matrix` | `requirement.export_rtm` | FR-TRACE-2 — tabular RTM |
 | GET | `/projects/{id}/traceability-matrix.csv` | `requirement.export_rtm` | FR-TRACE-2 — CSV export |
 | GET | `/projects/{id}/reports/design-technique-coverage` | `test_case.read` | ADMIN-1 — "% test cases with ≥1 TestDesignTechnique" |
+| GET | `/entities/{resource}/schema` | authenticated only (no permission code, NFR-56) | FR-ADMIN-2 — ADMIN-3 backend-driven entity **field shape** for the generic admin surface, replacing the frontend's static `entityConfigs/<entity>.ts`; full request/response shape and derivation rules in §3.1, built, [ADR-0053](../adr/0053-admin-3-backend-driven-entity-schema.md). Listed here as well as §3.1 because it is not itself a factory-produced CRUD route — it is a bespoke read *about* the factory's entities, registered independently of `make_crud_router` |
 
 `POST`/`DELETE /test-suites/{id}/test-cases/{case_id}` and `GET /test-suites/{id}/test-cases` (FR-REQ-4, [ADR-0030](../adr/0030-req4-test-suite-membership-bespoke-routes.md)): same 404-vs-403 boundary as every other bespoke route (missing `TestSuite`/`TestCase` or caller has no `OrgMembership` in the resolved org → `404`; membership present but missing `test_suite.update`/`.read` → `403`). `POST` additionally rejects (`422 validation_error`) a `TestCase` whose own resolved `project_id` (via the same three-branch resolver [ADR-0029](../adr/0029-testcase-resolver-direct-link-fallback.md) built) differs from the target `TestSuite`'s `project_id` — same org, different project, a data-modeling rejection rather than a tenant-isolation one, so never `404`. A `TestCase` already a member of the suite → `409 already_in_suite` on a repeated `POST` (the `(test_suite_id, test_case_id)` unique constraint), distinct from `422`. `DELETE` on a case that isn't currently a member → `404`. `GET` is a live query against `TestSuiteTestCase` on every call, response shape `{items: TestCaseSummary[], total, page, page_size}` — no denormalized snapshot exists anywhere for a `POST`/`DELETE` to go stale against.
 

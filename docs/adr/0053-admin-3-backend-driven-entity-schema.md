@@ -71,6 +71,33 @@ Enum badge coloring (`ENUM_BADGE_COLORS` in `EntityTable`) moves into `FieldMeta
 
 **Negative / accepted trade-offs:** Every admin list/form page now does a schema fetch before it can render anything, where it previously imported a static object — a real, new loading state on a surface that had none. `staleTime` mitigates repeat-navigation cost but doesn't eliminate first-load latency. The backend gains a new cross-cutting registry module (`entity_registry.py`) that every `CrudEntityConfig`-defining route module must now also register into, a coupling ADR-0022's original factory design didn't have (each cluster module was previously self-contained). Auto-derivation from Pydantic is genuinely hybrid, not fully automatic — a future entity's FK field or enum badge color will silently render wrong (a raw UUID, an uncolored badge) if its `FieldMeta` entry is forgotten, the same "someone has to remember" risk this ADR is nominally trying to eliminate, just narrowed from "the whole field" to "the domain-specific half of one field."
 
+### Amendment 1 (2026-09-09, implementation pass) — `CrudEntityConfig.field_order`
+
+The Decision above lists five `FieldMeta` keys and says nothing about field *order*, because nothing in the design predicted order would be a problem. It is: `derive_entity_schema`'s natural order is an artefact of **which schema a field came from** (writable schemas first, summary-only last), not of how the entity reads on screen. Any FK/scope field absent from both `create_schema` and `update_schema` — `Project.org_id`, `TestCase.test_condition_id`, `RoleAssignment.actor_id` — therefore sorted to the bottom, while every hand-written `entityConfigs/*.ts` led with it. Found mechanically: a comparator that diffed each derived schema against the config it replaces flagged the mismatch on 6 of 27 entities.
+
+Added `field_order: tuple[str, ...]` to `CrudEntityConfig`, in the same "declare what Pydantic can't supply" spirit as `FieldMeta` itself. **Deliberately order-only, never a field filter** — a field not named still appears, appended in derived order. Letting it double as the field list would reintroduce exactly the `Requirement.title` drift this ADR exists to close, so this is a correctness property, not an implementation detail (pinned by TC-ADMIN-030).
+
+### Amendment 2 (2026-09-09, implementation pass) — enum badge colours are a shared backend default, not a per-entity copy
+
+The Decision says badge colouring "moves into `FieldMeta.badge_colors`, backend-side, since it's declared per-entity metadata now, not a shared frontend constant." Implementing it literally would have meant the same palette reference repeated on all 10 enum fields, with no entity ever legitimately disagreeing — the map is keyed by enum **value**, not by entity ("high" reads as danger whether it's a `Defect`'s severity, a `RiskItem`'s likelihood or a `TestCondition`'s priority).
+
+Shipped instead as a shared module-level `ENUM_BADGE_COLORS` in `crud_factory.py` (transcribed verbatim from the frontend constant it retires), applied as the **default** for any enum field, with `FieldMeta.badge_colors` overriding it per-field — which is the per-field declarability the Decision actually asks for. Whichever palette applies is filtered to that field's own declared values, and omitted entirely when nothing matches, preserving the plain-grey fallback for the two enums UI Design Document §3 gives no semantic colour. The ADR's own point stands unchanged: the palette is no longer a *frontend* constant.
+
+### Amendment 3 (2026-09-09, implementation pass) — the frontend port reaches three non-admin modules
+
+The Decision names `useAdminRouteContext`, `EntityTable`, `EntityForm` and `FkAutocomplete` as the read sites. Three modules outside the admin surface also imported per-entity configs directly, and deleting the configs was impossible without moving them. They split along a line this ADR implies but never names — **needing a route vs. needing a field shape**:
+
+- `lib/api/taxonomy.ts` needs only `path`, and is a plain module, not a component, so it *cannot* call a hook at all. It builds a local descriptor from `pathFor()`. No fetch, no loading state.
+- `TestCycleDetail.tsx` and `TestPlanDetail.tsx` genuinely need `fields`/`methods`, so they fetch — two bespoke screens gaining a schema fetch and a loading gate they did not have before, which widens the "new loading state on a surface that had none" trade-off already accepted above beyond the admin pages it originally described. Their route-only uses take a local `routeOnlyConfig()` helper instead.
+
+No decision reversed; the scope was simply larger than the Decision's own list, and this records that rather than absorbing it silently.
+
+### Amendment 4 (2026-09-09, implementation pass) — the entity count is 27 registered / 28 deleted, not the Decision's "24"
+
+The Decision and Alternatives sections above say "24" four times ("all 24 at once", "all 24 entities in one pass", "All 24 `entityConfigs/*.ts` files", "the remaining 22 entities"). That number was carried over from planning and is wrong against the actual code: `ALL_ENTITY_CONFIGS` collects **27** `CrudEntityConfig` instances, and **28** `entityConfigs/*.ts` files were deleted (the 27 registered entities plus `release.ts`, which moved to `entityConfigs/overrides.ts`'s `STATIC_ENTITY_CONFIGS` rather than being derived — Amendment 3's own exception). API Document §3 states 27 correctly; ADR-0027's own "28 admin-surface pages" is also correct and consistent, since `Release` has a page but no factory config.
+
+The original prose is left as written rather than silently renumbered — the Decision's *substance* ("all of them in one pass, no pilot subset, no fallback copy") is unaffected by the miscount, and this repo's convention is that a Decision records what was decided at the time, with corrections appended. Read every "24" above as "27 registered entities, 28 config files".
+
 ## Alternatives considered
 
 - **Full Pydantic-JSON-Schema auto-inference, including FK detection by naming convention** (any `*_id` UUID field auto-assumed FK, target entity guessed from the prefix) — rejected: this codebase already has irregular cases a naive convention mis-maps (`RiskItem`'s branching `requirement_id`/`test_plan_id`, exactly one; `entry_exit_criteria`'s plural-not-matching-singular path exception, both already called out in `crud_factory.py`'s own docstring) — a wrong guess here is a silently-broken autocomplete, worse than today's explicit-but-occasionally-stale hand-config.

@@ -242,8 +242,8 @@ function EntityListPage() {
           </div>
           <div className="card-body">
             <div className="alert alert-info" role="alert">
-              Listing is not available for this entity through the admin surface — see this entity's own config file
-              for why.
+              Listing is not available for this entity through the admin surface — its served schema does not include
+              the &quot;list&quot; method.
             </div>
           </div>
         </div>
