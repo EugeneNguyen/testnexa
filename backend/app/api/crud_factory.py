@@ -137,6 +137,43 @@ class NoSchema(BaseModel):
     """
 
 
+# ADR-0053: moved verbatim from `EntityTable`'s own `ENUM_BADGE_COLORS`
+# (frontend), which ADR-0053 retires as a *frontend* constant. Keyed by enum
+# VALUE, not by entity — "high" reads as danger whether it's a `Defect`'s
+# severity, a `RiskItem`'s likelihood or a `TestCondition`'s priority — so a
+# per-entity copy would be the same 4 lines repeated 10 times with no entity
+# ever legitimately disagreeing.
+#
+# Applied as the DEFAULT for any enum field; `FieldMeta.badge_colors`
+# overrides it per-field where an entity ever does need its own palette,
+# which is the per-field declarability ADR-0053's Decision asks for.
+# `derive_entity_schema` filters whichever palette applies down to the
+# field's own declared values, so a field never advertises a colour for a
+# value it can't hold.
+#
+# UI Design Document §3: colour only where the value has an obvious status
+# semantic. Values absent here (`EntryExitCriteria.type`, `TestLog.event_type`)
+# deliberately have none and fall through to the frontend's plain-grey default.
+ENUM_BADGE_COLORS: dict[str, str] = {
+    "critical": "danger",
+    "high": "danger",
+    "fail": "danger",
+    "suspended": "warning",
+    "blocked": "warning",
+    "medium": "warning",
+    "invited": "info",
+    "reviewed": "info",
+    "low": "success",
+    "pass": "success",
+    "active": "success",
+    "approved": "success",
+    "draft": "secondary",
+    "deprecated": "secondary",
+    "superseded": "secondary",
+    "skipped": "secondary",
+}
+
+
 @dataclass
 class FieldMeta:
     """ADR-0053: per-field metadata `derive_entity_schema` cannot get from
@@ -763,7 +800,17 @@ def derive_entity_schema(config: CrudEntityConfig) -> dict[str, Any]:
         if field_type == "fk":
             entry["refEntity"] = meta.ref_entity
             entry["labelField"] = meta.label_field
-        if meta.badge_colors:
+        if field_type == "enum" and enum_values:
+            # Per-field override, else the shared palette — then filtered to
+            # this field's own values, so a field never advertises a colour
+            # for a value it cannot hold. Omitted entirely when nothing
+            # matches (`EntryExitCriteria.type`, `TestLog.event_type`), which
+            # is how the frontend's plain-grey default stays in play.
+            palette = meta.badge_colors if meta.badge_colors is not None else ENUM_BADGE_COLORS
+            badge_colors = {value: palette[value] for value in enum_values if value in palette}
+            if badge_colors:
+                entry["badgeColors"] = badge_colors
+        elif meta.badge_colors:
             entry["badgeColors"] = meta.badge_colors
         if name not in writable_fields:
             entry["readOnly"] = True
