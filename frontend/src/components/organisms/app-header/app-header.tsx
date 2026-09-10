@@ -83,38 +83,40 @@
  *   tooltip — no test (unit or e2e) asserts on the tooltip's own rendering,
  *   only on `aria-label`/`data-testid`, so reimplementing hover-positioning
  *   logic by hand would be pure risk for a behaviour nothing here verifies.
- * ## AdminLTE v4 (ADR-0042) — what changed
+ * ## Tabler v1.5.1 (ADR-0054, Phase 2) — what changed from AdminLTE v4
  *
- * - **The header root is `.app-header navbar navbar-expand`**, not CoreUI's
- *   `.header`. It is a direct child of `AppShell`'s `.app-wrapper` CSS grid
- *   and claims the `lte-app-header` grid area; an intermediate wrapper div
- *   would break that placement (see `AppShell.tsx`'s docstring).
- * - **The sidebar toggler no longer flips a prop on `AppSidebar`.** AdminLTE
- *   keeps sidebar state in `sidebar-collapse`/`sidebar-open` classes on
- *   `document.body`, so the button calls a handler `AppShell` owns and
- *   `AppShell` writes those classes. `data-lte-toggle="sidebar"` is kept on
- *   the button for convention parity with AdminLTE's own delegated listener
- *   — nothing is actually listening for it, because we don't load that JS.
- * - **Color mode is a deliberate breaking change**, not a rename for
- *   tidiness (ADR-0042 §4.3, matching `admin-lte/src/ts/color-mode.ts`'s own
- *   constants): the attribute written to `<html>` is **`data-bs-theme`** (was
- *   `data-coreui-theme`) and the `localStorage` key is **`lte-theme`** (was
- *   `coreui-react-color-scheme`). A user who had picked a theme before this
- *   migration therefore falls back to their system preference once, on their
- *   next visit, and re-picks — accepted, since the alternative (reading the
- *   old key as a fallback) would leave a dead CoreUI-named key in storage
- *   forever for a one-click cost. The three choices, their `data-testid`s and
- *   the `auto` → `prefers-color-scheme` resolution are all unchanged.
- * - **Icons are Font Awesome classes on an `<i>`**, not `CIcon` + a path
- *   array (ADR-0042 §3.2): `cilMenu`→`fa-bars`, `cilBuilding`→`fa-building`,
- *   `cilSun`→`fa-sun`, `cilMoon`→`fa-moon`,
- *   `cilContrast`→`fa-circle-half-stroke`. `size="lg"` → FA's own `fa-lg`.
- *   Each is `aria-hidden` — the buttons carry their own `aria-label`.
+ * - **The header root is `header.navbar.navbar-expand-md.d-print-none`**,
+ *   Tabler's own top-bar markup (the "Sample layout" doc's `<header>`), not
+ *   AdminLTE's `.app-header` CSS-grid area — `AppShell` no longer uses a
+ *   grid, so there is no named area to claim (see `AppShell.tsx`'s own
+ *   docstring).
+ * - **The sidebar toggler still doesn't flip a prop on `AppSidebar`
+ *   directly** — it calls a handler `AppShell` owns, which now flips a
+ *   single `mobileOpen` boolean passed down as a prop, replacing AdminLTE's
+ *   `sidebar-collapse`/`sidebar-open` body classes. `data-lte-toggle` is
+ *   dropped (nothing AdminLTE-flavoured is listening for it under Tabler
+ *   either); the button keeps Tabler's own `navbar-toggler`/
+ *   `navbar-toggler-icon` classes purely for their visual styling — no
+ *   `data-bs-toggle` attribute is set, so Tabler's own loaded JS (ADR-0053)
+ *   never sees this button, avoiding the duplicate-listener risk ADR-0053's
+ *   Consequences flagged. The button **stays in the header** rather than
+ *   moving into `AppSidebar` (Tabler's own doc snippet's placement) — a
+ *   deliberate deviation, see ADR-0054 Decision for why.
+ * - **Color mode storage key renames again** (ADR-0054): the attribute
+ *   written to `<html>` stays **`data-bs-theme`** (Tabler is also
+ *   Bootstrap-5-based and reads the same attribute AdminLTE did), but the
+ *   `localStorage` key moves from AdminLTE's `lte-theme` to Tabler's own
+ *   documented convention, **`tabler-theme`**. Same one-time-reset trade-off
+ *   ADR-0042 §4.3 already accepted the first time this key was renamed. The
+ *   three choices, their `data-testid`s and the `auto` →
+ *   `prefers-color-scheme` resolution are all unchanged.
+ * - Icons stay Font Awesome classes on an `<i>` — unaffected by the design
+ *   system swap (ADR-0042 §3.2's mapping carries forward unchanged).
  *
  * Everything else in this file is deliberately unchanged, including the three
  * org-switcher behaviours enumerated above and the `.dropdown`/`.dropdown-menu`/
- * `.dropdown-item` markup — those are stock Bootstrap 5 classes, which
- * AdminLTE v4 is built on, so they need no translation at all.
+ * `.dropdown-item` markup — those are stock Bootstrap 5 classes, which Tabler
+ * v1.5.1 is also built on, so they need no translation at all.
  */
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -128,10 +130,10 @@ interface AppHeaderProps {
 
 type ColorMode = "light" | "dark" | "auto";
 
-/** `admin-lte/src/ts/color-mode.ts`'s own `STORAGE_KEY` constant. */
-const COLOR_MODE_STORAGE_KEY = "lte-theme";
+/** Tabler's own `tabler-theme.js` storage-key convention (ADR-0054). */
+const COLOR_MODE_STORAGE_KEY = "tabler-theme";
 
-/** `admin-lte/src/ts/color-mode.ts`'s own `ATTRIBUTE_THEME` constant. */
+/** Bootstrap 5's standard dark-mode attribute — unchanged across AdminLTE/Tabler. */
 const COLOR_MODE_ATTRIBUTE = "data-bs-theme";
 
 const COLOR_MODE_ICON: Record<ColorMode, string> = {
@@ -303,22 +305,21 @@ function AppHeader({ onToggleSidebar }: AppHeaderProps) {
   const activeIcon = COLOR_MODE_ICON[colorMode] ?? COLOR_MODE_ICON.auto;
 
   return (
-    <nav className="app-header navbar navbar-expand bg-body">
+    <header className="navbar navbar-expand-md d-print-none">
       <div className="container-fluid d-flex justify-content-between align-items-center">
         <div className="d-flex align-items-center">
           <button
             type="button"
-            className="btn btn-link nav-link px-2"
-            // Convention parity with AdminLTE's own delegated click listener
-            // (`push-menu.ts`'s `[data-lte-toggle="sidebar"]` selector). We
-            // don't load that JS — `onClick` is what actually runs, calling
-            // back into the state `AppShell` owns.
-            data-lte-toggle="sidebar"
+            className="navbar-toggler"
+            // No `data-bs-toggle` attribute — this button's state is fully
+            // React-owned (`AppShell`'s `mobileOpen`), and Tabler's own
+            // loaded JS (ADR-0053) must never see a toggle attribute it
+            // would try to drive itself. See this file's own docstring.
             data-testid="sidebar-toggler"
             aria-label="Toggle sidebar"
             onClick={onToggleSidebar}
           >
-            <i className="fa-solid fa-bars fa-lg" aria-hidden="true" />
+            <span className="navbar-toggler-icon" />
           </button>
           {/* BRAND-1 follow-up (2026-09-09, direct CTO instruction): the
               header carries no brand mark at all — the sidebar (always
@@ -326,7 +327,7 @@ function AppHeader({ onToggleSidebar }: AppHeaderProps) {
               now. ADR-0048 Decision §7 originally put a small mark here;
               amended in the same ADR's Consequences. */}
         </div>
-        <div className="d-flex align-items-center">
+        <div className="navbar-nav flex-row order-md-last align-items-center">
           <div
             className={orgSwitcherDropdown.open ? "dropdown me-2 show" : "dropdown me-2"}
             ref={orgSwitcherDropdown.ref}
@@ -451,7 +452,7 @@ function AppHeader({ onToggleSidebar }: AppHeaderProps) {
           </Button>
         </div>
       </div>
-    </nav>
+    </header>
   );
 }
 

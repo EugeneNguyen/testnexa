@@ -1,7 +1,7 @@
 # ADR-0042: AdminLTE v4 + Bootstrap 5 + Font Awesome replaces CoreUI as the project's design system, raw HTML repo-wide, no vendored plugin JS
 
 **Date:** 2026-09-08
-**Status:** Accepted
+**Status:** Partially superseded by [ADR-0054](0054-tabler-shell-migration-phase-2.md) (2026-09-10 — shell components only; AdminLTE remains live for every other screen)
 **Deciders:** xuanbinh91@gmail.com (CTO)
 **Related:** [ADR-0012](0012-coreui-design-system.md) (CoreUI design system — **superseded by this ADR**), [ADR-0037](0037-shell-components-raw-html-not-coreui-react.md) (shell chrome raw-HTML-not-`@coreui/react` — **superseded by this ADR**: its *pattern* is generalized repo-wide, its CoreUI-specific class names and its incremental-scope stance are both reversed), [ADR-0009](0009-frontend-stack.md) (frontend stack — RHF + Zod + Vite + React Router + TanStack Query all unchanged), [ADR-0018](0018-admin-shell-sidebar-layout.md) / [ADR-0020](0020-admin-shell-full-template-parity.md) (admin shell — **partially superseded**, CoreUI-component and CoreUI-template-parity claims only), [ADR-0026](0026-sidebar-dark-color-scheme.md) (sidebar dark scheme — **partially superseded**, its mechanism no longer exists in v4), [ADR-0023](0023-frontend-shared-component-location.md) / [ADR-0041](0041-ds-2-table-container-shared-pagination.md) (`components/shared/` / `container/` location conventions — unchanged, only the markup inside those components changes), [AdminLTE v4](https://adminlte.io/)
 
@@ -63,6 +63,10 @@ PR #42 also left one question dangling that this ADR has to answer: `components/
 - **React Hook Form + Zod keep owning form state and validation** (ADR-0009, unchanged) — every `register()` spread, `handleSubmit`, and `forwardRef` survives; only the rendered element and its classes change. The rest of ADR-0009's stack (Vite, React Router, TanStack Query) is likewise untouched.
 
 ## Consequences
+
+### Amendment (2026-09-10, ADR-0054): shell components migrated to Tabler
+
+`AppSidebar`/`AppHeader`/`AppShell`/`AppFooter` moved from AdminLTE's markup (described throughout this ADR) to Tabler v1.5.1's own "Sidebar layout" markup — see [ADR-0054](0054-tabler-shell-migration-phase-2.md) for the full decision, including the deliberate cascade flip (Tabler now wins project-wide, not just in the migrated components) and the `sidebar-mini` feature retirement. This ADR's own Decision/Consequences text below is left as-written — an accurate historical record of what AdminLTE's shell looked like and why — for every screen ADR-0054 did not touch, which is still most of the app.
 
 **Positive:** one design system, and it is the one whose demo the team is actually working from — the PR #42 login screen no longer sits in a different design language from the rest of the app. The class of bug ADR-0037 hit three times (guessing what props a wrapper emits instead of reading the reference's own markup) cannot recur anywhere, not just in 5 files. The "which convention does this file use" split ADR-0037 accepted as a known cost is closed rather than extended. PR #42's blank-icon open question is resolved with a loaded font instead of a second icon library. Dependency count drops by one net package (four `@coreui/*` out, three in) and the app no longer carries a React component library it renders almost none of.
 

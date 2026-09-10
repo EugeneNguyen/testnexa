@@ -31,16 +31,19 @@
    rather than hardcoding a per-theme asset pair — which is ADR-0048 Decision
    §2's actual intent (one asset, no duplication), delivered by the mechanism
    that works for an `<img>` mount. The SVG sources stay `currentColor`-only
-   (TC-DS-025 unaffected). */
+   (TC-DS-025 unaffected).
+
+   **Selector updated 2026-09-10 (ADR-0054):** the sidebar mount's class
+   changed from AdminLTE's `.sidebar-brand .brand-image-xl`/`.brand-image-xs`
+   pair (retired along with `sidebar-mini`, the state they used to cross-fade
+   on) to Tabler's `.navbar-brand .navbar-brand-image`, a single element. */
 .brand-logo img,
-.sidebar-brand .brand-image-xl,
-.sidebar-brand .brand-image-xs {
+.navbar-brand .navbar-brand-image {
   filter: brightness(0);
 }
 
 [data-bs-theme="dark"] .brand-logo img,
-[data-bs-theme="dark"] .sidebar-brand .brand-image-xl,
-[data-bs-theme="dark"] .sidebar-brand .brand-image-xs {
+[data-bs-theme="dark"] .navbar-brand .navbar-brand-image {
   filter: brightness(0) invert(1);
 }
 

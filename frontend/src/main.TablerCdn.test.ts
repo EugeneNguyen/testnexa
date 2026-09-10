@@ -6,6 +6,14 @@ import packageJsonSource from "../package.json?raw";
  * TABLER-1 / DS-4 ([ADR-0053](../../docs/adr/0053-tabler-install-phase-1-cdn.md)),
  * Test Design §44's **asset-presence class**. Covers **TC-DS-032** only.
  *
+ * **One assertion updated for [ADR-0054](../../docs/adr/0054-tabler-shell-migration-phase-2.md)
+ * (Phase 2, 2026-09-10):** the stylesheet's document position moved from
+ * `<head>` to `<body>` (after the module script) — the deliberate cascade
+ * flip ADR-0054 makes so Tabler wins conflicting selectors project-wide.
+ * Every other assertion in this file (tag count, pinned version, no npm
+ * package) is unchanged — Phase 2 only reordered the existing tags, it
+ * didn't add, remove, or re-source either one.
+ *
  * Scope, deliberately narrow: this file asserts what `frontend/index.html`
  * and `frontend/package.json` literally *declare* — that exactly the two
  * documented CDN tags exist, both pinned to `1.5.1`, and that no
@@ -77,27 +85,28 @@ describe("TC-DS-032: index.html declares exactly the documented Tabler CDN tags"
     expect(new Set(versions)).toEqual(new Set([TABLER_VERSION]));
   });
 
-  it("places the stylesheet in <head> and the script in <body>", () => {
-    const headStart = indexHtmlSource.indexOf("<head>");
-    const headEnd = indexHtmlSource.indexOf("</head>");
+  // ADR-0054 (Phase 2) moves the stylesheet from <head> to <body>, after the
+  // app's own module script — the exact move ADR-0053's own Alternatives
+  // section named and deferred ("revisit this ordering choice deliberately
+  // once the real migration begins moving screens onto Tabler markup"). Both
+  // tags now sit in <body>, both after `/src/main.tsx` — that ordering is
+  // what makes Tabler win the cascade project-wide (see `index.html`'s own
+  // updated comment and ADR-0054 Decision).
+  it("places both the stylesheet and the script in <body>, after the app's own module script (ADR-0054)", () => {
     const bodyStart = indexHtmlSource.indexOf("<body>");
     const bodyEnd = indexHtmlSource.indexOf("</body>");
-    expect(headStart).toBeGreaterThanOrEqual(0);
+    const appScriptAt = indexHtmlSource.indexOf("/src/main.tsx");
     expect(bodyEnd).toBeGreaterThan(bodyStart);
+    expect(appScriptAt).toBeGreaterThan(bodyStart);
+    expect(appScriptAt).toBeLessThan(bodyEnd);
 
     const cssAt = indexHtmlSource.indexOf(TABLER_CSS_HREF);
-    expect(cssAt).toBeGreaterThan(headStart);
-    expect(cssAt).toBeLessThan(headEnd);
+    expect(cssAt).toBeGreaterThan(appScriptAt);
+    expect(cssAt).toBeLessThan(bodyEnd);
 
     const jsAt = indexHtmlSource.indexOf(TABLER_JS_SRC);
-    expect(jsAt).toBeGreaterThan(bodyStart);
+    expect(jsAt).toBeGreaterThan(appScriptAt);
     expect(jsAt).toBeLessThan(bodyEnd);
-  });
-
-  it("keeps the Tabler script after the app's own module script (ADR-0053 Decision)", () => {
-    const appScriptAt = indexHtmlSource.indexOf("/src/main.tsx");
-    expect(appScriptAt).toBeGreaterThanOrEqual(0);
-    expect(indexHtmlSource.indexOf(TABLER_JS_SRC)).toBeGreaterThan(appScriptAt);
   });
 });
 

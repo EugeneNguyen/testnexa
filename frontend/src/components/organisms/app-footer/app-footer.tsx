@@ -5,26 +5,35 @@
  * `ProtectedRoute` screen (TC-SHELL-009) — smoke-level, static content only,
  * no per-route/dynamic behavior to branch on.
  *
- * Raw HTML per ADR-0037, not `@coreui/react` — `CFooter` rendered a single
- * `<div class="footer">` with no other behavior, so that was a direct,
- * lossless port: same markup, confirmed by dumping `CFooter`'s actual
- * rendered DOM before removing the import.
+ * ## Tabler v1.5.1 (ADR-0054, Phase 2) — what changed from AdminLTE v4
  *
- * AdminLTE v4 (ADR-0042): `.footer` → **`.app-footer`**, and the element is a
- * `<footer>` because it is now one of the four named areas of `AppShell`'s
- * `.app-wrapper` CSS grid (`grid-area: lte-app-footer`) — it must stay a
- * *direct* child of `.app-wrapper` or the grid placement breaks. AdminLTE's
- * own `.app-footer` rule supplies padding/border/background but not
- * `display: flex` (its demo positions the right-hand slot with `float-end`),
- * so `d-flex` is added here to keep the existing `ms-auto` push working —
- * the same two-slot layout this footer has always rendered, expressed with
- * Bootstrap's flex utilities rather than a float.
+ * `.app-footer` → `footer.footer.footer-transparent.d-print-none`, Tabler's
+ * own footer markup (the CTO-supplied page-layout doc's "Footer" section).
+ * `footer-transparent` drops the footer's own background so it blends with
+ * the page, matching this component's pre-existing plain (no `bg-*`) look.
+ * The two static text pieces render as `list-inline list-inline-dots`
+ * groups — Tabler's own convention for this element — instead of two bare
+ * `<div>`s with `ms-auto` pushing the second one right; `row
+ * text-center align-items-center flex-row-reverse` reproduces that
+ * push-right layout without a manual utility class doing it.
  */
 function AppFooter() {
   return (
-    <footer className="app-footer d-flex">
-      <div>TestNexa</div>
-      <div className="ms-auto">Self-hosted, ISTQB/IEEE 829-aligned test management</div>
+    <footer className="footer footer-transparent d-print-none">
+      <div className="container-fluid">
+        <div className="row text-center align-items-center flex-row-reverse">
+          <div className="col-lg-auto ms-lg-auto">
+            <ul className="list-inline list-inline-dots mb-0">
+              <li className="list-inline-item">Self-hosted, ISTQB/IEEE 829-aligned test management</li>
+            </ul>
+          </div>
+          <div className="col-12 col-lg-auto mt-3 mt-lg-0">
+            <ul className="list-inline list-inline-dots mb-0">
+              <li className="list-inline-item">TestNexa</li>
+            </ul>
+          </div>
+        </div>
+      </div>
     </footer>
   );
 }

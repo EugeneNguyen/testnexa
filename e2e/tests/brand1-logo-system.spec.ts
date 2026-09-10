@@ -38,7 +38,7 @@ import { expect, test, type Page } from "@playwright/test";
  * Target environment: whichever isolated Compose project `E2E_BASE_URL` points
  * at, never the main `testnexa` stack. `E2E_BACKEND_CONTAINER` names its
  * backend container for the seed/cleanup `docker exec` calls. Seeding follows
- * this directory's established convention (`shell7-sidebar-mini.spec.ts`).
+ * this directory's established convention (`shell6-org-switcher.spec.ts`).
  */
 const BACKEND_CONTAINER = process.env.E2E_BACKEND_CONTAINER ?? "testnexa-brand1-test-backend-1";
 const TEST_PASSWORD = "E2ETestPass123!";
@@ -203,8 +203,10 @@ async function markPaint(page: Page, selector: string) {
 }
 
 const LOGIN_MARK = '[data-testid="brand-logo-mark"]';
-const SIDEBAR_XL = '[data-testid="sidebar-brand-logo-xl"]';
-const SIDEBAR_XS = '[data-testid="sidebar-brand-logo-xs"]';
+// ADR-0054: AdminLTE's xl/xs mini-rail cross-fade pair collapses to a single
+// always-visible mark — the fold/mini-rail feature they served has no Tabler
+// equivalent this pass (see ADR-0054 Consequences).
+const SIDEBAR_LOGO = '[data-testid="sidebar-brand-logo"]';
 
 test.describe("BRAND-1 logo/brand system", () => {
   // This repo's specs run against a single dev-mode stack (one Vite process,
@@ -262,11 +264,15 @@ test.describe("BRAND-1 logo/brand system", () => {
   test("TC-DS-026: the header carries no brand mark or link (sidebar is the sole mount)", async ({ page }) => {
     await login(page, user);
 
-    await expect(page.locator(".navbar-brand")).toHaveCount(0);
+    // ADR-0054: the sidebar itself now carries Tabler's own `.navbar-brand`
+    // class (its `<h1>` brand wrapper) — this assertion moves from "no
+    // `.navbar-brand` anywhere" to "the header's own root has none," scoped
+    // accordingly so it can't be satisfied by the sidebar's.
+    await expect(page.locator("header.navbar .navbar-brand")).toHaveCount(0);
     await expect(page.getByRole("link", { name: /TestNexa home/i })).toHaveCount(1);
     // The one remaining "TestNexa home" link is the sidebar's — not a second,
     // header-mounted one hiding behind a different selector.
-    await expect(page.locator(SIDEBAR_XL).locator("..")).toHaveAttribute(
+    await expect(page.locator(SIDEBAR_LOGO).locator("..")).toHaveAttribute(
       "aria-label",
       "TestNexa home",
     );
@@ -294,121 +300,97 @@ test.describe("BRAND-1 logo/brand system", () => {
     expect(loginLight.filter).toBe("brightness(0)");
     expect(loginDark.filter).toBe("brightness(0) invert(1)");
 
-    // --- Mount point 2: sidebar, via the REAL toggle. (Header dropped
-    // 2026-09-09, direct CTO instruction — no longer a brand mount at all,
-    // see TC-DS-026's own revised assertion above.) ---
+    // --- Mount point 2: sidebar. (Header dropped 2026-09-09, direct CTO
+    // instruction — no longer a brand mount at all, see TC-DS-026's own
+    // revised assertion above.) ---
     await login(page, user);
 
     await setTheme(page, "light");
-    const lightPaint = {
-      sidebar: await markPaint(page, SIDEBAR_XL),
-    };
+    const lightPaint = await markPaint(page, SIDEBAR_LOGO);
 
     await setTheme(page, "dark");
-    const darkPaint = {
-      sidebar: await markPaint(page, SIDEBAR_XL),
-    };
+    const darkPaint = await markPaint(page, SIDEBAR_LOGO);
 
-    for (const mount of ["sidebar"] as const) {
-      const light = lightPaint[mount];
-      const dark = darkPaint[mount];
+    // ADR-0054: the sidebar now carries `data-bs-theme="dark"` directly
+    // (restoring FR-SHELL-5's "sidebar stays dark independent of the
+    // app-wide toggle" claim — see `app-sidebar.tsx`'s own docstring), so its
+    // background is genuinely fixed-dark in BOTH app-wide theme states, not
+    // just visually similar. A mark that still recoloured with `<html>`'s
+    // toggle (the pre-ADR-0054 behavior this test originally asserted) would
+    // now be a real legibility regression — invisible black-on-dark whenever
+    // the app-wide toggle said "light" but the sidebar itself stayed dark.
+    // The correct, fixed invariant is the mark stays white in both states —
+    // confirmed live against a running instance before asserting it here,
+    // not assumed from the CSS source.
+    expect(lightPaint.filter, "sidebar filter, app-wide light").toBe("brightness(0) invert(1)");
+    expect(darkPaint.filter, "sidebar filter, app-wide dark").toBe("brightness(0) invert(1)");
+    expect(lightPaint.filter).toBe(darkPaint.filter);
 
-      // The mark is recoloured by the theme, not left at one fixed paint.
-      expect(light.filter, `${mount} light filter`).toBe("brightness(0)");
-      expect(dark.filter, `${mount} dark filter`).toBe("brightness(0) invert(1)");
-      expect(light.filter).not.toBe(dark.filter);
+    // The sidebar's own background stays dark in both states too (the same
+    // invariant TC-SHELL-015 asserts via the `data-bs-theme` attribute
+    // directly) — checked here via luminance, since that's what the glyph
+    // actually needs to contrast against.
+    expect(luminance(lightPaint.background), "sidebar bg, app-wide light").toBeLessThan(0.5);
+    expect(luminance(darkPaint.background), "sidebar bg, app-wide dark").toBeLessThan(0.5);
 
-      // The backgrounds really did flip (guards against measuring a stale
-      // theme and calling it a pass).
-      expect(luminance(light.background), `${mount} light bg`).toBeGreaterThan(0.5);
-      expect(luminance(dark.background), `${mount} dark bg`).toBeLessThan(0.5);
-
-      // And in each theme the glyph contrasts with what's behind it:
-      // brightness(0) => black glyph on a light bg; +invert(1) => white on dark.
-      // This is the legibility claim the source-level currentColor assertion
-      // cannot make — and the one that was genuinely broken before the fix.
-      expect(luminance(light.background), `${mount} light contrast`).toBeGreaterThan(0.2);
-      expect(luminance(dark.background), `${mount} dark contrast`).toBeLessThan(0.3);
-    }
+    // And the glyph (now white via invert(1)) genuinely contrasts with that
+    // dark background in both states — the legibility claim the source-level
+    // `currentColor` assertion alone cannot make.
+    expect(luminance(lightPaint.background), "sidebar contrast, app-wide light").toBeLessThan(0.3);
+    expect(luminance(darkPaint.background), "sidebar contrast, app-wide dark").toBeLessThan(0.3);
   });
 
-  /**
-   * TC-DS-027's live half. The unit test proves both `<img>` slots exist with
-   * AdminLTE's class pair; only a real browser can prove the CSS cross-fade
-   * actually swaps which one is painted.
-   */
-  test("TC-DS-027 (live): sidebar cross-fades logo-xl -> logo-xs on sidebar-mini collapse", async ({ page }) => {
+  // TC-DS-027 (superseded by ADR-0054, 2026-09-10): AdminLTE's mini-rail
+  // logo-xl/logo-xs cross-fade (SHELL-7's `sidebar-mini`) has no Tabler
+  // equivalent this pass — the fold/mini-rail feature it served is retired
+  // outright (ADR-0054 Consequences), so there is no collapse state left to
+  // cross-fade between. This replaces the old cross-fade test with the
+  // single-mark contract that took its place: one always-visible mark, no
+  // hidden sibling to ever leak into view.
+  test("TC-DS-027 (superseded by ADR-0054): sidebar shows a single, always-visible brand mark", async ({ page }) => {
     await login(page, user);
 
-    // Both slots are in the DOM unconditionally, in both states.
-    await expect(page.locator(SIDEBAR_XL)).toHaveCount(1);
-    await expect(page.locator(SIDEBAR_XS)).toHaveCount(1);
+    await expect(page.locator(SIDEBAR_LOGO)).toHaveCount(1);
+    const paint = await markPaint(page, SIDEBAR_LOGO);
+    expect(paint.visibility).toBe("visible");
+    expect(Number(paint.opacity)).toBe(1);
 
-    // Precondition: this whole mechanism is gated on `sidebar-mini` (SHELL-7).
-    await expect(page.locator("body")).toHaveClass(/sidebar-mini/);
-    await expect(page.locator("body")).not.toHaveClass(/sidebar-collapse/);
-
-    // --- Expanded: the full-size mark is what's actually visible. ---
-    const expandedXl = await markPaint(page, SIDEBAR_XL);
-    const expandedXs = await markPaint(page, SIDEBAR_XS);
-    expect(expandedXl.visibility, "expanded logo-xl").toBe("visible");
-    expect(Number(expandedXl.opacity)).toBe(1);
-    expect(expandedXs.visibility, "expanded logo-xs").toBe("hidden");
-    expect(Number(expandedXs.opacity)).toBe(0);
-
-    // --- Collapse via the real toggler, then re-measure. ---
-    await page.getByTestId("sidebar-toggler").click();
-    await expect(page.locator("body")).toHaveClass(/sidebar-collapse/);
-    await page.waitForTimeout(600); // AdminLTE's 0.3s fadeIn/fadeOut, doubled.
-
-    const collapsedXl = await markPaint(page, SIDEBAR_XL);
-    const collapsedXs = await markPaint(page, SIDEBAR_XS);
-    expect(collapsedXl.visibility, "collapsed logo-xl").toBe("hidden");
-    expect(Number(collapsedXl.opacity)).toBe(0);
-    expect(collapsedXs.visibility, "collapsed logo-xs").toBe("visible");
-    expect(Number(collapsedXs.opacity)).toBe(1);
-
-    // The swap is a real inversion, not both-hidden or both-visible.
-    expect(expandedXl.visibility).not.toBe(collapsedXl.visibility);
-    expect(expandedXs.visibility).not.toBe(collapsedXs.visibility);
-
-    // --- Expand again: the swap is reversible, not one-way. ---
-    await page.getByTestId("sidebar-toggler").click();
-    await expect(page.locator("body")).not.toHaveClass(/sidebar-collapse/);
-    await page.waitForTimeout(600);
-    expect((await markPaint(page, SIDEBAR_XL)).visibility).toBe("visible");
-    expect((await markPaint(page, SIDEBAR_XS)).visibility).toBe("hidden");
+    // The retired xl/xs pair must not have come back under any other name.
+    await expect(page.locator('[data-testid="sidebar-brand-logo-xl"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="sidebar-brand-logo-xs"]')).toHaveCount(0);
   });
 
   /**
    * Guards the exact conflict that forced this story's one deviation from
    * TC-DS-027's literal asset choice: the sidebar must show the wordmark
-   * "TestNexa" EXACTLY ONCE when expanded. Putting the full lockup (which
-   * embeds its own wordmark) in the absolutely-positioned `.brand-image-xl`
-   * slot painted it a second time, on top of `.brand-text`. Also re-confirms
-   * TC-SHELL-005's own still-shipping claim that `.brand-text` stays visible.
+   * "TestNexa" EXACTLY ONCE. Putting the full lockup (which embeds its own
+   * wordmark) in AdminLTE's absolutely-positioned `.brand-image-xl` slot
+   * painted it a second time, on top of `.brand-text`; Tabler's own
+   * `.navbar-brand` lays the mark and text out in normal inline flow
+   * (ADR-0054), so this guard now also confirms no such overlap can recur
+   * structurally, not only that it doesn't happen to today. Also re-confirms
+   * TC-SHELL-005's own still-shipping claim that the wordmark stays visible.
    */
   test("sidebar shows the TestNexa wordmark exactly once, and keeps TC-SHELL-005's brand-text visible", async ({
     page,
   }) => {
     await login(page, user);
 
-    const brandText = page.locator(".sidebar-brand .brand-text");
+    const brandText = page.locator(".navbar-brand .brand-text");
     await expect(brandText).toBeVisible();
     await expect(brandText).toHaveText("TestNexa");
 
-    // The mark slots are decorative image mounts — they must not contribute a
+    // The mark slot is a decorative image mount — it must not contribute a
     // second rendered wordmark.
-    await expect(page.locator(".sidebar-brand")).toHaveText("TestNexa");
-    await expect(page.locator(SIDEBAR_XL)).toHaveAttribute("alt", "");
-    await expect(page.locator(SIDEBAR_XS)).toHaveAttribute("alt", "");
+    await expect(page.locator(".navbar-brand")).toHaveText("TestNexa");
+    await expect(page.locator(SIDEBAR_LOGO)).toHaveAttribute("alt", "");
 
-    // Geometry: the mark must not overlap the wordmark. AdminLTE positions the
-    // mark absolutely while `.brand-text` stays in flow, so this is the check
-    // that actually caught the overlap.
+    // Geometry: the mark must not overlap the wordmark — both sit in normal
+    // inline flow under Tabler, so the mark's right edge should fall at or
+    // before the text's left edge.
     const boxes = await page.evaluate(() => {
-      const mark = document.querySelector('[data-testid="sidebar-brand-logo-xl"]')!.getBoundingClientRect();
-      const text = document.querySelector(".sidebar-brand .brand-text")!.getBoundingClientRect();
+      const mark = document.querySelector('[data-testid="sidebar-brand-logo"]')!.getBoundingClientRect();
+      const text = document.querySelector(".navbar-brand .brand-text")!.getBoundingClientRect();
       return { markRight: mark.right, textLeft: text.left };
     });
     expect(boxes.markRight).toBeLessThanOrEqual(boxes.textLeft);

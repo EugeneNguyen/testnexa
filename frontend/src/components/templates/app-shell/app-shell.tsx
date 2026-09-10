@@ -3,259 +3,107 @@
  * `AppBreadcrumb` + `AppFooter` + page content, replacing AUTH-3's bare
  * `<AppHeader/>{children}` mount in `ProtectedRoute`.
  *
- * ## AdminLTE v4 (ADR-0042) — what replaced the CoreUI composition
+ * ## Tabler v1.5.1 (ADR-0054, Phase 2) — what replaced the AdminLTE composition
  *
- * The whole shell is now AdminLTE v4's `.app-wrapper` CSS grid, not a
- * `d-flex` row wrapping a `flex-column` content column:
+ * The whole shell is now Tabler's own `.page` flow layout (the CTO-supplied
+ * "Sidebar layout" doc sample), not AdminLTE's `.app-wrapper` CSS grid:
  *
- *   .app-wrapper { display: grid;
- *     grid-template-areas: "lte-app-sidebar lte-app-header"
- *                          "lte-app-sidebar lte-app-main"
- *                          "lte-app-sidebar lte-app-footer";
- *     grid-template-rows: min-content 1fr min-content;
- *     grid-template-columns: auto 1fr; min-height: 100vh; }
+ *   <div class="page">
+ *     <aside class="navbar navbar-vertical navbar-expand-lg">...</aside>  -- AppSidebar
+ *     <div class="page-wrapper">
+ *       <header class="navbar navbar-expand-md d-print-none">...</header>  -- AppHeader
+ *       <main class="page-body">
+ *         <div class="app-content-header">{AppBreadcrumb}</div>
+ *         <div class="app-content flex-grow-1">{children}</div>
+ *       </main>
+ *       <footer class="footer footer-transparent d-print-none">...</footer>  -- AppFooter
+ *     </div>
+ *   </div>
  *
- * `.app-header` / `.app-sidebar` / `.app-main` / `.app-footer` each claim one
- * of those named grid areas, so **all four must be direct children of
- * `.app-wrapper`** — any intermediate wrapper div breaks the grid placement
- * entirely (the child would become the grid item and the four regions would
- * stack in normal flow). DOM order among them does not matter; the grid
- * places them. `.app-content-header` (breadcrumb) and `.app-content` (page
- * content) are compiled as `.app-main .app-content-header` / `.app-main
- * .app-content`, so they must be *inside* `.app-main`, not siblings of it.
+ * There is no named-grid-area coupling the way AdminLTE's `.app-wrapper`
+ * had — `AppSidebar` and `.page-wrapper` are laid out by Tabler's own
+ * `.page`/`.page-wrapper` CSS (a flex row: the vertical navbar reserves its
+ * own width, `.page-wrapper` takes the rest), so DOM order among the two top
+ * children matters here (aside first), unlike AdminLTE's grid where it
+ * didn't. `.app-content-header`/`.app-content` are this app's own class
+ * names, not Tabler's — kept from the AdminLTE era purely as stable hooks
+ * for existing tests/selectors; Tabler defines no rule for them, so they are
+ * plain unstyled wrapper divs now (see "page content" note below for why
+ * that's fine).
  *
- * ### Historical note — why the CoreUI version looked the way it did
+ * ## Sidebar state: one boolean, not AdminLTE's collapsed/open pair
  *
- * The pre-ADR-0042 version owned a `sidebarVisible` boolean and round-tripped
- * `CSidebar`'s `onVisibleChange` back into it, because `CSidebar` forced
- * itself closed on a mobile-breakpoint transition and derived that from an
- * `isInViewport(element)` geometry check (`getBoundingClientRect()` vs.
- * `window.innerHeight`), which in turn required `AppSidebar` to carry
- * `vh-100` so a `d-flex` row's `align-items: stretch` couldn't grow the
- * sidebar taller than the viewport and make the geometry check report "not
- * visible" on every scrollable page. None of that survives: AdminLTE's grid
- * gives the sidebar its own row-spanning area with no stretch coupling to a
- * sibling column, `vh-100` is gone, and the sidebar's open/closed state is no
- * longer a prop on the sidebar element at all (see below). The reasoning is
- * kept here because it explains why the old shape existed, not because any of
- * it still applies.
+ * AdminLTE's `push-menu.ts` state machine (mirrored in this file pre-ADR-0054)
+ * needed two independent flags plus a `matchMedia` breakpoint listener
+ * because its off-canvas sidebar could be independently collapsed (desktop)
+ * or opened (mobile), and `sidebar-collapse`/`sidebar-open` were body-level
+ * classes with no innate breakpoint awareness of their own.
  *
- * ## Sidebar state lives on `<body>`, not on the sidebar element
+ * Tabler's vertical navbar needs none of that: `.navbar-expand-lg` is a
+ * standard Bootstrap navbar breakpoint rule, which **forces
+ * `.navbar-collapse` visible above the breakpoint regardless of the `show`
+ * class**, and hides it below the breakpoint unless `show` is present. So a
+ * single `mobileOpen` boolean, toggled by the header's sidebar-toggler
+ * button and passed straight down to `AppSidebar` as a prop, is the whole
+ * state machine — no breakpoint listener, no responsive-logic port, no body
+ * classes, no `.sidebar-overlay` scrim (Tabler's collapse pushes content
+ * down in normal flow when open on mobile, it doesn't float over it, so
+ * there's nothing to click outside of to dismiss).
  *
- * AdminLTE's `push-menu.ts` keeps sidebar state in classes on
- * `document.body`, and its CSS reads them from there
- * (`.sidebar-expand-lg.sidebar-open .app-sidebar { margin-left: 0 }`). Since
- * this SPA's `#root` sits *inside* `<body>`, JSX cannot express those classes
- * — they are written with a `useEffect` against `document.body.classList` and
- * **removed again on unmount**: `<body>` is outside React's tree, so a leaked
- * class survives a logout, a route change, and (in Vitest) the next test in
- * the same file.
- *
- * We do NOT load AdminLTE's own JS (ADR-0042 ground rule: no jQuery, no
- * vendored plugin bundle), so the state machine below is a faithful React
- * port of `push-menu.ts`'s own methods, read from that file's source:
- * - `expand()`  — remove `sidebar-collapse`; **add `sidebar-open` only when
- *   mobile** (it is a no-op class above the breakpoint).
- * - `collapse()` — remove `sidebar-open`, add `sidebar-collapse`.
- * - `toggle()`  — `expand()` if currently collapsed, else `collapse()`.
- * - `updateStateByResponsiveLogic()` — on mobile, collapse unless explicitly
- *   open; on desktop, expand unless (mini && collapsed). We never set
- *   `sidebar-mini`, so the desktop branch always expands.
- *
- * **The desktop/mobile asymmetry is the trap here**: desktop defaults *open*
- * (closing it means adding `sidebar-collapse`), mobile defaults *closed*
- * (opening it means adding `sidebar-open`). It is one boolean pair, not two
- * independent switches, and the initial state itself is whatever
- * `updateStateByResponsiveLogic()` decides at mount — exactly what
- * `push-menu.ts`'s `init()` does.
- *
- * Breakpoint changes are observed with `matchMedia("(max-width: 991.98px)")`
- * + its `change` event, **not a raw `resize` handler** — same choice
- * `push-menu.ts` makes, and for its own stated reason: `matchMedia` fires
- * only on an actual crossing, so a height-only resize (mobile URL bar, soft
- * keyboard) or a same-side width change never clobbers a state the user
- * chose. 991.98px is AdminLTE's own `sidebarBreakpoint` default and the value
- * `.sidebar-expand-lg::before` publishes as `content: "991.98px"`.
- *
- * `.sidebar-overlay` (the mobile click-outside-to-close scrim) is normally
- * *injected at runtime* by `push-menu.ts` into `.app-wrapper`. We don't load
- * that JS, so nothing creates it unless we render it — it is the last child
- * of `.app-wrapper` below, with an `onClick` that collapses. It is invisible
- * except under `.sidebar-expand-lg.sidebar-open` at mobile widths.
- *
- * `app-loaded` is added a frame after mount rather than in the same commit:
- * while it is absent, AdminLTE forces `transition: none` on all four regions
- * (`body:not(.app-loaded) .app-header, …`), which conveniently suppresses a
- * first-paint slide of the off-canvas sidebar as `sidebar-expand-lg` lands.
+ * `sidebar-mini` (SHELL-7, ADR-0046) — the icon-only collapsed rail — has no
+ * equivalent here. Retired per ADR-0054's explicit scope reduction; a future
+ * story can reach for Tabler's own `navbar-folded-hover` + pin-button
+ * pattern if that UX is wanted again.
  *
  * ## Page content is deliberately NOT wrapped in a container here
  *
- * Pixel-parity note (2026-09-07), still load-bearing under AdminLTE: this
- * component does not wrap `{children}` in a `container`/`container-fluid`.
- * Each page owns its own `<div className="container-fluid px-4">` (see
- * `AppBreadcrumb.tsx`'s docstring for why `fluid` specifically). Several
- * pages (`OrgHome`, `OrgMembers`, `ProjectDetail`, `TestPlanDetail`,
- * `TestCycleDetail`) paint a full-bleed `min-vh-100 bg-body-secondary`
- * background *outside* their own container — wrapping `{children}` in a
- * container at this level would nest that background inside the container's
- * padding, shrinking the painted area rather than just the content.
- * `.app-content` itself contributes only `padding: 0 .5rem`, which does not
- * change that conclusion (it insets a full-bleed background by 8px per side,
- * a cosmetic delta, not the containment regression the container would be).
+ * Unchanged from the AdminLTE era (still load-bearing): this component does
+ * not wrap `{children}` in a `container`/`container-fluid`. Each page owns
+ * its own `<div className="container-fluid px-4">`. Several pages paint a
+ * full-bleed `min-vh-100 bg-body-secondary` background *outside* their own
+ * container — wrapping `{children}` in a container at this level would nest
+ * that background inside the container's padding, shrinking the painted
+ * area rather than just the content.
  *
  * `flex-grow-1` on `.app-content` preserves DASH-2's content-fills-the-column
- * behavior: `.app-main` is `display: flex; flex-direction: column` and is
- * stretched by the grid to the `1fr` row, so `flex-grow-1` gives the content
- * area a *definite* height for pages that size themselves with `h-100`
- * against it (see `frontend/CLAUDE.md`'s `h-100`-vs-flex note). Without it
- * `.app-content` would be content-height and those pages would silently stop
- * filling.
+ * behavior: `main.page-body` is `display: flex; flex-direction: column`
+ * under Tabler's own CSS (same as AdminLTE's `.app-main` was), so
+ * `flex-grow-1` gives the content area a *definite* height for pages that
+ * size themselves with `h-100` against it.
  */
-import { ReactNode, useCallback, useEffect, useState } from "react";
+import { ReactNode, useState } from "react";
 import AppBreadcrumb from "../../organisms/app-breadcrumb";
 import AppFooter from "../../organisms/app-footer";
 import AppHeader from "../../organisms/app-header";
 import AppSidebar from "../../organisms/app-sidebar";
-
-/**
- * AdminLTE's own `sidebarBreakpoint` default (`push-menu.ts`), and the value
- * `.sidebar-expand-lg::before` publishes as `content: "991.98px"`. The `.98`
- * is deliberate: it matches the Bootstrap `breakpoint-max = breakpoint - .02`
- * convention so a viewport of exactly 992px is "desktop" to both CSS and JS.
- */
-const MOBILE_MEDIA_QUERY = "(max-width: 991.98px)";
-
-/**
- * Layout modifiers that are constant for this app's whole shell lifetime.
- *
- * SHELL-7 (ADR-0046) added `sidebar-mini`. It is a *constant* modifier, not a
- * third state: it only changes what CSS the existing `sidebar-collapse` class
- * paints (an icon-only rail that hover-expands, instead of a hidden sidebar),
- * so it belongs here alongside `layout-fixed`/`sidebar-expand-lg` rather than
- * in `STATE_BODY_CLASSES`. Nothing about the collapse/expand/mobile state
- * machine below changes — see `applyResponsiveLogic`'s own note for the one
- * place where upstream's `push-menu.ts` *does* branch on mini mode, and why
- * this port deliberately still doesn't.
- */
-const BASE_BODY_CLASSES = ["layout-fixed", "sidebar-expand-lg", "sidebar-mini"] as const;
-
-/** State classes written per-transition; also part of the unmount cleanup. */
-const STATE_BODY_CLASSES = ["sidebar-collapse", "sidebar-open"] as const;
-
-/**
- * The two independent flags `push-menu.ts` keeps on `<body>`. Modelled as one
- * object so a transition can set both atomically — `collapse()` must clear
- * `open` in the same update, not in a follow-up effect.
- */
-interface SidebarState {
-  collapsed: boolean;
-  open: boolean;
-}
-
-function isMobileViewport(): boolean {
-  return window.matchMedia(MOBILE_MEDIA_QUERY).matches;
-}
-
-/** `PushMenu.expand()` — note `sidebar-open` is added on mobile only. */
-function expand(state: SidebarState): SidebarState {
-  return { collapsed: false, open: isMobileViewport() ? true : state.open };
-}
-
-/** `PushMenu.collapse()`. */
-function collapse(): SidebarState {
-  return { collapsed: true, open: false };
-}
-
-/**
- * `PushMenu.updateStateByResponsiveLogic()`. Upstream's desktop branch is
- * "expand unless (`isMiniMode()` && `isCollapsed()`)"; this port inlines it as
- * "always expand".
- *
- * **SHELL-7 (ADR-0046) note — deliberate, documented divergence.** That inline
- * used to be *equivalent* to upstream because the app never set
- * `sidebar-mini`; it now sets it unconditionally (see `BASE_BODY_CLASSES`), so
- * the two differ in exactly one situation: crossing the mobile→desktop
- * breakpoint while collapsed. Upstream would keep the mini rail collapsed;
- * this keeps the pre-SHELL-7 behavior of expanding. ADR-0046 scopes SHELL-7 to
- * "no other change to the collapse/expand/mobile state machine", and every
- * existing TC-SHELL-004 assertion is written against the current behavior, so
- * the divergence is preserved rather than silently "fixed" here — changing it
- * is a behavior change needing its own decision, not a drive-by.
- */
-function applyResponsiveLogic(state: SidebarState): SidebarState {
-  if (isMobileViewport()) {
-    return state.open ? state : collapse();
-  }
-  return expand(state);
-}
 
 interface AppShellProps {
   children: ReactNode;
 }
 
 function AppShell({ children }: AppShellProps) {
-  // Same initial resolution as `PushMenu.init()`: persistence is off, nothing
-  // is collapsed yet, so the responsive logic decides — expanded on desktop,
-  // collapsed on mobile.
-  const [sidebar, setSidebar] = useState<SidebarState>(() =>
-    applyResponsiveLogic({ collapsed: false, open: false }),
-  );
+  // Mobile-only: above Tabler's `.navbar-expand-lg` breakpoint, CSS forces
+  // the sidebar visible regardless of this value (see this file's own
+  // docstring for why AdminLTE's collapsed/open pair collapses to one flag).
+  const [mobileOpen, setMobileOpen] = useState(false);
 
-  const toggleSidebar = useCallback(() => {
-    setSidebar((prev) => (prev.collapsed ? expand(prev) : collapse()));
-  }, []);
-
-  const collapseSidebar = useCallback(() => {
-    setSidebar(collapse());
-  }, []);
-
-  // Base layout modifiers + `app-loaded`. Separate from the state-class effect
-  // below so the state classes can churn on every toggle without re-adding
-  // (and re-animating) the base ones.
-  useEffect(() => {
-    const { body } = document;
-    body.classList.add(...BASE_BODY_CLASSES);
-    // A frame later, not in this same commit: while `app-loaded` is absent
-    // AdminLTE forces `transition: none`, so deferring it swallows the
-    // first-paint slide caused by `sidebar-expand-lg` landing.
-    const frame = requestAnimationFrame(() => body.classList.add("app-loaded"));
-    return () => {
-      cancelAnimationFrame(frame);
-      body.classList.remove(...BASE_BODY_CLASSES, "app-loaded", ...STATE_BODY_CLASSES);
-    };
-  }, []);
-
-  useEffect(() => {
-    const { body } = document;
-    body.classList.toggle("sidebar-collapse", sidebar.collapsed);
-    body.classList.toggle("sidebar-open", sidebar.open);
-  }, [sidebar]);
-
-  useEffect(() => {
-    const query = window.matchMedia(MOBILE_MEDIA_QUERY);
-    function handleBreakpointChange() {
-      setSidebar((prev) => applyResponsiveLogic(prev));
-    }
-    query.addEventListener("change", handleBreakpointChange);
-    return () => query.removeEventListener("change", handleBreakpointChange);
-  }, []);
+  function toggleSidebar() {
+    setMobileOpen((prev) => !prev);
+  }
 
   return (
-    <div className="app-wrapper">
-      <AppHeader onToggleSidebar={toggleSidebar} />
-      <AppSidebar />
-      <main className="app-main">
-        <div className="app-content-header">
-          <AppBreadcrumb />
-        </div>
-        <div className="app-content flex-grow-1">{children}</div>
-      </main>
-      <AppFooter />
-      {/* AdminLTE's push-menu.ts injects this node itself at runtime; we don't
-          load that JS, so it exists only because it is rendered here. Must be
-          a direct child of `.app-wrapper` (its compiled selector is
-          `.sidebar-expand-lg.sidebar-open .sidebar-overlay`). */}
-      <div className="sidebar-overlay" onClick={collapseSidebar} />
+    <div className="page">
+      <AppSidebar mobileOpen={mobileOpen} />
+      <div className="page-wrapper">
+        <AppHeader onToggleSidebar={toggleSidebar} />
+        <main className="page-body">
+          <div className="app-content-header">
+            <AppBreadcrumb />
+          </div>
+          <div className="app-content flex-grow-1">{children}</div>
+        </main>
+        <AppFooter />
+      </div>
     </div>
   );
 }
