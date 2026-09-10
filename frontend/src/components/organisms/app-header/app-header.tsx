@@ -112,6 +112,17 @@
  *   `prefers-color-scheme` resolution are all unchanged.
  * - Icons stay Font Awesome classes on an `<i>` — unaffected by the design
  *   system swap (ADR-0042 §3.2's mapping carries forward unchanged).
+ * - **The 3 header items (org switcher, color mode, log out) moved off the
+ *   `Button` atom onto Tabler's own `.nav-item`/`.nav-link` pattern**
+ *   (2026-09-11, matching the CTO-supplied Tabler page-layout doc's header
+ *   sample verbatim — `div.nav-item` wrapping a plain, borderless
+ *   `.nav-link`, not a bordered `.btn-outline-*` pill). Each trigger is
+ *   still a real `<button type="button">` (an action/toggle, not
+ *   navigation — `<a href="#">` was Tabler's own sample's choice for a
+ *   dropdown trigger, but these aren't links), just styled `nav-link px-2`
+ *   instead of via the `Button` atom. Every `data-testid`/`aria-label` and
+ *   all the underlying state machines above are unchanged — only the
+ *   wrapping markup and visual treatment moved.
  *
  * Everything else in this file is deliberately unchanged, including the three
  * org-switcher behaviours enumerated above and the `.dropdown`/`.dropdown-menu`/
@@ -122,7 +133,6 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../../auth/AuthContext";
 import { getMyOrgs, type OrgSummary } from "../../../lib/api/auth";
-import { Button } from "../../atoms/button";
 
 interface AppHeaderProps {
   onToggleSidebar: () => void;
@@ -329,13 +339,12 @@ function AppHeader({ onToggleSidebar }: AppHeaderProps) {
         </div>
         <div className="navbar-nav flex-row order-md-last align-items-center">
           <div
-            className={orgSwitcherDropdown.open ? "dropdown me-2 show" : "dropdown me-2"}
+            className={orgSwitcherDropdown.open ? "nav-item dropdown show" : "nav-item dropdown"}
             ref={orgSwitcherDropdown.ref}
           >
-            <Button
-              color="secondary"
-              outline
-              className={orgSwitcherDropdown.open ? "show" : undefined}
+            <button
+              type="button"
+              className={orgSwitcherDropdown.open ? "nav-link px-2 show" : "nav-link px-2"}
               aria-expanded={orgSwitcherDropdown.open}
               data-testid="org-switcher-toggle"
               aria-label="Switch organization"
@@ -343,13 +352,26 @@ function AppHeader({ onToggleSidebar }: AppHeaderProps) {
               onClick={toggleOrgSwitcher}
             >
               <i className="fa-solid fa-building fa-lg" aria-hidden="true" />
-            </Button>
+            </button>
             <ul
               className={
                 orgSwitcherDropdown.open ? "dropdown-menu show dropdown-menu-end" : "dropdown-menu dropdown-menu-end"
               }
               role="menu"
               data-testid="org-switcher-menu"
+              // Tabler v1.5.1's own CSS gates `.dropdown-menu`'s `top:100%`
+              // positioning behind a `[data-bs-popper]`/`[data-tblr-popper]`
+              // attribute selector — without it, an absolutely-positioned
+              // horizontal-navbar dropdown-menu falls back to its
+              // hypothetical static-flow position and overlaps its own
+              // toggle (found live: the open menu intercepted a second click
+              // on the toggle meant to close it). We don't run Bootstrap/
+              // Tabler's real Popper-driven JS (this file's own established
+              // "React owns the state" rule), so this attribute is set
+              // statically here purely as a CSS hook — its presence is all
+              // the selector checks, not its value, and nothing reads it as
+              // a signal to auto-initialize any JS behavior.
+              data-bs-popper=""
             >
               <li className="dropdown-header">Switch organization</li>
               {orgList.status === "loading" && (
@@ -389,25 +411,27 @@ function AppHeader({ onToggleSidebar }: AppHeaderProps) {
             </ul>
           </div>
           <div
-            className={colorModeDropdown.open ? "dropdown me-2 show" : "dropdown me-2"}
+            className={colorModeDropdown.open ? "nav-item dropdown show" : "nav-item dropdown"}
             ref={colorModeDropdown.ref}
           >
-            <Button
-              color="secondary"
-              outline
-              className={colorModeDropdown.open ? "show" : undefined}
+            <button
+              type="button"
+              className={colorModeDropdown.open ? "nav-link px-2 show" : "nav-link px-2"}
               aria-expanded={colorModeDropdown.open}
               data-testid="color-mode-toggle"
               aria-label="Toggle color mode"
               onClick={() => colorModeDropdown.setOpen((prev) => !prev)}
             >
               <i className={`${activeIcon} fa-lg`} aria-hidden="true" />
-            </Button>
+            </button>
             <ul
               className={
                 colorModeDropdown.open ? "dropdown-menu show dropdown-menu-end" : "dropdown-menu dropdown-menu-end"
               }
               role="menu"
+              // See org-switcher-menu's own comment above — same Tabler
+              // CSS-gating fix, same reason.
+              data-bs-popper=""
             >
               <li>
                 <a
@@ -447,9 +471,18 @@ function AppHeader({ onToggleSidebar }: AppHeaderProps) {
               </li>
             </ul>
           </div>
-          <Button color="secondary" outline data-testid="logout-button" onClick={handleLogout}>
-            Log out
-          </Button>
+          <div className="nav-item">
+            <button
+              type="button"
+              className="nav-link px-2"
+              data-testid="logout-button"
+              aria-label="Log out"
+              onClick={handleLogout}
+            >
+              <i className="fa-solid fa-right-from-bracket fa-lg" aria-hidden="true" />
+              <span className="d-none d-sm-inline ps-2">Log out</span>
+            </button>
+          </div>
         </div>
       </div>
     </header>
