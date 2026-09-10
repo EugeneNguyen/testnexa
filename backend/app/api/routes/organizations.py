@@ -160,6 +160,17 @@ _ORGANIZATION_CONFIG = CrudEntityConfig(
     scope_field=None,
     resolve_org_id=resolve_organization_org_id,
     methods=frozenset({"get", "update", "delete"}),
+    # ADR-0053. No `field_meta` at all: every label auto-title-cases correctly
+    # ("default_standards_profile" -> "Default standards profile"), there's no
+    # FK (the row IS the tenant), and no enum. `slug` derives `readOnly` (it's
+    # summary-only — not reassignable through `PATCH`) and nothing derives as
+    # required, since `create_schema` is `None`: `create` stays `POST /orgs`'s
+    # own bespoke route, so there is no generic create form for `name` to be
+    # required on.
+    label="Organizations",
+    # `slug` is summary-only, so it derives last without this; the
+    # hand-written config listed it second, between the two writable fields.
+    field_order=("name", "slug", "default_standards_profile"),
 )
 
 router.include_router(make_crud_router(_ORGANIZATION_CONFIG))

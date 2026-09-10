@@ -207,6 +207,9 @@ _PROJECT_FACTORY_CONFIG = CrudEntityConfig(
     full_methods=frozenset({"list", "get", "update", "delete"}),
     label="Projects",
     scope_resolution=ScopeResolution(from_route_param="projectId", via_entity="project", via_field="org_id"),
+    # `org_id` is summary-only (its real create is bespoke), so it derives last
+    # without this — every hand-written config led with it. See `field_order`.
+    field_order=("org_id", "name", "standards_profile"),
     field_meta={
         "org_id": FieldMeta(ref_entity="organization", label_field="name", label="Organization"),
         "name": FieldMeta(required=True),

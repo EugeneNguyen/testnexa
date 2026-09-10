@@ -50,7 +50,13 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.crud_factory import CrudEntityConfig, chain_resolver, clamp_pagination, make_crud_router
+from app.api.crud_factory import (
+    CrudEntityConfig,
+    FieldMeta,
+    chain_resolver,
+    clamp_pagination,
+    make_crud_router,
+)
 from app.api.deps import get_current_actor, get_db, require_permission
 from app.core.config import settings
 from app.core.security import (
@@ -549,6 +555,22 @@ _ORG_MEMBERSHIP_CONFIG = CrudEntityConfig(
     resolve_org_id=chain_resolver([]),
     filter_fields=("status",),
     methods=frozenset({"list", "get", "update", "delete"}),
+    # ADR-0053. Direct org scope (the route's own `:orgId`), so no
+    # scope-selector. `user_id` gets a label override but no `ref_entity`:
+    # `User` is excluded from this admin surface entirely (ADR-0025), so
+    # there's nothing to autocomplete against — it stays a plain read-only
+    # string, same as the hand-written config had it. `status` derives as
+    # not-required because `create_schema` is `None` (no generic create —
+    # that would bypass `invite_member`'s own `User`/`Invite` mechanics), so
+    # there is no create form for it to be required on.
+    label="Org memberships",
+    # `org_id`/`user_id`/`joined_at` are all summary-only (only `status` is
+    # writable), so the sole writable field would otherwise derive first.
+    field_order=("org_id", "user_id", "status", "joined_at"),
+    field_meta={
+        "org_id": FieldMeta(ref_entity="organization", label_field="name", label="Organization"),
+        "user_id": FieldMeta(label="User"),
+    },
 )
 
 router.include_router(make_crud_router(_ORG_MEMBERSHIP_CONFIG))

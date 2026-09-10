@@ -273,6 +273,20 @@ class CrudEntityConfig:
     # above is only `{"list","delete"}`, the two the factory itself
     # registers) — the admin surface still needs to know all four exist.
     full_methods: frozenset[str] | None = None
+    # ADR-0053 (Amendment 1): display order for the derived `fields[]`. Needed
+    # because `derive_entity_schema`'s own natural order is an artefact of
+    # *which schema* a field came from (writable schemas first, summary-only
+    # last), not of how the entity reads on screen — so an FK/scope field
+    # that's absent from `create_schema`/`update_schema` (e.g. `Project`'s
+    # `org_id`, `TestCase`'s `test_condition_id`) sorts to the bottom, while
+    # every hand-written `entityConfigs/*.ts` led with it.
+    #
+    # Deliberately order-ONLY, never a field *filter*: any field not named
+    # here still appears, appended in derived order. Letting this double as
+    # the field list would reintroduce exactly the `Requirement.title` drift
+    # this ADR exists to close (a new required backend field silently absent
+    # from the form because nobody added it to a second list).
+    field_order: tuple[str, ...] = ()
 
 
 def _error(
@@ -720,6 +734,15 @@ def derive_entity_schema(config: CrudEntityConfig) -> dict[str, Any]:
         if name == "id":
             continue
         all_fields.setdefault(name, info)
+
+    # ADR-0053 Amendment 1 — see `CrudEntityConfig.field_order`. Order-only:
+    # named fields lead, in the order given; everything else keeps its derived
+    # position after them, so a field nobody remembered to name is still served.
+    if config.field_order:
+        ordered = {name: all_fields[name] for name in config.field_order if name in all_fields}
+        for name, info in all_fields.items():
+            ordered.setdefault(name, info)
+        all_fields = ordered
 
     fields_out: list[dict[str, Any]] = []
     for name, info in all_fields.items():

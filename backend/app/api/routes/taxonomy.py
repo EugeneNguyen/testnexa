@@ -11,7 +11,12 @@ these three get full CRUD — they're in `CRUD_RESOURCES`
 
 from fastapi import APIRouter
 
-from app.api.crud_factory import CrudEntityConfig, make_crud_router, resolve_global_org_id
+from app.api.crud_factory import (
+    CrudEntityConfig,
+    FieldMeta,
+    make_crud_router,
+    resolve_global_org_id,
+)
 from app.models.taxonomy import TestDesignTechnique, TestLevel, TestType
 from app.schemas.taxonomy import (
     CreateTestDesignTechniqueRequest,
@@ -36,6 +41,11 @@ _TEST_DESIGN_TECHNIQUE_CONFIG = CrudEntityConfig(
     scope_field=None,
     resolve_org_id=resolve_global_org_id,
     is_global_catalog=True,
+    # ADR-0053. Global catalog, no scope at all — nothing to declare beyond
+    # the nav label and the one field whose hand-picked label doesn't
+    # survive auto-title-casing ("istqb_chapter_ref" -> "Istqb chapter ref").
+    label="Test design techniques",
+    field_meta={"istqb_chapter_ref": FieldMeta(label="ISTQB chapter ref")},
 )
 
 _TEST_LEVEL_CONFIG = CrudEntityConfig(
@@ -47,6 +57,8 @@ _TEST_LEVEL_CONFIG = CrudEntityConfig(
     scope_field=None,
     resolve_org_id=resolve_global_org_id,
     is_global_catalog=True,
+    # ADR-0053: single `name` field, fully auto-derived — label only.
+    label="Test levels",
 )
 
 _TEST_TYPE_CONFIG = CrudEntityConfig(
@@ -58,6 +70,8 @@ _TEST_TYPE_CONFIG = CrudEntityConfig(
     scope_field=None,
     resolve_org_id=resolve_global_org_id,
     is_global_catalog=True,
+    # ADR-0053: single `name` field, fully auto-derived — label only.
+    label="Test types",
 )
 
 router.include_router(make_crud_router(_TEST_DESIGN_TECHNIQUE_CONFIG))
