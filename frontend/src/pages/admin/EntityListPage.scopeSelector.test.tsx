@@ -3,7 +3,6 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import EntityListPage from "./EntityListPage";
-import attachment from "../../entityConfigs/attachment";
 import { apiFetch } from "../../lib/api/client";
 import { getEntity, listEntities } from "../../lib/api/entityCrud";
 
@@ -13,8 +12,9 @@ import { getEntity, listEntities } from "../../lib/api/entityCrud";
  * with `?test_case_id=<id>`, matching the backend's `resolve_via_test_case`
  * chain (ADR-0022/ADR-0025).
  *
- * Uses the real `attachment` entityConfig (not a fixture stand-in) so the
- * config wiring under test is the actual shipped one. `ScopeSelector` itself
+ * Uses the `Attachment` schema the backend actually serves (transcribed into
+ * `ATTACHMENT_SCHEMA` below — see the ADR-0053 note) so the config wiring
+ * under test is the real one, not an invented stand-in. `ScopeSelector` itself
  * is mocked here rather than driven through its real `FkAutocomplete` child:
  * `test-case.ts`'s config has no `list` method (no `GET /test-cases` route
  * exists yet — see that file's own docstring), so `FkAutocomplete` always
@@ -30,13 +30,38 @@ import { getEntity, listEntities } from "../../lib/api/entityCrud";
 /**
  * **ADR-0053:** the configs are served by `GET /entities/{resource}/schema`
  * now, so they are injected by mocking `./useEntitySchema` rather than the
- * deleted `entityConfigByKey` registry map. The `attachments` fixture is still
- * the *real* shipped `entityConfigs/attachment` object (unchanged intent: the
- * wiring under test is the actual one, not a stand-in), and `projects` is
- * still the minimal config `useAdminRouteContext` needs to resolve this
- * project-scoped route's `org_id`. `./registry` stays mocked for the
- * frontend-static `entityLabelByKey` half only.
+ * deleted `entityConfigByKey` registry map. `projects` is the minimal config
+ * `useAdminRouteContext` needs to resolve this project-scoped route's
+ * `org_id`. `./registry` stays mocked for the frontend-static
+ * `entityLabelByKey` half only.
+ *
+ * `ATTACHMENT_SCHEMA` below is a verbatim transcription of what
+ * `derive_entity_schema(_ATTACHMENT_CONFIG)` actually serves — it used to be a
+ * live `import` of `entityConfigs/attachment.ts`, which ADR-0053 deleted. The
+ * original intent ("use the real shipped config, not a stand-in") is now
+ * carried by `backend/tests/integration/test_adr53_entity_schema.py`, which
+ * asserts the real route's real output for every registered entity; a unit
+ * test cannot import from the backend, so this is the honest split: the shape
+ * is pinned there, the wiring is exercised here.
  */
+// `vi.hoisted` because `vi.mock`'s factory is hoisted above every top-level
+// `const` — a plain module-scope binding would be in its temporal dead zone
+// when the factory runs.
+const { ATTACHMENT_SCHEMA } = vi.hoisted(() => ({
+  ATTACHMENT_SCHEMA: {
+    resource: "attachment",
+    path: "/attachments",
+    scopeField: "test_case_id",
+    scopeSelector: { refEntity: "test-case", paramName: "test_case_id" },
+    methods: ["list", "get", "create", "update", "delete"],
+    fields: [
+      { name: "test_case_id", label: "Test case", type: "fk", refEntity: "test-case", labelField: "title", required: true },
+      { name: "url_or_path", label: "URL / path", type: "string", required: true },
+      { name: "mime_type", label: "MIME type", type: "string", required: true },
+      { name: "size_bytes", label: "Size (bytes)", type: "string", required: true },
+    ],
+  },
+}));
 vi.mock("./registry", () => ({
   entityLabelByKey: {
     attachments: "Attachments",
@@ -45,10 +70,9 @@ vi.mock("./registry", () => ({
   ADMIN_ENTITY_KEYS: new Set(["attachments", "projects"]),
 }));
 
-vi.mock("./useEntitySchema", async () => {
-  const attachmentConfig = (await import("../../entityConfigs/attachment")).default;
+vi.mock("./useEntitySchema", () => {
   const configs: Record<string, unknown> = {
-    attachments: attachmentConfig,
+    attachments: ATTACHMENT_SCHEMA,
     projects: { resource: "project", path: "/projects", methods: ["list", "get"], fields: [] },
   };
   const labels: Record<string, string> = { attachments: "Attachments", projects: "Projects" };
@@ -138,7 +162,7 @@ describe("EntityListPage — Attachment scope-selector resolves via TestCase (TC
 
     await waitFor(() => expect(mockListEntities).toHaveBeenCalled());
     expect(mockListEntities).toHaveBeenCalledWith(
-      expect.objectContaining({ resource: attachment.resource }),
+      expect.objectContaining({ resource: ATTACHMENT_SCHEMA.resource }),
       expect.anything(),
       expect.objectContaining({ params: expect.objectContaining({ test_case_id: "test-case-1" }) }),
     );
