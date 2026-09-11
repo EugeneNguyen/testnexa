@@ -143,14 +143,25 @@ describe("AppSidebar", () => {
     const toggle = group.querySelector("a.dropdown-toggle")!;
     expect(toggle).toHaveAttribute("aria-expanded", "false");
 
+    // The disclosure arrow swaps glyph with the open state (2026-09-11) — a
+    // real icon, not Tabler's own `::after` caret, which never changed
+    // direction (found live, see `index.css`'s own comment on why it's
+    // suppressed).
+    const arrow = () => toggle.querySelector("i.nav-arrow")!;
+    expect(arrow()).toHaveClass("fa-angle-right");
+
     fireEvent.click(toggle);
     expect(group).toHaveClass("active");
     expect(submenu).toHaveClass("show");
     expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(arrow()).toHaveClass("fa-angle-down");
+    expect(arrow()).not.toHaveClass("fa-angle-right");
 
     fireEvent.click(toggle);
     expect(group).not.toHaveClass("active");
     expect(submenu).not.toHaveClass("show");
+    expect(arrow()).toHaveClass("fa-angle-right");
+    expect(arrow()).not.toHaveClass("fa-angle-down");
     // AdminLTE's own treeview classes must be gone entirely.
     expect(container.querySelector(".menu-open, .nav-treeview")).toBeNull();
   });
@@ -314,8 +325,16 @@ describe("AppSidebar", () => {
       expect(icons).toHaveLength(1);
       expect(icons[0]).toHaveClass("fa-solid", iconClass);
       expect(icons[0]).toHaveAttribute("aria-hidden", "true");
-      // Tabler's own `.dropdown-toggle` class paints the disclosure caret via
-      // a CSS `::after` pseudo-element — no separate rendered icon to assert.
+      // The disclosure arrow (`i.nav-arrow`) is a real, explicit icon now
+      // (2026-09-11) — Tabler's own `.dropdown-toggle::after` CSS caret
+      // rendered too small to read against the sidebar's dark background and
+      // never indicated open/closed by changing direction (found live, see
+      // `index.css`'s own comment). It's counted separately from
+      // `nav-link-icon` above precisely so this "exactly one icon" check
+      // isn't satisfied by the arrow instead of the group's real icon.
+      const arrow = toggle.querySelector("i.nav-arrow")!;
+      expect(arrow).toHaveClass("fa-solid", "fa-angle-right");
+      expect(arrow).toHaveAttribute("aria-hidden", "true");
     }
 
     // Members (SHELL-7) and Projects (PROJ-4): flat items with their own icon

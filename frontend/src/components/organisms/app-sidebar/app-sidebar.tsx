@@ -434,6 +434,18 @@ function AppSidebar({ mobileOpen = false }: AppSidebarProps) {
                   >
                     {group.icon && <i className={`nav-link-icon ${group.icon}`} aria-hidden="true" />}
                     <span className="nav-link-title">{group.label}</span>
+                    {/* Explicit disclosure arrow, not Tabler's own
+                        `.dropdown-toggle::after` caret (suppressed in
+                        index.css) — that pseudo-element rendered too small to
+                        read against the sidebar's dark background and never
+                        indicated open/closed by changing direction. Same
+                        angle-right/angle-down swap the pre-Tabler AdminLTE
+                        version used. `ms-auto` pushes it to the row's far
+                        edge — `.nav-link` is `display:flex` here. */}
+                    <i
+                      className={isOpen ? "nav-arrow fa-solid fa-angle-down ms-auto" : "nav-arrow fa-solid fa-angle-right ms-auto"}
+                      aria-hidden="true"
+                    />
                   </a>
                   <div className={isOpen ? "dropdown-menu show" : "dropdown-menu"}>
                     {group.items.map((item) => (

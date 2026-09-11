@@ -142,3 +142,17 @@
   --bs-btn-active-color: var(--bs-body-color);
   --bs-btn-disabled-color: var(--bs-body-color);
 }
+
+/* ADR-0054 (Tabler shell migration): `AppSidebar`'s entity-group toggles use
+   Tabler's own `.dropdown-toggle` class for its `nav-link` styling/cursor,
+   but Tabler's default `::after` disclosure caret (a small CSS
+   border-triangle) renders too small to read against the sidebar's dark
+   background, and never rotates between the open/closed state — found live
+   (2026-09-11), not from source. A real, explicit Font Awesome icon
+   (`app-sidebar.tsx`'s own `nav-arrow` element) replaces it, swapping glyph
+   on open/close the same way the pre-Tabler AdminLTE version did — this rule
+   only suppresses Tabler's own pseudo-element caret so the two don't render
+   on top of each other. */
+.navbar-vertical .nav-link.dropdown-toggle::after {
+  display: none;
+}
