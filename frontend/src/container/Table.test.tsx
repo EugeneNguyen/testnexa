@@ -251,6 +251,191 @@ describe("Table container", () => {
     expect(screen.queryAllByRole("cell")).toHaveLength(0);
   });
 
+  // TC-DS-NEW-01: Tabler cascade pass — default `table-vcenter` matches Tabler's polished look.
+  it("renders the table with `table-vcenter` by default (Tabler-style default)", () => {
+    const { container } = render(
+      <Table
+        mode="client"
+        items={makeRows(3)}
+        defaultPageSize={10}
+        rowKey={(r) => r.id}
+        columns={columns}
+        renderRow={renderRow}
+        testIdPrefix="fixture"
+      />,
+    );
+
+    const table = container.querySelector("table");
+    expect(table).not.toBeNull();
+    expect(table!.className).toContain("table");
+    expect(table!.className).toContain("table-vcenter");
+    expect(table!.className).toContain("table-hover");
+  });
+
+  // TC-DS-NEW-02: stickyHeader adds `sticky-top` to the thead only.
+  it("`stickyHeader` adds `sticky-top` to the thead", () => {
+    const { container } = render(
+      <Table
+        mode="client"
+        items={makeRows(3)}
+        defaultPageSize={10}
+        rowKey={(r) => r.id}
+        columns={columns}
+        renderRow={renderRow}
+        stickyHeader
+        testIdPrefix="fixture"
+      />,
+    );
+
+    const thead = container.querySelector("thead");
+    expect(thead).not.toBeNull();
+    expect(thead!.className).toContain("sticky-top");
+  });
+
+  // TC-DS-NEW-03: responsive breakpoint variants.
+  it("`responsive=\"md\"` uses the breakpoint-scoped `table-responsive-md` wrapper", () => {
+    const { container } = render(
+      <Table
+        mode="client"
+        items={makeRows(3)}
+        defaultPageSize={10}
+        rowKey={(r) => r.id}
+        columns={columns}
+        renderRow={renderRow}
+        responsive="md"
+        testIdPrefix="fixture"
+      />,
+    );
+
+    // TC-DS-NEW-03: responsive breakpoint variants.
+    const wrapper = container.querySelector("div.table-responsive-md");
+    expect(wrapper).not.toBeNull();
+    expect(wrapper!.querySelector("table")).not.toBeNull();
+  });
+
+  // TC-DS-NEW-03b: `responsive={false}` drops the wrapper entirely.
+  it("`responsive={false}` renders no `table-responsive` wrapper around the table", () => {
+    const { container } = render(
+      <Table
+        mode="client"
+        items={makeRows(3)}
+        defaultPageSize={10}
+        rowKey={(r) => r.id}
+        columns={columns}
+        renderRow={renderRow}
+        responsive={false}
+        testIdPrefix="fixture"
+      />,
+    );
+
+    expect(container.querySelector(".table-responsive")).toBeNull();
+    expect(container.querySelector(".table-responsive-md")).toBeNull();
+    expect(container.querySelector("table")).not.toBeNull();
+  });
+
+  // TC-DS-NEW-04: caption prop renders a real <caption> inside the <table>.
+  it("`caption` prop renders a real <caption> element inside the <table>", () => {
+    const { container } = render(
+      <Table
+        mode="client"
+        items={makeRows(3)}
+        defaultPageSize={10}
+        rowKey={(r) => r.id}
+        columns={columns}
+        renderRow={renderRow}
+        caption={<span>List of fixtures</span>}
+        testIdPrefix="fixture"
+      />,
+    );
+
+    const caption = container.querySelector("table > caption");
+    expect(caption).not.toBeNull();
+    expect(caption!.textContent).toBe("List of fixtures");
+  });
+
+  // TC-DS-NEW-05: card mode wraps the table in `<div class="card">` with a
+  // `.card-header` holding the title (h3.card-title) and the `cardActions`
+  // slot (`.card-actions` div), and the table itself gets `card-table`
+  // instead of `table-vcenter table-hover`. Backward compat: callers that
+  // don't pass `cardTitle` get the original wrapper-less rendering.
+  it("card mode: `cardTitle` wraps everything in `.card`, with a `.card-header` + h3.card-title", () => {
+    const { container } = render(
+      <Table
+        mode="client"
+        items={makeRows(3)}
+        defaultPageSize={10}
+        rowKey={(r) => r.id}
+        columns={columns}
+        renderRow={renderRow}
+        cardTitle="Projects"
+        testIdPrefix="fixture"
+      />,
+    );
+
+    const card = container.querySelector(".card");
+    expect(card).not.toBeNull();
+    const header = card!.querySelector(".card-header");
+    expect(header).not.toBeNull();
+    expect(header!.querySelector("h3.card-title")!.textContent).toBe("Projects");
+    // Table className swaps to card-table in card mode.
+    const table = card!.querySelector("table");
+    expect(table!.className).toContain("card-table");
+    expect(table!.className).not.toContain("table-vcenter");
+    // No `table-responsive` wrapper inside a card.
+    expect(card!.querySelector(".table-responsive")).toBeNull();
+  });
+
+  // TC-DS-NEW-06: cardActions renders inside `.card-actions` div, alongside title.
+  it("card mode: `cardActions` renders inside `.card-actions` next to the title", () => {
+    const onClick = vi.fn();
+    const { container } = render(
+      <Table
+        mode="client"
+        items={makeRows(3)}
+        defaultPageSize={10}
+        rowKey={(r) => r.id}
+        columns={columns}
+        renderRow={renderRow}
+        cardTitle="Projects"
+        cardActions={
+          <button type="button" className="btn btn-primary" onClick={onClick}>
+            New Project
+          </button>
+        }
+        testIdPrefix="fixture"
+      />,
+    );
+
+    const actions = container.querySelector(".card-header > .card-actions");
+    expect(actions).not.toBeNull();
+    const button = actions!.querySelector("button");
+    expect(button).not.toBeNull();
+    expect(button!.textContent).toBe("New Project");
+    fireEvent.click(button!);
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  // TC-DS-NEW-07: no `cardTitle` → original wrapper-less rendering, no `.card`.
+  it("without `cardTitle`: no `.card` wrapper, original `table-vcenter table-hover` classes", () => {
+    const { container } = render(
+      <Table
+        mode="client"
+        items={makeRows(3)}
+        defaultPageSize={10}
+        rowKey={(r) => r.id}
+        columns={columns}
+        renderRow={renderRow}
+        testIdPrefix="fixture"
+      />,
+    );
+
+    expect(container.querySelector(".card")).toBeNull();
+    expect(container.querySelector(".card-header")).toBeNull();
+    const table = container.querySelector("table");
+    expect(table!.className).toContain("table-vcenter");
+    expect(table!.className).not.toContain("card-table");
+  });
+
   // TC-DS-018
   it("does not persist a page-size change — unmount and remount returns to defaultPageSize", () => {
     const { unmount } = render(
