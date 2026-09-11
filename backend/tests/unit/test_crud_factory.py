@@ -40,6 +40,7 @@ from app.api.crud_factory import (
     _display_name,
     _resource_path,
     apply_filters_and_search,
+    apply_sort,
     chain_resolver,
     clamp_pagination,
     extract_scope_value,
@@ -471,6 +472,52 @@ class TestApplyFiltersAndSearch:
         compiled = str(result)
         assert "requirement.external_ref = " in compiled
         assert "LIKE" in compiled
+
+
+class TestApplySort:
+    """ADR-0053 (sort). Pure query-building, same posture as `TestApplyFiltersAndSearch`."""
+
+    _SORTABLE = frozenset({"external_ref", "description"})
+
+    def test_no_sort_param_returns_unmodified_query(self) -> None:
+        query = select(Requirement)
+        result = apply_sort(query, Requirement, None, self._SORTABLE)
+        assert str(result) == str(query)
+
+    def test_empty_sort_param_returns_unmodified_query(self) -> None:
+        query = select(Requirement)
+        result = apply_sort(query, Requirement, "", self._SORTABLE)
+        assert str(result) == str(query)
+
+    def test_ascending_field_adds_order_by_asc(self) -> None:
+        query = select(Requirement)
+        result = apply_sort(query, Requirement, "external_ref", self._SORTABLE)
+        compiled = str(result)
+        assert "ORDER BY requirement.external_ref ASC" in compiled
+
+    def test_leading_dash_adds_order_by_desc(self) -> None:
+        query = select(Requirement)
+        result = apply_sort(query, Requirement, "-external_ref", self._SORTABLE)
+        compiled = str(result)
+        assert "ORDER BY requirement.external_ref DESC" in compiled
+
+    def test_field_not_in_sortable_set_raises_value_error(self) -> None:
+        query = select(Requirement)
+        with pytest.raises(ValueError, match="project_id"):
+            apply_sort(query, Requirement, "project_id", self._SORTABLE)
+
+    def test_bare_dash_raises_value_error(self) -> None:
+        """`?sort=-` (dash, no field name) — empty field name, not a sortable column."""
+        query = select(Requirement)
+        with pytest.raises(ValueError):
+            apply_sort(query, Requirement, "-", self._SORTABLE)
+
+    def test_unknown_field_never_reaches_getattr(self) -> None:
+        """A rejected field name must 422 via `ValueError`, never `AttributeError` —
+        confirms the allow-list check runs before `getattr(model, ...)`."""
+        query = select(Requirement)
+        with pytest.raises(ValueError):
+            apply_sort(query, Requirement, "not_a_real_column", self._SORTABLE)
 
 
 # --- extract_scope_value / scope_validation_error -------------------------------------------------

@@ -57,12 +57,13 @@ own prose and the API Document's §3 resolver table both already specify
 malformed one).
 """
 
+import datetime
 import enum
 import types
 import uuid
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal, Union, get_args, get_origin
 
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse
@@ -136,6 +137,119 @@ class NoSchema(BaseModel):
     """
 
 
+# ADR-0053: moved verbatim from `EntityTable`'s own `ENUM_BADGE_COLORS`
+# (frontend), which ADR-0053 retires as a *frontend* constant. Keyed by enum
+# VALUE, not by entity — "high" reads as danger whether it's a `Defect`'s
+# severity, a `RiskItem`'s likelihood or a `TestCondition`'s priority — so a
+# per-entity copy would be the same 4 lines repeated 10 times with no entity
+# ever legitimately disagreeing.
+#
+# Applied as the DEFAULT for any enum field; `FieldMeta.badge_colors`
+# overrides it per-field where an entity ever does need its own palette,
+# which is the per-field declarability ADR-0053's Decision asks for.
+# `derive_entity_schema` filters whichever palette applies down to the
+# field's own declared values, so a field never advertises a colour for a
+# value it can't hold.
+#
+# UI Design Document §3: colour only where the value has an obvious status
+# semantic. Values absent here (`EntryExitCriteria.type`, `TestLog.event_type`)
+# deliberately have none and fall through to the frontend's plain-grey default.
+ENUM_BADGE_COLORS: dict[str, str] = {
+    "critical": "danger",
+    "high": "danger",
+    "fail": "danger",
+    "suspended": "warning",
+    "blocked": "warning",
+    "medium": "warning",
+    "invited": "info",
+    "reviewed": "info",
+    "low": "success",
+    "pass": "success",
+    "active": "success",
+    "approved": "success",
+    "draft": "secondary",
+    "deprecated": "secondary",
+    "superseded": "secondary",
+    "skipped": "secondary",
+}
+
+
+@dataclass
+class FieldMeta:
+    """ADR-0053: per-field metadata `derive_entity_schema` cannot get from
+    Pydantic alone — see that function's own docstring for exactly what's
+    auto-derived vs. declared here. Only fields needing an override get an
+    entry in `CrudEntityConfig.field_meta`; a field with no entry is fully
+    auto-derived (type/required/enum-values), which is the common case.
+    """
+
+    # fk only — the ref entity's own `:entity` route slug (this module's own
+    # `_resource_path(resource)`, e.g. "project"/"requirement"). Presence of
+    # this field is what promotes a bare `uuid.UUID` annotation to `type:
+    # "fk"` in the derived schema — nothing about the Python type itself
+    # signals "this UUID is a foreign key," let alone which entity it targets.
+    ref_entity: str | None = None
+    # fk only — which field of the ref entity's own summary schema to
+    # display (e.g. `Project`'s `name`, `TestCase`'s `title`).
+    label_field: str | None = None
+    # enum only — value -> Bootstrap color name, e.g. {"critical": "danger"}.
+    # No correlate in the Python type at all; pure presentation.
+    badge_colors: dict[str, str] | None = None
+    # Overrides the auto-title-cased label ("external_ref" -> "External
+    # ref") for a field whose hand-picked label doesn't match that pattern.
+    label: str | None = None
+    # Hide a field from the table (still in the form) — an arbitrary UI
+    # choice, not derivable from anything Pydantic knows.
+    show_in_table: bool = True
+    # Overrides the auto-derived required-ness. Only needed for a field
+    # that's logically required but has no `create_schema` to derive it
+    # from (`Project`'s `name` — its real create is a 100% bespoke route,
+    # `POST /orgs/{org_id}/projects`, never registered through this factory
+    # at all — `required_fields` below can only ever see this config's own
+    # `create_schema`, which is `None`).
+    required: bool | None = None
+    # ADR-0053 (sort): whether `?sort=<name>`/`?sort=-<name>` may target this
+    # column on the generic `list` route. Default `True`, same auto-derive-
+    # unless-overridden posture as `show_in_table` — every field maps 1:1 to a
+    # real model column (`_to_summary`'s own docstring), so ordering by any of
+    # them is always valid SQL; this exists purely for a field where sorting
+    # would be misleading rather than for correctness (none needed yet).
+    sortable: bool = True
+
+
+@dataclass
+class ScopeSelectorOption:
+    """ADR-0053 (moved from the frontend's `entityConfigs/types.ts`, per the
+    CTO's own explicit direction — fully backend-driven, no residual static
+    frontend file). One choice on `EntityListPage`'s "pick a parent row
+    before the list can even fetch" step, for an entity whose `scope_field`
+    has no value until the admin picks which row to scope by (`RiskItem`'s
+    `requirement_id`-or-`test_plan_id` branch is the one entity needing more
+    than one option — `CrudEntityConfig.scope_selector` accepts a tuple for
+    exactly that case, same as its single-option siblings accept one).
+    """
+
+    ref_entity: str
+    param_name: str
+    label: str | None = None
+
+
+@dataclass
+class ScopeResolution:
+    """ADR-0053 (moved from the frontend, same posture as `ScopeSelectorOption`
+    above). Derives a scope value automatically, no picker, by resolving
+    `via_entity`'s own `get` route using a route param already in context,
+    then reading `via_field` off the result — `Project`'s own admin page is
+    the one user today (`/projects/:projectId/admin/projects`'s real
+    `scope_field` is `org_id`, but that route has no `:orgId` param; this
+    fetches the *current* Project and reads its `org_id` off the response).
+    """
+
+    from_route_param: Literal["orgId", "projectId"]
+    via_entity: str
+    via_field: str
+
+
 @dataclass
 class CrudEntityConfig:
     """Per-entity configuration consumed by `make_crud_router` (ADR-0022).
@@ -177,6 +291,46 @@ class CrudEntityConfig:
     # EXEC-2: optional post-mutation side-effect hook on `PATCH`, see
     # `PostUpdateHook`'s own docstring above.
     post_update_hook: PostUpdateHook | None = None
+    # ADR-0053: this entity's own nav-label, served by `GET
+    # /entities/{resource}/schema` (`derive_entity_schema`). Falls back to
+    # `_display_name(resource)` when unset so a config can still compile
+    # before its own ADR-0053 port lands — every entity's config sets this
+    # explicitly once ported, matching the frontend's pre-ADR-0053
+    # `registry.ts` label verbatim.
+    label: str | None = None
+    # ADR-0053: per-field overrides for facts `derive_entity_schema` cannot
+    # get from Pydantic alone — see `FieldMeta`'s own docstring for exactly
+    # what. Only fields needing an override get an entry here.
+    field_meta: dict[str, FieldMeta] = field(default_factory=dict)
+    # ADR-0053: only set for the ~15 entities whose list can't fetch until
+    # the admin picks (or the surface auto-resolves) which parent row to
+    # scope by — see `ScopeSelectorOption`/`ScopeResolution`'s own
+    # docstrings. A tuple of options is `RiskItem`'s branching-scope shape;
+    # every other scope-selector entity sets exactly one.
+    scope_selector: ScopeSelectorOption | tuple[ScopeSelectorOption, ...] | None = None
+    scope_resolution: ScopeResolution | None = None
+    # ADR-0053: overrides `methods` for the derived schema's own `methods`
+    # array only — never affects which routes `make_crud_router` registers.
+    # `Project` is the one user today: its real REST surface is `list`/
+    # `get`/`update`/`delete`, but `get`/`update` are this module's own
+    # bespoke routes at the same URL shape (this config's own `methods`
+    # above is only `{"list","delete"}`, the two the factory itself
+    # registers) — the admin surface still needs to know all four exist.
+    full_methods: frozenset[str] | None = None
+    # ADR-0053 (Amendment 1): display order for the derived `fields[]`. Needed
+    # because `derive_entity_schema`'s own natural order is an artefact of
+    # *which schema* a field came from (writable schemas first, summary-only
+    # last), not of how the entity reads on screen — so an FK/scope field
+    # that's absent from `create_schema`/`update_schema` (e.g. `Project`'s
+    # `org_id`, `TestCase`'s `test_condition_id`) sorts to the bottom, while
+    # every hand-written `entityConfigs/*.ts` led with it.
+    #
+    # Deliberately order-ONLY, never a field *filter*: any field not named
+    # here still appears, appended in derived order. Letting this double as
+    # the field list would reintroduce exactly the `Requirement.title` drift
+    # this ADR exists to close (a new required backend field silently absent
+    # from the form because nobody added it to a second list).
+    field_order: tuple[str, ...] = ()
 
 
 def _error(
@@ -474,6 +628,33 @@ def apply_filters_and_search(
     return query
 
 
+def apply_sort(query: Any, model: type[Base], sort_param: str | None, sortable_fields: frozenset[str]) -> Any:
+    """Translate `?sort=<field>`/`?sort=-<field>` (leading `-` = descending)
+    into an `ORDER BY` clause on `query`. A falsy `sort_param` leaves `query`
+    unchanged (today's pre-sort behavior: whatever order the DB returns).
+
+    `sortable_fields` gates which column names are acceptable — never
+    `getattr(model, ...)` an arbitrary caller-supplied string, both because an
+    unknown attribute name would 500 and because the field list is this
+    route's own declared contract (`derive_entity_schema`'s `sortable`
+    flags), not "every column this ORM model happens to have". Raises
+    `ValueError(field_name)` for a name outside that set — the caller maps
+    that to a `422`, matching every other malformed-list-query-param shape
+    this module already 422s (`extract_scope_value`'s missing/ambiguous
+    scope, the list route's own scope-UUID-parse failure). Pure query-
+    building, no DB access — unit-testable without a DB, same posture as
+    `apply_filters_and_search`/`clamp_pagination`.
+    """
+    if not sort_param:
+        return query
+    descending = sort_param.startswith("-")
+    field_name = sort_param[1:] if descending else sort_param
+    if not field_name or field_name not in sortable_fields:
+        raise ValueError(field_name)
+    column = getattr(model, field_name)
+    return query.order_by(column.desc() if descending else column.asc())
+
+
 def clamp_pagination(page: int, page_size: int, max_page_size: int = _MAX_PAGE_SIZE) -> tuple[int, int]:
     """Clamp `page`/`page_size` to the API Document §1/NFR-6 convention.
 
@@ -545,6 +726,164 @@ def _resource_path(resource: str) -> str:
 def _display_name(resource: str) -> str:
     """`"test_condition"` -> `"Test condition"` (for `"{name} not found."` bodies)."""
     return resource.replace("_", " ").capitalize()
+
+
+# --- entity schema derivation (ADR-0053) ---------------------------------------------------------
+
+
+def _unwrap_optional(annotation: Any) -> Any:
+    """`X | None` / `Optional[X]` -> `X`. A field's own optionality is tracked
+    separately via `required_fields` (derived from `create_schema`'s own
+    `is_required()`, not from the annotation) — this only strips the wrapper
+    so the inner type can be classified."""
+    origin = get_origin(annotation)
+    if origin is types.UnionType or origin is Union:
+        args = [a for a in get_args(annotation) if a is not type(None)]
+        if len(args) == 1:
+            return args[0]
+    return annotation
+
+
+def _field_type_and_values(annotation: Any) -> tuple[str, list[str] | None]:
+    """Mechanical half of ADR-0053's hybrid derivation — everything Pydantic's
+    own type annotation can answer without any per-field declaration:
+    `Literal[...]` -> enum + its values, `uuid.UUID`/`datetime.date`/
+    `datetime.datetime`/`bool` -> their obvious counterpart, everything else
+    (str, dict/JSON columns like `TestLog.payload`, etc.) -> "string" as the
+    generic fallback `EntityTable`'s own `displayValue()` already handles.
+    `uuid.UUID` deliberately maps to `"string"` here, not `"fk"` — promoting
+    it requires a `FieldMeta.ref_entity` entry (see that dataclass's own
+    docstring for why this can't be inferred from the type alone).
+    """
+    annotation = _unwrap_optional(annotation)
+    origin = get_origin(annotation)
+    if origin is Literal:
+        return "enum", [str(v) for v in get_args(annotation)]
+    if annotation in (datetime.date, datetime.datetime):
+        return "date", None
+    if annotation is bool:
+        return "boolean", None
+    return "string", None
+
+
+def _label_for(field_name: str) -> str:
+    """`"external_ref"` -> `"External ref"` — the auto-title-cased fallback
+    label, overridden per-field by `FieldMeta.label` where a hand-picked
+    label doesn't match this pattern (e.g. `"project_id"` -> "Project", not
+    "Project id")."""
+    return field_name.replace("_", " ").capitalize()
+
+
+def derive_entity_schema(config: CrudEntityConfig) -> dict[str, Any]:
+    """ADR-0053: the `GET /entities/{resource}/schema` response body for one
+    entity — the single source of truth `EntityListPage`/`EntityFormPage`/
+    `EntityTable`/`EntityForm` fetch instead of importing a static
+    `frontend/src/entityConfigs/<entity>.ts`.
+
+    Field-shape source: the **union** of `create_schema` (if any),
+    `update_schema` (if not `NoSchema`), and `summary_schema` (always
+    present, minus `id`) — matching declaration order, writable schemas
+    first. A field present only in `summary_schema` (e.g. `created_at`) is
+    marked `readOnly: true`, mirroring `FieldConfig.readOnly`'s existing
+    frontend contract (table/display only, never part of a submitted
+    payload). `required` is `True` only for a field required by
+    `create_schema` specifically — the same "only ever supplied via
+    `Update*Request` isn't marked required" posture `FieldConfig.required`'s
+    own frontend doc comment already establishes.
+    """
+    writable_schemas = [s for s in (config.create_schema, config.update_schema) if s is not None and s is not NoSchema]
+    writable_fields: dict[str, Any] = {}
+    required_fields: set[str] = set()
+    for schema in writable_schemas:
+        for name, info in schema.model_fields.items():
+            writable_fields.setdefault(name, info)
+            if schema is config.create_schema and info.is_required():
+                required_fields.add(name)
+
+    all_fields: dict[str, Any] = dict(writable_fields)
+    for name, info in config.summary_schema.model_fields.items():
+        if name == "id":
+            continue
+        all_fields.setdefault(name, info)
+
+    # ADR-0053 Amendment 1 — see `CrudEntityConfig.field_order`. Order-only:
+    # named fields lead, in the order given; everything else keeps its derived
+    # position after them, so a field nobody remembered to name is still served.
+    if config.field_order:
+        ordered = {name: all_fields[name] for name in config.field_order if name in all_fields}
+        for name, info in all_fields.items():
+            ordered.setdefault(name, info)
+        all_fields = ordered
+
+    fields_out: list[dict[str, Any]] = []
+    for name, info in all_fields.items():
+        meta = config.field_meta.get(name, FieldMeta())
+        field_type, enum_values = _field_type_and_values(info.annotation)
+        if meta.ref_entity:
+            field_type = "fk"
+
+        entry: dict[str, Any] = {
+            "name": name,
+            "label": meta.label or _label_for(name),
+            "type": field_type,
+            "required": meta.required if meta.required is not None else name in required_fields,
+            "showInTable": meta.show_in_table,
+            "sortable": meta.sortable,
+        }
+        if field_type == "enum" and enum_values:
+            entry["values"] = enum_values
+        if field_type == "fk":
+            entry["refEntity"] = meta.ref_entity
+            entry["labelField"] = meta.label_field
+        if field_type == "enum" and enum_values:
+            # Per-field override, else the shared palette — then filtered to
+            # this field's own values, so a field never advertises a colour
+            # for a value it cannot hold. Omitted entirely when nothing
+            # matches (`EntryExitCriteria.type`, `TestLog.event_type`), which
+            # is how the frontend's plain-grey default stays in play.
+            palette = meta.badge_colors if meta.badge_colors is not None else ENUM_BADGE_COLORS
+            badge_colors = {value: palette[value] for value in enum_values if value in palette}
+            if badge_colors:
+                entry["badgeColors"] = badge_colors
+        elif meta.badge_colors:
+            entry["badgeColors"] = meta.badge_colors
+        if name not in writable_fields:
+            entry["readOnly"] = True
+        fields_out.append(entry)
+
+    scope_field = list(config.scope_field) if isinstance(config.scope_field, tuple) else config.scope_field
+
+    def _serialize_scope_selector_option(option: ScopeSelectorOption) -> dict[str, Any]:
+        out: dict[str, Any] = {"refEntity": option.ref_entity, "paramName": option.param_name}
+        if option.label:
+            out["label"] = option.label
+        return out
+
+    scope_selector: Any = None
+    if isinstance(config.scope_selector, tuple):
+        scope_selector = [_serialize_scope_selector_option(o) for o in config.scope_selector]
+    elif config.scope_selector is not None:
+        scope_selector = _serialize_scope_selector_option(config.scope_selector)
+
+    scope_resolution: dict[str, Any] | None = None
+    if config.scope_resolution is not None:
+        scope_resolution = {
+            "fromRouteParam": config.scope_resolution.from_route_param,
+            "viaEntity": config.scope_resolution.via_entity,
+            "viaField": config.scope_resolution.via_field,
+        }
+
+    return {
+        "resource": config.resource,
+        "label": config.label or _display_name(config.resource),
+        "methods": sorted(config.full_methods or config.methods),
+        "scopeField": scope_field,
+        "scopeSelector": scope_selector,
+        "scopeResolution": scope_resolution,
+        "searchFields": list(config.search_fields),
+        "filterFields": list(config.filter_fields),
+        "fields": fields_out,
+    }
 
 
 # --- the factory itself -----------------------------------------------------------------------
@@ -619,6 +958,12 @@ def make_crud_router(config: CrudEntityConfig) -> APIRouter:
 
     if "list" in config.methods:
         assert list_response_schema is not None
+        # ADR-0053 (sort): computed once at router-build time from this
+        # config's own derived schema — the single source of truth for which
+        # columns are sortable is the same `derive_entity_schema` the `GET
+        # /entities/{resource}/schema` route serves, not a second hand-kept
+        # list (the exact drift ADR-0053 already exists to close).
+        sortable_fields = frozenset(f["name"] for f in derive_entity_schema(config)["fields"] if f["sortable"])
 
         async def list_items(
             request: Request,
@@ -653,6 +998,19 @@ def make_crud_router(config: CrudEntityConfig) -> APIRouter:
                 query = query.where(getattr(model, field_name) == scope_uuid)
 
             query = apply_filters_and_search(query, model, config.filter_fields, config.search_fields, query_params)
+
+            sort_param = query_params.get("sort")
+            if sort_param:
+                try:
+                    query = apply_sort(query, model, sort_param, sortable_fields)
+                except ValueError as exc:
+                    field_name = exc.args[0] if exc.args else ""
+                    return _error(
+                        422,
+                        "validation_error",
+                        "Request failed validation.",
+                        field_errors={"sort": [f"'{field_name}' is not a sortable field"]},
+                    )
 
             page_c, page_size_c = clamp_pagination(page, page_size)
             total = await db.scalar(select(func.count()).select_from(query.subquery()))
@@ -816,6 +1174,7 @@ __all__ = [
     "CrudEntityConfig",
     "NoSchema",
     "apply_filters_and_search",
+    "apply_sort",
     "chain_resolver",
     "clamp_pagination",
     "extract_scope_value",

@@ -63,8 +63,10 @@ from app.api.crud_factory import (
     _DEFAULT_PAGE_SIZE,
     _MAX_PAGE_SIZE,
     CrudEntityConfig,
+    FieldMeta,
     NoSchema,
     ResolveOrgId,
+    ScopeSelectorOption,
     chain_resolver,
     make_crud_router,
     resolve_test_case_org_id,
@@ -207,6 +209,26 @@ _DEFECT_CONFIG = CrudEntityConfig(
     filter_fields=("severity", "status"),
     search_fields=("external_ref",),
     methods=frozenset({"list", "get", "update", "delete"}),
+    # ADR-0053. `test_execution_id`/`severity`/`status` derive as not-required
+    # (and `test_execution_id` as readOnly) because this entity has no generic
+    # create at all — `create_schema=None`, ADR-0022/API Document §4 reserve it
+    # for a bespoke `POST /executions/{id}/defects`. `entityConfigs/defect.ts`
+    # still claimed `required: true` on `severity`/`status`, describing a create
+    # form that cannot exist: the same stale-after-restriction drift
+    # `_TEST_CONDITION_CONFIG` documents, so the derived shape is authoritative.
+    label="Defects",
+    scope_selector=ScopeSelectorOption(ref_entity="test-execution", param_name="test_execution_id"),
+    # `test_execution_id` is summary-only (no create schema to lead with), so it
+    # derives last without this — the hand-written config led with it.
+    field_order=("test_execution_id", "external_ref", "severity", "status"),
+    field_meta={
+        "test_execution_id": FieldMeta(ref_entity="test-execution", label_field="result", label="Test execution"),
+        # Summary-only actor stamp (`reported_by_actor_id`), server-set and never
+        # editable. `entityConfigs/defect.ts` simply omitted it; the derived schema
+        # can't (`field_order` is order-only, never a filter — see its own docstring),
+        # so it stays served-but-hidden rather than silently dropped.
+        "reported_by_actor_id": FieldMeta(show_in_table=False, label="Reported by"),
+    },
 )
 
 # No `create` — PLAN-3/ADR-0033 (see module docstring). `list`/`get`/`update`/
@@ -225,6 +247,27 @@ _TEST_EXECUTION_CONFIG = CrudEntityConfig(
     # EXEC-2 AC1: append a `TestLog` row whenever `PATCH` actually changes
     # `result` (e.g. corrected pass -> fail) — see `_test_execution_post_update_hook`.
     post_update_hook=_test_execution_post_update_hook,
+    # ADR-0053. No `full_methods`: the bespoke create
+    # (`POST /test-cycles/{id}/executions`) lives at a *different* URL shape, not
+    # this entity's own `/test-executions` collection the way `Project`'s bespoke
+    # `get`/`update` do — so the admin surface's `methods` correctly stays
+    # `list`/`get`/`update`/`delete`, exactly as `entityConfigs/test-execution.ts`
+    # already reasoned ("a New Test Execution button submitting to a 405 route is
+    # a dead affordance"). `test_cycle_id`/`test_case_id`/`result`/`executed_at`
+    # derive as not-required for the same `create_schema=None` reason as
+    # `_DEFECT_CONFIG` above.
+    label="Test executions",
+    scope_selector=ScopeSelectorOption(ref_entity="test-cycle", param_name="test_cycle_id"),
+    # Both FKs are summary-only (`UpdateTestExecutionRequest` reassigns neither),
+    # so they derive last without this — the hand-written config led with them.
+    field_order=("test_cycle_id", "test_case_id", "result", "actual_result", "executed_at"),
+    field_meta={
+        "test_cycle_id": FieldMeta(ref_entity="test-cycle", label_field="name", label="Test cycle"),
+        "test_case_id": FieldMeta(ref_entity="test-case", label_field="title", label="Test case"),
+        "actual_result": FieldMeta(show_in_table=False),
+        # Summary-only actor stamp, same posture as `Defect.reported_by_actor_id`.
+        "executed_by_actor_id": FieldMeta(show_in_table=False, label="Executed by"),
+    },
 )
 
 _TEST_LOG_CONFIG = CrudEntityConfig(
@@ -237,6 +280,16 @@ _TEST_LOG_CONFIG = CrudEntityConfig(
     resolve_org_id=_resolve_test_log_org_id,
     filter_fields=("event_type",),
     methods=frozenset({"list", "get"}),
+    # ADR-0053. Every field derives `readOnly: true` on its own — `create_schema`
+    # is `None` and `update_schema` is `NoSchema`, so there are no writable
+    # schemas at all and the whole shape comes from `TestLogSummary` (this entity
+    # is append-only/immutable by schema, ADR-0025). That also makes the derived
+    # order already match the hand-written config's, so no `field_order` is needed.
+    label="Test logs",
+    scope_selector=ScopeSelectorOption(ref_entity="test-execution", param_name="test_execution_id"),
+    field_meta={
+        "test_execution_id": FieldMeta(ref_entity="test-execution", label_field="result", label="Test execution"),
+    },
 )
 
 router.include_router(make_crud_router(_DEFECT_CONFIG))

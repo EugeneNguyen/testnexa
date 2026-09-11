@@ -36,17 +36,25 @@
  * blur-close timer from beating the click, and the option is still a real
  * `<button>`, so it stays keyboard-reachable and Enter/Space-activatable.
  *
- * `refEntity` is a registry key (`pages/admin/registry.ts`'s
- * `entityConfigByKey`), not necessarily an entity with its own admin page —
- * only its `list` method needs to exist (ADR-0025). If the resolved config's
- * `methods` doesn't include `"list"` at all (`TestCase` today — see
+ * `refEntity` is an entity key, not necessarily an entity with its own admin
+ * page — only its `list` method needs to exist (ADR-0025). If the resolved
+ * config's `methods` doesn't include `"list"` at all (`TestCase` today — see
  * `entityConfigs/test-case.ts`'s own docstring), this renders a plain
  * disabled input explaining why, rather than firing a request against a
  * route that doesn't exist.
+ *
+ * **ADR-0053:** that resolution is `useEntitySchema(refEntity)` now — the
+ * static `entityConfigByKey` map it used to index no longer exists. Two
+ * consequences worth knowing: the hook is called **unconditionally**, even
+ * when the optional `config` prop below is supplied (Rules of Hooks; the prop
+ * still wins), and the config is no longer available on the first render, so
+ * this renders a disabled "Loading..." input for the duration of that one
+ * fetch rather than jumping straight to its enabled or its
+ * "search unavailable" state.
  */
 import { useEffect, useRef, useState } from "react";
 import { EntityRow, getEntity, listEntities } from "../../../lib/api/entityCrud";
-import { entityConfigByKey } from "../../../pages/admin/registry";
+import { useEntitySchema } from "../../../pages/admin/useEntitySchema";
 import type { EntityConfig } from "../../../entityConfigs/types";
 
 const DEBOUNCE_MS = 300;
@@ -72,13 +80,13 @@ export interface FkAutocompleteProps {
    */
   routeParams?: Record<string, string | undefined>;
   /**
-   * EXEC-1 (ADR-0034): use this `EntityConfig` instead of the registry's own
-   * entry for `refEntity`. Additive and optional — every existing call site
-   * omits it and keeps the registry lookup unchanged.
+   * EXEC-1 (ADR-0034): use this `EntityConfig` instead of the one fetched for
+   * `refEntity`. Additive and optional — every existing call site omits it and
+   * keeps the fetched config (pre-ADR-0053: the registry lookup) unchanged.
    *
    * The one real use today is `TestCycleDetail`'s "Record Result" picker,
    * which must list from `GET /test-plans/{id}/test-cases` (PLAN-1's coverage
-   * query) rather than a project-wide `TestCase` list. The registry's own
+   * query) rather than a project-wide `TestCase` list. The
    * `test-case` config deliberately has **no `list` method at all** — there is
    * no `GET /test-cases` route (`entityConfigs/test-case.ts`) — so without an
    * override this widget would correctly render its disabled "search
@@ -117,10 +125,17 @@ function FkAutocomplete({
   routeParams,
   config,
 }: FkAutocompleteProps) {
-  // An explicit `config` wins over the registry lookup (EXEC-1/ADR-0034); with
-  // it omitted this is the original `entityConfigByKey[refEntity]` behavior.
-  const refConfig = config ?? entityConfigByKey[refEntity];
-  const canSearch = Boolean(refConfig) && refConfig.methods.includes("list");
+  // ADR-0053: called unconditionally, even when the caller supplied `config` —
+  // a hook can't sit behind a prop check. An explicit `config` still wins
+  // (EXEC-1/ADR-0034); with it omitted this is the fetched equivalent of the
+  // original `entityConfigByKey[refEntity]` lookup.
+  const { config: fetchedConfig, isLoading: isSchemaLoading } = useEntitySchema(refEntity);
+  const refConfig = config ?? fetchedConfig;
+  // Distinct from `!canSearch`: "we don't know yet" is not "this field can't
+  // be searched", and telling the user the latter for the duration of a fetch
+  // would be wrong.
+  const isResolvingConfig = !config && isSchemaLoading;
+  const canSearch = Boolean(refConfig?.methods.includes("list"));
 
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<EntityRow[]>([]);
@@ -156,7 +171,7 @@ function FkAutocomplete({
   }, [value, refEntity, refConfig, labelField]);
 
   useEffect(() => {
-    if (!canSearch || !hasUserTypedRef.current) {
+    if (!canSearch || !refConfig || !hasUserTypedRef.current) {
       return;
     }
     if (debounceRef.current) {
@@ -204,7 +219,9 @@ function FkAutocomplete({
         type="text"
         value={query}
         disabled={disabled || !canSearch}
-        placeholder={canSearch ? "Type to search..." : "Search unavailable for this field"}
+        placeholder={
+          canSearch ? "Type to search..." : isResolvingConfig ? "Loading..." : "Search unavailable for this field"
+        }
         onChange={(event) => {
           hasUserTypedRef.current = true;
           setQuery(event.target.value);

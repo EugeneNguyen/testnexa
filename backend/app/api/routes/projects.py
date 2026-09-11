@@ -29,7 +29,13 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.crud_factory import CrudEntityConfig, chain_resolver, make_crud_router
+from app.api.crud_factory import (
+    CrudEntityConfig,
+    FieldMeta,
+    ScopeResolution,
+    chain_resolver,
+    make_crud_router,
+)
 from app.api.deps import get_current_actor, get_db, require_permission
 from app.core.rbac import has_permission
 from app.models.actor import AIAgent, User
@@ -197,6 +203,18 @@ _PROJECT_FACTORY_CONFIG = CrudEntityConfig(
     scope_field="org_id",
     resolve_org_id=chain_resolver([]),
     methods=frozenset({"list", "delete"}),
+    # ADR-0053: get/update exist too — see this config's own comment above.
+    full_methods=frozenset({"list", "get", "update", "delete"}),
+    label="Projects",
+    scope_resolution=ScopeResolution(from_route_param="projectId", via_entity="project", via_field="org_id"),
+    # `org_id` is summary-only (its real create is bespoke), so it derives last
+    # without this — every hand-written config led with it. See `field_order`.
+    field_order=("org_id", "name", "standards_profile"),
+    field_meta={
+        "org_id": FieldMeta(ref_entity="organization", label_field="name", label="Organization"),
+        "name": FieldMeta(required=True),
+        "standards_profile": FieldMeta(label="Standards profile"),
+    },
 )
 
 router.include_router(make_crud_router(_PROJECT_FACTORY_CONFIG))

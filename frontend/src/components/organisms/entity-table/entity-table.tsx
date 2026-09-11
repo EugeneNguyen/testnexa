@@ -39,38 +39,36 @@
  * explicitly declines to merge `EntityConfig`-driven columns with the
  * container's generic render-prop API — they stay two call conventions over
  * one shared pagination implementation.
+ *
+ * **ADR-0053 (backend-driven entity schema):** two things this component used
+ * to own itself now arrive with the config.
+ *
+ * 1. FK label resolution reads its ref-entity configs from
+ *    `useEntitySchemas([...])` — called **once, at the top**, over every
+ *    distinct `refEntity` on the config — instead of the old per-field
+ *    `entityConfigByKey[field.refEntity]` registry lookup (that map no longer
+ *    exists). A hook can't be called per-field inside the effect/`renderCell`
+ *    callback, which is exactly the shape `useEntitySchemas` (the batch
+ *    sibling of `useEntitySchema`) exists for.
+ * 2. Enum badge colours come from `field.badgeColors` (backend-served, already
+ *    filtered to that field's own `values`), replacing the module-level
+ *    `ENUM_BADGE_COLORS` constant this file used to carry. The plain-grey
+ *    `"secondary"` fallback stays — an enum with no semantic colouring at all
+ *    (`EntryExitCriteria.type`, `TestLog.event_type`) is served with no
+ *    `badgeColors` key at all and must keep rendering exactly as before.
+ *
+ * **ADR-0053 (sort):** a `field.sortable !== false` column header renders as a
+ * button (not a bare `<th>`) whenever the caller passes `onSortChange` — this
+ * component owns only the click affordance and the current-sort glyph
+ * (`fa-sort`/`fa-sort-up`/`fa-sort-down`); the sort *state* (which field, which
+ * direction) and the resulting `?sort=` query param are `EntityListPage`'s,
+ * same split as `page`/`pageSize`.
  */
-import { useEffect, useState } from "react";
+import { ReactNode, useEffect, useMemo, useState } from "react";
 import Table from "../../../container/Table";
 import { EntityConfig, FieldConfig } from "../../../entityConfigs/types";
 import { EntityRow, getEntity } from "../../../lib/api/entityCrud";
-import { entityConfigByKey } from "../../../pages/admin/registry";
-
-const ENUM_BADGE_COLORS: Record<string, string> = {
-  // Status-shaped values that read naturally as a semantic color; every
-  // other enum value falls back to a plain grey badge (UI Design Document
-  // §3: "color by value where the entity has an obvious status semantic...
-  // plain text otherwise" — implemented here as a shared plain-grey default
-  // rather than plain uncolored text, since a Bootstrap badge always carries
-  // some `bg-*` background variant (as CoreUI's `CBadge` did before ADR-0042
-  // — the values here are the Bootstrap theme-color names both use).
-  critical: "danger",
-  high: "danger",
-  fail: "danger",
-  suspended: "warning",
-  blocked: "warning",
-  medium: "warning",
-  invited: "info",
-  draft: "secondary",
-  low: "success",
-  pass: "success",
-  active: "success",
-  approved: "success",
-  reviewed: "info",
-  deprecated: "secondary",
-  superseded: "secondary",
-  skipped: "secondary",
-};
+import { resolveEntityKey, useEntitySchemas } from "../../../pages/admin/useEntitySchema";
 
 function formatDate(value: unknown): string {
   if (!value) {
@@ -94,6 +92,20 @@ function displayValue(value: unknown): string {
 }
 
 export interface EntityTableProps {
+  /**
+   * AdminLTE "full-width table" card pattern: rendered as the card's own
+   * `.card-title`, in `.card-header`. Optional so `EntityTable.test.tsx`'s
+   * existing fixtures (no title needed for the shared-logic tests) keep
+   * compiling unchanged — `EntityListPage` is the one caller that passes it.
+   */
+  title?: ReactNode;
+  /**
+   * Rendered in `.card-header .card-tools`, alongside the search box (if
+   * any) — `EntityListPage`'s permission-gated "New" button lives here now,
+   * not owned by this component (it has no create-permission/modal-state
+   * concerns of its own).
+   */
+  headerActions?: ReactNode;
   config: EntityConfig;
   rows: EntityRow[];
   total: number;
@@ -107,6 +119,17 @@ export interface EntityTableProps {
    * unchanged — `EntityListPage` is the one caller that passes it.
    */
   onPageSizeChange?: (pageSize: number) => void;
+  /**
+   * ADR-0053 (sort). `sortField`/`sortDir` describe the list's current sort
+   * (owned by `EntityListPage`, same posture as `page`/`pageSize`);
+   * `onSortChange`, if given, makes every `field.sortable !== false` column
+   * header a clickable sort toggle. Optional so the existing
+   * `EntityTable.test.tsx` fixtures (no sort needed for the shared-logic
+   * tests) keep compiling unchanged.
+   */
+  sortField?: string;
+  sortDir?: "asc" | "desc";
+  onSortChange?: (field: string) => void;
   loading?: boolean;
   loadError?: string | null;
   filters?: Record<string, string>;
@@ -120,6 +143,8 @@ export interface EntityTableProps {
 }
 
 function EntityTable({
+  title,
+  headerActions,
   config,
   rows,
   total,
@@ -127,10 +152,11 @@ function EntityTable({
   pageSize,
   onPageChange,
   onPageSizeChange,
+  sortField,
+  sortDir,
+  onSortChange,
   loading,
   loadError,
-  filters = {},
-  onFilterChange,
   search,
   onSearchChange,
   canEditRow = () => true,
@@ -144,6 +170,27 @@ function EntityTable({
 
   const showActionsColumn = (config.methods.includes("update") || config.methods.includes("delete")) && (onEdit || onDelete);
 
+  // ADR-0053: every distinct ref-entity schema this config's FK columns need,
+  // fetched once here rather than per-field (the Rules of Hooks make a
+  // per-column `useEntitySchema` illegal). Keyed by the *resolved* (plural)
+  // entity key, so look results up through `resolveEntityKey` — `refEntity`
+  // values are singular.
+  const refEntityKeys = useMemo(
+    () => config.fields.filter((f) => f.refEntity).map((f) => f.refEntity as string),
+    [config.fields],
+  );
+  const refConfigs = useEntitySchemas(refEntityKeys);
+
+  // A *primitive* fingerprint of which ref schemas have actually landed. The
+  // effect below has to re-run when one arrives (they resolve after first
+  // render now, where the old registry lookup was synchronous) — but keying it
+  // on `refConfigs`' object identity would make it re-run on every render for
+  // any caller that passes a fresh `config` object, and each run calls
+  // `setFkLabels`, i.e. a render loop. A joined string can't do that.
+  const refConfigFingerprint = fkFields
+    .map((f) => `${f.name}:${refConfigs[resolveEntityKey(f.refEntity as string)]?.path ?? ""}`)
+    .join("|");
+
   // Batched, deduped FK label resolution — one `getEntity` per distinct id
   // per FK field across the current page, not one per row (§3).
   useEffect(() => {
@@ -152,7 +199,7 @@ function EntityTable({
     async function resolve() {
       const next: Record<string, Record<string, string>> = {};
       for (const field of fkFields) {
-        const refConfig = field.refEntity ? entityConfigByKey[field.refEntity] : undefined;
+        const refConfig = field.refEntity ? refConfigs[resolveEntityKey(field.refEntity)] : undefined;
         if (!refConfig) {
           continue;
         }
@@ -184,7 +231,7 @@ function EntityTable({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows]);
+  }, [rows, refConfigFingerprint]);
 
   function renderCell(field: FieldConfig, row: EntityRow) {
     const raw = row[field.name];
@@ -204,7 +251,11 @@ function EntityTable({
         if (raw === null || raw === undefined || raw === "") {
           return "—";
         }
-        const color = ENUM_BADGE_COLORS[String(raw)] ?? "secondary";
+        // ADR-0053: backend-served, per-field. Anything the backend didn't
+        // colour — including every value of an enum served with no
+        // `badgeColors` at all — stays a plain grey badge, exactly as the old
+        // module-level constant's own default did.
+        const color = field.badgeColors?.[String(raw)] ?? "secondary";
         return <span className={`badge bg-${color}`}>{String(raw)}</span>;
       }
       default:
@@ -212,42 +263,43 @@ function EntityTable({
     }
   }
 
-  return (
-    <div>
-      {onSearchChange && config.searchFields && config.searchFields.length > 0 && (
-        <input
-          type="text"
-          className="form-control mb-3"
-          placeholder="Search..."
-          value={search ?? ""}
-          onChange={(event) => onSearchChange(event.target.value)}
-          data-testid="entity-table-search"
-        />
-      )}
+  const showSearch = Boolean(onSearchChange && config.searchFields && config.searchFields.length > 0);
+  // AdminLTE "full-width table" card pattern: the table's own card-body is
+  // `p-0` (cells carry their own padding) so it spans the card edge-to-edge —
+  // but that only looks right once there's an actual table to fill it.
+  // Loading/empty states fall back to a normally-padded body.
+  const showTable = !loading && rows.length > 0;
 
-      {onFilterChange && config.filterFields && config.filterFields.length > 0 && (
-        <div className="d-flex gap-2 mb-3">
-          {config.filterFields.map((field) => (
+  return (
+    <div className="card h-100">
+      <div className="card-header">
+        <h3 className="card-title">{title}</h3>
+        <div className="card-tools d-flex align-items-center gap-2">
+          {showSearch && (
             <input
-              key={field}
               type="text"
-              className="form-control"
-              placeholder={`Filter ${field}`}
-              value={filters[field] ?? ""}
-              onChange={(event) => onFilterChange(field, event.target.value)}
-              data-testid={`entity-table-filter-${field}`}
+              className="form-control form-control-sm"
+              style={{ width: 200 }}
+              placeholder="Search..."
+              value={search ?? ""}
+              onChange={(event) => onSearchChange!(event.target.value)}
+              data-testid="entity-table-search"
             />
-          ))}
+          )}
+          {headerActions}
         </div>
-      )}
+      </div>
 
       {loadError && (
-        <div className="alert alert-danger" role="alert">
-          {loadError}
+        <div className="card-body border-bottom">
+          <div className="alert alert-danger mb-0" role="alert">
+            {loadError}
+          </div>
         </div>
       )}
 
-      {loading ? (
+      <div className={showTable ? "card-body p-0" : "card-body"}>
+        {loading ? (
         <div className="d-flex justify-content-center py-4">
           <div className="spinner-border text-primary" role="status">
             <span className="visually-hidden">Loading...</span>
@@ -268,11 +320,36 @@ function EntityTable({
           testIdPrefix="entity-table"
           columns={
             <tr>
-              {tableFields.map((field) => (
-                <th scope="col" key={field.name}>
-                  {field.label}
-                </th>
-              ))}
+              {tableFields.map((field) => {
+                const isSortable = Boolean(onSortChange) && field.sortable !== false;
+                const isActive = sortField === field.name;
+                return (
+                  <th
+                    scope="col"
+                    key={field.name}
+                    aria-sort={isActive ? (sortDir === "desc" ? "descending" : "ascending") : undefined}
+                  >
+                    {isSortable ? (
+                      <button
+                        type="button"
+                        className="btn btn-link p-0 text-decoration-none text-body fw-bold"
+                        onClick={() => onSortChange!(field.name)}
+                        data-testid={`entity-table-sort-${field.name}`}
+                      >
+                        {field.label}
+                        <i
+                          className={`fa-solid ms-1 ${
+                            isActive ? (sortDir === "desc" ? "fa-sort-down" : "fa-sort-up") : "fa-sort text-body-tertiary"
+                          }`}
+                          aria-hidden="true"
+                        />
+                      </button>
+                    ) : (
+                      field.label
+                    )}
+                  </th>
+                );
+              })}
               {showActionsColumn && <th scope="col">Actions</th>}
             </tr>
           }
@@ -311,6 +388,7 @@ function EntityTable({
           )}
         />
       )}
+      </div>
     </div>
   );
 }

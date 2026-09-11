@@ -65,6 +65,24 @@ interface EntityConfig {
 
 A `methods` list without `"create"`/`"update"` means `EntityForm` is never mounted for that entity at all (`Permission`, `TestLog`, the 4 link tables) — the table's actions column simply has no Edit/Delete icons, not disabled ones, matching the "read-only, structurally, not permission-denied" distinction from a permission-hidden button (§5).
 
+**Where this config comes from ([ADR-0055](../adr/0055-admin-3-backend-driven-entity-schema.md), ADMIN-3, 2026-09-09):** the two interfaces above are unchanged as a *shape* — `EntityTable`/`EntityForm` still consume exactly this — but they are no longer **authored** in the frontend. The per-entity `frontend/src/entityConfigs/<entity>.ts` files this section originally specified are deleted; every admin page now fetches its entity's shape from `GET /entities/{resource}/schema` (API Document §3.1) and assembles it into the same `EntityConfig` via `pages/admin/useEntitySchema.ts`. Three consequences for this section specifically:
+
+- **The enum row's "color by value where the entity has an obvious status semantic" is now a served fact, not a per-screen judgement call** — `FieldConfig` gains `badgeColors?: Record<string, string>` (enum value → Bootstrap theme-colour name), already filtered backend-side to that field's own `values` and **omitted entirely** for the two enums with no semantic colouring (`EntryExitCriteria.type`, `TestLog.event_type`), which is what keeps the plain-text/grey fallback in this table live.
+- **Only `path`/`listPath`/`createPath` stay frontend-owned** (`entityConfigs/overrides.ts`) — route wiring is information architecture, deliberately outside ADR-0055's scope. Everything else in `EntityConfig` is served.
+- **Every screen shape in §4 gains a schema-fetch loading state** it did not have when this document was written, since a static import resolved synchronously and a fetch does not. `Release` is the one entity that still resolves synchronously from a hand-written config: it has no backend `CrudEntityConfig` to derive from (100% bespoke routes, §6), so it is absent from the registry by construction.
+
+The `readOnly`, array-shaped `scopeSelector`, `scopeResolution` and `listPath`/`createPath` members also present in today's `entityConfigs/types.ts` predate ADR-0055 — they are ADR-0027's own documented additive extensions to this sketch, recorded in that file's module docstring rather than here.
+
+**Column sort ([ADR-0056](../adr/0056-admin-4-generic-admin-crud-column-sort.md), ADMIN-4, 2026-09-11):** every column whose served `sortable !== false` (§3, `FieldConfig` gains `sortable?: boolean`, defaults `true`) renders its header as a clickable button instead of plain text. Three states, one icon per state, cycling on each click:
+
+| State | Icon | Meaning |
+|---|---|---|
+| Unsorted | `fa-sort` (grey, `text-body-tertiary`) | this column is sortable but not the active sort key |
+| Ascending | `fa-sort-up` | active sort key, A→Z / oldest→newest |
+| Descending | `fa-sort-down` | active sort key, Z→A / newest→oldest |
+
+Click cycle: unsorted → ascending → descending → unsorted. Clicking a *different* column's header always restarts that column at ascending (never carries over the previous column's direction) — only one column is ever the active sort key at a time, no multi-column sort. Choosing a sort resets the table to page 1 (a sort change is a new result set, not a new page of the old one — same convention as choosing a filter or typing a search term, §4). `Actions` (the trailing Edit/Delete icon column, when present) and any column with `sortable: false` (`Release`'s three fields — its list route is 100% bespoke, out of ADMIN-4's scope) render as plain, non-interactive header text, same as before this ADR.
+
 ## 4. Screen layouts (three shapes, not 28)
 
 **A — Global catalog** (`Role`, `Permission`, `RoleAssignment`, `TestDesignTechnique`, `TestLevel`, `TestType`): route `/orgs/:orgId/admin/:entity`. `EntityTable` fires its list query immediately on mount — no scope param needed.

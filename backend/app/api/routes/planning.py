@@ -24,7 +24,13 @@ from typing import Any
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
-from app.api.crud_factory import CrudEntityConfig, chain_resolver, make_crud_router
+from app.api.crud_factory import (
+    CrudEntityConfig,
+    FieldMeta,
+    ScopeSelectorOption,
+    chain_resolver,
+    make_crud_router,
+)
 from app.core.plan_status import (
     INVALID_STATUS_TRANSITION_CODE,
     INVALID_STATUS_TRANSITION_MESSAGE,
@@ -120,6 +126,28 @@ _TEST_PLAN_CONFIG = CrudEntityConfig(
     resolve_org_id=chain_resolver([]),
     # PLAN-1/ADR-0031 — the only entity in this codebase with an update guard.
     update_guard=_test_plan_status_guard,
+    # ADR-0053. `status` is `TestPlanStatus | None` on the create schema (an
+    # omitted value takes the column's own `draft` default), so it derives as
+    # not-required — but the admin create form has always presented it as a
+    # required choice (`entityConfigs/test-plan.ts`), and a `<select>` with a
+    # legal default is required from the *form's* point of view regardless of
+    # what the wire contract tolerates. Declared explicitly rather than
+    # letting the derived shape quietly drop the constraint.
+    label="Test plans",
+    field_meta={
+        "project_id": FieldMeta(ref_entity="project", label_field="name", label="Project"),
+        "scope": FieldMeta(show_in_table=False),
+        "approach": FieldMeta(show_in_table=False),
+        "staffing_and_training": FieldMeta(label="Staffing & training", show_in_table=False),
+        "schedule": FieldMeta(show_in_table=False),
+        "status": FieldMeta(required=True),
+        # Factory-auto-stamped (`_ACTOR_STAMPED_FIELDS`), never client-supplied:
+        # summary-only, so it already derives `readOnly`. Hidden from the table
+        # too — there is no `User`/`AIAgent` ref entity on this surface to
+        # render it as anything but a raw UUID (ADR-0025), which is why the
+        # hand-written config omitted it outright.
+        "created_by_actor_id": FieldMeta(label="Created by", show_in_table=False),
+    },
 )
 
 _ENTRY_EXIT_CRITERIA_CONFIG = CrudEntityConfig(
@@ -130,6 +158,17 @@ _ENTRY_EXIT_CRITERIA_CONFIG = CrudEntityConfig(
     summary_schema=EntryExitCriteriaSummary,
     scope_field="test_plan_id",
     resolve_org_id=chain_resolver([(TestPlan, "test_plan_id")]),
+    # ADR-0053. `scope_field` is `test_plan_id`, not `project_id` — there is
+    # no route listing `EntryExitCriteria` by project — so the list can't
+    # fetch until the admin picks a `TestPlan` (the same scope-selector shape
+    # `entityConfigs/entry-exit-criteria.ts` already flagged as a deliberate
+    # deviation from the Sitemap's "plain project-scoped table" classification).
+    label="Entry/exit criteria",
+    scope_selector=ScopeSelectorOption(ref_entity="test-plan", param_name="test_plan_id"),
+    field_meta={
+        "test_plan_id": FieldMeta(ref_entity="test-plan", label_field="identifier", label="Test plan"),
+        "condition_text": FieldMeta(label="Condition"),
+    },
 )
 
 _ENVIRONMENT_CONFIG = CrudEntityConfig(
@@ -140,6 +179,10 @@ _ENVIRONMENT_CONFIG = CrudEntityConfig(
     summary_schema=EnvironmentSummary,
     scope_field="project_id",
     resolve_org_id=chain_resolver([]),
+    # ADR-0053. Direct project scope, so no scope-selector: the list fires
+    # immediately with the route's own `:projectId`.
+    label="Environments",
+    field_meta={"project_id": FieldMeta(ref_entity="project", label_field="name", label="Project")},
 )
 
 # No `create` — bespoke instead (`test_cycle_creation.py`), see module docstring.
@@ -152,6 +195,23 @@ _TEST_CYCLE_CONFIG = CrudEntityConfig(
     scope_field="test_plan_id",
     resolve_org_id=chain_resolver([(TestPlan, "test_plan_id")]),
     methods=frozenset({"list", "get", "update", "delete"}),
+    # ADR-0053. Same `test_plan_id`-not-`project_id` scope-selector shape as
+    # `_ENTRY_EXIT_CRITERIA_CONFIG` above. `test_plan_id`/`release_id` derive
+    # as readOnly (absent from `UpdateTestCycleRequest` — not reassignable
+    # through this route) and nothing derives as required, because the real
+    # create is the bespoke `POST /test-plans/{id}/test-cycles`
+    # (`test_cycle_creation.py`) and this config's `create_schema` is `None`:
+    # a "required on create" claim would describe a form that doesn't exist.
+    label="Test cycles",
+    scope_selector=ScopeSelectorOption(ref_entity="test-plan", param_name="test_plan_id"),
+    # Both FK/scope fields are summary-only, so they derive last without this;
+    # every hand-written config led with them.
+    field_order=("test_plan_id", "release_id", "environment_id", "name", "start_date", "end_date"),
+    field_meta={
+        "test_plan_id": FieldMeta(ref_entity="test-plan", label_field="identifier", label="Test plan"),
+        "release_id": FieldMeta(ref_entity="release", label_field="version_label", label="Release"),
+        "environment_id": FieldMeta(ref_entity="environment", label_field="name", label="Environment"),
+    },
 )
 
 router.include_router(make_crud_router(_TEST_PLAN_CONFIG))

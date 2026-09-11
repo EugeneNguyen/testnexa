@@ -14,7 +14,14 @@ resolver one hop up, same as `TestStep`.
 
 from fastapi import APIRouter
 
-from app.api.crud_factory import CrudEntityConfig, make_crud_router, resolve_risk_item_org_id, resolve_via_test_case
+from app.api.crud_factory import (
+    CrudEntityConfig,
+    FieldMeta,
+    ScopeSelectorOption,
+    make_crud_router,
+    resolve_risk_item_org_id,
+    resolve_via_test_case,
+)
 from app.models.governance import Attachment, RiskItem
 from app.schemas.governance import (
     AttachmentSummary,
@@ -36,6 +43,17 @@ _RISK_ITEM_CONFIG = CrudEntityConfig(
     scope_field=("requirement_id", "test_plan_id"),
     resolve_org_id=resolve_risk_item_org_id,
     filter_fields=("likelihood", "impact"),
+    # ADR-0053
+    label="Risk items",
+    scope_selector=(
+        ScopeSelectorOption(ref_entity="requirement", param_name="requirement_id", label="By requirement"),
+        ScopeSelectorOption(ref_entity="test-plan", param_name="test_plan_id", label="By test plan"),
+    ),
+    field_meta={
+        "requirement_id": FieldMeta(ref_entity="requirement", label_field="description", label="Requirement"),
+        "test_plan_id": FieldMeta(ref_entity="test-plan", label_field="identifier", label="Test plan"),
+        "mitigation": FieldMeta(show_in_table=False),
+    },
 )
 
 _ATTACHMENT_CONFIG = CrudEntityConfig(
@@ -46,6 +64,15 @@ _ATTACHMENT_CONFIG = CrudEntityConfig(
     summary_schema=AttachmentSummary,
     scope_field="test_case_id",
     resolve_org_id=resolve_via_test_case,
+    # ADR-0053
+    label="Attachments",
+    scope_selector=ScopeSelectorOption(ref_entity="test-case", param_name="test_case_id"),
+    field_meta={
+        "test_case_id": FieldMeta(ref_entity="test-case", label_field="title", label="Test case"),
+        "url_or_path": FieldMeta(label="URL / path"),
+        "mime_type": FieldMeta(label="MIME type"),
+        "size_bytes": FieldMeta(label="Size (bytes)"),
+    },
 )
 
 router.include_router(make_crud_router(_RISK_ITEM_CONFIG))

@@ -39,7 +39,13 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.crud_factory import CrudEntityConfig, NoSchema, chain_resolver, make_crud_router
+from app.api.crud_factory import (
+    CrudEntityConfig,
+    FieldMeta,
+    NoSchema,
+    chain_resolver,
+    make_crud_router,
+)
 from app.api.deps import get_current_actor, get_db
 from app.models.actor import AIAgent, User
 from app.models.rbac import Permission, Role, RoleAssignment, RolePermission
@@ -120,6 +126,16 @@ _ROLE_CONFIG = CrudEntityConfig(
     scope_field="org_id",
     resolve_org_id=chain_resolver([]),
     global_read_fallback=True,
+    # ADR-0053. `org_id` is a real FK the admin surface autocompletes against
+    # (`Organization.name`) even though this entity's scope value normally
+    # comes straight from the `:orgId` route param; `is_system_role` is
+    # summary-only (absent from both write schemas) so it derives `readOnly`
+    # on its own — only its hand-picked label needs declaring.
+    label="Roles",
+    field_meta={
+        "org_id": FieldMeta(ref_entity="organization", label_field="name", label="Organization"),
+        "is_system_role": FieldMeta(label="System role"),
+    },
 )
 
 _PERMISSION_CONFIG = CrudEntityConfig(
@@ -132,6 +148,8 @@ _PERMISSION_CONFIG = CrudEntityConfig(
     resolve_org_id=chain_resolver([]),  # never called — is_global_catalog handles get/list gating
     is_global_catalog=True,
     methods=frozenset({"list", "get"}),
+    # ADR-0053
+    label="Permissions",
 )
 
 _ROLE_ASSIGNMENT_CONFIG = CrudEntityConfig(
@@ -143,6 +161,28 @@ _ROLE_ASSIGNMENT_CONFIG = CrudEntityConfig(
     scope_field="org_id",
     resolve_org_id=chain_resolver([]),
     methods=frozenset({"get", "update", "delete"}),
+    # ADR-0053. **No `full_methods`**: RBAC-3's bespoke `POST`/`GET
+    # /orgs/{org_id}/role-assignments` do widen this entity's real REST
+    # surface, but neither is usable by the generic admin surface — the
+    # bespoke `GET` returns a bare array, not the `{items,total,page,
+    # page_size}` envelope every generic list route (and `EntityTable`)
+    # speaks. `methods` here therefore matches the real *generic* capability
+    # exactly (`get`/`update`/`delete`, no `list`), as the pre-ADR-0053
+    # `entityConfigs/role-assignment.ts` already documented at length. This
+    # is the opposite call from `_PROJECT_FACTORY_CONFIG`'s `full_methods`,
+    # where the bespoke routes sit at the same URL shape and *are* usable.
+    #
+    # `actor_id`/`org_id` stay plain read-only strings (the raw id), NOT
+    # `fk` — `User`/`AIAgent` are structurally excluded from this surface
+    # (ADR-0025), so there's no ref entity to autocomplete against.
+    label="Role assignments",
+    field_order=("actor_id", "org_id", "project_id", "role_id", "created_at"),
+    field_meta={
+        "actor_id": FieldMeta(label="Actor"),
+        "org_id": FieldMeta(label="Organization"),
+        "project_id": FieldMeta(ref_entity="project", label_field="name", label="Project"),
+        "role_id": FieldMeta(ref_entity="role", label_field="name", label="Role"),
+    },
 )
 
 router.include_router(make_crud_router(_ROLE_CONFIG))

@@ -37,6 +37,7 @@ from app.api.routes import (
     agents,
     assets,
     auth,
+    entity_schema,
     execution,
     execution_authoring,
     governance,
@@ -162,6 +163,9 @@ app.include_router(rbac_routes.router, prefix="/api/v1", tags=["rbac"])
 app.include_router(execution.router, prefix="/api/v1", tags=["execution"])
 # ADR-0025: generic-CRUD factory routes for the 4 traceability link tables.
 app.include_router(trace.router, prefix="/api/v1", tags=["trace"])
+# ADR-0053: GET /entities/{resource}/schema, backing the admin surface's
+# field shape at runtime instead of a static frontend entityConfigs/*.ts.
+app.include_router(entity_schema.router, prefix="/api/v1", tags=["entity-schema"])
 # REQ-3/ADR-0028: bespoke atomic-create routes for the rigor path
 # (`POST /requirements/{id}/test-conditions`, `POST /test-conditions/{id}/test-cases`)
 # — each writes an entity row plus its dedicated link row in one transaction,

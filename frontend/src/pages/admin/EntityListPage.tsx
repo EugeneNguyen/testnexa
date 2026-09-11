@@ -132,12 +132,16 @@ function fieldErrorsFrom(error: unknown): Record<string, string> | undefined {
 function EntityListPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { entityKey, config, orgId, projectId, routeParams } = useAdminRouteContext();
+  const { entityKey, config, label, schemaLoading, orgId, projectId, routeParams } = useAdminRouteContext();
   const { scope, onScopeSelectorResolved } = useEntityScope(config, routeParams);
   const permissions = usePermissions(orgId);
 
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  // ADR-0053 (sort): `null` = unsorted (today's pre-sort DB-default order).
+  // Component state only, same posture as `page`/`pageSize`/`filters` above —
+  // not persisted across navigation or reload.
+  const [sort, setSort] = useState<{ field: string; dir: "asc" | "desc" } | null>(null);
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [search, setSearch] = useState("");
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -149,17 +153,36 @@ function EntityListPage() {
   const canList = Boolean(config?.methods.includes("list"));
   const scopeParams = scope.field && scope.value ? { [scope.field]: scope.value } : {};
 
+  const sortParam = sort ? `${sort.dir === "desc" ? "-" : ""}${sort.field}` : undefined;
+
   const listQuery = useQuery({
-    queryKey: ["entity-list", entityKey, scope.field, scope.value, page, pageSize, filters, search],
+    queryKey: ["entity-list", entityKey, scope.field, scope.value, page, pageSize, filters, search, sortParam],
     queryFn: () =>
       listEntities(config!, routeParams, {
         page,
         pageSize,
         q: search || undefined,
+        sort: sortParam,
         params: { ...filters, ...scopeParams },
       }),
     enabled: canList && scope.ready,
   });
+
+  /**
+   * Click-header-to-sort toggle: unsorted -> ascending -> descending ->
+   * unsorted; clicking a *different* column always starts fresh at ascending.
+   * Resets to page 1, same as changing a filter/search term — a sort change
+   * is a new result set, not a new page of the old one.
+   */
+  function handleSortChange(field: string) {
+    setPage(1);
+    setSort((prev) => {
+      if (!prev || prev.field !== field) {
+        return { field, dir: "asc" };
+      }
+      return prev.dir === "asc" ? { field, dir: "desc" } : null;
+    });
+  }
 
   const createMutation = useMutation({
     mutationFn: (values: Record<string, unknown>) => createEntity(config!, routeParams, values),
@@ -190,6 +213,31 @@ function EntityListPage() {
     },
   });
 
+  /**
+   * ADR-0053: the entity's field shape is fetched now
+   * (`GET /entities/{resource}/schema`), so `config` is legitimately
+   * `undefined` for one round trip on every admin page load. Without this
+   * branch that state is indistinguishable from an unknown `:entity` and the
+   * page would flash the "Unknown admin entity" error before the schema
+   * lands. Same `spinner-border role="status"` pattern `EntityFormPage`
+   * already uses for its own item fetch.
+   */
+  if (schemaLoading) {
+    return (
+      <div className="container-fluid px-4 py-4 h-100">
+        <div className="card h-100">
+          <div className="card-body">
+            <div className="d-flex justify-content-center py-4">
+              <div className="spinner-border text-primary" role="status">
+                <span className="visually-hidden">Loading...</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (!config) {
     return (
       <div className="container-fluid px-4 py-4 h-100">
@@ -206,65 +254,80 @@ function EntityListPage() {
 
   const canCreate = config.methods.includes("create") && permissions.has(`${config.resource}.create`, projectId);
 
+  const pageTitle = label ?? entityKey.replace(/-/g, " ");
+
   return (
     <div className="container-fluid px-4 py-4 h-100">
-      <div className="card h-100">
-      <div className="card-body">
-        <div className="d-flex justify-content-between align-items-center mb-3">
-          <h1 className="fs-4 mb-0">{entityKey.replace(/-/g, " ")}</h1>
-          {canCreate && (
-            <button type="button" className="btn btn-primary" onClick={() => setShowCreateModal(true)}>
-              New
-            </button>
-          )}
-        </div>
-
-        {!canList ? (
-          <div className="alert alert-info" role="alert">
-            Listing is not available for this entity through the admin surface — see this entity's own config file
-            for why.
+      {!canList ? (
+        <div className="card h-100">
+          <div className="card-header">
+            <h3 className="card-title">{pageTitle}</h3>
           </div>
-        ) : config.scopeSelector && !scope.ready ? (
-          <ScopeSelector
-            options={config.scopeSelector}
-            onResolved={onScopeSelectorResolved}
-            extraParams={projectId ? { project_id: projectId } : undefined}
-          />
-        ) : (
-          <EntityTable
-            config={config}
-            rows={listQuery.data?.items ?? []}
-            total={listQuery.data?.total ?? 0}
-            page={page}
-            pageSize={pageSize}
-            onPageChange={setPage}
-            onPageSizeChange={setPageSize}
-            loading={listQuery.isLoading}
-            loadError={listQuery.isError ? "Something went wrong. Please try again." : null}
-            filters={filters}
-            onFilterChange={(field, value) => {
-              setPage(1);
-              setFilters((prev) => ({ ...prev, [field]: value }));
-            }}
-            search={search}
-            onSearchChange={(value) => {
-              setPage(1);
-              setSearch(value);
-            }}
-            canEditRow={() => permissions.has(`${config.resource}.update`, projectId)}
-            canDeleteRow={() => permissions.has(`${config.resource}.delete`, projectId)}
-            onEdit={(row) => navigate(`${row.id}/edit`)}
-            onDelete={(row) => {
-              setDeleteError(null);
-              setRowPendingDelete(row);
-            }}
-          />
-        )}
-      </div>
+          <div className="card-body">
+            <div className="alert alert-info" role="alert">
+              Listing is not available for this entity through the admin surface — its served schema does not include
+              the &quot;list&quot; method.
+            </div>
+          </div>
+        </div>
+      ) : config.scopeSelector && !scope.ready ? (
+        <div className="card h-100">
+          <div className="card-header">
+            <h3 className="card-title">{pageTitle}</h3>
+          </div>
+          <div className="card-body">
+            <ScopeSelector
+              options={config.scopeSelector}
+              onResolved={onScopeSelectorResolved}
+              extraParams={projectId ? { project_id: projectId } : undefined}
+            />
+          </div>
+        </div>
+      ) : (
+        <EntityTable
+          title={pageTitle}
+          headerActions={
+            canCreate && (
+              <button type="button" className="btn btn-primary btn-sm" onClick={() => setShowCreateModal(true)}>
+                New
+              </button>
+            )
+          }
+          config={config}
+          rows={listQuery.data?.items ?? []}
+          total={listQuery.data?.total ?? 0}
+          page={page}
+          pageSize={pageSize}
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+          sortField={sort?.field}
+          sortDir={sort?.dir}
+          onSortChange={handleSortChange}
+          loading={listQuery.isLoading}
+          loadError={listQuery.isError ? "Something went wrong. Please try again." : null}
+          filters={filters}
+          onFilterChange={(field, value) => {
+            setPage(1);
+            setFilters((prev) => ({ ...prev, [field]: value }));
+          }}
+          search={search}
+          onSearchChange={(value) => {
+            setPage(1);
+            setSearch(value);
+          }}
+          canEditRow={() => permissions.has(`${config.resource}.update`, projectId)}
+          canDeleteRow={() => permissions.has(`${config.resource}.delete`, projectId)}
+          onEdit={(row) => navigate(`${row.id}/edit`)}
+          onDelete={(row) => {
+            setDeleteError(null);
+            setRowPendingDelete(row);
+          }}
+        />
+      )}
 
       <AdminModal
         visible={showCreateModal}
-        title={<>New {entityKey.replace(/-/g, " ")}</>}
+        title={<>New {label ?? entityKey.replace(/-/g, " ")}</>}
         onClose={() => setShowCreateModal(false)}
       >
         <EntityForm
@@ -307,7 +370,6 @@ function EntityListPage() {
         )}
         Are you sure you want to delete this record? This cannot be undone.
       </AdminModal>
-      </div>
     </div>
   );
 }

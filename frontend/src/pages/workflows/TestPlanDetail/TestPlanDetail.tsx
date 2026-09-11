@@ -18,11 +18,13 @@
  * 1. **Header card** — identifier, `status` as a colour-coded badge, and
  *    scope/approach/staffing/schedule as labelled read-only text blocks. Its
  *    "Edit" modal reuses the generic admin surface's own `TestPlan` field
- *    config (`entityConfigs/test-plan.ts`) rendered through the same
- *    `EntityForm` the admin pages use — not a second, independently-maintained
- *    form. `project_id` is filtered out of that config here: it's this route's
- *    own fixed scope and the backend's `UpdateTestPlanRequest` doesn't accept
- *    it anyway.
+ *    shape — as of [ADR-0053](../../../docs/adr/0053-admin-3-backend-driven-entity-schema.md)
+ *    fetched from `GET /entities/test-plans/schema` via `useEntitySchema`
+ *    rather than imported from a static `entityConfigs/test-plan.ts` — rendered
+ *    through the same `EntityForm` the admin pages use, not a second,
+ *    independently-maintained form. `project_id` is filtered out of that schema
+ *    here: it's this route's own fixed scope and the backend's
+ *    `UpdateTestPlanRequest` doesn't accept it anyway.
  * 2. **Test Suites** — the live membership list (`GET
  *    /test-plans/{id}/test-suites`), an "Include Suite" modal, and a per-row
  *    "Remove". A flat `<ul>`/`<li>`, never a nested `<table>`, per
@@ -35,7 +37,8 @@
  *    `docs/ui-design/2026-09-06-plan-2-entry-exit-criteria-visibility-ui-design.md`
  *    §1) — full CRUD (list/add/edit/delete) over `GET|POST|PATCH|DELETE
  *    /entry-exit-criteria`, driven entirely through the generic
- *    `entityCrud.ts` helpers against `entityConfigs/entry-exit-criteria.ts`.
+ *    `entityCrud.ts` helpers against the backend-served
+ *    `entry-exit-criteria` schema (ADR-0053, same fetch as the header's).
  *    No new API-lib file: the generic list route already filters by
  *    `?test_plan_id=`, so no bespoke `/test-plans/{id}/entry-exit-criteria`
  *    route was added either (ADR-0032's own "Alternatives considered").
@@ -81,7 +84,7 @@
  * equivalent hand-written Bootstrap 5 element. Nothing about the page's
  * structure, semantics, or `data-testid` surface changed in that swap.
  */
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -112,10 +115,8 @@ import {
 } from "../../../lib/api/entityCrud";
 import EntityForm from "../../../components/organisms/entity-form";
 import FkAutocomplete from "../../../components/molecules/fk-autocomplete";
-import testPlanConfig from "../../../entityConfigs/test-plan";
-import testCycleConfig from "../../../entityConfigs/test-cycle";
-import environmentConfig from "../../../entityConfigs/environment";
-import entryExitCriteriaConfig from "../../../entityConfigs/entry-exit-criteria";
+import { pathFor } from "../../../entityConfigs/overrides";
+import { useEntitySchema } from "../../admin/useEntitySchema";
 import type { EntityConfig } from "../../../entityConfigs/types";
 
 const GENERIC_ERROR = "Something went wrong. Please try again.";
@@ -189,29 +190,20 @@ function cycleDateRange(cycle: TestCycleSummary): string {
 }
 
 /**
- * The generic admin `TestPlan` config minus its `project_id` field — the same
- * field list, same labels, same enum values, just without the scope field this
- * route already fixes (and which `UpdateTestPlanRequest` doesn't accept). Built
- * once at module scope: it's a pure derivation of a static config.
+ * ADR-0053: a route-only config for a call that needs "which URL", not "what
+ * fields" — `listEntities`/`createEntity` read only `path`/`listPath`/
+ * `createPath`/`methods` (`lib/api/entityCrud.ts`). Mirrors
+ * `TestCycleDetail`'s helper of the same name; deliberately carries an empty
+ * `fields` so nothing can mistake it for a real schema, and needs no fetch.
  */
-const editConfig: EntityConfig = {
-  ...testPlanConfig,
-  fields: testPlanConfig.fields.filter((field) => field.name !== "project_id"),
-};
+function routeOnlyConfig(resource: string, entityKey: string): EntityConfig {
+  return { resource, path: pathFor(entityKey), methods: ["list", "get", "create", "update", "delete"], fields: [] };
+}
 
-/**
- * The generic admin `EntryExitCriteria` config minus its `test_plan_id` field
- * — exactly the same derivation `editConfig` above performs for
- * `TestPlan.project_id`, and for the same reason: this route already fixes the
- * plan, so the field is neither shown nor user-editable. `test_plan_id` is
- * merged back into the `create` payload by `onSubmitCriteria` itself (PLAN-2 UI
- * Design Document §1); `update` never sends it, matching the backend's
- * "scope fields aren't reassignable through PATCH" posture.
- */
-const criteriaConfig: EntityConfig = {
-  ...entryExitCriteriaConfig,
-  fields: entryExitCriteriaConfig.fields.filter((field) => field.name !== "test_plan_id"),
-};
+/** Listed by `test_plan_id`; only the route is needed. */
+const TEST_CYCLE_ROUTE = routeOnlyConfig("test_cycle", "test-cycles");
+/** Listed by `project_id` and created inline; only the route is needed. */
+const ENVIRONMENT_ROUTE = routeOnlyConfig("environment", "environments");
 
 /**
  * PLAN-2 UI Design Document §1's four-colour criteria-type mapping — a
@@ -370,6 +362,48 @@ function Modal({
 
 function TestPlanDetail() {
   const { projectId, testPlanId } = useParams<{ projectId: string; testPlanId: string }>();
+
+  // --- ADR-0053: the two genuinely backend-owned field lists on this screen --
+  // Both were module-scope constants derived from a static `entityConfigs/*.ts`
+  // import until ADR-0053 made the backend the source of truth for field shape.
+  // They have to live inside the component now, because a fetch does — hooks
+  // are called unconditionally here, before any early return.
+  const { config: testPlanSchema } = useEntitySchema("test-plans");
+  const { config: criteriaSchema } = useEntitySchema("entry-exit-criteria");
+
+  /**
+   * The `TestPlan` schema minus its `project_id` field — same field list, same
+   * labels, same enum values, just without the scope field this route already
+   * fixes (and which `UpdateTestPlanRequest` doesn't accept).
+   *
+   * `fields: []` while the schema is in flight; the edit modal's own render is
+   * gated on `testPlanSchema` below, so the empty list is never shown as if it
+   * were a real (fieldless) form.
+   */
+  const editConfig = useMemo<EntityConfig>(
+    () => ({
+      ...(testPlanSchema ?? routeOnlyConfig("test_plan", "test-plans")),
+      fields: (testPlanSchema?.fields ?? []).filter((field) => field.name !== "project_id"),
+    }),
+    [testPlanSchema],
+  );
+
+  /**
+   * The `EntryExitCriteria` schema minus its `test_plan_id` field — exactly the
+   * derivation `editConfig` performs for `TestPlan.project_id`, same reason:
+   * this route already fixes the plan, so the field is neither shown nor
+   * user-editable. `test_plan_id` is merged back into the `create` payload by
+   * `onSubmitCriteria` itself (PLAN-2 UI Design Document §1); `update` never
+   * sends it, matching the backend's "scope fields aren't reassignable through
+   * PATCH" posture.
+   */
+  const criteriaConfig = useMemo<EntityConfig>(
+    () => ({
+      ...(criteriaSchema ?? routeOnlyConfig("entry_exit_criteria", "entry-exit-criteria")),
+      fields: (criteriaSchema?.fields ?? []).filter((field) => field.name !== "test_plan_id"),
+    }),
+    [criteriaSchema],
+  );
 
   const [plan, setPlan] = useState<TestPlanSummary | null>(null);
   const [planLoading, setPlanLoading] = useState(true);
@@ -552,7 +586,7 @@ function TestPlanDetail() {
     setCyclesLoadError(null);
     try {
       const response = await listEntities<TestCycleSummary>(
-        testCycleConfig,
+        TEST_CYCLE_ROUTE,
         {},
         { params: { test_plan_id: testPlanId } },
       );
@@ -591,7 +625,7 @@ function TestPlanDetail() {
     }
     try {
       const response = await listEntities<EntityRow>(
-        environmentConfig,
+        ENVIRONMENT_ROUTE,
         {},
         { params: { project_id: projectId } },
       );
@@ -869,7 +903,7 @@ function TestPlanDetail() {
       let environmentId = values.environmentId ?? "";
       if (values.newEnvironment) {
         const created = await createEntity<EntityRow>(
-          environmentConfig,
+          ENVIRONMENT_ROUTE,
           {},
           {
             project_id: projectId,
@@ -1298,7 +1332,10 @@ function TestPlanDetail() {
         testId="edit-test-plan-modal"
       >
         <div className="modal-body">
-          {plan && (
+          {/* ADR-0053: also gated on `testPlanSchema` — `editConfig` carries an
+              empty `fields` until the schema fetch resolves, and a fieldless
+              form would render as if the entity genuinely had no fields. */}
+          {plan && testPlanSchema && (
             <EntityForm
               config={editConfig}
               mode="edit"
@@ -1394,7 +1431,9 @@ function TestPlanDetail() {
         testId="criteria-modal"
       >
         <div className="modal-body">
-          {criteriaModal && (
+          {/* ADR-0053: gated on `criteriaSchema` for the same reason the edit
+              modal above is — see that comment. */}
+          {criteriaModal && criteriaSchema && (
             <EntityForm
               // Remount between create and each edit target so RHF picks up
               // that row's own `defaultValues` — `EntityForm` reads

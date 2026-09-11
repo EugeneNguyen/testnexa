@@ -40,6 +40,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.crud_factory import (
     CrudEntityConfig,
+    FieldMeta,
+    ScopeSelectorOption,
     chain_resolver,
     make_crud_router,
     resolve_test_case_org_id,
@@ -134,6 +136,9 @@ _REQUIREMENT_CONFIG = CrudEntityConfig(
     resolve_org_id=chain_resolver([]),
     filter_fields=("external_ref",),
     search_fields=("title", "description", "external_ref", "source"),
+    # ADR-0053
+    label="Requirements",
+    field_meta={"project_id": FieldMeta(ref_entity="project", label_field="name", label="Project")},
 )
 
 # No `create` — see module docstring (REQ-3/ADR-0028); same posture as
@@ -147,6 +152,18 @@ _TEST_CONDITION_CONFIG = CrudEntityConfig(
     scope_field="requirement_id",
     resolve_org_id=chain_resolver([(Requirement, "requirement_id")]),
     methods=frozenset({"list", "get", "update", "delete"}),
+    # ADR-0053. `requirement_id` derives as readOnly (and not required)
+    # because REQ-3/ADR-0028 removed this entity's generic create — the
+    # bespoke `POST /requirements/{id}/test-conditions` owns it, so there is
+    # no create form for it to be required on. `entityConfigs/test-condition.ts`
+    # still claimed `required: true`, stale since that removal: exactly the
+    # drift this ADR closes, so the derived shape is the correct one.
+    label="Test conditions",
+    scope_selector=ScopeSelectorOption(ref_entity="requirement", param_name="requirement_id"),
+    field_order=("requirement_id", "description", "priority"),
+    field_meta={
+        "requirement_id": FieldMeta(ref_entity="requirement", label_field="description", label="Requirement"),
+    },
 )
 
 # No `list`/`create` — see module docstring.
@@ -161,6 +178,42 @@ _TEST_CASE_CONFIG = CrudEntityConfig(
     filter_fields=("status", "test_level_id", "test_type_id"),
     search_fields=("title", "preconditions", "expected_result"),
     methods=frozenset({"get", "update", "delete"}),
+    # ADR-0053. `methods` above is already this entity's whole REST surface for
+    # the admin CRUD screens, so no `full_methods` override: the two bespoke
+    # `TestCase` routes (`POST`/`GET /requirements/{id}/test-cases`, REQ-2/
+    # ADR-0028) hang off `Requirement`'s own path, not `/test-cases`, so
+    # `EntityListPage`/`EntityFormPage` genuinely cannot call them for this
+    # entity — `entityConfigs/test-case.ts` said the same thing.
+    #
+    # `field_order` is needed because `create_schema=None` leaves
+    # `UpdateTestCaseRequest`'s own declaration order as the only derived
+    # order, and that lists the three FKs *last* — `entityConfigs/test-case.ts`
+    # led with them. `required`/`readOnly` legitimately diverge from the old
+    # `.ts` for the same reason `_TEST_CONDITION_CONFIG` above documents: no
+    # generic create route exists, so "required on create" describes a form
+    # that cannot exist.
+    label="Test cases",
+    field_order=(
+        "test_condition_id",
+        "test_level_id",
+        "test_type_id",
+        "title",
+        "preconditions",
+        "expected_result",
+        "status",
+    ),
+    field_meta={
+        "test_condition_id": FieldMeta(
+            ref_entity="test-condition", label_field="description", label="Test condition"
+        ),
+        "test_level_id": FieldMeta(ref_entity="test-level", label_field="name", label="Test level"),
+        "test_type_id": FieldMeta(ref_entity="test-type", label_field="name", label="Test type"),
+        "preconditions": FieldMeta(show_in_table=False),
+        "expected_result": FieldMeta(show_in_table=False),
+        # Summary-only (so already `readOnly`), and never on any form/table the
+        # old `.ts` declared — hidden rather than surfaced as a raw actor UUID.
+        "created_by_actor_id": FieldMeta(show_in_table=False),
+    },
 )
 
 _TEST_STEP_CONFIG = CrudEntityConfig(
@@ -171,6 +224,16 @@ _TEST_STEP_CONFIG = CrudEntityConfig(
     summary_schema=TestStepSummary,
     scope_field="test_case_id",
     resolve_org_id=resolve_via_test_case,
+    # ADR-0053. `scope_field` is `test_case_id`, not `project_id` — the list
+    # can't fetch until an admin picks which `TestCase` to scope by, hence the
+    # selector. `sequence` is an `int` column that derives as `type: "string"`
+    # (the field-type enum has no numeric type) — the same approximation
+    # `entityConfigs/test-step.ts` carried, so no override needed.
+    label="Test steps",
+    scope_selector=ScopeSelectorOption(ref_entity="test-case", param_name="test_case_id"),
+    field_meta={
+        "test_case_id": FieldMeta(ref_entity="test-case", label_field="title", label="Test case"),
+    },
 )
 
 _TEST_SUITE_CONFIG = CrudEntityConfig(
@@ -181,6 +244,13 @@ _TEST_SUITE_CONFIG = CrudEntityConfig(
     summary_schema=TestSuiteSummary,
     scope_field="project_id",
     resolve_org_id=chain_resolver([]),
+    # ADR-0053. Direct project scope, so no `scope_selector` (`:projectId` is
+    # already in the route) and no `field_order` (`project_id` is on
+    # `CreateTestSuiteRequest`, so it already derives first).
+    label="Test suites",
+    field_meta={
+        "project_id": FieldMeta(ref_entity="project", label_field="name", label="Project"),
+    },
 )
 
 router.include_router(make_crud_router(_REQUIREMENT_CONFIG))
