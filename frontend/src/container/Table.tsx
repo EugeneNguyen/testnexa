@@ -110,6 +110,48 @@
  *
  * [ADR-0041]: docs/adr/0041-ds-2-table-container-shared-pagination.md
  * ADR-0042: the CoreUI -> AdminLTE v4 migration (`docs/adr/`).
+ *
+ * ## Tabler v1.5.1 table idioms (added 2026-09-11, cascade-favors-Tabler pass)
+ *
+ * Tabler's `.table`/`.card`/`.btn` tokens already win project-wide since
+ * ADR-0054 moved the cascade; this container just opts into the Tabler-shaped
+ * defaults so the rendered look matches the rest of Tabler without a caller-
+ * side change:
+ *
+ * - `.table-vcenter` is the default (added unconditionally with `table-hover`),
+ *   matching Tabler's polished vertical-centered look. Opt out via
+ *   `tableProps.className` overriding, or accept it as the new normal.
+ * - The default wrapper is `<div className="table-responsive">`; pass
+ *   `responsive="md"` (or `"sm"`/`"lg"`/`"xl"`) to scope the horizontal scroll
+ *   to below that breakpoint, or `responsive={false}` to drop the wrapper
+ *   entirely when the caller has its own.
+ * - Pass `stickyHeader` to add `.sticky-top` to the `<thead>` for long tables
+ *   where the header should stay visible while rows scroll past.
+ * - Pass `caption` to render a real `<caption>` element (Tabler's a11y note
+ *   says this is load-bearing for screen-reader announcement).
+ *
+ * ## Caller-side Tabler composition patterns (no new prop needed)
+ *
+ * Tabler documents several table shapes the container deliberately leaves to
+ * the caller, since they're row-/cell-level composition choices that don't
+ * belong on this outer container's API:
+ *
+ * - **Sortable headers** — render a `<button class="table-sort" data-sort="x">`
+ *   inside a `<th scope="col">`, set `aria-sort="ascending|descending|none"`
+ *   on the `<th>`. The button is keyboard-reachable; the actual sort logic
+ *   lives in the caller's own state.
+ * - **Selectable rows** — add `.table-selectable` to `tableProps.className`,
+ *   render `.table-selectable-check` checkboxes, use `.on-checked`/`.on-
+ *   unchecked` spans inside the row for state-dependent content. Pure CSS,
+ *   no JS.
+ * - **Mobile-stacked** — add `table-mobile-md` (or `-sm`/`-lg`/`-xl`) to
+ *   `tableProps.className`, set `data-label="..."` on each `<td>`. The table
+ *   collapses into a stacked list below that breakpoint.
+ * - **Truncated cells** — `<td className="td-truncate"><div className="text-
+ *   truncate">long content</div></td>` keeps long values from stretching the
+ *   column.
+ * - **Contextual row variants** — `<tr className="table-primary|table-danger|
+ *   ...">` on the caller's `renderRow` output.
  */
 import { ReactNode, useEffect, useState } from "react";
 
@@ -199,6 +241,43 @@ export interface TableProps<T> {
   paginationLabel?: string;
   /** `data-testid` prefix for the pagination row and page-size selector. */
   testIdPrefix?: string;
+  /**
+   * When true, the `<thead>` gets `.sticky-top` so the header stays visible
+   * while long bodies scroll past. Tabler/Bootstrap utility — works under
+   * the current cascade without extra CSS.
+   */
+  stickyHeader?: boolean;
+  /**
+   * Controls the responsive wrapper:
+   *   - `"always"` (default) — `<div className="table-responsive">`, scrolls at every width
+   *   - `"sm" | "md" | "lg" | "xl"` — Tabler's `table-responsive-{bp}` variants, scroll only below that breakpoint
+   *   - `false` — no wrapper, caller's responsibility (e.g. nested inside an already-scrolling container)
+   */
+  responsive?: "always" | "sm" | "md" | "lg" | "xl" | false;
+  /**
+   * Optional accessible caption. Rendered as a real `<caption>` element
+   * inside `<table>` when provided — Tabler's a11y section calls this out
+   * specifically (caption is announced first by screen readers and stays
+   * tied to the table).
+   */
+  caption?: ReactNode;
+  /**
+   * Optional card-title. When set, the whole container enters **card mode**:
+   * outer becomes `<div class="card">`, a `.card-header` is rendered with
+   * this title (as `<h3 class="card-title">`) followed by the existing
+   * `header` slot (search box, toolbar, ...) and the optional `cardActions`
+   * div, and the table itself gets `card-table` instead of `table-vcenter` —
+   * Tabler's own "Table in a card" pattern (drops bottom margin, runs
+   * edge-to-edge inside the card). The responsive wrapper is suppressed in
+   * card mode (the card border constrains width).
+   */
+  cardTitle?: ReactNode;
+  /**
+   * Optional header action content, rendered inside `.card-actions` next to
+   * `cardTitle`. Pass the caller's own buttons/links — typically a "New X"
+   * primary button (matches Tabler's own Card Actions example).
+   */
+  cardActions?: ReactNode;
 }
 
 /**
@@ -223,6 +302,11 @@ function Table<T>({
   tableProps,
   paginationLabel = "Page navigation",
   testIdPrefix = "table",
+  stickyHeader = false,
+  responsive = "always",
+  caption,
+  cardTitle,
+  cardActions,
 }: TableProps<T>) {
   // Client mode owns both page and page size internally (there is nothing to
   // re-fetch). Server mode owns neither — the caller drives both so its own
@@ -294,93 +378,139 @@ function Table<T>({
   const showPaginationRow = totalPages > 1;
 
   // `tableProps.className` is merged with (not allowed to clobber) the
-  // container's own `table table-hover` — CoreUI's `CTable` did the same
-  // merge internally for its `hover`/`small`/`className` props.
+  // container's own table classes. Card mode swaps `table-vcenter table-hover`
+  // for `card-table` (Tabler's own pattern for tables inside cards: drops the
+  // bottom margin, runs edge-to-edge inside the card border, manages its own
+  // cell padding). Outside card mode the default is `table-vcenter table-hover`.
+  const useCard = cardTitle !== undefined && cardTitle !== null;
   const { className: extraTableClassName, ...restTableProps } = (tableProps ?? {}) as {
     className?: string;
   } & Record<string, unknown>;
-  const tableClassName = ["table", "table-hover", extraTableClassName].filter(Boolean).join(" ");
+  const baseTableClasses = useCard ? ["table", "card-table"] : ["table", "table-vcenter", "table-hover"];
+  const tableClassName = [...baseTableClasses, extraTableClassName].filter(Boolean).join(" ");
+
+  // `responsive` controls the horizontal-scroll wrapper. In card mode the
+  // wrapper is suppressed unconditionally — the card's own border is the
+  // horizontal-scroll container, and stacking `table-responsive` over it
+  // double-pads. Outside card mode: `false` = no wrapper, default = always,
+  // `"sm"|"md"|"lg"|"xl"` = Tabler breakpoint variants.
+  const responsiveClassName = useCard
+    ? null
+    : responsive === false
+      ? null
+      : responsive === undefined || responsive === "always"
+        ? "table-responsive"
+        : `table-responsive-${responsive}`;
 
   const isPreviousDisabled = currentPage <= 1;
   const isNextDisabled = currentPage >= totalPages;
+
+  const tableElement = (
+    <table className={tableClassName} {...restTableProps}>
+      {caption !== undefined && caption !== null && <caption>{caption}</caption>}
+      <thead className={stickyHeader ? "sticky-top" : undefined}>{columns}</thead>
+      <tbody>
+        {visibleItems.map((item) => (
+          <TableRowSlot key={rowKey(item)}>{renderRow(item)}</TableRowSlot>
+        ))}
+      </tbody>
+    </table>
+  );
+
+  // The card-header hosts `cardTitle` (h3.card-title), the existing `header`
+  // slot (search box, toolbar), and the new `cardActions` div for header
+  // buttons. The order matches Tabler's own Card Actions example.
+  const cardHeader =
+    useCard && (
+      <div className="card-header">
+        <h3 className="card-title">{cardTitle}</h3>
+        {header}
+        {cardActions !== undefined && cardActions !== null && (
+          <div className="card-actions">{cardActions}</div>
+        )}
+      </div>
+    );
+
+  const paginationBlock = showPaginationRow && (
+    <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <div className="d-flex align-items-center gap-2">
+        <label className="mb-0 text-body-secondary small" htmlFor={`${testIdPrefix}-page-size`}>
+          Rows per page
+        </label>
+        <select
+          className="form-select form-select-sm"
+          id={`${testIdPrefix}-page-size`}
+          style={{ width: "auto" }}
+          aria-label="Rows per page"
+          data-testid={`${testIdPrefix}-page-size`}
+          value={effectivePageSize}
+          onChange={(event) => changePageSize(Number(event.target.value))}
+        >
+          {PAGE_SIZE_OPTIONS.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <nav aria-label={paginationLabel} data-testid={`${testIdPrefix}-pagination`}>
+        <ul className="pagination">
+          <li className={`page-item${isPreviousDisabled ? " disabled" : ""}`}>
+            <button
+              type="button"
+              className="page-link"
+              disabled={isPreviousDisabled}
+              onClick={() => goToPage(currentPage - 1)}
+            >
+              Previous
+            </button>
+          </li>
+          {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+            <li key={p} className={`page-item${p === currentPage ? " active" : ""}`}>
+              <button
+                type="button"
+                className="page-link"
+                aria-current={p === currentPage ? "page" : undefined}
+                onClick={() => goToPage(p)}
+              >
+                {p}
+              </button>
+            </li>
+          ))}
+          <li className={`page-item${isNextDisabled ? " disabled" : ""}`}>
+            <button
+              type="button"
+              className="page-link"
+              disabled={isNextDisabled}
+              onClick={() => goToPage(currentPage + 1)}
+            >
+              Next
+            </button>
+          </li>
+        </ul>
+      </nav>
+    </div>
+  );
+
+  if (useCard) {
+    return (
+      <div className="card">
+        {cardHeader}
+        {responsiveClassName ? <div className={responsiveClassName}>{tableElement}</div> : tableElement}
+        {paginationBlock}
+      </div>
+    );
+  }
 
   return (
     <div>
       {header}
 
       {/* `responsive` on the old CTable = this wrapper (ADR-0042 spec §2.1). */}
-      <div className="table-responsive">
-        <table className={tableClassName} {...restTableProps}>
-          <thead>{columns}</thead>
-          <tbody>
-            {visibleItems.map((item) => (
-              <TableRowSlot key={rowKey(item)}>{renderRow(item)}</TableRowSlot>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {responsiveClassName ? <div className={responsiveClassName}>{tableElement}</div> : tableElement}
 
-      {showPaginationRow && (
-        <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
-          <div className="d-flex align-items-center gap-2">
-            <label className="mb-0 text-body-secondary small" htmlFor={`${testIdPrefix}-page-size`}>
-              Rows per page
-            </label>
-            <select
-              className="form-select form-select-sm"
-              id={`${testIdPrefix}-page-size`}
-              style={{ width: "auto" }}
-              aria-label="Rows per page"
-              data-testid={`${testIdPrefix}-page-size`}
-              value={effectivePageSize}
-              onChange={(event) => changePageSize(Number(event.target.value))}
-            >
-              {PAGE_SIZE_OPTIONS.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <nav aria-label={paginationLabel} data-testid={`${testIdPrefix}-pagination`}>
-            <ul className="pagination">
-              <li className={`page-item${isPreviousDisabled ? " disabled" : ""}`}>
-                <button
-                  type="button"
-                  className="page-link"
-                  disabled={isPreviousDisabled}
-                  onClick={() => goToPage(currentPage - 1)}
-                >
-                  Previous
-                </button>
-              </li>
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                <li key={p} className={`page-item${p === currentPage ? " active" : ""}`}>
-                  <button
-                    type="button"
-                    className="page-link"
-                    aria-current={p === currentPage ? "page" : undefined}
-                    onClick={() => goToPage(p)}
-                  >
-                    {p}
-                  </button>
-                </li>
-              ))}
-              <li className={`page-item${isNextDisabled ? " disabled" : ""}`}>
-                <button
-                  type="button"
-                  className="page-link"
-                  disabled={isNextDisabled}
-                  onClick={() => goToPage(currentPage + 1)}
-                >
-                  Next
-                </button>
-              </li>
-            </ul>
-          </nav>
-        </div>
-      )}
+      {paginationBlock}
     </div>
   );
 }
