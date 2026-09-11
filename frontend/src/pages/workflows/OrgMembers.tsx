@@ -264,7 +264,7 @@ function OrgMembers() {
   }
 
   return (
-    <div className="bg-body-secondary min-vh-100 py-4">
+    <div className="min-vh-100 py-4">
       <div className="container-fluid px-4">
         <div className="row justify-content-center">
           <div className="col-12 col-lg-9">

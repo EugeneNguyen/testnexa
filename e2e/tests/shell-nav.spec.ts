@@ -8,13 +8,17 @@ import { expect, test } from "@playwright/test";
  * code-review criterion, not automatable, and is skipped here per that
  * doc's own note).
  *
- * **ADR-0042 (2026-09-08, CoreUI → AdminLTE v4):** the selectors below moved
- * with the design system. `.sidebar` → `.app-sidebar` and `.header` →
- * `.app-header` (both are now named areas of AdminLTE's `.app-wrapper` CSS
- * grid). More consequentially for TC-SHELL-004, the sidebar's open/collapsed
- * state is no longer a class on the sidebar ELEMENT (CoreUI's `show`/`hide`)
- * — AdminLTE keeps it on `<body>` as `sidebar-collapse` / `sidebar-open`,
- * which is what `AppShell` now writes. Every `data-testid` is unchanged.
+ * **ADR-0054 (2026-09-10, AdminLTE → Tabler, Phase 2):** the selectors below
+ * moved again with the design system. `.app-sidebar` → `aside.navbar-vertical`
+ * and `.app-header` → `header.navbar` (Tabler's own "Sidebar layout" markup,
+ * no CSS-grid named areas anymore). More consequentially for TC-SHELL-004,
+ * the sidebar's open/collapsed state is no longer a class on `<body>`
+ * (AdminLTE's `sidebar-collapse`/`sidebar-open`) — Tabler's
+ * `.navbar-expand-lg` breakpoint rule forces `#sidebar-menu` visible above
+ * the breakpoint regardless of class, so the only state that exists at all is
+ * a `show` class on `#sidebar-menu` itself, mobile-only, owned by `AppShell`'s
+ * local `mobileOpen` state (see `AppShell.tsx`'s own docstring). Every
+ * `data-testid` is unchanged.
  *
  * Fixture seeding follows this directory's established convention
  * (`org-create-second.spec.ts`, `org-invite-suspend-lifecycle.spec.ts`):
@@ -167,13 +171,13 @@ test.describe("SHELL-1 persistent sidebar + navbar shell", () => {
       await page.waitForURL(/\/orgs\/pick/);
 
       // TC-SHELL-001 (part 1/3): shell renders on /orgs/pick.
-      await expect(page.locator(".app-sidebar")).toBeVisible();
-      await expect(page.locator(".app-header")).toBeVisible();
+      await expect(page.locator("aside.navbar-vertical")).toBeVisible();
+      await expect(page.locator("header.navbar")).toBeVisible();
       await expect(page.getByTestId("logout-button")).toBeVisible();
 
       // TC-SHELL-005: brand renders, org-scoped nav items absent (no orgId
       // route param on /orgs/pick).
-      await expect(page.locator(".app-sidebar").getByText("TestNexa")).toBeVisible();
+      await expect(page.locator("aside.navbar-vertical").getByText("TestNexa")).toBeVisible();
       await expect(page.getByTestId("sidebar-nav-org-home")).toHaveCount(0);
       await expect(page.getByTestId("sidebar-nav-org-members")).toHaveCount(0);
 
@@ -182,8 +186,8 @@ test.describe("SHELL-1 persistent sidebar + navbar shell", () => {
       await page.waitForURL(new RegExp(`/orgs/${user.orgAId}$`));
 
       // TC-SHELL-001 (part 2/3): shell renders on /orgs/:orgId (org home).
-      await expect(page.locator(".app-sidebar")).toBeVisible();
-      await expect(page.locator(".app-header")).toBeVisible();
+      await expect(page.locator("aside.navbar-vertical")).toBeVisible();
+      await expect(page.locator("header.navbar")).toBeVisible();
       await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
       await expect(page.getByTestId("sidebar-nav-org-home")).toBeVisible();
       await expect(page.getByTestId("sidebar-nav-org-members")).toBeVisible();
@@ -194,8 +198,8 @@ test.describe("SHELL-1 persistent sidebar + navbar shell", () => {
       await page.waitForURL(new RegExp(`/orgs/${user.orgAId}/members`));
 
       // TC-SHELL-001 (part 3/3): shell renders on /orgs/:orgId/members.
-      await expect(page.locator(".app-sidebar")).toBeVisible();
-      await expect(page.locator(".app-header")).toBeVisible();
+      await expect(page.locator("aside.navbar-vertical")).toBeVisible();
+      await expect(page.locator("header.navbar")).toBeVisible();
 
       // TC-SHELL-002: both nav items present; "Members" active, "Dashboard"
       // not (prefix-match regression check — AppSidebar.tsx's `end` prop on
@@ -224,18 +228,16 @@ test.describe("SHELL-1 persistent sidebar + navbar shell", () => {
 
     try {
       // Narrow (mobile) viewport, set BEFORE any navigation — matching a
-      // real mobile user loading the page already at this width, rather
-      // than a desktop user live-resizing mid-session. `AppShell` resolves
-      // its initial sidebar state from `matchMedia("(max-width: 991.98px)")`
-      // at mount (the same initial resolution AdminLTE's own
-      // `PushMenu.init()` does), so loading already-narrow means the mobile
-      // branch is settled before this test's first assertion — avoiding a
-      // race that a mid-session `setViewportSize` immediately followed by a
-      // toggler click would otherwise risk.
+      // real mobile user loading the page already at this width. Tabler's
+      // `.navbar-expand-lg` rule only forces `#sidebar-menu` visible ABOVE
+      // its breakpoint, so loading already-narrow means the mobile branch is
+      // what's on screen for this test's whole run — there is no responsive
+      // state machine to race against (ADR-0054: no `matchMedia` listener at
+      // all anymore, see `AppShell.tsx`'s own docstring).
       //
-      // 375px is well under AdminLTE's own 991.98px `sidebar-expand-lg`
-      // breakpoint (published by that class as `::before { content:
-      // "991.98px" }`), so this is unambiguously the mobile branch.
+      // 375px is well under Bootstrap's `lg` (992px) breakpoint that
+      // `navbar-expand-lg` gates on, so this is unambiguously the mobile
+      // branch.
       await page.setViewportSize({ width: 375, height: 812 });
 
       await page.goto("/login");
@@ -246,45 +248,24 @@ test.describe("SHELL-1 persistent sidebar + navbar shell", () => {
       await page.getByText("SHELL-1 E2E Org A").click();
       await page.waitForURL(new RegExp(`/orgs/${user.orgAId}$`));
 
-      // ADR-0042: state moved off the sidebar element and onto <body>. This
-      // is AdminLTE's own `push-menu.ts` contract, reproduced in React by
-      // `AppShell` — and note the desktop/mobile ASYMMETRY it encodes:
-      // desktop defaults open and closing it ADDS `sidebar-collapse`, while
-      // mobile defaults closed and opening it ADDS `sidebar-open`. At 375px
-      // we are on the mobile side, so the sidebar starts collapsed and the
-      // toggler's job is to add `sidebar-open` (and clear `sidebar-collapse`,
-      // since `PushMenu.expand()` removes it).
-      const body = page.locator("body");
-      await expect(body).toHaveClass(/\bsidebar-collapse\b/);
-      await expect(body).not.toHaveClass(/\bsidebar-open\b/);
+      // ADR-0054: the sidebar's mobile open/closed state is a `show` class on
+      // `#sidebar-menu` itself (a plain Bootstrap `.collapse.navbar-collapse`
+      // element), owned by `AppShell`'s local `mobileOpen` boolean — not a
+      // body-level class the way AdminLTE's retired `push-menu.ts` port kept
+      // it. Below the breakpoint the sidebar starts closed (`mobileOpen`
+      // initializes `false`), and the header's toggler adds `show`.
+      const sidebarMenu = page.locator("#sidebar-menu");
+      await expect(sidebarMenu).not.toHaveClass(/\bshow\b/);
 
       await page.getByTestId("sidebar-toggler").click();
-      await expect(body).toHaveClass(/\bsidebar-open\b/);
-      await expect(body).not.toHaveClass(/\bsidebar-collapse\b/);
+      await expect(sidebarMenu).toHaveClass(/\bshow\b/);
 
-      // `.sidebar-overlay` is the mobile click-outside scrim. AdminLTE's own
-      // JS injects it at runtime; we don't load that JS, so `AppShell` must
-      // render it — if it were missing, there would be no way to dismiss the
-      // sidebar on mobile except the toggler itself.
-      //
-      // **Pre-existing bug in this line, found and fixed during SHELL-7
-      // (2026-09-08), NOT caused by it.** A bare `.click()` targets the
-      // element's CENTER; the overlay spans the whole `.app-wrapper` (375px
-      // wide, taller than the viewport at 375x812), so its center lands at
-      // x≈187 — *inside* the 250px-wide open sidebar, which carries `z-index:
-      // 1038` against the overlay's `1037` and therefore intercepts the
-      // pointer. Playwright retries the click until the test times out, and
-      // the failure reads exactly like "the overlay stopped working."
-      // Attribution was settled empirically with an A/B probe run against the
-      // same live stack with and without SHELL-7's new `sidebar-mini` body
-      // class: byte-identical interception both ways, and a click at any point
-      // genuinely outside the sidebar collapses correctly in both. Passing an
-      // explicit `position` is the fix — do not revert it to a bare `.click()`.
-      await page
-        .locator(".app-wrapper > .sidebar-overlay")
-        .click({ position: { x: 340, y: 700 } });
-      await expect(body).toHaveClass(/\bsidebar-collapse\b/);
-      await expect(body).not.toHaveClass(/\bsidebar-open\b/);
+      // No `.sidebar-overlay` scrim exists under Tabler (ADR-0054) — the
+      // collapsing nav pushes content down in normal flow rather than
+      // floating over it, so there's nothing to click outside of. Dismissal
+      // is the toggler itself, a second time.
+      await page.getByTestId("sidebar-toggler").click();
+      await expect(sidebarMenu).not.toHaveClass(/\bshow\b/);
     } finally {
       cleanup(user);
     }

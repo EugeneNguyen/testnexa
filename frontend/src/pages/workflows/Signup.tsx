@@ -124,7 +124,7 @@ function Signup() {
   }
 
   return (
-    <div className="min-vh-100 d-flex align-items-center bg-body-secondary">
+    <div className="min-vh-100 d-flex align-items-center">
       <div className="container">
         <div className="row justify-content-center">
           <div className="col-md-7 col-lg-5">

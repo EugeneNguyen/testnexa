@@ -83,44 +83,56 @@
  *   tooltip — no test (unit or e2e) asserts on the tooltip's own rendering,
  *   only on `aria-label`/`data-testid`, so reimplementing hover-positioning
  *   logic by hand would be pure risk for a behaviour nothing here verifies.
- * ## AdminLTE v4 (ADR-0042) — what changed
+ * ## Tabler v1.5.1 (ADR-0054, Phase 2) — what changed from AdminLTE v4
  *
- * - **The header root is `.app-header navbar navbar-expand`**, not CoreUI's
- *   `.header`. It is a direct child of `AppShell`'s `.app-wrapper` CSS grid
- *   and claims the `lte-app-header` grid area; an intermediate wrapper div
- *   would break that placement (see `AppShell.tsx`'s docstring).
- * - **The sidebar toggler no longer flips a prop on `AppSidebar`.** AdminLTE
- *   keeps sidebar state in `sidebar-collapse`/`sidebar-open` classes on
- *   `document.body`, so the button calls a handler `AppShell` owns and
- *   `AppShell` writes those classes. `data-lte-toggle="sidebar"` is kept on
- *   the button for convention parity with AdminLTE's own delegated listener
- *   — nothing is actually listening for it, because we don't load that JS.
- * - **Color mode is a deliberate breaking change**, not a rename for
- *   tidiness (ADR-0042 §4.3, matching `admin-lte/src/ts/color-mode.ts`'s own
- *   constants): the attribute written to `<html>` is **`data-bs-theme`** (was
- *   `data-coreui-theme`) and the `localStorage` key is **`lte-theme`** (was
- *   `coreui-react-color-scheme`). A user who had picked a theme before this
- *   migration therefore falls back to their system preference once, on their
- *   next visit, and re-picks — accepted, since the alternative (reading the
- *   old key as a fallback) would leave a dead CoreUI-named key in storage
- *   forever for a one-click cost. The three choices, their `data-testid`s and
- *   the `auto` → `prefers-color-scheme` resolution are all unchanged.
- * - **Icons are Font Awesome classes on an `<i>`**, not `CIcon` + a path
- *   array (ADR-0042 §3.2): `cilMenu`→`fa-bars`, `cilBuilding`→`fa-building`,
- *   `cilSun`→`fa-sun`, `cilMoon`→`fa-moon`,
- *   `cilContrast`→`fa-circle-half-stroke`. `size="lg"` → FA's own `fa-lg`.
- *   Each is `aria-hidden` — the buttons carry their own `aria-label`.
+ * - **The header root is `header.navbar.navbar-expand-md.d-print-none`**,
+ *   Tabler's own top-bar markup (the "Sample layout" doc's `<header>`), not
+ *   AdminLTE's `.app-header` CSS-grid area — `AppShell` no longer uses a
+ *   grid, so there is no named area to claim (see `AppShell.tsx`'s own
+ *   docstring).
+ * - **The sidebar toggler still doesn't flip a prop on `AppSidebar`
+ *   directly** — it calls a handler `AppShell` owns, which now flips a
+ *   single `mobileOpen` boolean passed down as a prop, replacing AdminLTE's
+ *   `sidebar-collapse`/`sidebar-open` body classes. `data-lte-toggle` is
+ *   dropped (nothing AdminLTE-flavoured is listening for it under Tabler
+ *   either); the button keeps Tabler's own `navbar-toggler`/
+ *   `navbar-toggler-icon` classes purely for their visual styling — no
+ *   `data-bs-toggle` attribute is set, so Tabler's own loaded JS (ADR-0053)
+ *   never sees this button, avoiding the duplicate-listener risk ADR-0053's
+ *   Consequences flagged. The button **stays in the header** rather than
+ *   moving into `AppSidebar` (Tabler's own doc snippet's placement) — a
+ *   deliberate deviation, see ADR-0054 Decision for why.
+ * - **Color mode storage key renames again** (ADR-0054): the attribute
+ *   written to `<html>` stays **`data-bs-theme`** (Tabler is also
+ *   Bootstrap-5-based and reads the same attribute AdminLTE did), but the
+ *   `localStorage` key moves from AdminLTE's `lte-theme` to Tabler's own
+ *   documented convention, **`tabler-theme`**. Same one-time-reset trade-off
+ *   ADR-0042 §4.3 already accepted the first time this key was renamed. The
+ *   three choices, their `data-testid`s and the `auto` →
+ *   `prefers-color-scheme` resolution are all unchanged.
+ * - Icons stay Font Awesome classes on an `<i>` — unaffected by the design
+ *   system swap (ADR-0042 §3.2's mapping carries forward unchanged).
+ * - **The 3 header items (org switcher, color mode, log out) moved off the
+ *   `Button` atom onto Tabler's own `.nav-item`/`.nav-link` pattern**
+ *   (2026-09-11, matching the CTO-supplied Tabler page-layout doc's header
+ *   sample verbatim — `div.nav-item` wrapping a plain, borderless
+ *   `.nav-link`, not a bordered `.btn-outline-*` pill). Each trigger is
+ *   still a real `<button type="button">` (an action/toggle, not
+ *   navigation — `<a href="#">` was Tabler's own sample's choice for a
+ *   dropdown trigger, but these aren't links), just styled `nav-link px-2`
+ *   instead of via the `Button` atom. Every `data-testid`/`aria-label` and
+ *   all the underlying state machines above are unchanged — only the
+ *   wrapping markup and visual treatment moved.
  *
  * Everything else in this file is deliberately unchanged, including the three
  * org-switcher behaviours enumerated above and the `.dropdown`/`.dropdown-menu`/
- * `.dropdown-item` markup — those are stock Bootstrap 5 classes, which
- * AdminLTE v4 is built on, so they need no translation at all.
+ * `.dropdown-item` markup — those are stock Bootstrap 5 classes, which Tabler
+ * v1.5.1 is also built on, so they need no translation at all.
  */
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../../auth/AuthContext";
 import { getMyOrgs, type OrgSummary } from "../../../lib/api/auth";
-import { Button } from "../../atoms/button";
 
 interface AppHeaderProps {
   onToggleSidebar: () => void;
@@ -128,10 +140,10 @@ interface AppHeaderProps {
 
 type ColorMode = "light" | "dark" | "auto";
 
-/** `admin-lte/src/ts/color-mode.ts`'s own `STORAGE_KEY` constant. */
-const COLOR_MODE_STORAGE_KEY = "lte-theme";
+/** Tabler's own `tabler-theme.js` storage-key convention (ADR-0054). */
+const COLOR_MODE_STORAGE_KEY = "tabler-theme";
 
-/** `admin-lte/src/ts/color-mode.ts`'s own `ATTRIBUTE_THEME` constant. */
+/** Bootstrap 5's standard dark-mode attribute — unchanged across AdminLTE/Tabler. */
 const COLOR_MODE_ATTRIBUTE = "data-bs-theme";
 
 const COLOR_MODE_ICON: Record<ColorMode, string> = {
@@ -303,22 +315,21 @@ function AppHeader({ onToggleSidebar }: AppHeaderProps) {
   const activeIcon = COLOR_MODE_ICON[colorMode] ?? COLOR_MODE_ICON.auto;
 
   return (
-    <nav className="app-header navbar navbar-expand bg-body">
+    <header className="navbar navbar-expand-md d-print-none">
       <div className="container-fluid d-flex justify-content-between align-items-center">
         <div className="d-flex align-items-center">
           <button
             type="button"
-            className="btn btn-link nav-link px-2"
-            // Convention parity with AdminLTE's own delegated click listener
-            // (`push-menu.ts`'s `[data-lte-toggle="sidebar"]` selector). We
-            // don't load that JS — `onClick` is what actually runs, calling
-            // back into the state `AppShell` owns.
-            data-lte-toggle="sidebar"
+            className="navbar-toggler"
+            // No `data-bs-toggle` attribute — this button's state is fully
+            // React-owned (`AppShell`'s `mobileOpen`), and Tabler's own
+            // loaded JS (ADR-0053) must never see a toggle attribute it
+            // would try to drive itself. See this file's own docstring.
             data-testid="sidebar-toggler"
             aria-label="Toggle sidebar"
             onClick={onToggleSidebar}
           >
-            <i className="fa-solid fa-bars fa-lg" aria-hidden="true" />
+            <span className="navbar-toggler-icon" />
           </button>
           {/* BRAND-1 follow-up (2026-09-09, direct CTO instruction): the
               header carries no brand mark at all — the sidebar (always
@@ -326,15 +337,14 @@ function AppHeader({ onToggleSidebar }: AppHeaderProps) {
               now. ADR-0048 Decision §7 originally put a small mark here;
               amended in the same ADR's Consequences. */}
         </div>
-        <div className="d-flex align-items-center">
+        <div className="navbar-nav flex-row order-md-last align-items-center">
           <div
-            className={orgSwitcherDropdown.open ? "dropdown me-2 show" : "dropdown me-2"}
+            className={orgSwitcherDropdown.open ? "nav-item dropdown show" : "nav-item dropdown"}
             ref={orgSwitcherDropdown.ref}
           >
-            <Button
-              color="secondary"
-              outline
-              className={orgSwitcherDropdown.open ? "show" : undefined}
+            <button
+              type="button"
+              className={orgSwitcherDropdown.open ? "nav-link px-2 show" : "nav-link px-2"}
               aria-expanded={orgSwitcherDropdown.open}
               data-testid="org-switcher-toggle"
               aria-label="Switch organization"
@@ -342,13 +352,26 @@ function AppHeader({ onToggleSidebar }: AppHeaderProps) {
               onClick={toggleOrgSwitcher}
             >
               <i className="fa-solid fa-building fa-lg" aria-hidden="true" />
-            </Button>
+            </button>
             <ul
               className={
                 orgSwitcherDropdown.open ? "dropdown-menu show dropdown-menu-end" : "dropdown-menu dropdown-menu-end"
               }
               role="menu"
               data-testid="org-switcher-menu"
+              // Tabler v1.5.1's own CSS gates `.dropdown-menu`'s `top:100%`
+              // positioning behind a `[data-bs-popper]`/`[data-tblr-popper]`
+              // attribute selector — without it, an absolutely-positioned
+              // horizontal-navbar dropdown-menu falls back to its
+              // hypothetical static-flow position and overlaps its own
+              // toggle (found live: the open menu intercepted a second click
+              // on the toggle meant to close it). We don't run Bootstrap/
+              // Tabler's real Popper-driven JS (this file's own established
+              // "React owns the state" rule), so this attribute is set
+              // statically here purely as a CSS hook — its presence is all
+              // the selector checks, not its value, and nothing reads it as
+              // a signal to auto-initialize any JS behavior.
+              data-bs-popper=""
             >
               <li className="dropdown-header">Switch organization</li>
               {orgList.status === "loading" && (
@@ -388,25 +411,27 @@ function AppHeader({ onToggleSidebar }: AppHeaderProps) {
             </ul>
           </div>
           <div
-            className={colorModeDropdown.open ? "dropdown me-2 show" : "dropdown me-2"}
+            className={colorModeDropdown.open ? "nav-item dropdown show" : "nav-item dropdown"}
             ref={colorModeDropdown.ref}
           >
-            <Button
-              color="secondary"
-              outline
-              className={colorModeDropdown.open ? "show" : undefined}
+            <button
+              type="button"
+              className={colorModeDropdown.open ? "nav-link px-2 show" : "nav-link px-2"}
               aria-expanded={colorModeDropdown.open}
               data-testid="color-mode-toggle"
               aria-label="Toggle color mode"
               onClick={() => colorModeDropdown.setOpen((prev) => !prev)}
             >
               <i className={`${activeIcon} fa-lg`} aria-hidden="true" />
-            </Button>
+            </button>
             <ul
               className={
                 colorModeDropdown.open ? "dropdown-menu show dropdown-menu-end" : "dropdown-menu dropdown-menu-end"
               }
               role="menu"
+              // See org-switcher-menu's own comment above — same Tabler
+              // CSS-gating fix, same reason.
+              data-bs-popper=""
             >
               <li>
                 <a
@@ -446,12 +471,21 @@ function AppHeader({ onToggleSidebar }: AppHeaderProps) {
               </li>
             </ul>
           </div>
-          <Button color="secondary" outline data-testid="logout-button" onClick={handleLogout}>
-            Log out
-          </Button>
+          <div className="nav-item">
+            <button
+              type="button"
+              className="nav-link px-2"
+              data-testid="logout-button"
+              aria-label="Log out"
+              onClick={handleLogout}
+            >
+              <i className="fa-solid fa-right-from-bracket fa-lg" aria-hidden="true" />
+              <span className="d-none d-sm-inline ps-2">Log out</span>
+            </button>
+          </div>
         </div>
       </div>
-    </nav>
+    </header>
   );
 }
 

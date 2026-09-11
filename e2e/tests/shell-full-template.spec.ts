@@ -289,31 +289,32 @@ test.describe("SHELL-4 dark/light color-mode toggle", () => {
     try {
       await loginToOrgHome(page, admin);
 
-      // FR-SHELL-5 (ADR-0026, superseded by ADR-0042): AdminLTE v4 ships no
-      // `sidebar-dark-*`/`sidebar-light-*` skin class at all (frontend/
-      // CLAUDE.md) — `AppSidebar`'s own static dark background is now a
-      // plain `bg-body-secondary` on `.app-sidebar` (there is no `.sidebar`
-      // element), independent of this describe block's app-wide light/dark/
-      // auto toggle. The invariant under test is unchanged: the sidebar's
-      // own background class must never move regardless of
-      // `<html data-bs-theme>`.
-      const sidebar = page.locator(".app-sidebar");
+      // FR-SHELL-5 (ADR-0026, ADR-0054): AdminLTE v4 shipped no
+      // `sidebar-dark-*`/`sidebar-light-*` skin class at all, so the sidebar's
+      // static dark scheme was a plain `bg-body-secondary` utility. Tabler
+      // (ADR-0054) has its own documented mechanism for the identical claim —
+      // a per-navigation `data-bs-theme="dark"` override, set directly on
+      // `aside.navbar-vertical`, which the sidebar carries unconditionally
+      // regardless of `<html data-bs-theme>`. The invariant under test is
+      // unchanged: the sidebar's own theme attribute must never move
+      // alongside the app-wide toggle.
+      const sidebar = page.locator("aside.navbar-vertical");
       const html = page.locator("html");
-      await expect(sidebar).toHaveClass(/\bbg-body-secondary\b/);
+      await expect(sidebar).toHaveAttribute("data-bs-theme", "dark");
 
       await page.getByTestId("color-mode-toggle").click();
       await page.getByTestId("color-mode-light").click();
       await expect(html).toHaveAttribute("data-bs-theme", "light");
-      await expect(sidebar).toHaveClass(/\bbg-body-secondary\b/);
+      await expect(sidebar).toHaveAttribute("data-bs-theme", "dark");
 
       await page.getByTestId("color-mode-toggle").click();
       await page.getByTestId("color-mode-auto").click();
-      await expect(sidebar).toHaveClass(/\bbg-body-secondary\b/);
+      await expect(sidebar).toHaveAttribute("data-bs-theme", "dark");
 
       await page.getByTestId("color-mode-toggle").click();
       await page.getByTestId("color-mode-dark").click();
       await expect(html).toHaveAttribute("data-bs-theme", "dark");
-      await expect(sidebar).toHaveClass(/\bbg-body-secondary\b/);
+      await expect(sidebar).toHaveAttribute("data-bs-theme", "dark");
     } finally {
       cleanup(admin);
     }

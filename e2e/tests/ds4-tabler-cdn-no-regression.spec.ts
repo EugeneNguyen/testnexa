@@ -2,38 +2,46 @@ import { execFileSync } from "node:child_process";
 import { expect, test, type Page } from "@playwright/test";
 
 /**
- * TABLER-1 / DS-4 ([ADR-0053](../../docs/adr/0053-tabler-install-phase-1-cdn.md)),
+ * TABLER-1 / DS-4 ([ADR-0053](../../docs/adr/0053-tabler-install-phase-1-cdn.md),
+ * **superseded for this file by [ADR-0054](../../docs/adr/0054-tabler-shell-migration-phase-2.md)**),
  * Test Design §44's **no-visible-regression class**. Covers **TC-DS-031**.
  *
- * The claim under test is a real CSS cascade-order question, not a source
- * fact: AdminLTE (ADR-0042) and Tabler are both Bootstrap-5-derived and both
- * ship global, unscoped `.card`/`.btn`/`.table` rules, so whichever stylesheet
- * lands later in DOM order wins every conflicting selector regardless of which
- * markup is actually in use. ADR-0053 places Tabler's `<link>` first in
- * `index.html` *specifically* so AdminLTE's own imports (injected later, from
- * `src/main.tsx`) keep winning — and ADR-0053 explicitly says not to trust
- * that ordering by inspection alone. jsdom/Vitest cannot answer this (no
- * layout, no real cascade), so it is answered here, against a real browser.
- * The literal-tag half of the story lives in `frontend/src/main.TablerCdn.test.ts`
- * (TC-DS-032) — see Test Design §44 for why the two are not redundant.
+ * **Inverted 2026-09-10 (ADR-0054, Phase 2).** ADR-0053's own claim — "Tabler
+ * loads but AdminLTE keeps winning every conflicting selector" — is now FALSE
+ * BY DESIGN: ADR-0054 deliberately moves Tabler's `<link>` after AdminLTE's
+ * own imports in document order specifically so Tabler wins project-wide,
+ * shell and unmigrated pages alike (the accepted repo-wide visual-shift
+ * consequence ADR-0054's own Context section names). This file's assertions
+ * are inverted to match — "as shipped" now expects TABLER's values, and the
+ * old spec's own step-3 control ("move Tabler last, prove it CAN win") is
+ * replaced by the mirror-image control ("move Tabler first, prove AdminLTE
+ * CAN still win if it were positioned last again") — same purpose, opposite
+ * direction, so a broken/unreachable CDN still fails loudly rather than
+ * passing vacuously.
  *
- * **Why this spec cannot pass vacuously.** A no-regression assertion is only
- * meaningful if the thing it claims is harmless is actually *present and
- * capable of doing harm*. Each test therefore runs three measurements, not one:
+ * The claim under test is still a real CSS cascade-order question, not a
+ * source fact: AdminLTE (ADR-0042) and Tabler are both Bootstrap-5-derived
+ * and both ship global, unscoped `.card`/`.btn`/`.table` rules, so whichever
+ * stylesheet lands later in DOM order wins every conflicting selector
+ * regardless of which markup is actually in use. jsdom/Vitest cannot answer
+ * this (no layout, no real cascade), so it is answered here, against a real
+ * browser. The literal-tag half of the story lives in
+ * `frontend/src/main.TablerCdn.test.ts` (TC-DS-032) — see Test Design §44 for
+ * why the two are not redundant.
  *
- *   1. **As shipped** — Tabler's CDN stylesheet loaded, in its ADR-0053
- *      position. Assert AdminLTE's values.
- *   2. **Tabler disabled** — same values, proving Tabler contributes nothing
- *      to what is rendered today (the literal "unchanged versus without them"
- *      wording of TC-DS-031, measured rather than inferred).
- *   3. **Tabler moved last in `<head>`** — a deliberate, in-test mutation that
- *      hands Tabler the cascade. Both values MUST change. This is the control:
- *      if the CDN were unreachable, blocked, or serving an empty file, step 3
- *      would produce no change and the test fails loudly instead of silently
- *      "passing" on a stylesheet that never loaded.
+ * **Why this spec cannot pass vacuously.** A cascade-order assertion is only
+ * meaningful if the thing it claims wins is actually *present and capable of
+ * winning*. Each test therefore runs three measurements, not one:
  *
- * Step 3 also documents, in executable form, exactly what Phase 2 of the
- * AdminLTE -> Tabler migration will look like the moment the ordering flips.
+ *   1. **As shipped** — Tabler's CDN stylesheet loaded, in its ADR-0054
+ *      position (after AdminLTE's own imports). Assert TABLER's values.
+ *   2. **Tabler disabled** — AdminLTE's values reappear, proving Tabler (not
+ *      some other cause) is what's winning today.
+ *   3. **Tabler moved first in `<head>`** — a deliberate, in-test mutation
+ *      that hands AdminLTE the cascade back. Both values MUST revert. This is
+ *      the control: if the CDN were unreachable, blocked, or serving an empty
+ *      file, step 1 would already have failed (nothing to revert from), so
+ *      this also confirms step 1's "win" wasn't a fluke of some other rule.
  *
  * Fixture seeding follows this directory's established convention
  * (`shell-nav.spec.ts`, `org-create-second.spec.ts`): direct `AsyncSessionLocal`
@@ -213,14 +221,19 @@ async function setTablerEnabled(page: Page, enabled: boolean): Promise<void> {
   }, enabled);
 }
 
-/** Re-append Tabler's `<link>` as the LAST child of `<head>` so it wins. */
-async function moveTablerLast(page: Page): Promise<void> {
+/**
+ * Re-insert Tabler's `<link>` as the FIRST child of `<head>` so AdminLTE
+ * (injected later, from `src/main.tsx`) wins again — the inverse of
+ * ADR-0053's own now-superseded "move last" control, matching ADR-0054's
+ * flip in the opposite direction.
+ */
+async function moveTablerFirst(page: Page): Promise<void> {
   await page.evaluate(() => {
     for (const link of document.querySelectorAll<HTMLLinkElement>(
       'link[href*="@tabler/core"]',
     )) {
       link.disabled = false;
-      document.head.appendChild(link);
+      document.head.insertBefore(link, document.head.firstChild);
     }
     void document.body.offsetHeight;
   });
@@ -230,7 +243,7 @@ async function moveTablerLast(page: Page): Promise<void> {
  * The full three-measurement assertion described in this file's header,
  * applied to whatever screen `page` is currently showing.
  */
-async function assertAdminLteStillWins(page: Page, screen: string): Promise<void> {
+async function assertTablerWins(page: Page, screen: string): Promise<void> {
   // Precondition: the tags ADR-0053 added are actually in this document.
   await expect(
     page.locator(`link[href*="${TABLER_CDN_MARKER}"]`),
@@ -241,65 +254,76 @@ async function assertAdminLteStillWins(page: Page, screen: string): Promise<void
     `${screen}: Tabler <script> should be present`,
   ).toHaveCount(1);
 
-  // 1. As shipped.
+  // 1. As shipped (ADR-0054): Tabler wins.
   const shipped = await measure(page);
   expect(
     shipped.tablerPrimaryVar,
     `${screen}: Tabler's stylesheet must actually have loaded from the CDN — ` +
       "an unreachable/empty sheet would make every assertion below vacuous",
   ).toBe(TABLER_PRIMARY_VAR);
-  expect(shipped.cardBoxShadow, `${screen}: .card box-shadow`).toBe(ADMINLTE_CARD_BOX_SHADOW);
   expect(shipped.btnPrimaryBg, `${screen}: .btn-primary background-color`).toBe(
-    ADMINLTE_BTN_PRIMARY_BG,
-  );
-  expect(shipped.btnPrimaryBg, `${screen}: .btn-primary must not be Tabler's primary`).not.toBe(
     TABLER_BTN_PRIMARY_BG,
   );
+  expect(shipped.cardBoxShadow, `${screen}: .card box-shadow must not be AdminLTE's`).not.toBe(
+    ADMINLTE_CARD_BOX_SHADOW,
+  );
 
-  // 2. Tabler disabled — the literal "versus without them" comparison.
+  // 2. Tabler disabled — AdminLTE reappears, proving Tabler (not some other
+  //    rule) is what's actually winning today.
+  //
+  // Polled, not read once: found empirically against a live instance (this
+  // repo's own "verify, don't assume" testing rule) — disabling a `<link>`
+  // is not always applied synchronously by Chromium's style engine either,
+  // the same async-recalc quirk the pre-existing step 3 below already
+  // documented for re-enabling/re-parenting one. `--tblr-primary` (a custom
+  // property read) recomputes promptly; `.btn-primary`'s own
+  // `background-color` (a full cascade re-resolution) can lag a beat behind
+  // it on the very same disable — confirmed on a live isolated stack, not
+  // assumed from source.
   await setTablerEnabled(page, false);
+  await expect
+    .poll(async () => (await measure(page)).btnPrimaryBg, {
+      message: `${screen}: .btn-primary bg without Tabler`,
+      timeout: 10000,
+    })
+    .toBe(ADMINLTE_BTN_PRIMARY_BG);
   const withoutTabler = await measure(page);
   expect(
     withoutTabler.tablerPrimaryVar,
     `${screen}: --tblr-primary should be gone once the sheet is disabled`,
   ).toBe("");
   expect(withoutTabler.cardBoxShadow, `${screen}: .card box-shadow without Tabler`).toBe(
-    shipped.cardBoxShadow,
-  );
-  expect(withoutTabler.btnPrimaryBg, `${screen}: .btn-primary bg without Tabler`).toBe(
-    shipped.btnPrimaryBg,
+    ADMINLTE_CARD_BOX_SHADOW,
   );
 
-  // 3. Control: hand Tabler the cascade — both values MUST change.
+  // 3. Control: hand AdminLTE the cascade back — both values MUST revert.
   //
   // Polled rather than read once: re-enabling a `disabled` stylesheet and
   // re-parenting its `<link>` is not applied synchronously by Chromium's style
   // engine, so an immediate `getComputedStyle` still reports the pre-move
-  // values. (Found empirically — a single read here failed on both screens
-  // with the *old* value, which reads exactly like "the control doesn't work"
-  // rather than "the control hasn't taken effect yet".)
-  await moveTablerLast(page);
+  // values (found empirically on the pre-flip version of this spec).
+  await moveTablerFirst(page);
   await expect
     .poll(async () => (await measure(page)).btnPrimaryBg, {
-      message: `${screen}: control — with Tabler last in <head> it should win .btn-primary`,
+      message: `${screen}: control — with Tabler first in <head> AdminLTE should win .btn-primary again`,
       timeout: 10000,
     })
-    .toBe(TABLER_BTN_PRIMARY_BG);
-  const tablerWins = await measure(page);
+    .toBe(ADMINLTE_BTN_PRIMARY_BG);
+  const adminLteWinsAgain = await measure(page);
   expect(
-    tablerWins.cardBoxShadow,
-    `${screen}: control — with Tabler last in <head> it should win .card's box-shadow`,
-  ).not.toBe(ADMINLTE_CARD_BOX_SHADOW);
+    adminLteWinsAgain.cardBoxShadow,
+    `${screen}: control — with Tabler first in <head> AdminLTE should win .card's box-shadow again`,
+  ).toBe(ADMINLTE_CARD_BOX_SHADOW);
 }
 
-test.describe("DS-4 Tabler CDN install (Phase 1) leaves AdminLTE's rendered styles unchanged", () => {
-  test("TC-DS-031: unauthenticated screen (/login)", async ({ page }) => {
+test.describe("DS-4/ADR-0054 Tabler now wins the cascade project-wide (Phase 2 flip)", () => {
+  test("TC-DS-031 (revised, ADR-0054): unauthenticated screen (/login)", async ({ page }) => {
     await page.goto("/login", { waitUntil: "networkidle" });
     await expect(page.getByRole("button", { name: /log in|sign in/i })).toBeVisible();
-    await assertAdminLteStillWins(page, "/login");
+    await assertTablerWins(page, "/login");
   });
 
-  test("TC-DS-031: authenticated AdminLTE shell (org Dashboard)", async ({ page }) => {
+  test("TC-DS-031 (revised, ADR-0054): authenticated shell (org Dashboard)", async ({ page }) => {
     test.setTimeout(90000);
     const user = seedUser();
 
@@ -310,13 +334,15 @@ test.describe("DS-4 Tabler CDN install (Phase 1) leaves AdminLTE's rendered styl
       await page.getByRole("button", { name: /log in|sign in/i }).click();
       await page.waitForURL(new RegExp(`/orgs/${user.orgId}$`), { timeout: 30000 });
 
-      // The AdminLTE shell itself, not just the page body — this is the
-      // screen TC-DS-031 names as its example.
-      await expect(page.locator(".app-sidebar")).toBeVisible({ timeout: 15000 });
-      await expect(page.locator(".app-header")).toBeVisible();
+      // The Tabler shell itself, not just the page body — this is the
+      // screen TC-DS-031 names as its example. Selectors updated for
+      // ADR-0054: `.app-sidebar`/`.app-header` (AdminLTE grid areas) →
+      // `aside.navbar-vertical`/`header.navbar` (Tabler's own markup).
+      await expect(page.locator("aside.navbar-vertical")).toBeVisible({ timeout: 15000 });
+      await expect(page.locator("header.navbar")).toBeVisible();
       await expect(page.locator(".card").first()).toBeVisible();
 
-      await assertAdminLteStillWins(page, "org Dashboard");
+      await assertTablerWins(page, "org Dashboard");
     } finally {
       cleanup(user);
     }

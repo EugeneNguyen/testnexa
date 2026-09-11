@@ -201,14 +201,14 @@ function cleanup(fixture: NavContextFixture): void {
  * in the DOM at all until then. Racing that with a plain 5s assertion fails
  * with "element(s) not found", which reads exactly like an unresolved nav
  * rather than a page that simply hadn't booted yet. Same helper shape as
- * `shell2-breadcrumb-coverage.spec.ts`'s, waiting on `.app-sidebar` (which the
+ * `shell2-breadcrumb-coverage.spec.ts`'s, waiting on `aside.navbar-vertical` (which the
  * component renders unconditionally, even in its empty-nav state) rather than
  * on any nav item, so that a genuinely-unresolved sidebar still fails the
  * assertions below instead of hanging here.
  */
 async function gotoProtected(page: import("@playwright/test").Page, path: string): Promise<void> {
   await page.goto(path);
-  await page.locator("aside.app-sidebar").waitFor({ state: "attached", timeout: 60_000 });
+  await page.locator("aside.navbar-vertical").waitFor({ state: "attached", timeout: 60_000 });
 }
 
 test.describe("SHELL-9: project-scope nav context (sidebar + breadcrumb)", () => {
@@ -379,8 +379,9 @@ test.describe("SHELL-9: project-scope nav context (sidebar + breadcrumb)", () =>
       await gotoProtected(page, `/projects/${fixture.projectId}`);
 
       // Open the "Test Design" group and click through to Requirements. Same
-      // toggle-then-child pattern `shell7-sidebar-mini.spec.ts` already
-      // established for the org side's own groups.
+      // toggle-then-child pattern already established for the org side's own
+      // groups (`shell7-sidebar-mini.spec.ts`, retired by ADR-0054 alongside
+      // the `sidebar-mini` feature it tested).
       await page
         .getByTestId("sidebar-nav-group-test-design")
         .getByRole("link", { name: "Test Design" })
