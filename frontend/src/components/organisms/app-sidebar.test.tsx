@@ -80,7 +80,7 @@ describe("AppSidebar", () => {
 
     const projectsLink = screen.getByTestId("sidebar-nav-projects");
     expect(projectsLink).toHaveTextContent("Projects");
-    const icon = projectsLink.querySelector("i.nav-icon");
+    const icon = projectsLink.querySelector("i.nav-link-icon");
     expect(icon).not.toBeNull();
     expect(icon).toHaveClass("fa-solid", "fa-folder");
     expect(icon).toHaveAttribute("aria-hidden", "true");
@@ -103,56 +103,67 @@ describe("AppSidebar", () => {
 
     const orgHomeLink = screen.getByTestId("sidebar-nav-org-home");
     expect(orgHomeLink).toHaveTextContent("Dashboard");
-    const icon = orgHomeLink.querySelector("i.nav-icon");
+    const icon = orgHomeLink.querySelector("i.nav-link-icon");
     expect(icon).not.toBeNull();
     expect(icon).toHaveClass("fa-solid", "fa-gauge-high");
     expect(icon).toHaveAttribute("aria-hidden", "true");
   });
 
-  // ADR-0042 §4.4's own "hard-won details": `.sidebar-menu` (NOT v3's
-  // `nav-sidebar`, which has zero occurrences in v4.9.1's CSS) sets only
-  // `white-space: nowrap`, so it needs Bootstrap's `nav flex-column` or the
-  // list renders bulleted and horizontal; and nav labels must be wrapped in
-  // `<p>`, which is what `.sidebar-menu .nav-link p` styles and what the
-  // mini-collapse animation shrinks to `width: 0`.
-  it("renders the AdminLTE sidebar-menu contract (nav flex-column, <p>-wrapped labels)", () => {
+  // ADR-0054: Tabler's own "Sidebar layout" doc markup — `ul.navbar-nav`
+  // inside `div.collapse.navbar-collapse`, nav labels wrapped in
+  // `span.nav-link-title` (not AdminLTE's `<p>`).
+  it("renders the Tabler navbar-nav contract (collapse > navbar-nav, span-wrapped labels)", () => {
     const { container } = renderSidebar("/orgs/org-1");
 
-    const menu = container.querySelector("ul.sidebar-menu");
+    const collapse = container.querySelector("#sidebar-menu");
+    expect(collapse).not.toBeNull();
+    expect(collapse).toHaveClass("collapse", "navbar-collapse");
+    const menu = collapse!.querySelector("ul.navbar-nav");
     expect(menu).not.toBeNull();
-    expect(menu).toHaveClass("nav", "flex-column");
-    expect(menu).toHaveAttribute("data-lte-toggle", "treeview");
-    expect(container.querySelector(".nav-sidebar")).toBeNull();
+    expect(container.querySelector(".sidebar-menu, .nav-sidebar")).toBeNull();
 
-    expect(screen.getByTestId("sidebar-nav-org-members").querySelector("p")).toHaveTextContent(
-      "Members",
-    );
+    expect(
+      screen.getByTestId("sidebar-nav-org-members").querySelector("span.nav-link-title"),
+    ).toHaveTextContent("Members");
   });
 
-  // Treeview contract (`admin-lte/src/ts/treeview.ts`): open state is
-  // `menu-open` on the `li.nav-item`, the submenu is `ul.nav.nav-treeview`,
-  // and `aria-expanded` sits on the group's own `.nav-link` toggle.
-  it("toggles a nav group with AdminLTE's menu-open/nav-treeview classes", async () => {
+  // Tabler's own dropdown-group contract (ADR-0054): open state is `active`
+  // on the `li.nav-item.dropdown` + `show` on the `div.dropdown-menu`, and
+  // `aria-expanded` sits on the group's own `.dropdown-toggle`.
+  it("toggles a nav group with Tabler's dropdown/show classes", async () => {
     const { container } = renderSidebar("/orgs/org-1");
 
     const group = screen.getByTestId("sidebar-nav-group-access-control");
-    expect(group).toHaveClass("nav-item");
-    expect(group).not.toHaveClass("menu-open");
+    expect(group).toHaveClass("nav-item", "dropdown");
+    expect(group).not.toHaveClass("active");
 
-    const submenu = group.querySelector("ul");
-    expect(submenu).toHaveClass("nav", "nav-treeview");
+    const submenu = group.querySelector(".dropdown-menu");
+    expect(submenu).not.toHaveClass("show");
 
-    const toggle = group.querySelector("a.nav-link")!;
+    const toggle = group.querySelector("a.dropdown-toggle")!;
     expect(toggle).toHaveAttribute("aria-expanded", "false");
 
-    fireEvent.click(toggle);
-    expect(group).toHaveClass("menu-open");
-    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    // The disclosure arrow swaps glyph with the open state (2026-09-11) — a
+    // real icon, not Tabler's own `::after` caret, which never changed
+    // direction (found live, see `index.css`'s own comment on why it's
+    // suppressed).
+    const arrow = () => toggle.querySelector("i.nav-arrow")!;
+    expect(arrow()).toHaveClass("fa-angle-right");
 
     fireEvent.click(toggle);
-    expect(group).not.toHaveClass("menu-open");
-    // CoreUI's own group classes must be gone entirely.
-    expect(container.querySelector(".nav-group, .nav-group-items, .nav-group-toggle")).toBeNull();
+    expect(group).toHaveClass("active");
+    expect(submenu).toHaveClass("show");
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(arrow()).toHaveClass("fa-angle-down");
+    expect(arrow()).not.toHaveClass("fa-angle-right");
+
+    fireEvent.click(toggle);
+    expect(group).not.toHaveClass("active");
+    expect(submenu).not.toHaveClass("show");
+    expect(arrow()).toHaveClass("fa-angle-right");
+    expect(arrow()).not.toHaveClass("fa-angle-down");
+    // AdminLTE's own treeview classes must be gone entirely.
+    expect(container.querySelector(".menu-open, .nav-treeview")).toBeNull();
   });
 
   it("marks the org-home item active on /orgs/:orgId but not on /orgs/:orgId/members (prefix-match regression check)", () => {
@@ -175,38 +186,25 @@ describe("AppSidebar", () => {
     expect(screen.getByTestId("sidebar-nav-org-home").className).not.toMatch(/\bactive\b/);
   });
 
-  // TC-DS-027 (BRAND-1, ADR-0048 Decision §6). Scope is deliberately narrow:
-  // DOM presence + AdminLTE's exact class pair, nothing about the cross-fade
-  // itself. jsdom runs no CSS and does no layout, so the actual expand/collapse
-  // visibility swap is a live-browser claim — see the Test Plan's own BRAND-1
-  // risk row and `e2e/tests/brand1-logo-system.spec.ts`.
-  it("TC-DS-027: renders BOTH brand marks unconditionally with AdminLTE's logo-xl/logo-xs classes", () => {
+  // TC-DS-027 (BRAND-1, ADR-0048 Decision §6) — RETIRED by ADR-0054. AdminLTE's
+  // mini-rail xl/xs logo cross-fade has no Tabler equivalent (the fold/mini
+  // feature itself is retired, ADR-0054 Consequences), so there is nothing
+  // left to cross-fade between: a single `sidebar-brand-logo` image replaces
+  // the xl/xs pair. This asserts the single-image contract that replaces it.
+  it("TC-DS-027 (superseded by ADR-0054): renders a single brand mark image", () => {
     renderSidebar("/orgs/org-1");
 
-    const xl = screen.getByTestId("sidebar-brand-logo-xl");
-    const xs = screen.getByTestId("sidebar-brand-logo-xs");
-
-    // Both present at once, with no state driving which one exists — AdminLTE's
-    // shipped CSS, not React, decides which is visible.
-    expect(xl.tagName).toBe("IMG");
-    expect(xs.tagName).toBe("IMG");
-    expect(xl).toHaveClass("brand-image-xl", "logo-xl");
-    expect(xs).toHaveClass("brand-image-xs", "logo-xs");
-
-    // DEVIATION from TC-DS-027 as originally written (the row has since been
-    // corrected in place, 2026-09-09, to match this): it named `logo-full.svg`
-    // for the xl slot. It cannot be used there — AdminLTE
-    // positions both marks absolutely while `.brand-text` sits in flow beside
-    // them, so a lockup carrying its own wordmark paints "TestNexa" twice,
-    // overlapping (measured on a live instance). `.brand-text` can't be dropped
-    // to make room either: the already-shipped TC-SHELL-005 asserts it visible.
-    // See `app-sidebar.tsx`'s own comment and the BRAND-1 completion report.
-    expect(xl).toHaveAttribute("src", expect.stringContaining("logo-mark"));
-    expect(xs).toHaveAttribute("src", expect.stringContaining("logo-mark"));
-
+    const logo = screen.getByTestId("sidebar-brand-logo");
+    expect(logo.tagName).toBe("IMG");
+    expect(logo).toHaveClass("navbar-brand-image");
+    expect(logo).toHaveAttribute("src", expect.stringContaining("logo-mark"));
     // Decorative: the accessible name comes from the wrapping link (TC-DS-029).
-    expect(xl).toHaveAttribute("alt", "");
-    expect(xs).toHaveAttribute("alt", "");
+    expect(logo).toHaveAttribute("alt", "");
+
+    // The retired xl/xs pair must be gone, not merely renamed alongside a
+    // leftover duplicate.
+    expect(screen.queryByTestId("sidebar-brand-logo-xl")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("sidebar-brand-logo-xs")).not.toBeInTheDocument();
   });
 
   // TC-DS-029 (sidebar mount).
@@ -214,7 +212,6 @@ describe("AppSidebar", () => {
     renderSidebar("/orgs/org-1");
 
     const link = screen.getByRole("link", { name: /TestNexa home/i });
-    expect(link).toHaveClass("brand-link");
     expect(link).toHaveAttribute("href", "/dashboard");
   });
 
@@ -230,28 +227,17 @@ describe("AppSidebar", () => {
     expect(screen.queryByTestId("sidebar-nav-org-members")).not.toBeInTheDocument();
   });
 
-  // FR-SHELL-5 (ADR-0026) / TC-SHELL-015 originally asserted CoreUI's
-  // `sidebar-dark` skin class on the sidebar root, independent of
-  // FR-SHELL-4's app-wide light/dark/auto toggle.
-  //
-  // ADR-0042: **there is no `sidebar-dark` in AdminLTE v4** — the entire
-  // `sidebar-dark-*`/`sidebar-light-*` skin family was removed (zero
-  // occurrences in the shipped CSS; v4 themes a sidebar with `--lte-sidebar-*`
-  // custom properties or a nested `data-bs-theme`). The class is dropped
-  // rather than substituted with an invented one, so this test now asserts
-  // AdminLTE's own demo default (`bg-body-secondary`) on the `.app-sidebar`
-  // root, plus the *absence* of the retired class. This is a deliberate
-  // visual change, recorded in this story's ADR, not a regression.
-  it("renders the sidebar root as .app-sidebar with AdminLTE's bg-body-secondary (FR-SHELL-5)", () => {
+  // FR-SHELL-5 (ADR-0026) — root-element contract, now Tabler's own vertical
+  // navbar shape (ADR-0054). AdminLTE's `sidebar-dark` skin class (itself
+  // already dropped, no v4 equivalent) stays absent; Tabler defines no
+  // sidebar-skin class of its own that this component sets either.
+  it("renders the sidebar root as a Tabler navbar-vertical aside (FR-SHELL-5)", () => {
     const { container } = renderSidebar("/orgs/org-1");
 
-    const sidebar = container.querySelector("aside.app-sidebar");
+    const sidebar = container.querySelector("aside.navbar-vertical");
     expect(sidebar).not.toBeNull();
-    expect(sidebar).toHaveClass("bg-body-secondary");
-    expect(sidebar).not.toHaveClass("sidebar-dark");
-    // `vh-100` existed only to cap the sidebar against `AppShell`'s old
-    // `d-flex` row; the `.app-wrapper` grid makes it unnecessary and wrong.
-    expect(sidebar).not.toHaveClass("vh-100");
+    expect(sidebar).toHaveClass("navbar", "navbar-expand-lg");
+    expect(sidebar).not.toHaveClass("sidebar-dark", "app-sidebar", "bg-body-secondary");
   });
 
   // ------------------------------------------------------------------
@@ -291,7 +277,7 @@ describe("AppSidebar", () => {
     for (const [groupTestId, entityKeys] of Object.entries(EXPECTED_PARTITION)) {
       const group = screen.getByTestId(groupTestId);
       // Children of THIS group, in DOM order, as their registry keys.
-      const renderedKeys = [...group.querySelectorAll("ul.nav-treeview [data-testid]")].map((el) =>
+      const renderedKeys = [...group.querySelectorAll(".dropdown-menu [data-testid]")].map((el) =>
         el.getAttribute("data-testid")!.replace("sidebar-nav-admin-", ""),
       );
       expect(renderedKeys).toEqual(entityKeys);
@@ -334,23 +320,33 @@ describe("AppSidebar", () => {
       "sidebar-nav-group-organization": "fa-building",
     };
     for (const [groupTestId, iconClass] of Object.entries(groupIcons)) {
-      const toggle = screen.getByTestId(groupTestId).querySelector(":scope > a.nav-link")!;
-      const icons = toggle.querySelectorAll("i.nav-icon");
+      const toggle = screen.getByTestId(groupTestId).querySelector(":scope > a.dropdown-toggle")!;
+      const icons = toggle.querySelectorAll("i.nav-link-icon");
       expect(icons).toHaveLength(1);
       expect(icons[0]).toHaveClass("fa-solid", iconClass);
       expect(icons[0]).toHaveAttribute("aria-hidden", "true");
-      expect(toggle.querySelectorAll("i.nav-arrow")).toHaveLength(1);
+      // The disclosure arrow (`i.nav-arrow`) is a real, explicit icon now
+      // (2026-09-11) — Tabler's own `.dropdown-toggle::after` CSS caret
+      // rendered too small to read against the sidebar's dark background and
+      // never indicated open/closed by changing direction (found live, see
+      // `index.css`'s own comment). It's counted separately from
+      // `nav-link-icon` above precisely so this "exactly one icon" check
+      // isn't satisfied by the arrow instead of the group's real icon.
+      const arrow = toggle.querySelector("i.nav-arrow")!;
+      expect(arrow).toHaveClass("fa-solid", "fa-angle-right");
+      expect(arrow).toHaveAttribute("aria-hidden", "true");
     }
 
     // Members (SHELL-7) and Projects (PROJ-4): flat items with their own icon
-    // (an icon-less row is an empty slot in the collapsed mini rail).
+    // (an icon-less row was an empty slot in AdminLTE's retired mini rail;
+    // the icon itself is kept for visual consistency under Tabler too).
     const members = screen.getByTestId("sidebar-nav-org-members");
-    const memberIcons = members.querySelectorAll("i.nav-icon");
+    const memberIcons = members.querySelectorAll("i.nav-link-icon");
     expect(memberIcons).toHaveLength(1);
     expect(memberIcons[0]).toHaveClass("fa-solid", "fa-users");
 
     const projects = screen.getByTestId("sidebar-nav-projects");
-    const projectIcons = projects.querySelectorAll("i.nav-icon");
+    const projectIcons = projects.querySelectorAll("i.nav-link-icon");
     expect(projectIcons).toHaveLength(1);
     expect(projectIcons[0]).toHaveClass("fa-solid", "fa-folder");
 
@@ -372,7 +368,7 @@ describe("AppSidebar", () => {
   it("TC-SHELL-027: renders the org-scoped nav in the specified top-to-bottom order", () => {
     const { container } = renderSidebar("/orgs/org-1");
 
-    const topLevel = [...container.querySelectorAll("ul.sidebar-menu > li.nav-item")];
+    const topLevel = [...container.querySelectorAll("ul.navbar-nav > li.nav-item")];
     const labels = topLevel.map((li) =>
       within(li as HTMLElement)
         .getAllByText(/.+/)[0]
@@ -391,25 +387,25 @@ describe("AppSidebar", () => {
   // The new groups use the same `openGroups` state shape as `UI Elements`
   // (ADR-0046: "no new state shape, just more group keys") — and they are
   // independent, so opening one must not open another.
-  it("toggles each new group independently via the existing menu-open mechanism", () => {
+  it("toggles each new group independently via the existing active/show mechanism", () => {
     renderSidebar("/orgs/org-1");
 
     const access = screen.getByTestId("sidebar-nav-group-access-control");
     const catalogs = screen.getByTestId("sidebar-nav-group-catalogs");
-    expect(access).not.toHaveClass("menu-open");
-    expect(catalogs).not.toHaveClass("menu-open");
+    expect(access).not.toHaveClass("active");
+    expect(catalogs).not.toHaveClass("active");
 
-    fireEvent.click(access.querySelector(":scope > a.nav-link")!);
-    expect(access).toHaveClass("menu-open");
-    expect(catalogs).not.toHaveClass("menu-open");
+    fireEvent.click(access.querySelector(":scope > a.dropdown-toggle")!);
+    expect(access).toHaveClass("active");
+    expect(catalogs).not.toHaveClass("active");
 
-    fireEvent.click(catalogs.querySelector(":scope > a.nav-link")!);
-    expect(access).toHaveClass("menu-open");
-    expect(catalogs).toHaveClass("menu-open");
+    fireEvent.click(catalogs.querySelector(":scope > a.dropdown-toggle")!);
+    expect(access).toHaveClass("active");
+    expect(catalogs).toHaveClass("active");
 
-    fireEvent.click(access.querySelector(":scope > a.nav-link")!);
-    expect(access).not.toHaveClass("menu-open");
-    expect(catalogs).toHaveClass("menu-open");
+    fireEvent.click(access.querySelector(":scope > a.dropdown-toggle")!);
+    expect(access).not.toHaveClass("active");
+    expect(catalogs).toHaveClass("active");
   });
 
   it("renders none of the 3 new groups when orgId is absent", () => {
@@ -539,7 +535,7 @@ describe("AppSidebar", () => {
 
   /** The sidebar's top-level nav labels, in DOM order — TC-SHELL-027's technique. */
   function topLevelLabels(container: HTMLElement): (string | undefined)[] {
-    return [...container.querySelectorAll("ul.sidebar-menu > li.nav-item")].map((li) =>
+    return [...container.querySelectorAll("ul.navbar-nav > li.nav-item")].map((li) =>
       within(li as HTMLElement)
         .getAllByText(/.+/)[0]
         .textContent?.trim(),
@@ -725,9 +721,9 @@ describe("AppSidebar", () => {
       "sidebar-nav-group-setup",
     ]) {
       const group = screen.getByTestId(testId);
-      expect(group.querySelectorAll(":scope > a > i.nav-icon")).toHaveLength(1);
+      expect(group.querySelectorAll(":scope > a.dropdown-toggle > i.nav-link-icon")).toHaveLength(1);
       // None of this group's own child rows carry an icon.
-      expect(group.querySelectorAll("ul.nav-treeview li i.nav-icon")).toHaveLength(0);
+      expect(group.querySelectorAll(".dropdown-menu i.nav-link-icon")).toHaveLength(0);
     }
   });
 

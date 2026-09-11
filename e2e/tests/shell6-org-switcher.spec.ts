@@ -237,4 +237,38 @@ test.describe("SHELL-6 organization switcher (ADR-0036)", () => {
       cleanup(user);
     }
   });
+
+  // ADR-0054 regression: found live (2026-09-11), not from source — Tabler's
+  // own CSS gates `.dropdown-menu`'s `top:100%` positioning behind a
+  // `[data-bs-popper]`/`[data-tblr-popper]` attribute selector (present only
+  // when real Popper-driven JS sets it). We don't run that JS (React owns
+  // the open/closed state), so without the attribute the menu fell back to
+  // its hypothetical static-flow position and overlapped its own toggle —
+  // Playwright's own "element intercepts pointer events" error on a second
+  // click of the same button, not a broken click handler. Every other test
+  // in this file closes via `Escape`/click-outside/selecting an item, never
+  // by re-clicking the toggle itself, which is exactly why this sat
+  // uncaught. Fixed by setting `data-bs-popper` statically as a pure CSS
+  // hook (`app-header.tsx`'s own comment has the full explanation) —
+  // asserted here as its own explicit case so it can't regress silently.
+  test("clicking the org-switcher toggle a second time closes the dropdown (not just Escape/click-outside)", async ({
+    page,
+  }) => {
+    const user = seedUser();
+
+    try {
+      await loginAndEnterOrgA(page, user);
+
+      const toggle = page.getByTestId("org-switcher-toggle");
+      const menu = page.getByTestId("org-switcher-menu");
+
+      await toggle.click();
+      await expect(menu).toBeVisible();
+
+      await toggle.click();
+      await expect(menu).not.toBeVisible();
+    } finally {
+      cleanup(user);
+    }
+  });
 });

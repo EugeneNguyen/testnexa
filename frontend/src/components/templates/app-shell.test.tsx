@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import AppShell from "./app-shell";
@@ -57,63 +57,71 @@ describe("AppShell", () => {
   it("renders the sidebar, header, and page content together", () => {
     renderShell();
 
-    expect(document.querySelector(".app-sidebar")).toBeInTheDocument();
+    expect(screen.getByTestId("app-sidebar")).toBeInTheDocument();
     expect(screen.getByTestId("logout-button")).toBeInTheDocument();
     expect(screen.getByTestId("sidebar-nav-org-home")).toBeInTheDocument();
     expect(screen.getByText("page content")).toBeInTheDocument();
   });
 
-  // ADR-0042: `.app-wrapper` is a CSS grid whose four named areas
-  // (`lte-app-sidebar`/`-header`/`-main`/`-footer`) are matched by the
-  // `.app-sidebar`/`.app-header`/`.app-main`/`.app-footer` classes — any
-  // intermediate wrapper element makes *that* element the grid item instead
-  // and collapses the whole layout into normal flow. This asserts the
-  // direct-child relationship specifically, not merely that the four exist.
-  it("renders the four AdminLTE regions as DIRECT children of .app-wrapper", () => {
+  // ADR-0054: Tabler's `.page` layout has no CSS-grid named areas the way
+  // AdminLTE's `.app-wrapper` did — this asserts the DOM order/nesting the
+  // Tabler "Sidebar layout" doc requires instead: the vertical navbar and
+  // `.page-wrapper` are direct children of `.page` (aside first), and
+  // header/main/footer are, in order, direct children of `.page-wrapper`.
+  it("renders aside + page-wrapper as direct children of .page, in the Tabler-required order", () => {
     const { container } = renderShell();
 
-    const wrapper = container.querySelector(".app-wrapper");
-    expect(wrapper).not.toBeNull();
-    for (const region of [".app-header", ".app-sidebar", ".app-main", ".app-footer"]) {
-      expect(wrapper!.querySelector(`:scope > ${region}`)).not.toBeNull();
-    }
-    // The breadcrumb/content regions are the inverse case: their compiled
-    // selectors are `.app-main .app-content-header` / `.app-main .app-content`,
-    // so they must be INSIDE `.app-main`, not siblings of it.
-    const main = wrapper!.querySelector(":scope > .app-main")!;
+    const page = container.querySelector(":scope > .page") ?? container.querySelector(".page");
+    expect(page).not.toBeNull();
+
+    const children = Array.from(page!.children);
+    expect(children[0]).toHaveClass("navbar-vertical");
+    expect(children[1]).toHaveClass("page-wrapper");
+
+    const pageWrapper = children[1];
+    const wrapperChildren = Array.from(pageWrapper.children);
+    expect(wrapperChildren[0].tagName).toBe("HEADER");
+    expect(wrapperChildren[1].tagName).toBe("MAIN");
+    expect(wrapperChildren[1]).toHaveClass("page-body");
+    expect(wrapperChildren[2].tagName).toBe("FOOTER");
+
+    // The breadcrumb/content regions must be INSIDE `main.page-body`.
+    const main = wrapperChildren[1];
     expect(main.querySelector(".app-content-header")).not.toBeNull();
     expect(main.querySelector(".app-content")).not.toBeNull();
   });
 
-  // AdminLTE's push-menu.ts injects `.sidebar-overlay` itself at runtime; we
-  // don't load that JS, so nothing creates it unless AppShell renders it.
-  it("renders a .sidebar-overlay that collapses the sidebar when clicked", () => {
+  // ADR-0054: no CSS-grid off-canvas sidebar and no `.sidebar-overlay` scrim
+  // — Tabler's vertical navbar collapses its own `.navbar-collapse` in
+  // normal flow, so there's nothing to click outside of to dismiss.
+  it("renders no .sidebar-overlay (retired with the AdminLTE grid shell)", () => {
     const { container } = renderShell();
 
-    const overlay = container.querySelector(".app-wrapper > .sidebar-overlay") as HTMLElement;
-    expect(overlay).not.toBeNull();
-
-    fireEvent.click(overlay);
-    expect(document.body).toHaveClass("sidebar-collapse");
-    expect(document.body).not.toHaveClass("sidebar-open");
+    expect(container.querySelector(".sidebar-overlay")).toBeNull();
   });
 
-  it("owns the AdminLTE layout classes on <body> and removes every one on unmount", async () => {
+  it("toggles the sidebar's mobile-open state (a local prop, not a body class) when the header toggler is clicked", () => {
+    renderShell();
+
+    const sidebarMenu = document.getElementById("sidebar-menu");
+    expect(sidebarMenu).not.toBeNull();
+    expect(sidebarMenu).not.toHaveClass("show");
+
+    fireEvent.click(screen.getByTestId("sidebar-toggler"));
+    expect(sidebarMenu).toHaveClass("show");
+
+    fireEvent.click(screen.getByTestId("sidebar-toggler"));
+    expect(sidebarMenu).not.toHaveClass("show");
+  });
+
+  // ADR-0054: unlike AdminLTE's body-level classes (which leaked across
+  // unmount and had to be manually cleaned up in a `useEffect`), Tabler's
+  // shell writes nothing to `document.body` at all — `mobileOpen` is plain
+  // component state, so there is nothing to leak.
+  it("writes no layout classes to document.body (unlike the retired AdminLTE shell)", () => {
     const { unmount } = renderShell();
 
-    expect(document.body).toHaveClass("layout-fixed");
-    expect(document.body).toHaveClass("sidebar-expand-lg");
-    // SHELL-7 (ADR-0046).
-    expect(document.body).toHaveClass("sidebar-mini");
-    // `app-loaded` is added a frame after mount (while absent, AdminLTE forces
-    // `transition: none`, which suppresses a first-paint slide).
-    await waitFor(() => expect(document.body).toHaveClass("app-loaded"));
-
-    unmount();
-
-    // <body> is outside React's tree — a leaked class survives logout and, in
-    // Vitest, the next test in this file.
-    for (const leaked of [
+    for (const adminLteClass of [
       "layout-fixed",
       "sidebar-expand-lg",
       "sidebar-mini",
@@ -121,54 +129,12 @@ describe("AppShell", () => {
       "sidebar-collapse",
       "sidebar-open",
     ]) {
-      expect(document.body).not.toHaveClass(leaked);
+      expect(document.body).not.toHaveClass(adminLteClass);
     }
-  });
 
-  // TC-SHELL-022 (class-application half). The *width* half of that TC —
-  // "the rail computes to AdminLTE's narrow width" — is deliberately NOT
-  // asserted here: jsdom does no layout, so any `getBoundingClientRect()` in
-  // this file would read 0 and prove nothing (root CLAUDE.md's CSS-layout
-  // rule). It is covered live in `e2e/tests/shell7-sidebar-mini.spec.ts`.
-  // What this layer CAN prove, and does, is that `sidebar-mini` is applied as
-  // a constant base modifier — present from mount, surviving both directions
-  // of the collapse toggle (it is not a state class), and removed on unmount
-  // along with the rest (a leaked class outlives logout and, in Vitest, the
-  // next test in this file).
-  it("SHELL-7: sidebar-mini is a constant base class, unaffected by collapse/expand toggling", () => {
-    renderShell();
-
-    expect(document.body).toHaveClass("sidebar-mini");
-    expect(document.body).not.toHaveClass("sidebar-collapse");
-
-    fireEvent.click(screen.getByTestId("sidebar-toggler"));
-    expect(document.body).toHaveClass("sidebar-collapse");
-    // The whole point of the story: mini stays put, so "collapsed" now paints
-    // as an icon rail rather than a hidden sidebar.
-    expect(document.body).toHaveClass("sidebar-mini");
-
-    fireEvent.click(screen.getByTestId("sidebar-toggler"));
-    expect(document.body).not.toHaveClass("sidebar-collapse");
-    expect(document.body).toHaveClass("sidebar-mini");
-  });
-
-  it("toggles AdminLTE's body-level sidebar state when the header toggler is clicked", () => {
-    renderShell();
-
-    // jsdom's `matchMedia` stub (tests/setup.ts) always reports `matches:
-    // false`, i.e. a desktop viewport — where AdminLTE's push-menu defaults
-    // the sidebar to EXPANDED, so neither state class is set at mount.
-    expect(document.body).not.toHaveClass("sidebar-collapse");
-    expect(document.body).not.toHaveClass("sidebar-open");
-
-    // Desktop collapse adds `sidebar-collapse`; `sidebar-open` is a
-    // mobile-only class and must stay off (the desktop/mobile asymmetry).
-    fireEvent.click(screen.getByTestId("sidebar-toggler"));
-    expect(document.body).toHaveClass("sidebar-collapse");
-    expect(document.body).not.toHaveClass("sidebar-open");
-
-    fireEvent.click(screen.getByTestId("sidebar-toggler"));
-    expect(document.body).not.toHaveClass("sidebar-collapse");
-    expect(document.body).not.toHaveClass("sidebar-open");
+    unmount();
+    for (const adminLteClass of ["layout-fixed", "sidebar-expand-lg", "sidebar-mini", "app-loaded"]) {
+      expect(document.body).not.toHaveClass(adminLteClass);
+    }
   });
 });

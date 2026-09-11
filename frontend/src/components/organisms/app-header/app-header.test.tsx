@@ -90,56 +90,54 @@ describe("AppHeader", () => {
     expect(onToggleSidebar).toHaveBeenCalledTimes(1);
   });
 
-  // ADR-0042: the header root moved from CoreUI's `.header` to AdminLTE's
-  // `.app-header navbar navbar-expand`, which is one of `.app-wrapper`'s four
-  // named CSS-grid areas. `data-lte-toggle="sidebar"` is AdminLTE's own
-  // toggle-trigger attribute, kept for convention parity even though we don't
-  // load the JS that listens for it (the React `onClick` above is what runs).
-  it("renders the AdminLTE header shell contract", () => {
+  // ADR-0054: the header root moved from AdminLTE's `.app-header navbar
+  // navbar-expand` to Tabler's own `header.navbar.navbar-expand-md
+  // d-print-none` — no `data-lte-toggle` attribute at all now (this
+  // button's state is fully React-owned; not setting a `data-bs-toggle`
+  // attribute is what keeps Tabler's own loaded JS from also reacting to
+  // this click, per ADR-0054's own duplicate-listener note).
+  it("renders the Tabler header shell contract", () => {
     const { container } = renderHeader();
 
-    const header = container.querySelector("nav.app-header");
+    const header = container.querySelector("header.navbar");
     expect(header).not.toBeNull();
-    expect(header).toHaveClass("navbar", "navbar-expand");
-    expect(container.querySelector(".header, .header-toggler, .header-brand")).toBeNull();
+    expect(header).toHaveClass("navbar-expand-md", "d-print-none");
+    expect(container.querySelector(".app-header")).toBeNull();
 
-    expect(screen.getByTestId("sidebar-toggler")).toHaveAttribute("data-lte-toggle", "sidebar");
+    expect(screen.getByTestId("sidebar-toggler")).not.toHaveAttribute("data-lte-toggle");
+    expect(screen.getByTestId("sidebar-toggler")).not.toHaveAttribute("data-bs-toggle");
+    expect(screen.getByTestId("sidebar-toggler")).toHaveClass("navbar-toggler");
   });
 
-  // FR-SHELL-4 / TC-SHELL-012's unit-level half. This is the migration's one
-  // deliberate BREAKING change (ADR-0042 §4.3, matching
-  // `admin-lte/src/ts/color-mode.ts`'s own `ATTRIBUTE_THEME`/`STORAGE_KEY`
-  // constants): `<html data-coreui-theme>` → `<html data-bs-theme>`, and the
-  // `coreui-react-color-scheme` localStorage key → `lte-theme`. Asserted here
-  // because nothing at the unit layer covered it before — only the e2e spec
-  // did, which meant the rename could have shipped unverified in CI.
-  it("writes the chosen color mode to AdminLTE's data-bs-theme attribute and lte-theme key", () => {
+  // FR-SHELL-4 / TC-SHELL-012's unit-level half. ADR-0054 renames the
+  // storage key a second time (AdminLTE's `lte-theme` → Tabler's own
+  // documented `tabler-theme` convention); the `data-bs-theme` attribute
+  // itself is unchanged — both AdminLTE and Tabler are Bootstrap-5-based and
+  // read the same attribute.
+  it("writes the chosen color mode to data-bs-theme and the tabler-theme key", () => {
     renderHeader();
 
     fireEvent.click(screen.getByTestId("color-mode-toggle"));
     fireEvent.click(screen.getByTestId("color-mode-dark"));
 
     expect(document.documentElement).toHaveAttribute("data-bs-theme", "dark");
-    expect(localStorage.getItem("lte-theme")).toBe("dark");
-    // The retired CoreUI names must be gone, not merely shadowed.
-    expect(document.documentElement.hasAttribute("data-coreui-theme")).toBe(false);
-    expect(localStorage.getItem("coreui-react-color-scheme")).toBeNull();
+    expect(localStorage.getItem("tabler-theme")).toBe("dark");
+    // The retired AdminLTE key must be gone, not merely shadowed.
+    expect(localStorage.getItem("lte-theme")).toBeNull();
 
     fireEvent.click(screen.getByTestId("color-mode-toggle"));
     fireEvent.click(screen.getByTestId("color-mode-light"));
 
     expect(document.documentElement).toHaveAttribute("data-bs-theme", "light");
-    expect(localStorage.getItem("lte-theme")).toBe("light");
+    expect(localStorage.getItem("tabler-theme")).toBe("light");
   });
 
   // "auto" stays a distinct stored choice, resolved through
   // `prefers-color-scheme`. Characterization note: the resolution is
   // one-sided — `applyColorMode` writes "dark" only when the media query
   // matches and otherwise writes the raw mode through, so a non-dark system
-  // yields the literal `data-bs-theme="auto"` rather than "light". That is
-  // the pre-existing behavior of the `useColorModes` port (it wrote
-  // `data-coreui-theme="auto"` the same way) and is deliberately NOT changed
-  // by the ADR-0042 rename, which only retargets the attribute/key names.
+  // yields the literal `data-bs-theme="auto"` rather than "light". Unchanged
+  // by ADR-0054's rename, which only retargets the storage key name.
   // jsdom's matchMedia stub (tests/setup.ts) always reports no match.
   it("keeps 'auto' as a distinct stored choice resolved via prefers-color-scheme", () => {
     renderHeader();
@@ -147,7 +145,7 @@ describe("AppHeader", () => {
     fireEvent.click(screen.getByTestId("color-mode-toggle"));
     fireEvent.click(screen.getByTestId("color-mode-auto"));
 
-    expect(localStorage.getItem("lte-theme")).toBe("auto");
+    expect(localStorage.getItem("tabler-theme")).toBe("auto");
     expect(document.documentElement).toHaveAttribute("data-bs-theme", "auto");
   });
 });

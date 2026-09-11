@@ -28,6 +28,13 @@ describe("AuthBoxLayout", () => {
       </AuthBoxLayout>,
     );
 
-    expect(container.firstChild).toHaveClass("min-vh-100", "d-flex", "align-items-center", "bg-body-secondary");
+    // ADR-0054 (2026-09-11): the explicit `bg-body-secondary` utility is
+    // dropped — under Tabler's cascade (which now wins project-wide), that
+    // class resolves to a visibly different, darker gray than `body`'s own
+    // background token, painting a mismatched seam instead of a flush page
+    // background. `body` already carries Tabler's correct page-background
+    // color globally, so this wrapper needs no color class of its own.
+    expect(container.firstChild).toHaveClass("min-vh-100", "d-flex", "align-items-center");
+    expect(container.firstChild).not.toHaveClass("bg-body-secondary");
   });
 });
