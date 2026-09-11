@@ -73,6 +73,16 @@ A `methods` list without `"create"`/`"update"` means `EntityForm` is never mount
 
 The `readOnly`, array-shaped `scopeSelector`, `scopeResolution` and `listPath`/`createPath` members also present in today's `entityConfigs/types.ts` predate ADR-0055 — they are ADR-0027's own documented additive extensions to this sketch, recorded in that file's module docstring rather than here.
 
+**Column sort ([ADR-0056](../adr/0056-admin-4-generic-admin-crud-column-sort.md), ADMIN-4, 2026-09-11):** every column whose served `sortable !== false` (§3, `FieldConfig` gains `sortable?: boolean`, defaults `true`) renders its header as a clickable button instead of plain text. Three states, one icon per state, cycling on each click:
+
+| State | Icon | Meaning |
+|---|---|---|
+| Unsorted | `fa-sort` (grey, `text-body-tertiary`) | this column is sortable but not the active sort key |
+| Ascending | `fa-sort-up` | active sort key, A→Z / oldest→newest |
+| Descending | `fa-sort-down` | active sort key, Z→A / newest→oldest |
+
+Click cycle: unsorted → ascending → descending → unsorted. Clicking a *different* column's header always restarts that column at ascending (never carries over the previous column's direction) — only one column is ever the active sort key at a time, no multi-column sort. Choosing a sort resets the table to page 1 (a sort change is a new result set, not a new page of the old one — same convention as choosing a filter or typing a search term, §4). `Actions` (the trailing Edit/Delete icon column, when present) and any column with `sortable: false` (`Release`'s three fields — its list route is 100% bespoke, out of ADMIN-4's scope) render as plain, non-interactive header text, same as before this ADR.
+
 ## 4. Screen layouts (three shapes, not 28)
 
 **A — Global catalog** (`Role`, `Permission`, `RoleAssignment`, `TestDesignTechnique`, `TestLevel`, `TestType`): route `/orgs/:orgId/admin/:entity`. `EntityTable` fires its list query immediately on mount — no scope param needed.
