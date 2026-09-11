@@ -325,7 +325,7 @@ function ProjectsPage() {
   }
 
   return (
-    <div className="min-vh-100 bg-body-secondary py-4">
+    <div className="min-vh-100 py-4">
       <div className="container-fluid px-4">
         <div className="card">
           <div className="card-body p-4">

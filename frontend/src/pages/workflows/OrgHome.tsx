@@ -111,7 +111,7 @@ function OrgHome() {
   }
 
   return (
-    <div className="min-vh-100 bg-body-secondary py-4">
+    <div className="min-vh-100 py-4">
       <div className="container-fluid px-4">
         <div className="row justify-content-center mb-4">
           <div className="col-md-10 col-lg-8">

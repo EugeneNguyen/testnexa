@@ -60,10 +60,15 @@
  * Unchanged from the AdminLTE era (still load-bearing): this component does
  * not wrap `{children}` in a `container`/`container-fluid`. Each page owns
  * its own `<div className="container-fluid px-4">`. Several pages paint a
- * full-bleed `min-vh-100 bg-body-secondary` background *outside* their own
- * container — wrapping `{children}` in a container at this level would nest
- * that background inside the container's padding, shrinking the painted
- * area rather than just the content.
+ * full-bleed `min-vh-100` wrapper *outside* their own container — wrapping
+ * `{children}` in a container at this level would nest that wrapper inside
+ * the container's padding, shrinking the painted area rather than just the
+ * content. That wrapper's own `bg-body-secondary` class is dropped as of
+ * ADR-0054 (2026-09-11): under Tabler's cascade it resolves to a visibly
+ * different, darker gray than `body`'s own page-background token, painting
+ * a mismatched seam. `body` already carries Tabler's correct background
+ * globally, so the wrapper needs no color class of its own — a bare
+ * `min-vh-100` (plus `py-4` where used) is enough.
  *
  * `flex-grow-1` on `.app-content` preserves DASH-2's content-fills-the-column
  * behavior: `main.page-body` is `display: flex; flex-direction: column`

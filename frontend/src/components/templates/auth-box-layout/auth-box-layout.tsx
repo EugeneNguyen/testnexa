@@ -22,7 +22,7 @@ export interface AuthBoxLayoutProps {
 }
 
 export function AuthBoxLayout({ logoHref, children, className }: AuthBoxLayoutProps) {
-  const wrapperClassNames = ["min-vh-100", "d-flex", "align-items-center", "bg-body-secondary", className]
+  const wrapperClassNames = ["min-vh-100", "d-flex", "align-items-center", "", className]
     .filter(Boolean)
     .join(" ");
 
