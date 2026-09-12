@@ -7,11 +7,12 @@
  *
  * **ADR-0042 (CoreUI -> AdminLTE v4):** raw Bootstrap 5 markup —
  * `CContainer fluid` -> `<div class="container-fluid">`, `CCard`/`CCardBody`
- * -> `<div class="card">`/`<div class="card-body">`, `CAlert` -> `<div
- * class="alert alert-danger" role="alert">`, `CSpinner` -> `<div
- * class="spinner-border" role="status">`. The `h-100` stretch pattern is
- * unchanged (`frontend/CLAUDE.md`: the card is the sole child of its sizing
- * context here, so a plain height utility is correct).
+ * -> the `Card` atom, `CAlert` -> the `Alert` atom, `CSpinner` -> the new
+ * `Spinner` atom (this page's own three near-identical hand-rolled spinner
+ * blocks are what prompted extracting it — see `frontend/CLAUDE.md`'s
+ * component-reuse rule). The `h-100` stretch pattern is unchanged
+ * (`frontend/CLAUDE.md`: the card is the sole child of its sizing context
+ * here, so a plain height utility is correct).
  *
  * **EXEC-3 (ADR-0044)** adds one exception to this page's otherwise fully
  * generic shape: a read-only "Defects" section when `entityKey ===
@@ -27,6 +28,9 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { Alert } from "../../../components/atoms/alert";
+import { Card } from "../../../components/atoms/card";
+import { Spinner } from "../../../components/atoms/spinner";
 import EntityForm from "../../../components/organisms/entity-form";
 import { ApiError } from "../../../lib/api/client";
 import { EntityRow, getEntity, updateEntity } from "../../../lib/api/entityCrud";
@@ -109,15 +113,11 @@ function EntityFormPage({ entityKeyOverride }: { entityKeyOverride?: string } = 
   if (schemaLoading) {
     return (
       <div className="container-fluid px-4 py-4 h-100">
-        <div className="card h-100">
-          <div className="card-body">
-            <div className="d-flex justify-content-center py-4">
-              <div className="spinner-border text-primary" role="status">
-                <span className="visually-hidden">Loading...</span>
-              </div>
-            </div>
-          </div>
-        </div>
+        <Card className="h-100">
+          <Card.Body>
+            <Spinner wrapperClassName="py-4" />
+          </Card.Body>
+        </Card>
       </div>
     );
   }
@@ -125,63 +125,61 @@ function EntityFormPage({ entityKeyOverride }: { entityKeyOverride?: string } = 
   if (!config) {
     return (
       <div className="container-fluid px-4 py-4 h-100">
-        <div className="card h-100">
-          <div className="card-body">
-            <div className="alert alert-danger" role="alert">
-              Unknown admin entity &quot;{entityKey}&quot;.
-            </div>
-          </div>
-        </div>
+        <Card className="h-100">
+          <Card.Body>
+            <Alert color="danger">Unknown admin entity &quot;{entityKey}&quot;.</Alert>
+          </Card.Body>
+        </Card>
       </div>
     );
   }
 
   return (
     <div className="container-fluid px-4 py-4 h-100">
-      <div className="card h-100">
-        <div className="card-body">
-          <h1 className="fs-4 mb-3">Edit {label ?? entityKey.replace(/-/g, " ")}</h1>
+      <Card className="h-100">
+        <Card.Header>
+          <Card.Title as="h1" className="fs-4 mb-0">
+            Edit {label ?? entityKey.replace(/-/g, " ")}
+          </Card.Title>
+        </Card.Header>
 
-          {itemQuery.isLoading ? (
-            <div className="d-flex justify-content-center py-4">
-              <div className="spinner-border text-primary" role="status">
-                <span className="visually-hidden">Loading...</span>
-              </div>
-            </div>
-          ) : itemQuery.isError ? (
-            <div className="alert alert-danger" role="alert">
-              Something went wrong loading this record.
-            </div>
-          ) : (
-            <EntityForm
-              config={config}
-              mode="edit"
-              initialValues={itemQuery.data}
-              submitError={submitError}
-              serverFieldErrors={fieldErrors}
-              onCancel={() => navigate(-1)}
-              onSubmit={async (values) => {
-                setSubmitError(null);
-                setFieldErrors(undefined);
-                await updateMutation.mutateAsync(values);
-              }}
-            />
-          )}
+        {itemQuery.isLoading ? (
+          <Card.Body>
+            <Spinner wrapperClassName="py-4" />
+          </Card.Body>
+        ) : itemQuery.isError ? (
+          <Card.Body>
+            <Alert color="danger">Something went wrong loading this record.</Alert>
+          </Card.Body>
+        ) : (
+          <EntityForm
+            config={config}
+            mode="edit"
+            initialValues={itemQuery.data}
+            submitError={submitError}
+            serverFieldErrors={fieldErrors}
+            onCancel={() => navigate(-1)}
+            onSubmit={async (values) => {
+              setSubmitError(null);
+              setFieldErrors(undefined);
+              await updateMutation.mutateAsync(values);
+            }}
+            BodySection={Card.Body}
+            FooterSection={Card.Footer}
+          />
+        )}
 
-          {isTestCaseEntity && (
-            <div className="mt-4" data-testid="test-case-defects-section">
+        {isTestCaseEntity && (
+          <Card.Body className="border-top">
+            <div data-testid="test-case-defects-section">
               <h2 className="fs-5 mb-3">Defects</h2>
 
               {defectsQuery.isLoading ? (
-                <div className="d-flex justify-content-center py-3">
-                  <div className="spinner-border text-primary" role="status">
-                    <span className="visually-hidden">Loading...</span>
-                  </div>
-                </div>
+                <Spinner wrapperClassName="py-3" />
               ) : defectsQuery.isError ? (
-                <div className="alert alert-danger" role="alert" data-testid="test-case-defects-error">
+                <Alert color="danger" data-testid="test-case-defects-error">
                   Something went wrong loading this test case's defects.
-                </div>
+                </Alert>
               ) : defectsQuery.data && defectsQuery.data.length > 0 ? (
                 /* Flat <ul>/<li>, per frontend/CLAUDE.md's nested-list convention. */
                 <ul className="list-unstyled mb-0" data-testid="test-case-defects-list">
@@ -217,9 +215,9 @@ function EntityFormPage({ entityKeyOverride }: { entityKeyOverride?: string } = 
                 </p>
               )}
             </div>
-          )}
-        </div>
-      </div>
+          </Card.Body>
+        )}
+      </Card>
     </div>
   );
 }

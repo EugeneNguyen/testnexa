@@ -32,7 +32,9 @@ export function AuthBoxLayout({ logoHref, children, className }: AuthBoxLayoutPr
         <div className="row justify-content-center">
           <div className="col-md-6 col-lg-4">
             <BrandLogo href={logoHref} />
-            <Card bodyClassName="p-4">{children}</Card>
+            <Card>
+              <Card.Body className="p-4">{children}</Card.Body>
+            </Card>
           </div>
         </div>
       </div>

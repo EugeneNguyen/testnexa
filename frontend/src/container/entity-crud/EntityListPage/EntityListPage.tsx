@@ -21,16 +21,30 @@
  *
  * **ADR-0042 (CoreUI -> AdminLTE v4):** raw Bootstrap 5 markup now.
  * `CContainer fluid` -> `<div class="container-fluid">`, `CCard`/`CCardBody`
- * -> `<div class="card">`/`<div class="card-body">`, `CAlert` -> `<div
- * class="alert alert-*" role="alert">`, `CButton` -> `<button class="btn
- * btn-*">`, and the two `CModal`s -> the local `AdminModal` helper below
- * (hand-rolled Bootstrap modal markup + backdrop; see its own docstring for
- * the two behavioral deltas from `CModal`).
+ * -> the `Card` atom (`Card`/`Card.Header`/`Card.Body` — was raw
+ * `<div class="card">`/`<div class="card-body">` until this page's four
+ * near-identical blocks prompted extracting the compound `Card` primitive;
+ * no new ADR — reuses ADR-0042's already-decided raw-markup-atoms pattern,
+ * doesn't introduce a new one),
+ * `CAlert` -> the `Alert` atom (`<div class="alert alert-*" role="alert">`),
+ * `CButton` -> the `Button` atom, and the two `CModal`s -> the shared `Modal`
+ * molecule (hand-rolled Bootstrap modal markup + backdrop — was this page's
+ * own private `AdminModal` until it was promoted to
+ * `components/molecules/modal/` alongside `RoleAssignmentsPanel`'s
+ * near-identical local copy; see the molecule's own docstring for the two
+ * behavioral deltas from `CModal`, and for why it renders only
+ * `.modal-header` itself, leaving `.modal-body`/`.modal-footer` to the
+ * caller).
  */
-import { useEffect, useId, useState, type ReactNode } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { usePermissions } from "../../../auth/usePermissions";
+import { Alert } from "../../../components/atoms/alert";
+import { Button } from "../../../components/atoms/button";
+import { Card } from "../../../components/atoms/card";
+import { Spinner } from "../../../components/atoms/spinner";
+import { Modal } from "../../../components/molecules/modal";
 import EntityForm from "../../../components/organisms/entity-form";
 import EntityTable from "../../../components/organisms/entity-table";
 import ScopeSelector from "../../../components/molecules/scope-selector";
@@ -49,80 +63,6 @@ import { useEntityScope } from "../../../pages/admin/useEntityScope";
  * across navigation or reload (TC-DS-018).
  */
 const DEFAULT_PAGE_SIZE = 25;
-
-/**
- * ADR-0042: hand-rolled replacement for `CModal` + `CModalHeader`/
- * `CModalTitle`/`CModalBody`/`CModalFooter`. Extracted rather than inlined
- * twice because this page renders two modals (create, delete-confirm).
- *
- * Deliberate parity choices:
- * - **Renders nothing at all when closed** — `queryByText(...)`-is-null
- *   assertions and the e2e specs' `.modal-content` locators both depend on
- *   the closed modal contributing no DOM, which is what `CModal` effectively
- *   did for test purposes.
- * - **ESC closes**, matching `CModal`'s own default `keyboard` behavior. The
- *   listener is bound only while open and removed on close/unmount.
- * - The header's close `<button class="btn-close" aria-label="Close">` is
- *   kept — `CModalHeader` rendered one by default and it is the only way to
- *   dismiss the create modal besides its own Cancel button.
- *
- * Deliberate gaps, accepted in ADR-0042 rather than reimplemented: no focus
- * trap, no focus restore on close, no backdrop-click-to-close (`CModal`'s
- * `backdrop="static"`-off default did close on backdrop click; the backdrop
- * here is inert, so ESC and the explicit buttons are the dismissal paths).
- */
-function AdminModal({
-  visible,
-  title,
-  onClose,
-  children,
-  footer,
-}: {
-  visible: boolean;
-  title: ReactNode;
-  onClose: () => void;
-  children: ReactNode;
-  footer?: ReactNode;
-}) {
-  const titleId = useId();
-
-  useEffect(() => {
-    if (!visible) {
-      return;
-    }
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    }
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [visible, onClose]);
-
-  if (!visible) {
-    return null;
-  }
-
-  return (
-    <>
-      <div className="modal fade show d-block" tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby={titleId}>
-        <div className="modal-dialog">
-          <div className="modal-content">
-            <div className="modal-header">
-              <h5 className="modal-title" id={titleId}>
-                {title}
-              </h5>
-              <button type="button" className="btn-close" aria-label="Close" onClick={onClose} />
-            </div>
-            <div className="modal-body">{children}</div>
-            {footer && <div className="modal-footer">{footer}</div>}
-          </div>
-        </div>
-      </div>
-      <div className="modal-backdrop fade show" />
-    </>
-  );
-}
 
 function fieldErrorsFrom(error: unknown): Record<string, string> | undefined {
   if (!(error instanceof ApiError)) {
@@ -226,21 +166,17 @@ function EntityListPage({ entityKeyOverride }: { entityKeyOverride?: string } = 
    * `undefined` for one round trip on every admin page load. Without this
    * branch that state is indistinguishable from an unknown `:entity` and the
    * page would flash the "Unknown admin entity" error before the schema
-   * lands. Same `spinner-border role="status"` pattern `EntityFormPage`
-   * already uses for its own item fetch.
+   * lands. Same `Spinner` atom `EntityFormPage` already uses for its own
+   * item fetch.
    */
   if (schemaLoading) {
     return (
       <div className="container-fluid px-4 py-4 h-100">
-        <div className="card h-100">
-          <div className="card-body">
-            <div className="d-flex justify-content-center py-4">
-              <div className="spinner-border text-primary" role="status">
-                <span className="visually-hidden">Loading...</span>
-              </div>
-            </div>
-          </div>
-        </div>
+        <Card className="h-100">
+          <Card.Body>
+            <Spinner wrapperClassName="py-4" />
+          </Card.Body>
+        </Card>
       </div>
     );
   }
@@ -248,13 +184,11 @@ function EntityListPage({ entityKeyOverride }: { entityKeyOverride?: string } = 
   if (!config) {
     return (
       <div className="container-fluid px-4 py-4 h-100">
-        <div className="card h-100">
-          <div className="card-body">
-            <div className="alert alert-danger" role="alert">
-              Unknown admin entity &quot;{entityKey}&quot;.
-            </div>
-          </div>
-        </div>
+        <Card className="h-100">
+          <Card.Body>
+            <Alert color="danger">Unknown admin entity &quot;{entityKey}&quot;.</Alert>
+          </Card.Body>
+        </Card>
       </div>
     );
   }
@@ -266,38 +200,38 @@ function EntityListPage({ entityKeyOverride }: { entityKeyOverride?: string } = 
   return (
     <div className="container-fluid px-4 py-4 h-100">
       {!canList ? (
-        <div className="card h-100">
-          <div className="card-header">
-            <h3 className="card-title">{pageTitle}</h3>
-          </div>
-          <div className="card-body">
-            <div className="alert alert-info" role="alert">
+        <Card className="h-100">
+          <Card.Header>
+            <Card.Title>{pageTitle}</Card.Title>
+          </Card.Header>
+          <Card.Body>
+            <Alert color="info">
               Listing is not available for this entity through the admin surface — its served schema does not include
               the &quot;list&quot; method.
-            </div>
-          </div>
-        </div>
+            </Alert>
+          </Card.Body>
+        </Card>
       ) : config.scopeSelector && !scope.ready ? (
-        <div className="card h-100">
-          <div className="card-header">
-            <h3 className="card-title">{pageTitle}</h3>
-          </div>
-          <div className="card-body">
+        <Card className="h-100">
+          <Card.Header>
+            <Card.Title>{pageTitle}</Card.Title>
+          </Card.Header>
+          <Card.Body>
             <ScopeSelector
               options={config.scopeSelector}
               onResolved={onScopeSelectorResolved}
               extraParams={projectId ? { project_id: projectId } : undefined}
             />
-          </div>
-        </div>
+          </Card.Body>
+        </Card>
       ) : (
         <EntityTable
           title={pageTitle}
           headerActions={
             canCreate && (
-              <button type="button" className="btn btn-primary btn-sm" onClick={() => setShowCreateModal(true)}>
+              <Button color="primary" size="sm" onClick={() => setShowCreateModal(true)}>
                 New
-              </button>
+              </Button>
             )
           }
           config={config}
@@ -332,51 +266,44 @@ function EntityListPage({ entityKeyOverride }: { entityKeyOverride?: string } = 
         />
       )}
 
-      <AdminModal
+      <Modal
         visible={showCreateModal}
         title={<>New {label ?? entityKey.replace(/-/g, " ")}</>}
         onClose={() => setShowCreateModal(false)}
       >
-        <EntityForm
-          config={config}
-          mode="create"
-          lockedValues={scope.field && scope.value ? { [scope.field]: scope.value } : undefined}
-          submitError={createError}
-          serverFieldErrors={createFieldErrors}
-          onCancel={() => setShowCreateModal(false)}
-          onSubmit={async (values) => {
-            await createMutation.mutateAsync(values);
-          }}
-        />
-      </AdminModal>
+        <Modal.Body>
+          <EntityForm
+            config={config}
+            mode="create"
+            lockedValues={scope.field && scope.value ? { [scope.field]: scope.value } : undefined}
+            submitError={createError}
+            serverFieldErrors={createFieldErrors}
+            onCancel={() => setShowCreateModal(false)}
+            onSubmit={async (values) => {
+              await createMutation.mutateAsync(values);
+            }}
+          />
+        </Modal.Body>
+      </Modal>
 
-      <AdminModal
-        visible={Boolean(rowPendingDelete)}
-        title="Delete record"
-        onClose={() => setRowPendingDelete(null)}
-        footer={
-          <>
-            <button type="button" className="btn btn-outline-secondary" onClick={() => setRowPendingDelete(null)}>
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="btn btn-danger"
-              disabled={deleteMutation.isPending}
-              onClick={() => rowPendingDelete && deleteMutation.mutate(rowPendingDelete)}
-            >
-              Delete
-            </button>
-          </>
-        }
-      >
-        {deleteError && (
-          <div className="alert alert-danger" role="alert">
-            {deleteError}
-          </div>
-        )}
-        Are you sure you want to delete this record? This cannot be undone.
-      </AdminModal>
+      <Modal visible={Boolean(rowPendingDelete)} title="Delete record" onClose={() => setRowPendingDelete(null)}>
+        <Modal.Body>
+          {deleteError && <Alert color="danger">{deleteError}</Alert>}
+          Are you sure you want to delete this record? This cannot be undone.
+        </Modal.Body>
+        <Modal.Footer>
+          <Button outline color="secondary" onClick={() => setRowPendingDelete(null)}>
+            Cancel
+          </Button>
+          <Button
+            color="danger"
+            disabled={deleteMutation.isPending}
+            onClick={() => rowPendingDelete && deleteMutation.mutate(rowPendingDelete)}
+          >
+            Delete
+          </Button>
+        </Modal.Footer>
+      </Modal>
     </div>
   );
 }

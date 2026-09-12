@@ -31,16 +31,21 @@
  * `@coreui/react` components are now raw Bootstrap 5 / AdminLTE v4 markup.
  * The RHF+Zod wiring (including the `CFormSelect` → `<select>` `register()`
  * spread) and every behavior above are unchanged — only elements and classes
- * are. The `CModal` becomes the local `Modal` helper below, and the shared
- * `container/Table.tsx`'s `columns`/`renderRow` slots now take raw
- * `<tr>`/`<th>`/`<td>` rather than `<CTableRow>`/`<CTableHeaderCell>`/
- * `<CTableDataCell>`.
+ * are. The `CModal` becomes the shared `Modal` molecule (originally a local
+ * helper here, promoted to `components/molecules/modal/` alongside
+ * `EntityListPage`'s near-identical copy — this panel's own `<form>`
+ * spanning `.modal-body` and `.modal-footer` is exactly why that molecule
+ * renders only `.modal-header` itself and leaves the rest to the caller),
+ * and the shared `container/Table.tsx`'s `columns`/`renderRow`
+ * slots now take raw `<tr>`/`<th>`/`<td>` rather than
+ * `<CTableRow>`/`<CTableHeaderCell>`/`<CTableDataCell>`.
  */
-import { ReactNode, useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import Table from "../container/Table";
+import { Modal } from "./molecules/modal";
 import { ApiError } from "../lib/api/client";
 import {
   createRoleAssignment,
@@ -70,80 +75,6 @@ type NewRoleAssignmentFormValues = z.infer<typeof newRoleAssignmentSchema>;
 function fieldError(error: ApiError, field: string): string | undefined {
   const body = error.body as { field_errors?: Record<string, string[]> } | undefined;
   return body?.field_errors?.[field]?.[0];
-}
-
-/**
- * Hand-rolled Bootstrap 5 modal (ADR-0042 §2.3), replacing `CModal` +
- * `CModalHeader` + `CModalTitle`.
- *
- * Renders **nothing at all when closed** — `CModal` unmounted its content, and
- * this file's own tests assert `queryByRole("heading", …)` is null once the
- * modal closes after a successful grant.
- *
- * ESC closes (CoreUI's `keyboard` default). No focus trap — an accepted,
- * documented gap in ADR-0042.
- *
- * Deliberately duplicated from `pages/workflows/OrgHome.tsx`'s own local
- * `Modal` rather than promoted to a shared `components/molecules/` component:
- * that promotion is a different agent's surface in this migration, and
- * ADR-0023/ADR-0043's location rules mean promoting this is its own
- * decision, not a side effect of a markup swap. Worth extracting in a
- * follow-up once every screen's modal has landed.
- */
-function Modal({
-  visible,
-  onClose,
-  title,
-  children,
-}: {
-  visible: boolean;
-  onClose: () => void;
-  title: string;
-  children: ReactNode;
-}) {
-  const titleId = useId();
-
-  useEffect(() => {
-    if (!visible) {
-      return;
-    }
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    }
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [visible, onClose]);
-
-  if (!visible) {
-    return null;
-  }
-
-  return (
-    <>
-      <div
-        className="modal fade show d-block"
-        tabIndex={-1}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-      >
-        <div className="modal-dialog">
-          <div className="modal-content">
-            <div className="modal-header">
-              <h5 className="modal-title" id={titleId}>
-                {title}
-              </h5>
-              <button type="button" className="btn-close" aria-label="Close" onClick={onClose} />
-            </div>
-            {children}
-          </div>
-        </div>
-      </div>
-      <div className="modal-backdrop fade show" />
-    </>
-  );
 }
 
 interface RoleAssignmentsPanelProps {
@@ -306,7 +237,7 @@ function RoleAssignmentsPanel({ orgId }: RoleAssignmentsPanelProps) {
 
       <Modal visible={showModal} onClose={closeModal} title="New Role Assignment">
         <form onSubmit={handleSubmit(onSubmit)} noValidate>
-          <div className="modal-body">
+          <Modal.Body>
             <div className="mb-3">
               <label className="form-label" htmlFor="actorId">
                 Actor id
@@ -383,15 +314,15 @@ function RoleAssignmentsPanel({ orgId }: RoleAssignmentsPanelProps) {
                 {apiError}
               </div>
             )}
-          </div>
-          <div className="modal-footer">
+          </Modal.Body>
+          <Modal.Footer>
             <button type="button" className="btn btn-outline-secondary" onClick={closeModal}>
               Cancel
             </button>
             <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
               {isSubmitting ? "Granting..." : "Grant"}
             </button>
-          </div>
+          </Modal.Footer>
         </form>
       </Modal>
     </div>
