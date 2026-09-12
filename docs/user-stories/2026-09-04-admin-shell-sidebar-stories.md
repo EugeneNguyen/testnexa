@@ -69,6 +69,8 @@
 - Given the sidebar's `Members` item, when it renders, then it also gains an icon (previously icon-less) so no item is left without one under the new icon-only collapsed rail.
 - Out of scope, explicitly: the `UI Elements` nav group (ADR-0020 scaffolding) — untouched, not folded into the new groups, not reordered relative to itself.
 
+**Addendum (2026-09-12, [ADR-0058](../adr/0058-project-generic-admin-org-scoped.md)):** the registry gained a 9th org-scoped entity (`projects`) after this story shipped — deliberately excluded from all 3 groups (`ORG_EXCLUDED_ENTITY_KEYS`), since ADR-0047's bespoke `ProjectsPage` is its real nav path. This story's own "8 entities" ACs above are accurate as a historical record of what this story delivered, not a current count — see the Sitemap doc's org-scoped table for the current 9.
+
 **Traceability:** [FR-SHELL-7](../requirements/2026-09-03-project-scaffold-requirements.md), [ADR-0046](../adr/0046-shell-7-sidebar-mini-org-crud-restructure.md), [UI Design Document](../ui-design/2026-09-08-shell-7-sidebar-mini-org-crud-restructure-ui-design.md). Presentation-only change over the existing `orgScopedEntities` registry (ADR-0025) — no new/changed entity, no new API route, no schema change.
 
 ---

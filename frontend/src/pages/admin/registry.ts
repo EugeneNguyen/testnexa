@@ -46,7 +46,23 @@ function entry(label: string, key: string): RegistryEntry {
   return { key, label };
 }
 
-/** Sitemap: "Org/global-scoped" table — `/orgs/:orgId/admin/:entity`. */
+/**
+ * Sitemap: "Org/global-scoped" table — `/orgs/:orgId/admin/:entity`.
+ *
+ * [ADR-0058](../../../docs/adr/0058-project-generic-admin-org-scoped.md)
+ * added `projects` here (2026-09-12) — the `project` entity's backend config
+ * already declares `scope_field="org_id"` (ADR-0022), so registering it here
+ * makes `/orgs/:orgId/admin/projects` resolve its scope straight from the
+ * `:orgId` route param, no fetch, no `ScopeSelector` — the same "shape B"
+ * immediate-ready path every other plain org-scoped entity already uses
+ * (`useEntityScope.ts`'s own docstring). It's also still registered under
+ * `projectScopedEntities` below (pre-existing, unchanged) — see
+ * `AppSidebar.tsx`'s `ORG_EXCLUDED_ENTITY_KEYS` for why this doesn't produce
+ * a second "Projects" sidebar link alongside ADR-0047's bespoke `ProjectsPage`.
+ * No `create` here (`full_methods` excludes it) — Project creation stays
+ * exclusively the bespoke bootstrap-aware route (ADR-0017); a generic create
+ * would skip its auto `RoleAssignment` grant.
+ */
 export const orgScopedEntities: RegistryEntry[] = [
   entry("Roles", "roles"),
   entry("Role assignments", "role-assignments"),
@@ -56,6 +72,7 @@ export const orgScopedEntities: RegistryEntry[] = [
   entry("Test types", "test-types"),
   entry("Organizations", "organizations"),
   entry("Org memberships", "org-memberships"),
+  entry("Projects", "projects"),
 ];
 
 /** Sitemap: "Project-scoped" table — `/projects/:projectId/admin/:entity`. */

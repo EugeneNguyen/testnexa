@@ -13,8 +13,7 @@ import RootRedirect from "./pages/workflows/RootRedirect";
 import Signup from "./pages/workflows/Signup";
 import TestCycleDetail from "./pages/workflows/TestCycleDetail";
 import TestPlanDetail from "./pages/workflows/TestPlanDetail";
-import EntityFormPage from "./container/entity-crud/EntityFormPage";
-import EntityListPage from "./container/entity-crud/EntityListPage";
+import { entityCrudRoutes } from "./container/entity-crud";
 
 function App() {
   return (
@@ -148,46 +147,17 @@ function App() {
           }
         />
         {/*
-          ADR-0025 generic admin CRUD surface: 2 page components
-          (`EntityListPage`/`EntityFormPage`), routed generically off the
-          `:entity` param — the registry (`pages/admin/registry.ts`) maps it
-          to an `EntityConfig`, not 28 separate route declarations here. See
-          the Sitemap's own "generic admin CRUD surface" table for the full
-          28-entity list these 4 routes serve (8 org/global-scoped, 20
-          project-scoped).
+          ADR-0025 generic admin CRUD surface (List/Add/Edit/Delete), routed
+          generically off the `:entity` param — the registry
+          (`pages/admin/registry.ts`) maps it to an `EntityConfig`, not 28
+          separate route declarations here. See the Sitemap's own "generic
+          admin CRUD surface" table for the full 28-entity list these routes
+          serve (8 org/global-scoped, 20 project-scoped).
+          `entityCrudRoutes()` (ADR-0057) is the whole feature's one call
+          site — see `container/entity-crud/index.ts`.
         */}
-        <Route
-          path="/orgs/:orgId/admin/:entity"
-          element={
-            <ProtectedRoute>
-              <EntityListPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/orgs/:orgId/admin/:entity/:id/edit"
-          element={
-            <ProtectedRoute>
-              <EntityFormPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/projects/:projectId/admin/:entity"
-          element={
-            <ProtectedRoute>
-              <EntityListPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/projects/:projectId/admin/:entity/:id/edit"
-          element={
-            <ProtectedRoute>
-              <EntityFormPage />
-            </ProtectedRoute>
-          }
-        />
+        {entityCrudRoutes("/orgs/:orgId/admin")}
+        {entityCrudRoutes("/projects/:projectId/admin")}
       </Routes>
     </AuthProvider>
   );

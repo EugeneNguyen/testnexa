@@ -85,6 +85,7 @@ Two page components (`EntityListPage`, `EntityFormPage`), routed generically off
 | `test-levels` | `TestLevel` | Catalogs |
 | `test-types` | `TestType` | Catalogs |
 | `organizations` | `Organization` (coexists with `OrgHome`, UI Design Document §6) | Organization |
+| `projects` | `Project`, list/get/update/delete only — no create via this surface (bootstrap-aware creation stays bespoke, [ADR-0017](../adr/0017-project-creation-flow.md)); coexists with `ProjectsPage` | **None** — [ADR-0058](../adr/0058-project-generic-admin-org-scoped.md) added the registry entry (`org_id` scope resolves straight from `:orgId`, no fetch) but deliberately excludes it from the sidebar (`ORG_EXCLUDED_ENTITY_KEYS`) since `ProjectsPage`'s own flat "Projects" item is the real nav path — reachable only by direct URL |
 
 **Project-scoped** — `/projects/:projectId/admin/:entity`, reached via `ProjectDetail`'s "Admin" tab:
 
@@ -111,7 +112,7 @@ Two page components (`EntityListPage`, `EntityFormPage`), routed generically off
 | `projects` | `Project` | coexists with `ProjectDetail` itself |
 | `releases` | `Release` | coexists with `ProjectDetail`'s own Release list |
 
-28 entities total across both tables. **Deliberately absent from this surface, anywhere:** `Approval`, `User`, `AIAgent`, `AuthIdentity` — see [ADR-0027](../adr/0027-generic-admin-crud-ui-and-backend-completion.md) for why (no plain-field CRUD path exists for any of the four).
+28 entities total across the project-scoped table plus 8 nav-linked org-scoped entities — **29 rows, 28 distinct `Project`+`Release`-adjacent concerns**, since [ADR-0058](../adr/0058-project-generic-admin-org-scoped.md)'s new `projects` row duplicates the project-scoped table's own pre-existing `projects` row (same entity, two independently-reachable admin routes — `/orgs/:orgId/admin/projects` and `/projects/:projectId/admin/projects`, the latter pre-dating this ADR). **Deliberately absent from this surface, anywhere:** `Approval`, `User`, `AIAgent`, `AuthIdentity` — see [ADR-0027](../adr/0027-generic-admin-crud-ui-and-backend-completion.md) for why (no plain-field CRUD path exists for any of the four).
 
 ## Header controls (persistent, not routes)
 
@@ -133,7 +134,7 @@ Chrome rendered inside `AppHeader` on every `ProtectedRoute` screen, not tied to
 /orgs/:orgId                             OrgHome (labeled "Dashboard" — DASH-2)
 ├── /projects                            ProjectsPage (PROJ-4 — Project CRUD, moved off Dashboard)
 ├── /members                             OrgMembers
-└── /admin/:entity                       EntityListPage — 8 org/global entities (table above)
+└── /admin/:entity                       EntityListPage — 9 org/global entities (table above; 8 nav-linked, `projects` reachable by URL only, ADR-0058)
     └── /admin/:entity/:id/edit          EntityFormPage
 /projects/:projectId                     ProjectDetail
 ├── /test-plans/:testPlanId              TestPlanDetail (PLAN-1)
