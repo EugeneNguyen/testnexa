@@ -24,14 +24,14 @@
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { usePermissions } from "../../auth/usePermissions";
-import EntityForm from "../../components/organisms/entity-form";
-import EntityTable from "../../components/organisms/entity-table";
-import ScopeSelector from "../../components/molecules/scope-selector";
-import { ApiError } from "../../lib/api/client";
-import { createEntity, deleteEntity, EntityRow, listEntities } from "../../lib/api/entityCrud";
-import { useAdminRouteContext } from "./useAdminRouteContext";
-import { useEntityScope } from "./useEntityScope";
+import { usePermissions } from "../../../auth/usePermissions";
+import EntityForm from "../../../components/organisms/entity-form";
+import EntityTable from "../../../components/organisms/entity-table";
+import ScopeSelector from "../../../components/molecules/scope-selector";
+import { ApiError } from "../../../lib/api/client";
+import { createEntity, deleteEntity, EntityRow, listEntities } from "../../../lib/api/entityCrud";
+import { useAdminRouteContext } from "../../../pages/admin/useAdminRouteContext";
+import { useEntityScope } from "../../../pages/admin/useEntityScope";
 
 /**
  * DS-2/ADR-0041: this used to be a hardcoded `const PAGE_SIZE = 25` with no

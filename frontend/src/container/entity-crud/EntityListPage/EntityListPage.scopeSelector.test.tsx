@@ -3,8 +3,8 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import EntityListPage from "./EntityListPage";
-import { apiFetch } from "../../lib/api/client";
-import { getEntity, listEntities } from "../../lib/api/entityCrud";
+import { apiFetch } from "../../../lib/api/client";
+import { getEntity, listEntities } from "../../../lib/api/entityCrud";
 
 /**
  * TC-ADMIN-019: "Attachment scope-selector resolves via TestCase" — once a
@@ -62,7 +62,7 @@ const { ATTACHMENT_SCHEMA } = vi.hoisted(() => ({
     ],
   },
 }));
-vi.mock("./registry", () => ({
+vi.mock("../../../pages/admin/registry", () => ({
   entityLabelByKey: {
     attachments: "Attachments",
     projects: "Projects",
@@ -70,7 +70,7 @@ vi.mock("./registry", () => ({
   ADMIN_ENTITY_KEYS: new Set(["attachments", "projects"]),
 }));
 
-vi.mock("./useEntitySchema", () => {
+vi.mock("../../../pages/admin/useEntitySchema", () => {
   const configs: Record<string, unknown> = {
     attachments: ATTACHMENT_SCHEMA,
     projects: { resource: "project", path: "/projects", methods: ["list", "get"], fields: [] },
@@ -101,7 +101,7 @@ vi.mock("./useEntitySchema", () => {
   };
 });
 
-vi.mock("../../components/molecules/scope-selector", () => ({
+vi.mock("../../../components/molecules/scope-selector", () => ({
   default: ({
     options,
     onResolved,
@@ -116,13 +116,13 @@ vi.mock("../../components/molecules/scope-selector", () => ({
   },
 }));
 
-vi.mock("../../lib/api/entityCrud", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../lib/api/entityCrud")>();
+vi.mock("../../../lib/api/entityCrud", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../lib/api/entityCrud")>();
   return { ...actual, listEntities: vi.fn(), getEntity: vi.fn(), createEntity: vi.fn(), deleteEntity: vi.fn() };
 });
 
-vi.mock("../../lib/api/client", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../lib/api/client")>();
+vi.mock("../../../lib/api/client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../lib/api/client")>();
   return { ...actual, apiFetch: vi.fn() };
 });
 

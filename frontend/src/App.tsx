@@ -13,8 +13,8 @@ import RootRedirect from "./pages/workflows/RootRedirect";
 import Signup from "./pages/workflows/Signup";
 import TestCycleDetail from "./pages/workflows/TestCycleDetail";
 import TestPlanDetail from "./pages/workflows/TestPlanDetail";
-import EntityFormPage from "./pages/admin/EntityFormPage";
-import EntityListPage from "./pages/admin/EntityListPage";
+import EntityFormPage from "./container/entity-crud/EntityFormPage";
+import EntityListPage from "./container/entity-crud/EntityListPage";
 
 function App() {
   return (

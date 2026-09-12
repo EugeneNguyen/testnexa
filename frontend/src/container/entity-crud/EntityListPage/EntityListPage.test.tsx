@@ -3,8 +3,8 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import EntityListPage from "./EntityListPage";
-import { apiFetch } from "../../lib/api/client";
-import { listEntities } from "../../lib/api/entityCrud";
+import { apiFetch } from "../../../lib/api/client";
+import { listEntities } from "../../../lib/api/entityCrud";
 
 /**
  * ADR-0025 / UI Design Document §5 (FR-ADMIN-2 AC4): "No `<resource>.create`
@@ -25,14 +25,14 @@ import { listEntities } from "../../lib/api/entityCrud";
  */
 const schemaState = vi.hoisted(() => ({ isLoading: false }));
 
-vi.mock("./registry", () => ({
+vi.mock("../../../pages/admin/registry", () => ({
   entityLabelByKey: {
     widgets: "Widgets",
   },
   ADMIN_ENTITY_KEYS: new Set(["widgets"]),
 }));
 
-vi.mock("./useEntitySchema", () => {
+vi.mock("../../../pages/admin/useEntitySchema", () => {
   const configs: Record<string, unknown> = {
     widgets: {
       resource: "widget",
@@ -67,13 +67,13 @@ vi.mock("./useEntitySchema", () => {
   };
 });
 
-vi.mock("../../lib/api/entityCrud", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../lib/api/entityCrud")>();
+vi.mock("../../../lib/api/entityCrud", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../lib/api/entityCrud")>();
   return { ...actual, listEntities: vi.fn(), getEntity: vi.fn(), createEntity: vi.fn(), deleteEntity: vi.fn() };
 });
 
-vi.mock("../../lib/api/client", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../lib/api/client")>();
+vi.mock("../../../lib/api/client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../lib/api/client")>();
   return { ...actual, apiFetch: vi.fn() };
 });
 

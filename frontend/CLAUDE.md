@@ -31,12 +31,13 @@ When a future story co-locates Vitest specs with their source under `frontend/sr
 | `components/organisms/<x>/<x>.tsx` | same | `components/organisms/<x>/<x>.test.tsx` — **inside** |
 | `components/templates/<x>/<x>.tsx` | same | `components/templates/<x>/<x>.test.tsx` — **inside** |
 | `components/<X>.tsx` (root-level, e.g. `RoleAssignmentsPanel.tsx`, `AuthLoadingSpinner.tsx`) | flat | `components/<X>.test.tsx` — sibling of source, **not** inside a subfolder |
-| `pages/<tier>/<X>.tsx` (e.g. `pages/workflows/ProjectDetail.tsx`, `pages/admin/EntityFormPage.tsx`) | per-screen subfolder with `index.ts` barrel — `pages/<tier>/<X>/<X>.tsx` + `pages/<tier>/<X>/index.ts` | `pages/<tier>/<X>/<X>.test.tsx` — **inside** the source's subfolder |
+| `pages/<tier>/<X>.tsx` (e.g. `pages/workflows/ProjectDetail.tsx`, `pages/workflows/TestCycleDetail.tsx`) | per-screen subfolder with `index.ts` barrel — `pages/<tier>/<X>/<X>.tsx` + `pages/<tier>/<X>/index.ts` | `pages/<tier>/<X>/<X>.test.tsx` — **inside** the source's subfolder |
 | `pages/<tier>/<X>.<Section>.test.tsx` (per-story multi-section, e.g. `ProjectDetail.TestConditions.test.tsx`) | flat, beside the main `X.test.tsx` — inside the subfolder | `pages/<tier>/<X>/<X>.<Section>.test.tsx` — inside the subfolder |
 | `auth/<X>.tsx` | flat | `auth/<X>.test.tsx` |
 | `lib/api/<X>.ts`, `lib/auth/<X>.ts` | flat | `lib/api/<X>.test.ts`, `lib/auth/<X>.test.ts` |
 | `entityConfigs/<X>.ts` | flat | `entityConfigs/<X>.test.ts` |
 | `container/<X>.tsx` | flat (one-file) | `container/<X>.test.tsx` |
+| `container/<group>/<X>/<X>.tsx` (ADR-0057, e.g. `container/entity-crud/EntityListPage/`) | per-screen subfolder with `index.ts` barrel, matching `pages/<tier>/<X>/<X>.tsx` | `container/<group>/<X>/<X>.test.tsx` — **inside** the source's subfolder |
 | `assets/<tier>/<file>` (assets that *are* the source, not a backing of one) | per-leaf-folder | `assets/<tier>/<file>.test.<ext>` — same folder as the asset itself |
 
 The check is mechanical: does `src/<path>.tsx` (or `.ts`) exist as a single file? If yes, the test lands at `src/<path>.test.<ext>`. If the source is `src/<tier>/<stem>/<stem>.tsx` (subfolder with barrel), the test lands INSIDE that subfolder — NOT flattened to `src/<tier>/<stem>.test.tsx`. A bulk move that flattens everything loses the per-source-file co-location guarantee and forces every future reader to re-derive the convention. Verified the hard way on the FRONTEND-1 implementation pass (2026-09-09): one script that put everything flat produced 1 collision (`AppHeader.test.tsx` and `AppHeader.OrgSwitcher.test.tsx` both wanted the same flat path) and would have required a full revert if it hadn't been caught at move time.
@@ -67,12 +68,13 @@ When a future story co-locates Vitest specs with their source under `frontend/sr
 | `components/organisms/<x>/<x>.tsx` | same | `components/organisms/<x>/<x>.test.tsx` — **inside** |
 | `components/templates/<x>/<x>.tsx` | same | `components/templates/<x>/<x>.test.tsx` — **inside** |
 | `components/<X>.tsx` (root-level, e.g. `RoleAssignmentsPanel.tsx`, `AuthLoadingSpinner.tsx`) | flat | `components/<X>.test.tsx` — sibling of source, **not** inside a subfolder |
-| `pages/<tier>/<X>.tsx` (e.g. `pages/workflows/ProjectDetail.tsx`, `pages/admin/EntityFormPage.tsx`) | per-screen subfolder with `index.ts` barrel — `pages/<tier>/<X>/<X>.tsx` + `pages/<tier>/<X>/index.ts` | `pages/<tier>/<X>/<X>.test.tsx` — **inside** the source's subfolder |
+| `pages/<tier>/<X>.tsx` (e.g. `pages/workflows/ProjectDetail.tsx`, `pages/workflows/TestCycleDetail.tsx`) | per-screen subfolder with `index.ts` barrel — `pages/<tier>/<X>/<X>.tsx` + `pages/<tier>/<X>/index.ts` | `pages/<tier>/<X>/<X>.test.tsx` — **inside** the source's subfolder |
 | `pages/<tier>/<X>.<Section>.test.tsx` (per-story multi-section, e.g. `ProjectDetail.TestConditions.test.tsx`) | flat, beside the main `X.test.tsx` — inside the subfolder | `pages/<tier>/<X>/<X>.<Section>.test.tsx` — inside the subfolder |
 | `auth/<X>.tsx` | flat | `auth/<X>.test.tsx` |
 | `lib/api/<X>.ts`, `lib/auth/<X>.ts` | flat | `lib/api/<X>.test.ts`, `lib/auth/<X>.test.ts` |
 | `entityConfigs/<X>.ts` | flat | `entityConfigs/<X>.test.ts` |
 | `container/<X>.tsx` | flat (one-file) | `container/<X>.test.tsx` |
+| `container/<group>/<X>/<X>.tsx` (ADR-0057, e.g. `container/entity-crud/EntityListPage/`) | per-screen subfolder with `index.ts` barrel, matching `pages/<tier>/<X>/<X>.tsx` | `container/<group>/<X>/<X>.test.tsx` — **inside** the source's subfolder |
 | `assets/<tier>/<file>` (assets that *are* the source, not a backing of one) | per-leaf-folder | `assets/<tier>/<file>.test.<ext>` — same folder as the asset itself |
 
 The check is mechanical: does `src/<path>.tsx` (or `.ts`) exist as a single file? If yes, the test lands at `src/<path>.test.<ext>`. If the source is `src/<tier>/<stem>/<stem>.tsx` (subfolder with barrel), the test lands INSIDE that subfolder — NOT flattened to `src/<tier>/<stem>.test.tsx`. A bulk move that flattens everything loses the per-source-file co-location guarantee and forces every future reader to re-derive the convention. Verified the hard way on the FRONTEND-1 implementation pass (2026-09-09): one script that put everything flat produced 1 collision (`AppHeader.test.tsx` and `AppHeader.OrgSwitcher.test.tsx` both wanted the same flat path) and would have required a full revert if it hadn't been caught at move time.

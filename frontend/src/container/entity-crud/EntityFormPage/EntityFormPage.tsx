@@ -21,11 +21,11 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import EntityForm from "../../components/organisms/entity-form";
-import { ApiError } from "../../lib/api/client";
-import { EntityRow, getEntity, updateEntity } from "../../lib/api/entityCrud";
-import { listDefectsForTestCase, type DefectSummary } from "../../lib/api/defects";
-import { useAdminRouteContext } from "./useAdminRouteContext";
+import EntityForm from "../../../components/organisms/entity-form";
+import { ApiError } from "../../../lib/api/client";
+import { EntityRow, getEntity, updateEntity } from "../../../lib/api/entityCrud";
+import { listDefectsForTestCase, type DefectSummary } from "../../../lib/api/defects";
+import { useAdminRouteContext } from "../../../pages/admin/useAdminRouteContext";
 
 /** UI Design Document §4 (EXEC-3, ADR-0044) — one color per `DefectSeverity`. */
 function severityColor(severity: string): string {
