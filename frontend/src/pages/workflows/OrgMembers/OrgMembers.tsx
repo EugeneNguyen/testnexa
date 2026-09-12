@@ -56,6 +56,7 @@ import {
   revokeInvite,
   updateMembershipStatus,
 } from "../../../lib/api/members";
+import { Card, Alert, Button } from "../../../components";
 
 const inviteSchema = z.object({
   email: z.string().email("Enter a valid email address."),
@@ -280,16 +281,12 @@ function OrgMembers() {
               </div>
             )}
 
-            {!isLoading && loadError && (
-              <div className="alert alert-danger" role="alert">
-                {loadError}
-              </div>
-            )}
+            {!isLoading && loadError && <Alert color="danger">{loadError}</Alert>}
 
             {!isLoading && !loadError && (
               <>
-                <div className="card mb-4">
-                  <div className="card-body">
+                <Card className="mb-4">
+                  <Card.Body>
                     <h2 className="fs-6 mb-3">Invite by email</h2>
                     <form
                       noValidate
@@ -313,18 +310,14 @@ function OrgMembers() {
                           )}
                         </div>
                         <div className="col-12 col-sm-4 d-flex align-items-end">
-                          <button type="submit" className="btn btn-primary w-100" disabled={isInviting}>
+                          <Button type="submit" color="primary" className="w-100" disabled={isInviting}>
                             {isInviting ? "Sending..." : "Send invite"}
-                          </button>
+                          </Button>
                         </div>
                       </div>
                     </form>
 
-                    {inviteError && (
-                      <div className="alert alert-danger mt-3 mb-0" role="alert">
-                        {inviteError}
-                      </div>
-                    )}
+                    {inviteError && <Alert color="danger" className="mt-3 mb-0">{inviteError}</Alert>}
 
                     {/* No `role="alert"` on either success block — see this file's docstring. */}
                     {inviteResult && inviteResult.invite_link && (
@@ -357,17 +350,13 @@ function OrgMembers() {
                         can accept it directly from within the app.
                       </div>
                     )}
-                  </div>
-                </div>
+                  </Card.Body>
+                </Card>
 
-                {actionError && (
-                  <div className="alert alert-danger" role="alert">
-                    {actionError}
-                  </div>
-                )}
+                {actionError && <Alert color="danger">{actionError}</Alert>}
 
-                <div className="card">
-                  <div className="card-body">
+                <Card>
+                  <Card.Body>
                     {/* `responsive` only on the old CTable — no `table-hover` here (ADR-0042 §4.5.11). */}
                     <div className="table-responsive">
                       <table className="table">
@@ -392,45 +381,50 @@ function OrgMembers() {
                               <td>{formatJoinedAt(member.joined_at)}</td>
                               <td>
                                 {member.status === "active" && (
-                                  <button
-                                    type="button"
-                                    className="btn btn-outline-warning btn-sm"
+                                  <Button
+                                    color="warning"
+                                    outline
+                                    size="sm"
                                     disabled={pendingMembershipId === member.membership_id}
                                     onClick={() => void handleSuspend(member)}
                                   >
                                     Suspend
-                                  </button>
+                                  </Button>
                                 )}
                                 {member.status === "suspended" && (
-                                  <button
-                                    type="button"
-                                    className="btn btn-outline-success btn-sm"
+                                  <Button
+                                    color="success"
+                                    outline
+                                    size="sm"
                                     disabled={pendingMembershipId === member.membership_id}
                                     onClick={() => void handleReactivate(member)}
                                   >
                                     Reactivate
-                                  </button>
+                                  </Button>
                                 )}
                                 {member.status === "invited" && (
                                   <>
-                                    <button
-                                      type="button"
-                                      className="btn btn-outline-secondary btn-sm me-2"
+                                    <Button
+                                      color="secondary"
+                                      outline
+                                      size="sm"
+                                      className="me-2"
                                       disabled={pendingMembershipId === member.membership_id}
                                       onClick={() => void handleCopyRowLink(member)}
                                     >
                                       {rowCopyStatus[member.membership_id] === "copied"
                                         ? "Copied!"
                                         : "Copy link"}
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="btn btn-outline-danger btn-sm"
+                                    </Button>
+                                    <Button
+                                      color="danger"
+                                      outline
+                                      size="sm"
                                       disabled={pendingMembershipId === member.membership_id}
                                       onClick={() => void handleRevoke(member)}
                                     >
                                       Revoke
-                                    </button>
+                                    </Button>
                                     {rowCopyStatus[member.membership_id] === "error" && (
                                       <div className="text-danger small mt-1">
                                         Couldn't copy automatically — try again or ask them to
@@ -458,8 +452,8 @@ function OrgMembers() {
                         </tbody>
                       </table>
                     </div>
-                  </div>
-                </div>
+                  </Card.Body>
+                </Card>
               </>
             )}
           </div>

@@ -113,8 +113,7 @@ import {
   updateEntity,
   type EntityRow,
 } from "../../../lib/api/entityCrud";
-import EntityForm from "../../../components/organisms/entity-form";
-import FkAutocomplete from "../../../components/molecules/fk-autocomplete";
+import { Alert, Spinner, EntityForm, FkAutocomplete } from "../../../components";
 import { pathFor } from "../../../entityConfigs/overrides";
 import { useEntitySchema } from "../../admin/useEntitySchema";
 import type { EntityConfig } from "../../../entityConfigs/types";
@@ -271,20 +270,6 @@ function TextBlock({ label, value }: { label: string; value: string | null }) {
 }
 
 /**
- * The former `CSpinner color="primary"`, hand-written (ADR-0042). The explicit
- * `role="status"` and the visually-hidden label are not decoration — CoreUI's
- * own spinner emitted both, and `role="status"` is what several sibling
- * screens' `getByRole("status")` lookups resolve against.
- */
-function Spinner() {
-  return (
-    <div className="spinner-border text-primary" role="status">
-      <span className="visually-hidden">Loading...</span>
-    </div>
-  );
-}
-
-/**
  * The former `CModal` + `CModalHeader`/`CModalTitle` pair, hand-written
  * (ADR-0042 §2.3). One local helper rather than four copies of the same
  * Bootstrap modal skeleton — this file renders four modals.
@@ -301,6 +286,14 @@ function Spinner() {
  *
  * `children` supplies the `.modal-body`/`.modal-footer` (or a `<form>` wrapping
  * them, which is how the submit-bearing modals on this screen are shaped).
+ *
+ * NOT converted to the shared `components/molecules/modal` atom in the
+ * ADR-0042/0043 reuse pass: that atom's `ModalProps` has no `data-testid`/
+ * `testId` passthrough for the outer `.modal` wrapper, and every modal on this
+ * screen is looked up by exactly that testid (e.g.
+ * `TestPlanDetail.Edit.test.tsx`'s `screen.getByTestId("edit-test-plan-modal")`)
+ * — swapping in the shared atom as-is would silently drop a load-bearing test
+ * hook, so this local copy stays until the atom grows that prop.
  */
 function Modal({
   visible,
@@ -984,15 +977,13 @@ function TestPlanDetail() {
                 </div>
 
                 {planLoadError && (
-                  <div className="alert alert-danger" role="alert" data-testid="test-plan-load-error">
+                  <Alert color="danger" data-testid="test-plan-load-error">
                     {planLoadError}
-                  </div>
+                  </Alert>
                 )}
 
                 {planLoading ? (
-                  <div className="d-flex justify-content-center py-4">
-                    <Spinner />
-                  </div>
+                  <Spinner wrapperClassName="py-4" />
                 ) : (
                   plan && (
                     <div data-testid="test-plan-fields">
@@ -1028,9 +1019,9 @@ function TestPlanDetail() {
                   `.btn-close` is what the former `CAlert dismissible` emitted.
                 */}
                 {membershipError && (
-                  <div
-                    className="alert alert-danger alert-dismissible fade show"
-                    role="alert"
+                  <Alert
+                    color="danger"
+                    className="alert-dismissible fade show"
                     data-testid="membership-error"
                   >
                     {membershipError}
@@ -1040,23 +1031,17 @@ function TestPlanDetail() {
                       aria-label="Close"
                       onClick={() => setMembershipError(null)}
                     />
-                  </div>
+                  </Alert>
                 )}
 
                 {suitesLoadError && (
-                  <div
-                    className="alert alert-danger"
-                    role="alert"
-                    data-testid="included-suites-error"
-                  >
+                  <Alert color="danger" data-testid="included-suites-error">
                     {suitesLoadError}
-                  </div>
+                  </Alert>
                 )}
 
                 {suitesLoading ? (
-                  <div className="d-flex justify-content-center py-3">
-                    <Spinner />
-                  </div>
+                  <Spinner wrapperClassName="py-3" />
                 ) : !suitesLoadError && includedSuites.length === 0 ? (
                   <p className="text-body-secondary mb-0">No test suites included yet.</p>
                 ) : (
@@ -1097,15 +1082,13 @@ function TestPlanDetail() {
                 <h2 className="fs-5 mb-3">Covered Test Cases</h2>
 
                 {coverageError && (
-                  <div className="alert alert-danger" role="alert" data-testid="coverage-error">
+                  <Alert color="danger" data-testid="coverage-error">
                     {coverageError}
-                  </div>
+                  </Alert>
                 )}
 
                 {coverageLoading ? (
-                  <div className="d-flex justify-content-center py-3">
-                    <Spinner />
-                  </div>
+                  <Spinner wrapperClassName="py-3" />
                 ) : !coverageError && coverage.length === 0 ? (
                   /*
                     Distinct wording from the suites section's own empty state
@@ -1151,9 +1134,9 @@ function TestPlanDetail() {
 
                 {/* §1: a `422`/`403`/`409` from add/edit/delete renders here. */}
                 {criteriaError && (
-                  <div
-                    className="alert alert-danger alert-dismissible fade show"
-                    role="alert"
+                  <Alert
+                    color="danger"
+                    className="alert-dismissible fade show"
                     data-testid="criteria-error"
                   >
                     {criteriaError}
@@ -1163,19 +1146,17 @@ function TestPlanDetail() {
                       aria-label="Close"
                       onClick={() => setCriteriaError(null)}
                     />
-                  </div>
+                  </Alert>
                 )}
 
                 {criteriaLoadError && (
-                  <div className="alert alert-danger" role="alert" data-testid="criteria-load-error">
+                  <Alert color="danger" data-testid="criteria-load-error">
                     {criteriaLoadError}
-                  </div>
+                  </Alert>
                 )}
 
                 {criteriaLoading ? (
-                  <div className="d-flex justify-content-center py-3">
-                    <Spinner />
-                  </div>
+                  <Spinner wrapperClassName="py-3" />
                 ) : !criteriaLoadError && criteria.length === 0 ? (
                   <p className="text-body-secondary mb-0">No entry/exit criteria defined yet.</p>
                 ) : (
@@ -1239,9 +1220,9 @@ function TestPlanDetail() {
                 {/* §1: a `422` (cross-project release/environment) or `403`
                     renders here, directly under the section header. */}
                 {cycleError && (
-                  <div
-                    className="alert alert-danger alert-dismissible fade show"
-                    role="alert"
+                  <Alert
+                    color="danger"
+                    className="alert-dismissible fade show"
                     data-testid="cycle-error"
                   >
                     {cycleError}
@@ -1251,23 +1232,17 @@ function TestPlanDetail() {
                       aria-label="Close"
                       onClick={() => setCycleError(null)}
                     />
-                  </div>
+                  </Alert>
                 )}
 
                 {cyclesLoadError && (
-                  <div
-                    className="alert alert-danger"
-                    role="alert"
-                    data-testid="test-cycles-load-error"
-                  >
+                  <Alert color="danger" data-testid="test-cycles-load-error">
                     {cyclesLoadError}
-                  </div>
+                  </Alert>
                 )}
 
                 {cyclesLoading ? (
-                  <div className="d-flex justify-content-center py-3">
-                    <Spinner />
-                  </div>
+                  <Spinner wrapperClassName="py-3" />
                 ) : !cyclesLoadError && cycles.length === 0 ? (
                   <p className="text-body-secondary mb-0">No test cycles yet.</p>
                 ) : (

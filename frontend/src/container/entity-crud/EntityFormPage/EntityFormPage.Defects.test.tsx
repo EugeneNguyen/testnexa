@@ -19,13 +19,17 @@ import { getEntity } from "../../../lib/api/entityCrud";
 import { listDefectsForTestCase } from "../../../lib/api/defects";
 import { ApiError } from "../../../lib/api/client";
 
-vi.mock("../../../pages/admin/registry", () => ({
-  entityLabelByKey: {
-    "test-cases": "Test cases",
-    projects: "Projects",
-  },
-  ADMIN_ENTITY_KEYS: new Set(["test-cases", "projects"]),
-}));
+vi.mock("../../../pages/admin/registry", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../pages/admin/registry")>();
+  return {
+    ...actual,
+    entityLabelByKey: {
+      "test-cases": "Test cases",
+      projects: "Projects",
+    },
+    ADMIN_ENTITY_KEYS: new Set(["test-cases", "projects"]),
+  };
+});
 
 /**
  * ADR-0053: same fixture configs as before, injected through the fetch hook

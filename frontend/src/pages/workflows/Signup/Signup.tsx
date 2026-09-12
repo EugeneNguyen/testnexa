@@ -46,7 +46,7 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { useAuth } from "../../../auth/AuthContext";
 import { ApiError } from "../../../lib/api/client";
-import FormField from "../../../components/molecules/form-field";
+import { FormField, Card, Alert, Button } from "../../../components";
 
 const SLUG_PATTERN = /^[a-z0-9-]+$/;
 
@@ -128,8 +128,8 @@ function Signup() {
       <div className="container">
         <div className="row justify-content-center">
           <div className="col-md-7 col-lg-5">
-            <div className="card">
-              <div className="card-body p-4">
+            <Card>
+              <Card.Body className="p-4">
                 <h1 className="mb-4 fs-4">Create your organization</h1>
                 <form noValidate onSubmit={handleFormSubmit}>
                   <FormField
@@ -170,20 +170,16 @@ function Signup() {
                     />
                     <div className="form-text">Lowercase letters, numbers, and hyphens only.</div>
                   </div>
-                  {error && (
-                    <div className="alert alert-danger" role="alert">
-                      {error}
-                    </div>
-                  )}
-                  <button type="submit" className="btn btn-primary w-100" disabled={submitting}>
+                  {error && <Alert color="danger">{error}</Alert>}
+                  <Button type="submit" color="primary" className="w-100" disabled={submitting}>
                     {submitting ? "Creating..." : "Create organization"}
-                  </button>
+                  </Button>
                 </form>
                 <p className="mt-3 mb-0 text-body-secondary small">
                   Already have an account? <Link to="/login">Log in</Link>
                 </p>
-              </div>
-            </div>
+              </Card.Body>
+            </Card>
           </div>
         </div>
       </div>

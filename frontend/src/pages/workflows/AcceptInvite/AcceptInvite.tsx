@@ -33,6 +33,7 @@ import { z } from "zod";
 import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../../auth/AuthContext";
 import { ApiError } from "../../../lib/api/client";
+import { Card, Alert, Button } from "../../../components";
 
 const acceptInviteSchema = z
   .object({
@@ -85,8 +86,8 @@ function AcceptInvite() {
       <div className="container">
         <div className="row justify-content-center">
           <div className="col-md-6 col-lg-4">
-            <div className="card">
-              <div className="card-body p-4">
+            <Card>
+              <Card.Body className="p-4">
                 <h1 className="mb-4 fs-4">Accept your invite</h1>
                 <form
                   noValidate
@@ -119,16 +120,16 @@ function AcceptInvite() {
                     />
                   </div>
                   {(errors.password || errors.confirmPassword || error) && (
-                    <div className="alert alert-danger" role="alert">
+                    <Alert color="danger">
                       {errors.password?.message ?? errors.confirmPassword?.message ?? error}
-                    </div>
+                    </Alert>
                   )}
-                  <button type="submit" className="btn btn-primary w-100" disabled={submitting}>
+                  <Button type="submit" color="primary" className="w-100" disabled={submitting}>
                     {submitting ? "Setting password..." : "Set password"}
-                  </button>
+                  </Button>
                 </form>
-              </div>
-            </div>
+              </Card.Body>
+            </Card>
           </div>
         </div>
       </div>

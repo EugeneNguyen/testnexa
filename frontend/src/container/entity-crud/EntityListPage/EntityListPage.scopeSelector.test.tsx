@@ -62,13 +62,17 @@ const { ATTACHMENT_SCHEMA } = vi.hoisted(() => ({
     ],
   },
 }));
-vi.mock("../../../pages/admin/registry", () => ({
-  entityLabelByKey: {
-    attachments: "Attachments",
-    projects: "Projects",
-  },
-  ADMIN_ENTITY_KEYS: new Set(["attachments", "projects"]),
-}));
+vi.mock("../../../pages/admin/registry", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../pages/admin/registry")>();
+  return {
+    ...actual,
+    entityLabelByKey: {
+      attachments: "Attachments",
+      projects: "Projects",
+    },
+    ADMIN_ENTITY_KEYS: new Set(["attachments", "projects"]),
+  };
+});
 
 vi.mock("../../../pages/admin/useEntitySchema", () => {
   const configs: Record<string, unknown> = {

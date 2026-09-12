@@ -17,10 +17,14 @@ import { apiFetch } from "../../../lib/api/client";
  * ADR added, only stubbing the actual network layer underneath it
  * (`apiFetch`).
  */
-vi.mock("../../../pages/admin/registry", () => ({
-  entityLabelByKey: { projects: "Projects" },
-  ADMIN_ENTITY_KEYS: new Set(["projects"]),
-}));
+vi.mock("../../../pages/admin/registry", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../pages/admin/registry")>();
+  return {
+    ...actual,
+    entityLabelByKey: { projects: "Projects" },
+    ADMIN_ENTITY_KEYS: new Set(["projects"]),
+  };
+});
 
 vi.mock("../../../pages/admin/useEntitySchema", () => {
   const config = {
