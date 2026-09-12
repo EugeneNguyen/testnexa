@@ -264,9 +264,11 @@ test.describe("SHELL-9: project-scope nav context (sidebar + breadcrumb)", () =>
       await expect(page.getByTestId("sidebar-nav-group-execution-defects")).toBeVisible();
       await expect(page.getByTestId("sidebar-nav-group-setup")).toBeVisible();
       await expect(page.getByTestId("sidebar-nav-back-to-projects")).toBeVisible();
-      // Already on `/projects/:projectId` itself — "Project Overview" (which
-      // points at this exact route) is correctly absent, not a dead self-link.
-      await expect(page.getByTestId("sidebar-nav-project-overview")).toHaveCount(0);
+      // Already on `/projects/:projectId` itself — "Overview" still renders
+      // (moved to the top of the nav, renamed from "Project Overview"), just
+      // active-styled rather than suppressed as a dead self-link.
+      await expect(page.getByTestId("sidebar-nav-project-overview")).toBeVisible();
+      await expect(page.getByTestId("sidebar-nav-project-overview")).toHaveClass(/active/);
 
       // The org nav this story used to render here is gone — not just
       // "additional content exists," the old content is actually absent.

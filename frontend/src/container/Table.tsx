@@ -164,13 +164,15 @@
  *   ...">` on the caller's `renderRow` output.
  */
 import { ReactNode, useEffect, useState } from "react";
+import { Pagination, PAGE_SIZE_OPTIONS } from "../components/molecules/pagination";
 
 /**
  * The page-size options offered by every retrofitted screen (ADR-0041).
- * Exported so tests and callers can assert against the canonical list rather
- * than re-declaring it.
+ * Moved to `components/molecules/pagination` — the `Pagination` molecule's
+ * natural home — and re-exported here so existing callers/tests importing
+ * it from `container/Table` keep working unchanged.
  */
-export const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
+export { PAGE_SIZE_OPTIONS };
 
 export type TableMode = "server" | "client";
 
@@ -288,6 +290,16 @@ export interface TableProps<T> {
    * primary button (matches Tabler's own Card Actions example).
    */
   cardActions?: ReactNode;
+  /**
+   * Wraps the pagination row in a `<div className={footerClassName}>` —
+   * pass `"card-footer"` when the caller already renders its own outer
+   * `Card` (e.g. `EntityTable`), so pagination lands in a real
+   * `.card-footer` instead of sitting bare inside `.card-body`. Not needed
+   * (and not combined) with `cardTitle`'s own self-contained card mode,
+   * which has no separate footer of its own. Omit for the pre-existing
+   * bare-div behavior every other caller still gets.
+   */
+  footerClassName?: string;
 }
 
 /**
@@ -317,6 +329,7 @@ function Table<T>({
   caption,
   cardTitle,
   cardActions,
+  footerClassName,
 }: TableProps<T>) {
   // Client mode owns both page and page size internally (there is nothing to
   // re-fetch). Server mode owns neither — the caller drives both so its own
@@ -382,10 +395,12 @@ function Table<T>({
     }
   }
 
-  // TC-DS-009/TC-DS-014: the pagination row renders only past one page's
-  // worth of data — same as both pre-migration implementations. The page-size
-  // selector lives inside that row, so it follows the same rule.
-  const showPaginationRow = totalPages > 1;
+  // Renders unconditionally, including a single-page list — supersedes
+  // TC-DS-009/TC-DS-014's original "only past one page's worth of data"
+  // clause (both retired the same way; see the updated Test Design doc).
+  // Previous/Next still disable correctly on one page via `Pagination`'s own
+  // `currentPage`/`totalPages` comparison.
+  const showPaginationRow = true;
 
   // `tableProps.className` is merged with (not allowed to clobber) the
   // container's own table classes. Card mode swaps `table-vcenter table-hover`
@@ -411,9 +426,6 @@ function Table<T>({
       : responsive === undefined || responsive === "always"
         ? "table-responsive"
         : `table-responsive-${responsive}`;
-
-  const isPreviousDisabled = currentPage <= 1;
-  const isNextDisabled = currentPage >= totalPages;
 
   const tableElement = (
     <table className={tableClassName} {...restTableProps}>
@@ -442,65 +454,22 @@ function Table<T>({
     );
 
   const paginationBlock = showPaginationRow && (
-    <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
-      <div className="d-flex align-items-center gap-2">
-        <label className="mb-0 text-body-secondary small" htmlFor={`${testIdPrefix}-page-size`}>
-          Rows per page
-        </label>
-        <select
-          className="form-select form-select-sm"
-          id={`${testIdPrefix}-page-size`}
-          style={{ width: "auto" }}
-          aria-label="Rows per page"
-          data-testid={`${testIdPrefix}-page-size`}
-          value={effectivePageSize}
-          onChange={(event) => changePageSize(Number(event.target.value))}
-        >
-          {PAGE_SIZE_OPTIONS.map((option) => (
-            <option key={option} value={option}>
-              {option}
-            </option>
-          ))}
-        </select>
-      </div>
+    <Pagination
+      currentPage={currentPage}
+      totalPages={totalPages}
+      pageSize={effectivePageSize}
+      totalItems={effectiveTotal}
+      onPageChange={goToPage}
+      onPageSizeChange={changePageSize}
+      paginationLabel={paginationLabel}
+      testIdPrefix={testIdPrefix}
+    />
+  );
 
-      <nav aria-label={paginationLabel} data-testid={`${testIdPrefix}-pagination`}>
-        <ul className="pagination">
-          <li className={`page-item${isPreviousDisabled ? " disabled" : ""}`}>
-            <button
-              type="button"
-              className="page-link"
-              disabled={isPreviousDisabled}
-              onClick={() => goToPage(currentPage - 1)}
-            >
-              Previous
-            </button>
-          </li>
-          {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-            <li key={p} className={`page-item${p === currentPage ? " active" : ""}`}>
-              <button
-                type="button"
-                className="page-link"
-                aria-current={p === currentPage ? "page" : undefined}
-                onClick={() => goToPage(p)}
-              >
-                {p}
-              </button>
-            </li>
-          ))}
-          <li className={`page-item${isNextDisabled ? " disabled" : ""}`}>
-            <button
-              type="button"
-              className="page-link"
-              disabled={isNextDisabled}
-              onClick={() => goToPage(currentPage + 1)}
-            >
-              Next
-            </button>
-          </li>
-        </ul>
-      </nav>
-    </div>
+  const paginationSlot = footerClassName ? (
+    <div className={footerClassName}>{paginationBlock}</div>
+  ) : (
+    paginationBlock
   );
 
   if (useCard) {
@@ -508,7 +477,7 @@ function Table<T>({
       <div className="card">
         {cardHeader}
         {responsiveClassName ? <div className={responsiveClassName}>{tableElement}</div> : tableElement}
-        {paginationBlock}
+        {paginationSlot}
       </div>
     );
   }
@@ -520,7 +489,7 @@ function Table<T>({
       {/* `responsive` on the old CTable = this wrapper (ADR-0042 spec §2.1). */}
       {responsiveClassName ? <div className={responsiveClassName}>{tableElement}</div> : tableElement}
 
-      {paginationBlock}
+      {paginationSlot}
     </div>
   );
 }

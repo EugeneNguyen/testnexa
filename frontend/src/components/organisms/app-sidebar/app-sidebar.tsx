@@ -62,7 +62,7 @@
  * between).
  */
 import { useState } from "react";
-import { NavLink, useMatch } from "react-router-dom";
+import { NavLink } from "react-router-dom";
 import logoMarkUrl from "../../../assets/brand/logo-mark.svg";
 import { orgScopedEntities, projectScopedEntities } from "../../../pages/admin/registry";
 import { useResolvedOrgId } from "../../../hooks/useResolvedOrgId";
@@ -257,11 +257,6 @@ function AppSidebar({ mobileOpen = false }: AppSidebarProps) {
   const { orgId, projectId, mode } = useResolvedOrgId();
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
 
-  // "Project Overview" points at `/projects/:projectId` itself, so it is a dead
-  // affordance while already on that exact route. Hooks must run
-  // unconditionally, so this is computed before the `mode` branch below.
-  const isOnProjectOverview = useMatch({ path: "/projects/:projectId", end: true }) !== null;
-
   function toggleGroup(key: string) {
     setOpenGroups((prev) => {
       const next = new Set(prev);
@@ -310,7 +305,29 @@ function AppSidebar({ mobileOpen = false }: AppSidebarProps) {
           icon: "fa-solid fa-users",
         },
       ]
-    : [];
+    : mode === "project" && projectId && orgId
+      ? [
+          // "Overview" (was "Project Overview", moved from the bottom
+          // "back" links up to the top of the project-mode nav). Always
+          // rendered once resolved, including on `/projects/:projectId`
+          // itself — same posture as org-mode's own "Dashboard" item, which
+          // doesn't hide itself on `/orgs/:orgId` either; `NavLink`'s own
+          // active-class styling (not suppression) is what marks "you are
+          // here." Gated on `orgId` too (not just `projectId`), matching
+          // `navGroups`/`bottomNavItems` — the project-mode nav stays fully
+          // empty while `useResolvedOrgId()`'s own fetch is pending or 404s
+          // (ADR-0050 §4's "one fetch's worth of blank sidebar, no partial
+          // nav" trade-off), not partially populated with just this item.
+          {
+            key: "project-overview",
+            label: "Overview",
+            to: `/projects/${projectId}`,
+            end: true,
+            testId: "sidebar-nav-project-overview",
+            icon: "fa-solid fa-circle-info",
+          },
+        ]
+      : [];
 
   // ADR-0025 generic admin CRUD surface: the org/global-scoped entities
   // (Sitemap's own table), generated from the registry
@@ -373,35 +390,21 @@ function AppSidebar({ mobileOpen = false }: AppSidebarProps) {
 
   const navGroups: SidebarNavGroup[] = mode === "project" ? projectNavGroups : orgNavGroups;
 
-  // SHELL-10 (ADR-0050): the two "back" links, rendered *below* the entity
-  // groups (hence a separate array — `navItems` renders above `navGroups`).
+  // SHELL-10 (ADR-0050): the "back to projects" link, rendered *below* the
+  // entity groups (hence a separate array — `navItems` renders above
+  // `navGroups`). "Overview" used to live here too; it now renders at the
+  // top of `navItems` instead (see that array's own comment).
   const bottomNavItems: SidebarNavItem[] =
-    mode === "project" && projectId
+    mode === "project" && projectId && orgId
       ? [
-          ...(isOnProjectOverview
-            ? []
-            : [
-                {
-                  key: "project-overview",
-                  label: "Project Overview",
-                  to: `/projects/${projectId}`,
-                  end: true,
-                  testId: "sidebar-nav-project-overview",
-                  icon: "fa-solid fa-circle-info",
-                },
-              ]),
-          ...(orgId
-            ? [
-                {
-                  key: "back-to-projects",
-                  label: "Back to Projects",
-                  to: `/orgs/${orgId}/projects`,
-                  end: false,
-                  testId: "sidebar-nav-back-to-projects",
-                  icon: "fa-solid fa-arrow-left",
-                },
-              ]
-            : []),
+          {
+            key: "back-to-projects",
+            label: "Back to Projects",
+            to: `/orgs/${orgId}/projects`,
+            end: false,
+            testId: "sidebar-nav-back-to-projects",
+            icon: "fa-solid fa-arrow-left",
+          },
         ]
       : [];
 

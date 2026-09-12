@@ -560,9 +560,9 @@ describe("AppSidebar", () => {
   }
 
   // SHELL-10 (ADR-0050): the project-mode nav's own top-to-bottom order —
-  // 4 entity groups, then the 2 "back" links. "Project Overview" is only
-  // present when NOT already on `/projects/:projectId` itself (see the
-  // dedicated test below), so it's appended per-route, not baked into this
+  // 4 entity groups, then "Back to Projects". "Overview" (top of nav) is
+  // only present when NOT already on `/projects/:projectId` itself (see the
+  // dedicated test below), so it's prepended per-route, not baked into this
   // constant.
   const PROJECT_NAV_GROUPS = ["Test Design", "Test Planning", "Execution & Defects", "Setup"];
 
@@ -588,11 +588,11 @@ describe("AppSidebar", () => {
     expect(screen.getByTestId("sidebar-nav-group-execution-defects")).toBeInTheDocument();
     expect(screen.getByTestId("sidebar-nav-group-setup")).toBeInTheDocument();
     expect(screen.getByTestId("sidebar-nav-back-to-projects")).toBeInTheDocument();
-    // Already on `/projects/:projectId` itself, so "Project Overview" (which
-    // points at that exact route) is correctly omitted, not rendered as a
-    // dead self-link.
-    expect(screen.queryByTestId("sidebar-nav-project-overview")).not.toBeInTheDocument();
-    expect(topLevelLabels(container)).toEqual([...PROJECT_NAV_GROUPS, "Back to Projects"]);
+    // Already on `/projects/:projectId` itself — "Overview" still renders
+    // (same posture as org-mode's "Dashboard" not hiding on `/orgs/:orgId`),
+    // just active-styled rather than suppressed as a dead self-link.
+    expect(screen.getByTestId("sidebar-nav-project-overview")).toHaveClass("active");
+    expect(topLevelLabels(container)).toEqual(["Overview", ...PROJECT_NAV_GROUPS, "Back to Projects"]);
 
     // The org nav is NOT rendered alongside or instead of this — negative check.
     expect(screen.queryByTestId("sidebar-nav-org-home")).not.toBeInTheDocument();
@@ -608,12 +608,14 @@ describe("AppSidebar", () => {
     );
   });
 
-  // TC-SHELL-030 (revised 2026-09-09, SHELL-10/ADR-0050): asserted on each of
+  // TC-SHELL-030 (revised 2026-09-09, SHELL-10/ADR-0050; label+position
+  // revised again — "Project Overview" renamed "Overview" and moved from
+  // the bottom "back" links to the top of the nav): asserted on each of
   // the three OTHER project-scoped route shapes independently, each its own
   // `render` (its own `AppSidebar` mount and its own `QueryClient`, so
   // nothing can be inherited from a sibling), rather than spot-checking
   // `ProjectDetail` and assuming it generalizes. `TestPlanDetail` and
-  // `TestCycleDetail` (nested routes) get "Project Overview" too, since
+  // `TestCycleDetail` (nested routes) get "Overview" too, since
   // neither IS `/projects/:projectId` itself.
   it("TC-SHELL-030: full project-mode nav resolution holds on TestPlanDetail, TestCycleDetail, and a project-scoped admin route", async () => {
     const routes = [
@@ -631,8 +633,8 @@ describe("AppSidebar", () => {
         expect(view.getByTestId("sidebar-nav-group-test-design")).toBeInTheDocument();
       });
       expect(topLevelLabels(view.container)).toEqual([
+        "Overview",
         ...PROJECT_NAV_GROUPS,
-        "Project Overview",
         "Back to Projects",
       ]);
       expect(view.getByTestId("sidebar-nav-project-overview")).toHaveAttribute(

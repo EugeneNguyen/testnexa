@@ -70,6 +70,12 @@ import Table from "../../../container/Table";
 import { EntityConfig, FieldConfig } from "../../../entityConfigs/types";
 import { EntityRow, getEntity } from "../../../lib/api/entityCrud";
 import { resolveEntityKey, useEntitySchemas } from "../../../pages/admin/useEntitySchema";
+import { Alert } from "../../atoms/alert/alert";
+import { Button } from "../../atoms/button/button";
+import { Card } from "../../atoms/card/card";
+import { Icon } from "../../atoms/icon/icon";
+import { Spinner } from "../../atoms/spinner/spinner";
+import { TextInput } from "../../atoms/text-input/text-input";
 
 /**
  * ADR-0060: `config.detailPath`'s own `:id` placeholder, filled from the
@@ -291,15 +297,14 @@ function EntityTable({
   const showTable = !loading && rows.length > 0;
 
   return (
-    <div className="card h-100">
-      <div className="card-header">
-        <h3 className="card-title">{title}</h3>
-        <div className="card-tools d-flex align-items-center gap-2">
+    <Card className="h-100">
+      <Card.Header className="d-flex flex-wrap align-items-center justify-content-between">
+        <Card.Title>{title}</Card.Title>
+        <div className="card-tools d-flex flex-wrap align-items-center gap-2 ms-auto">
           {showSearch && (
-            <input
+            <TextInput
               type="text"
-              className="form-control form-control-sm"
-              style={{ width: 200 }}
+              style={{ width: 200, maxWidth: "100%" }}
               placeholder="Search..."
               value={search ?? ""}
               onChange={(event) => onSearchChange!(event.target.value)}
@@ -308,23 +313,19 @@ function EntityTable({
           )}
           {headerActions}
         </div>
-      </div>
+      </Card.Header>
 
       {loadError && (
-        <div className="card-body border-bottom">
-          <div className="alert alert-danger mb-0" role="alert">
+        <Card.Body className="border-bottom">
+          <Alert color="danger" className="mb-0">
             {loadError}
-          </div>
-        </div>
+          </Alert>
+        </Card.Body>
       )}
 
-      <div className={showTable ? "card-body p-0" : "card-body"}>
+      <Card.Body className={showTable ? "p-0" : undefined}>
         {loading ? (
-        <div className="d-flex justify-content-center py-4">
-          <div className="spinner-border text-primary" role="status">
-            <span className="visually-hidden">Loading...</span>
-          </div>
-        </div>
+        <Spinner wrapperClassName="py-4" />
       ) : rows.length === 0 ? (
         <p className="text-body-secondary mb-0">No records found.</p>
       ) : (
@@ -338,6 +339,7 @@ function EntityTable({
           onPageSizeChange={onPageSizeChange}
           rowKey={(row) => String(row.id)}
           testIdPrefix="entity-table"
+          footerClassName="card-footer"
           columns={
             <tr>
               {tableFields.map((field) => {
@@ -350,20 +352,18 @@ function EntityTable({
                     aria-sort={isActive ? (sortDir === "desc" ? "descending" : "ascending") : undefined}
                   >
                     {isSortable ? (
-                      <button
-                        type="button"
-                        className="btn btn-link p-0 text-decoration-none text-body fw-bold"
+                      <Button
+                        color="link"
+                        className="p-0 text-decoration-none text-body fw-bold"
                         onClick={() => onSortChange!(field.name)}
                         data-testid={`entity-table-sort-${field.name}`}
                       >
                         {field.label}
-                        <i
-                          className={`fa-solid ms-1 ${
-                            isActive ? (sortDir === "desc" ? "fa-sort-down" : "fa-sort-up") : "fa-sort text-body-tertiary"
-                          }`}
-                          aria-hidden="true"
+                        <Icon
+                          name={isActive ? (sortDir === "desc" ? "sort-down" : "sort-up") : "sort"}
+                          className={`ms-1 ${isActive ? "" : "text-body-tertiary"}`}
                         />
-                      </button>
+                      </Button>
                     ) : (
                       field.label
                     )}
@@ -382,24 +382,26 @@ function EntityTable({
                 <td>
                   <div className="d-flex gap-2">
                     {config.methods.includes("update") && onEdit && canEditRow(row) && (
-                      <button
-                        type="button"
-                        className="btn btn-outline-secondary btn-sm"
+                      <Button
+                        color="secondary"
+                        outline
+                        size="sm"
                         aria-label="Edit"
                         onClick={() => onEdit(row)}
                       >
-                        <i className="fa-solid fa-pencil" aria-hidden="true" />
-                      </button>
+                        <Icon name="pencil" />
+                      </Button>
                     )}
                     {config.methods.includes("delete") && onDelete && canDeleteRow(row) && (
-                      <button
-                        type="button"
-                        className="btn btn-outline-danger btn-sm"
+                      <Button
+                        color="danger"
+                        outline
+                        size="sm"
                         aria-label="Delete"
                         onClick={() => onDelete(row)}
                       >
-                        <i className="fa-solid fa-trash" aria-hidden="true" />
-                      </button>
+                        <Icon name="trash" />
+                      </Button>
                     )}
                   </div>
                 </td>
@@ -408,8 +410,8 @@ function EntityTable({
           )}
         />
       )}
-      </div>
-    </div>
+      </Card.Body>
+    </Card>
   );
 }
 

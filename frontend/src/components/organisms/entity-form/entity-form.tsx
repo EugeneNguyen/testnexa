@@ -63,7 +63,9 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z, ZodTypeAny } from "zod";
 import { Alert } from "../../atoms/alert";
 import { Button } from "../../atoms/button";
+import { Select } from "../../atoms/select";
 import FormField from "../../molecules/form-field";
+import { LabeledCheckbox } from "../../molecules/labeled-checkbox";
 import { EntityConfig, FieldConfig } from "../../../entityConfigs/types";
 import FkAutocomplete from "../../molecules/fk-autocomplete";
 
@@ -189,18 +191,14 @@ function EntityForm({
             <label className="form-label" htmlFor={field.name}>
               {field.label}
             </label>
-            <select
-              className={`form-select${error ? " is-invalid" : ""}`}
-              id={field.name}
-              {...register(field.name)}
-            >
+            <Select invalid={Boolean(error)} id={field.name} {...register(field.name)}>
               <option value="">Select...</option>
               {(field.values ?? []).map((value) => (
                 <option key={value} value={value}>
                   {value}
                 </option>
               ))}
-            </select>
+            </Select>
             {error && (
               <div className="invalid-feedback d-block" role="alert">
                 {error}
@@ -211,18 +209,13 @@ function EntityForm({
       case "boolean":
         return (
           <div className="mb-3" key={field.name}>
-            <div className="form-check form-switch">
-              <input
-                className="form-check-input"
-                type="checkbox"
-                role="switch"
-                id={field.name}
-                {...register(field.name)}
-              />
-              <label className="form-check-label" htmlFor={field.name}>
-                {field.label}
-              </label>
-            </div>
+            <LabeledCheckbox
+              id={field.name}
+              label={field.label}
+              className="form-switch"
+              role="switch"
+              {...register(field.name)}
+            />
           </div>
         );
       case "fk":
@@ -260,18 +253,13 @@ function EntityForm({
       );
     }
     return (
-      <div className="mb-3" key={field.name}>
-        <label className="form-label" htmlFor={`${field.name}-readonly`}>
-          {field.label}
-        </label>
-        <input
-          className="form-control"
-          type="text"
-          id={`${field.name}-readonly`}
-          value={value === null || value === undefined ? "" : String(value)}
-          disabled
-        />
-      </div>
+      <FormField
+        key={field.name}
+        id={`${field.name}-readonly`}
+        label={field.label}
+        defaultValue={value === null || value === undefined ? "" : String(value)}
+        disabled
+      />
     );
   }
 

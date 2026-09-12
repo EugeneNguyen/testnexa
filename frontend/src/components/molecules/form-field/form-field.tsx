@@ -32,8 +32,15 @@
  *   here today, but `d-block` makes the message's visibility independent of
  *   the surrounding DOM shape, so a caller wrapping the input can't silently
  *   render an invisible error.
+ *
+ * Composes `atoms/text-input` for the control itself (was a second,
+ * independently hand-rolled `.form-control` — the same "check for an
+ * existing primitive first" reuse gap `frontend/CLAUDE.md` names) — inherits
+ * its `size="sm"` default, so every `FormField` is small unless a caller
+ * overrides `size`.
  */
 import { forwardRef, InputHTMLAttributes } from "react";
+import { TextInput, TextInputSize } from "../../atoms/text-input";
 
 export interface FormFieldProps
   extends Omit<InputHTMLAttributes<HTMLInputElement>, "id" | "type" | "size" | "value"> {
@@ -41,10 +48,12 @@ export interface FormFieldProps
   label: string;
   type?: string;
   error?: string;
+  /** `.form-control-sm`/`.form-control-lg`. Defaults to `"sm"`, same as `TextInput`. */
+  size?: TextInputSize;
 }
 
 const FormField = forwardRef<HTMLInputElement, FormFieldProps>(function FormField(
-  { id, label, type = "text", error, ...rest },
+  { id, label, type = "text", error, size, ...rest },
   ref,
 ) {
   return (
@@ -52,13 +61,7 @@ const FormField = forwardRef<HTMLInputElement, FormFieldProps>(function FormFiel
       <label className="form-label" htmlFor={id}>
         {label}
       </label>
-      <input
-        id={id}
-        type={type}
-        className={error ? "form-control is-invalid" : "form-control"}
-        ref={ref}
-        {...rest}
-      />
+      <TextInput id={id} type={type} size={size} invalid={Boolean(error)} ref={ref} {...rest} />
       {error && (
         <div className="invalid-feedback d-block" role="alert">
           {error}

@@ -40,8 +40,9 @@ function renderRow(row: Row) {
 }
 
 describe("Table container", () => {
-  // TC-DS-009
-  it("renders the header slot and all rows, no pagination row when everything fits on one page", () => {
+  // TC-DS-009 (superseded): pagination now renders even on a single page —
+  // Previous/Next are just disabled — see this file's own TC-DS-009 note.
+  it("renders the header slot, all rows, and a (disabled) pagination row when everything fits on one page", () => {
     render(
       <Table
         mode="server"
@@ -60,8 +61,10 @@ describe("Table container", () => {
     expect(screen.getByTestId("toolbar")).toBeInTheDocument();
     expect(screen.getByText("Row 1")).toBeInTheDocument();
     expect(screen.getByText("Row 3")).toBeInTheDocument();
-    expect(screen.queryByTestId("fixture-pagination")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("fixture-page-size")).not.toBeInTheDocument();
+    expect(screen.getByTestId("fixture-pagination")).toBeInTheDocument();
+    expect(screen.getByTestId("fixture-page-size")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
   });
 
   // TC-DS-010 (server mode: page-boundary navigation)
@@ -232,8 +235,9 @@ describe("Table container", () => {
     expect(values).toEqual(["10", "25", "50", "100"]);
   });
 
-  // TC-DS-014
-  it("renders nothing (no pagination row) for an empty items array — caller owns the empty-state message", () => {
+  // TC-DS-014 (superseded): pagination still renders (disabled) for an empty
+  // items array; the caller still owns the empty-state message/row content.
+  it("renders no rows for an empty items array — caller owns the empty-state message", () => {
     render(
       <Table
         mode="client"
@@ -246,8 +250,8 @@ describe("Table container", () => {
       />,
     );
 
-    expect(screen.queryByTestId("fixture-pagination")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("fixture-page-size")).not.toBeInTheDocument();
+    expect(screen.getByTestId("fixture-pagination")).toBeInTheDocument();
+    expect(screen.getByTestId("fixture-page-size")).toBeInTheDocument();
     expect(screen.queryAllByRole("cell")).toHaveLength(0);
   });
 
