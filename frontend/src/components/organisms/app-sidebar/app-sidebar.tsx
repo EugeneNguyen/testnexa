@@ -92,7 +92,7 @@ interface SidebarNavGroup {
 }
 
 /**
- * SHELL-7 (ADR-0046): the presentation-layer partition of the 8 org-scoped
+ * SHELL-7 (ADR-0046): the presentation-layer partition of the org-scoped
  * CRUD entities into 3 named, individually-iconed groups. Keyed off each
  * registry entry's own `key` — `orgScopedEntities` itself is NOT reordered or
  * re-keyed (that registry is also consumed by `App.tsx`'s route wiring and
@@ -104,10 +104,11 @@ interface SidebarNavGroup {
  * is deliberately not the registry's (Access Control reads Role → Permission
  * → RoleAssignment → OrgMembership, matching ADR-0046's own listing).
  *
- * This must remain a complete, non-overlapping partition of all 8 entries —
+ * This must remain a complete, non-overlapping partition of
+ * `orgScopedEntities` **together with `ORG_EXCLUDED_ENTITY_KEYS` below** —
  * enforced by `AppSidebar.test.tsx`'s TC-SHELL-025 test, which fails if an
  * entity is missing, duplicated, or added to the registry without landing in
- * a group here.
+ * a group or the exclusion list.
  */
 interface OrgEntityGroup {
   key: string;
@@ -141,6 +142,19 @@ const ORG_ENTITY_GROUPS: OrgEntityGroup[] = [
     entityKeys: ["organizations"],
   },
 ];
+
+/**
+ * ADR-0058: `orgScopedEntities` entries deliberately given no top-level
+ * org-nav slot — mirrors `PROJECT_EXCLUDED_ENTITY_KEYS` below, same reason.
+ * `projects` was added to `orgScopedEntities` so its generic-admin route
+ * (`/orgs/:orgId/admin/projects`) works, but ADR-0047's bespoke `ProjectsPage`
+ * (linked as the flat "Projects" item, `sidebar-nav-projects`) is the real
+ * nav path — a second "Projects" group entry pointing at the generic surface
+ * would read as a confusing duplicate. Declared explicitly (rather than left
+ * as "whatever isn't in a group") so the partition test can assert
+ * groups + exclusions === the whole registry.
+ */
+export const ORG_EXCLUDED_ENTITY_KEYS: string[] = ["projects"];
 
 /**
  * SHELL-10 (ADR-0050): the project-mode counterpart to `ORG_ENTITY_GROUPS`

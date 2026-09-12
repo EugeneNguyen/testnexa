@@ -29,6 +29,16 @@
  *   many screens with no shared data shape between them. Independent of
  *   which atomic tier a component would otherwise sit at.
  *
+ * **[ADR-0057](../../../docs/adr/0057-admin-crud-pages-relocated-to-container.md)
+ * (2026-09-11)** relocated `EntityListPage`/`EntityFormPage` here too, as
+ * `container/entity-crud/`. They don't fit the "many screens" half of the
+ * axis above as cleanly as `Table` does — each has exactly one caller
+ * (`App.tsx`'s route table) — but they do own real state/actions and sit
+ * outside the `components/<atomic-tier>/` composition axis the same way
+ * `Table` does, on the same direct instruction. Read that ADR before
+ * assuming every future admin page belongs here too — it documents a
+ * one-off relocation, not a new standing rule.
+ *
  * `EntityTable` still exists and still owns its `EntityConfig`-driven column
  * system; ADR-0041 explicitly declines to merge the two call conventions.
  * It simply delegates its pagination/page-size chrome here now.

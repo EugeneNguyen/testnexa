@@ -7,17 +7,26 @@
  *
  * - No `scopeField` at all (global catalog, §4 shape A) — always ready,
  *   nothing to resolve.
- * - `scopeResolution` set (`Project` only) — fetched automatically, no user
- *   interaction; "ready" once the fetch resolves.
+ * - Plain `scopeField` of exactly `"project_id"`/`"org_id"` matching a route
+ *   param already in context (§4 shape B, the *narrow* set of entities
+ *   where that's actually true — `Environment`/`TestPlan`/`Requirement`/
+ *   `TestSuite`/`Role`/`RoleAssignment`/`Permission`/`OrgMembership`, plus
+ *   `Project` itself on its two org-scoped routes since ADR-0060) — ready
+ *   immediately, value taken straight from the route. **Checked before
+ *   `scopeResolution` below**, not after (ADR-0060 fix — see that ADR) —
+ *   an entity can have both a `scopeResolution` (for one of its routes)
+ *   and a route context where the plain field is already present (for
+ *   another of its routes); the fast, no-fetch path must win whenever it
+ *   genuinely can, or a `scopeResolution` declared for one route silently
+ *   disables scope resolution entirely on the entity's other routes.
+ * - `scopeResolution` set (`Project` only, on its project-scoped
+ *   generic-admin route specifically — the *only* remaining route where
+ *   `org_id` isn't already directly available) — fetched automatically, no
+ *   user interaction; "ready" once the fetch resolves.
  * - `scopeSelector` set (§4 shape C, plus this story's generalization of it
  *   to every "plain" entity whose real `scope_field` isn't `project_id`/
  *   `org_id` — see e.g. `entityConfigs/test-condition.ts`) — "ready" only
  *   once the caller has picked something via `ScopeSelector`.
- * - Plain `scopeField` of exactly `"project_id"`/`"org_id"` matching a route
- *   param already in context (§4 shape B, the *narrow* set of entities
- *   where that's actually true — `Environment`/`TestPlan`/`Requirement`/
- *   `TestSuite`/`Role`/`RoleAssignment`/`Permission`/`OrgMembership`) —
- *   ready immediately, value taken straight from the route.
  *
  * **ADR-0053:** the `scopeResolution` branch's "via" config (the entity whose
  * row carries the value we need — `Project`, today's only case) is fetched via
@@ -74,6 +83,21 @@ export function useEntityScope(
     return { scope: { ready: true }, onScopeSelectorResolved };
   }
 
+  // ADR-0060: this direct-from-route-params check now runs BEFORE
+  // `scopeResolution` below, not after — see this file's own module
+  // docstring for why. A route that already carries `:orgId`/`:projectId`
+  // directly should never pay for the extra fetch, even when the entity's
+  // config *also* declares a `scopeResolution` for a DIFFERENT route shape
+  // (`Project`'s is for its project-scoped generic-admin path specifically —
+  // it doesn't stop applying just because another of Project's routes
+  // doesn't need it).
+  if (config.scopeField === "project_id" && routeParams.projectId) {
+    return { scope: { ready: true, field: "project_id", value: routeParams.projectId }, onScopeSelectorResolved };
+  }
+  if (config.scopeField === "org_id" && routeParams.orgId) {
+    return { scope: { ready: true, field: "org_id", value: routeParams.orgId }, onScopeSelectorResolved };
+  }
+
   if (scopeResolution) {
     if (!resolutionQuery.data) {
       return { scope: { ready: false }, onScopeSelectorResolved };
@@ -90,13 +114,6 @@ export function useEntityScope(
       return { scope: { ready: false }, onScopeSelectorResolved };
     }
     return { scope: { ready: true, field: selector.field, value: selector.value }, onScopeSelectorResolved };
-  }
-
-  if (config.scopeField === "project_id" && routeParams.projectId) {
-    return { scope: { ready: true, field: "project_id", value: routeParams.projectId }, onScopeSelectorResolved };
-  }
-  if (config.scopeField === "org_id" && routeParams.orgId) {
-    return { scope: { ready: true, field: "org_id", value: routeParams.orgId }, onScopeSelectorResolved };
   }
 
   return { scope: { ready: false }, onScopeSelectorResolved };

@@ -13,6 +13,12 @@
  * `.update`/`.delete` gap makes the corresponding affordance absent, not
  * disabled.
  *
+ * **ADR-0060:** optional `entityKeyOverride` prop, for a route with no
+ * `:entity` segment at all (`/orgs/:orgId/projects`, `Project`'s
+ * retired-`ProjectsPage` replacement) — passed straight through to
+ * `useAdminRouteContext`. Every other mount omits it and behaves exactly as
+ * before.
+ *
  * **ADR-0042 (CoreUI -> AdminLTE v4):** raw Bootstrap 5 markup now.
  * `CContainer fluid` -> `<div class="container-fluid">`, `CCard`/`CCardBody`
  * -> `<div class="card">`/`<div class="card-body">`, `CAlert` -> `<div
@@ -24,14 +30,14 @@
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { usePermissions } from "../../auth/usePermissions";
-import EntityForm from "../../components/organisms/entity-form";
-import EntityTable from "../../components/organisms/entity-table";
-import ScopeSelector from "../../components/molecules/scope-selector";
-import { ApiError } from "../../lib/api/client";
-import { createEntity, deleteEntity, EntityRow, listEntities } from "../../lib/api/entityCrud";
-import { useAdminRouteContext } from "./useAdminRouteContext";
-import { useEntityScope } from "./useEntityScope";
+import { usePermissions } from "../../../auth/usePermissions";
+import EntityForm from "../../../components/organisms/entity-form";
+import EntityTable from "../../../components/organisms/entity-table";
+import ScopeSelector from "../../../components/molecules/scope-selector";
+import { ApiError } from "../../../lib/api/client";
+import { createEntity, deleteEntity, EntityRow, listEntities } from "../../../lib/api/entityCrud";
+import { useAdminRouteContext } from "../../../pages/admin/useAdminRouteContext";
+import { useEntityScope } from "../../../pages/admin/useEntityScope";
 
 /**
  * DS-2/ADR-0041: this used to be a hardcoded `const PAGE_SIZE = 25` with no
@@ -129,10 +135,11 @@ function fieldErrorsFrom(error: unknown): Record<string, string> | undefined {
   return Object.fromEntries(Object.entries(body.field_errors).map(([field, messages]) => [field, messages[0]]));
 }
 
-function EntityListPage() {
+function EntityListPage({ entityKeyOverride }: { entityKeyOverride?: string } = {}) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { entityKey, config, label, schemaLoading, orgId, projectId, routeParams } = useAdminRouteContext();
+  const { entityKey, config, label, schemaLoading, orgId, projectId, routeParams } =
+    useAdminRouteContext(entityKeyOverride);
   const { scope, onScopeSelectorResolved } = useEntityScope(config, routeParams);
   const permissions = usePermissions(orgId);
 

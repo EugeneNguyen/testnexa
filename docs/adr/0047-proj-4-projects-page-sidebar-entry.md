@@ -1,7 +1,7 @@
 # ADR-0047: PROJ-4 gives Project CRUD its own sidebar-reachable page, amending ADR-0039's placement on "Dashboard"
 
 **Date:** 2026-09-09
-**Status:** Accepted
+**Status:** Superseded by [ADR-0060](0060-projects-page-retired-generic-surface.md) (2026-09-12) — `ProjectsPage.tsx` itself is retired; the `/orgs/:orgId/projects` route and sidebar nav item this ADR established survive unchanged, now rendering the generic admin surface instead
 **Deciders:** xuanbinh91@gmail.com (CTO)
 **Related:** [ADR-0039](0039-dash-2-org-home-dashboard-relabel-and-project-table.md) (DASH-2 — put full Project CRUD on `OrgHome`/"Dashboard"; this ADR amends its placement decision only, not its Project-CRUD behavior), [ADR-0040](0040-role-assignment-project-cascade-delete.md) (Delete cascade fix, unaffected), [ADR-0041](0041-ds-2-table-container-shared-pagination.md) (shared `Table` container, unaffected — `ProjectsPage.tsx` reuses it verbatim), [ADR-0017](0017-project-creation-flow.md) (Project creation flow, unaffected), [ADR-0018](0018-admin-shell-sidebar-layout.md) (sidebar's single nav-item-list extension point, AC5 — this story uses exactly that extension point), [ADR-0022](0022-generic-crud-router-factory.md) (generic factory `GET`/`DELETE /projects`, unaffected)
 

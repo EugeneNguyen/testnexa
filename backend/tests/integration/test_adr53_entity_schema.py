@@ -196,14 +196,17 @@ async def test_projects_methods_reflect_full_methods_not_the_factory_registered_
     client: httpx.AsyncClient,
 ) -> None:
     """`_PROJECT_FACTORY_CONFIG.methods` is only `{"list","delete"}` (all the
-    generic factory itself registers); `get`/`update` are bespoke routes at
-    the same URL shape, declared via `full_methods`. The admin surface needs
-    all four, so `methods` must serve the union — asserting the two bespoke
-    verbs are present is the whole point of this test."""
+    generic factory itself registers); `get`/`update`/`create`
+    ([ADR-0059](../../../docs/adr/0059-project-generic-admin-create.md) added
+    `create` to `full_methods` — schema-metadata only, still not registered
+    as a generic route) are bespoke routes at the same URL shape, declared
+    via `full_methods`. The admin surface needs all five, so `methods` must
+    serve the union — asserting the three bespoke verbs are present is the
+    whole point of this test."""
     body = (await client.get(_schema_path("projects"))).json()
 
-    assert body["methods"] == ["delete", "get", "list", "update"]
-    assert "get" in body["methods"] and "update" in body["methods"]
+    assert body["methods"] == ["create", "delete", "get", "list", "update"]
+    assert "get" in body["methods"] and "update" in body["methods"] and "create" in body["methods"]
 
     # Cross-check against the config itself so this can't pass by the route
     # accidentally serving `methods` while `full_methods` is ignored.

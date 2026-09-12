@@ -5,9 +5,14 @@ import { expect, test } from "@playwright/test";
  * DS-2 E2E ([ADR-0041](../../docs/adr/0041-ds-2-table-container-shared-pagination.md)):
  * real browser, full stack, exercising the shared `container/Table.tsx`
  * against two of its migrated consumers — `ProjectDetail`'s Releases table
- * (server mode) and `OrgHome`/Dashboard's Project table (client mode) — plus
- * TC-DS-017's nested-table ARIA-exclusion boundary, which only a real
- * browser's accessible-name computation (not Vitest/jsdom) can prove.
+ * (server mode) and the Project table (server mode as of
+ * [ADR-0060](../../docs/adr/0060-projects-page-retired-generic-surface.md) —
+ * originally `OrgHome`/Dashboard's client-mode table, moved to
+ * `ProjectsPage`'s own client-mode table by PROJ-4, now the generic
+ * `EntityListPage`'s server-mode table; the second test below is revised in
+ * place for this, not a client-mode case anymore) — plus TC-DS-017's
+ * nested-table ARIA-exclusion boundary, which only a real browser's
+ * accessible-name computation (not Vitest/jsdom) can prove.
  *
  * Seeding/cleanup mirrors `release-create.spec.ts`'s established pattern
  * (`docker exec ... python -`, FK-safe cleanup) — extended to seed enough
@@ -86,10 +91,12 @@ async def main():
             await session.flush()
             release_ids.append(str(release.id))
 
-        # 12 more Projects in the same org -- forces OrgHome/Dashboard's
-        # client-mode pagination the same way, at the default page size (10).
+        # ADR-0060: Project's own admin surface moved off the bespoke
+        # client-mode ProjectsPage onto the generic server-mode EntityListPage
+        # (default page size 25, not 10) -- 25 extra + 1 primary = 26, one
+        # more than a page, so pagination is visible at the default size.
         extra_project_ids = []
-        for i in range(12):
+        for i in range(25):
             p = Project(org_id=org.id, name=f"DS-2 E2E Extra Project {i:02d}-{suffix}")
             session.add(p)
             await session.flush()
@@ -227,7 +234,7 @@ test.describe("DS-2: shared Table container", () => {
     }
   });
 
-  test("ProjectsPage Project table (client mode): page-size selector paginates the already-fetched list", async ({
+  test("Project table (ADR-0060, generic admin surface, server mode): page-size selector re-fetches a larger page", async ({
     page,
   }) => {
     const fixture = seedFixture();
@@ -239,24 +246,25 @@ test.describe("DS-2: shared Table container", () => {
       await page.waitForURL(new RegExp(`/orgs/${fixture.orgId}$`));
 
       // PROJ-4 (ADR-0047): Project CRUD moved off "Dashboard" onto its own
-      // page, reached via the sidebar's "Projects" nav item.
+      // page, reached via the sidebar's "Projects" nav item. ADR-0060
+      // retired the bespoke `ProjectsPage` behind that same URL/nav item —
+      // it's the generic `EntityListPage` now, server-mode pagination.
       await page.getByTestId("sidebar-nav-projects").click();
       await page.waitForURL(new RegExp(`/orgs/${fixture.orgId}/projects$`));
       await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
 
-      // 13 total projects (1 primary + 12 extra), default page size 10 ->
-      // pagination visible immediately, unlike the server-mode case above.
-      // The Project table is now the only table on this page (PROJ-4 moved
-      // `RoleAssignmentsPanel` off it, onto "Dashboard") — `.first()` kept
-      // defensively rather than assuming that'll always stay true.
+      // 26 total projects (1 primary + 25 extra), default page size 25 ->
+      // pagination visible immediately (one row spills to page 2).
       const projectTable = page.getByRole("table").first();
-      await expect(page.getByTestId("project-table-pagination")).toBeVisible();
-      await expect(projectTable.getByRole("row")).toHaveCount(11); // header + 10 data rows
+      await expect(page.getByTestId("entity-table-pagination")).toBeVisible();
+      await expect(projectTable.getByRole("row")).toHaveCount(26); // header + 25 data rows
 
-      await page.getByTestId("project-table-page-size").selectOption("25");
-      // All 13 fit on one page now -- pagination row disappears.
-      await expect(page.getByTestId("project-table-pagination")).not.toBeVisible();
-      await expect(projectTable.getByRole("row")).toHaveCount(14); // header + 13 data rows
+      await page.getByTestId("entity-table-page-size").selectOption("50");
+      // All 26 fit on one page now -- a real re-fetch (server mode), not a
+      // client-side re-slice of an already-fetched list -- pagination
+      // disappears once the larger page comes back.
+      await expect(page.getByTestId("entity-table-pagination")).not.toBeVisible();
+      await expect(projectTable.getByRole("row")).toHaveCount(27); // header + 26 data rows
     } finally {
       cleanup(fixture);
     }

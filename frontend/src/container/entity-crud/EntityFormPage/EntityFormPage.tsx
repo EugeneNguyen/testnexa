@@ -17,15 +17,21 @@
  * generic shape: a read-only "Defects" section when `entityKey ===
  * "test-cases"` (§4). Its badge uses `bg-*` per this repo's own AdminLTE
  * convention (not Bootstrap 5.3's `text-bg-*`).
+ *
+ * **ADR-0060:** optional `entityKeyOverride` prop, for a route with no
+ * `:entity` segment at all (`/orgs/:orgId/projects/:id/edit`, `Project`'s
+ * retired-`ProjectsPage` replacement) — passed straight through to
+ * `useAdminRouteContext`. Every other mount omits it and behaves exactly as
+ * before.
  */
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import EntityForm from "../../components/organisms/entity-form";
-import { ApiError } from "../../lib/api/client";
-import { EntityRow, getEntity, updateEntity } from "../../lib/api/entityCrud";
-import { listDefectsForTestCase, type DefectSummary } from "../../lib/api/defects";
-import { useAdminRouteContext } from "./useAdminRouteContext";
+import EntityForm from "../../../components/organisms/entity-form";
+import { ApiError } from "../../../lib/api/client";
+import { EntityRow, getEntity, updateEntity } from "../../../lib/api/entityCrud";
+import { listDefectsForTestCase, type DefectSummary } from "../../../lib/api/defects";
+import { useAdminRouteContext } from "../../../pages/admin/useAdminRouteContext";
 
 /** UI Design Document §4 (EXEC-3, ADR-0044) — one color per `DefectSeverity`. */
 function severityColor(severity: string): string {
@@ -52,10 +58,10 @@ function fieldErrorsFrom(error: unknown): Record<string, string> | undefined {
   return Object.fromEntries(Object.entries(body.field_errors).map(([field, messages]) => [field, messages[0]]));
 }
 
-function EntityFormPage() {
+function EntityFormPage({ entityKeyOverride }: { entityKeyOverride?: string } = {}) {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
-  const { entityKey, config, label, schemaLoading } = useAdminRouteContext();
+  const { entityKey, config, label, schemaLoading } = useAdminRouteContext(entityKeyOverride);
 
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string> | undefined>(undefined);

@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../../App";
 import AppSidebar from "./app-sidebar";
+import { ORG_EXCLUDED_ENTITY_KEYS } from "./app-sidebar/app-sidebar";
 import { orgScopedEntities } from "../../pages/admin/registry";
 import { ApiError } from "../../lib/api/client";
 import { getProject } from "../../lib/api/projects";
@@ -265,12 +266,16 @@ describe("AppSidebar", () => {
   };
 
   // TC-SHELL-025: asserted as a complete, non-overlapping partition — every
-  // registry entry present exactly once across the 3 groups, nothing
-  // duplicated, nothing missing — not spot-checked on 2-3 entities. Derived
-  // from `orgScopedEntities` itself, so adding a 9th entity to the registry
-  // without assigning it a group fails this test rather than silently
-  // dropping it out of the sidebar.
-  it("TC-SHELL-025: renders all 8 org-scoped entities as a complete, non-overlapping 3-group partition", () => {
+  // registry entry present exactly once across the 3 groups OR
+  // `ORG_EXCLUDED_ENTITY_KEYS`, nothing duplicated, nothing missing — not
+  // spot-checked on 2-3 entities. Derived from `orgScopedEntities` itself, so
+  // adding a 10th entity to the registry without assigning it a group or an
+  // explicit exclusion fails this test rather than silently dropping it out
+  // of the sidebar. ADR-0058 added `projects` to the registry and to
+  // `ORG_EXCLUDED_ENTITY_KEYS` in the same change (ADR-0047's bespoke
+  // `ProjectsPage` is its real nav path) — mirrors TC-SHELL-035's identical
+  // discipline on the project side.
+  it("TC-SHELL-025: ORG_ENTITY_GROUPS + ORG_EXCLUDED_ENTITY_KEYS is a complete, non-overlapping partition of orgScopedEntities", () => {
     renderSidebar("/orgs/org-1");
 
     const seen: string[] = [];
@@ -286,12 +291,20 @@ describe("AppSidebar", () => {
 
     // Completeness + non-overlap, against the registry rather than a literal.
     const registryKeys = orgScopedEntities.map((e) => e.key);
-    expect(registryKeys).toHaveLength(8);
-    expect([...seen].sort()).toEqual([...registryKeys].sort());
+    expect(registryKeys).toHaveLength(9);
+    expect([...seen, ...ORG_EXCLUDED_ENTITY_KEYS].sort()).toEqual([...registryKeys].sort());
     expect(new Set(seen).size).toBe(seen.length);
+    // No overlap between "grouped" and "excluded" either — a key counted in
+    // both would still pass the sorted-array-equality check above.
+    expect(seen.filter((k) => ORG_EXCLUDED_ENTITY_KEYS.includes(k))).toEqual([]);
 
-    // Labels still come from the registry, not hardcoded in the sidebar.
+    // Labels still come from the registry, not hardcoded in the sidebar —
+    // excluded keys render no nav item at all, so skip those.
     for (const entityEntry of orgScopedEntities) {
+      if (ORG_EXCLUDED_ENTITY_KEYS.includes(entityEntry.key)) {
+        expect(screen.queryByTestId(`sidebar-nav-admin-${entityEntry.key}`)).not.toBeInTheDocument();
+        continue;
+      }
       expect(screen.getByTestId(`sidebar-nav-admin-${entityEntry.key}`)).toHaveTextContent(
         entityEntry.label,
       );
@@ -350,8 +363,12 @@ describe("AppSidebar", () => {
     expect(projectIcons).toHaveLength(1);
     expect(projectIcons[0]).toHaveClass("fa-solid", "fa-folder");
 
-    // The 8 children carry no icon of any kind.
+    // The grouped children carry no icon of any kind — `ORG_EXCLUDED_ENTITY_KEYS`
+    // entries (`projects`) render no group child at all, nothing to check here.
     for (const entityEntry of orgScopedEntities) {
+      if (ORG_EXCLUDED_ENTITY_KEYS.includes(entityEntry.key)) {
+        continue;
+      }
       const child = screen.getByTestId(`sidebar-nav-admin-${entityEntry.key}`);
       expect(child.querySelectorAll("i")).toHaveLength(0);
     }

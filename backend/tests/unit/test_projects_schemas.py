@@ -4,16 +4,19 @@
 Pure Pydantic-model construction, no DB/network — mirrors the style of
 `tests/unit/test_rbac1_schemas.py`.
 
-The route-level `standards_profile` omitted-vs-explicit-null distinction
-(ADR-0017 Q3 — omitted inherits `Organization.default_standards_profile`,
-explicit `null` clears/overrides) is implemented via `exclude_unset`/
-`model_fields_set`, not a schema-level trick — so what's tested here at the
-schema layer is narrower and more mechanical than the route's actual
-inherit-vs-override *behavior* (that behavior belongs to
-`tests/integration/test_projects.py`, not this file): does
-`model_fields_set` actually differ between a dict that omits the key and one
-that supplies it as `None`, for both `CreateProjectRequest` and
-`UpdateProjectRequest`.
+`model_fields_set` mechanically distinguishes an omitted key from an
+explicit `null` for both schemas below — that fact itself doesn't change,
+and is what's tested here. What DOES differ is which route actually
+*consults* it: `PATCH /projects/{id}` (`UpdateProjectRequest`) still reads
+`model_fields_set`/`exclude_unset` for its partial-update semantics
+(untouched). `POST /orgs/{org_id}/projects` (`CreateProjectRequest`) no
+longer does, as of [ADR-0059](../../docs/adr/0059-project-generic-admin-create.md)
+— its own `standards_profile`-inheritance check now reads
+`payload.standards_profile is None` directly, collapsing the original
+ADR-0017 Q3 omitted-vs-explicit-null distinction into one case (the generic
+admin surface's `EntityForm` cannot express "omit this key," only "send
+null" — see `create_project`'s own docstring §3). The create-route behavior
+itself is tested in `tests/integration/test_projects.py`, not this file.
 """
 
 import pytest

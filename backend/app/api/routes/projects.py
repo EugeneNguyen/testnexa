@@ -118,10 +118,22 @@ async def create_project(
     2. `require_permission("project.create")`, invoked directly (not a
        route-level `Depends`) so it runs strictly after step 1.
     3. Resolve `standards_profile`: if the request payload omitted the field
-       (`"standards_profile" not in payload.model_fields_set`), inherit
-       `Organization.default_standards_profile` (itself possibly `None`) as
-       a one-time copy; if the payload supplied a value — including an
-       explicit `null` — use exactly that, never the inherited default.
+       OR explicitly supplied `null` (`payload.standards_profile is None`),
+       inherit `Organization.default_standards_profile` (itself possibly
+       `None`) as a one-time copy; otherwise use the supplied value exactly.
+       **Amended ADR-0059** — this collapsed the original ADR-0017 Q3
+       "omitted vs. explicit null" distinction (which read `payload.
+       model_fields_set` to tell the two apart) into one case, because the
+       generic admin surface's `EntityForm` (ADR-0025) cannot express
+       "omit this key" — a blank optional field always serializes as an
+       explicit `null` (`entity-form.tsx`'s own empty-string-to-`null`
+       normalization). Both callers can still ask for a *literal, non-null*
+       `standards_profile` value; only "give me nothing" and "give me
+       explicit null" are no longer distinguishable, and nothing in this
+       codebase's own product requirements ever needed that distinction —
+       ADR-0017 Q3's own docstring named it as the safer default for a
+       Pydantic-only direct API caller, not a requirement a UI needed to
+       expose.
     4. Create the `Project`; flush alone so an `(org_id, name)` collision is
        caught independently (`422`, same shape/posture as `organizations.py`'s
        slug-collision handling — never a raised exception).
@@ -138,13 +150,14 @@ async def create_project(
     # 2. Permission check — invoked directly, same posture as agents.py.
     await require_permission("project.create")(request, actor)
 
-    # 3. Resolve standards_profile: omitted -> inherit org default; supplied
-    # (including explicit null) -> use as given.
-    if "standards_profile" in payload.model_fields_set:
-        standards_profile = payload.standards_profile
-    else:
+    # 3. Resolve standards_profile: omitted OR explicit null -> inherit org
+    # default; any other supplied value -> use as given (ADR-0059 amendment,
+    # see this function's own docstring §3).
+    if payload.standards_profile is None:
         organization = await db.get(Organization, org_id)
         standards_profile = organization.default_standards_profile if organization is not None else None
+    else:
+        standards_profile = payload.standards_profile
 
     # 4. Create the Project; flush alone to isolate a name collision.
     project = Project(org_id=org_id, name=payload.name, standards_profile=standards_profile)
@@ -194,17 +207,38 @@ async def create_project(
 # codebase to defer to, unlike `create`/`get`/`update`) — caught by
 # SHELL-3's dashboard widget (`GET /projects`, `lib/api/dashboard.ts`)
 # actually 404ing against this exact gap at merge-verification time.
+#
+# ADR-0059: `create_schema=CreateProjectRequest` added purely so
+# `derive_entity_schema()` marks `name`/`standards_profile` as writable
+# (and `name` required) in the served `GET /entities/project/schema` — this
+# does NOT register a generic create route (that's separately gated on
+# `"create" in methods`, which stays absent below). The real create stays
+# the bespoke `POST /orgs/{org_id}/projects` above, unchanged; the generic
+# admin surface's "New" button now reaches it via `entityConfigs/overrides.ts`'s
+# `ROUTE_OVERRIDES.projects.createPath` (`:orgId`-interpolated), the same
+# precedent `Release`'s own nested `createPath` already established.
+#
+# ADR-0060: `search_fields=("name",)` added so the generic surface's `?q=`
+# box works for `Project` too — `ProjectsPage.tsx` (the bespoke screen this
+# generic surface replaces as of that ADR) had its own client-side name
+# filter; this is the server-side equivalent, reusing `apply_filters_and_search`
+# unchanged (no new backend mechanism).
 _PROJECT_FACTORY_CONFIG = CrudEntityConfig(
     model=Project,
     resource="project",
-    create_schema=None,
+    create_schema=CreateProjectRequest,
     update_schema=UpdateProjectRequest,
     summary_schema=ProjectSummary,
     scope_field="org_id",
     resolve_org_id=chain_resolver([]),
     methods=frozenset({"list", "delete"}),
     # ADR-0053: get/update exist too — see this config's own comment above.
-    full_methods=frozenset({"list", "get", "update", "delete"}),
+    # ADR-0059: create too now (schema-reported only, see this config's own
+    # comment above) — the bespoke route it points at was already live.
+    full_methods=frozenset({"list", "get", "create", "update", "delete"}),
+    # ADR-0060: `?q=` name search, closing the last gap between this surface
+    # and `ProjectsPage`'s own (now-retired) client-side name filter.
+    search_fields=("name",),
     label="Projects",
     scope_resolution=ScopeResolution(from_route_param="projectId", via_entity="project", via_field="org_id"),
     # `org_id` is summary-only (its real create is bespoke), so it derives last

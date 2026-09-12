@@ -15,11 +15,11 @@ import { render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import EntityFormPage from "./EntityFormPage";
-import { getEntity } from "../../lib/api/entityCrud";
-import { listDefectsForTestCase } from "../../lib/api/defects";
-import { ApiError } from "../../lib/api/client";
+import { getEntity } from "../../../lib/api/entityCrud";
+import { listDefectsForTestCase } from "../../../lib/api/defects";
+import { ApiError } from "../../../lib/api/client";
 
-vi.mock("./registry", () => ({
+vi.mock("../../../pages/admin/registry", () => ({
   entityLabelByKey: {
     "test-cases": "Test cases",
     projects: "Projects",
@@ -33,7 +33,7 @@ vi.mock("./registry", () => ({
  * `isLoading: false` keeps them synchronously available, matching the old
  * lookup's timing so every assertion below is unchanged.
  */
-vi.mock("./useEntitySchema", () => {
+vi.mock("../../../pages/admin/useEntitySchema", () => {
   const configs: Record<string, unknown> = {
     "test-cases": {
       resource: "test_case",
@@ -74,13 +74,13 @@ vi.mock("./useEntitySchema", () => {
   };
 });
 
-vi.mock("../../lib/api/entityCrud", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../lib/api/entityCrud")>();
+vi.mock("../../../lib/api/entityCrud", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../lib/api/entityCrud")>();
   return { ...actual, getEntity: vi.fn(), updateEntity: vi.fn().mockResolvedValue({}) };
 });
 
-vi.mock("../../lib/api/defects", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../lib/api/defects")>();
+vi.mock("../../../lib/api/defects", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../lib/api/defects")>();
   return { ...actual, listDefectsForTestCase: vi.fn() };
 });
 

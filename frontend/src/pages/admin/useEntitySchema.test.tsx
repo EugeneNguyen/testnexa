@@ -168,6 +168,20 @@ describe("toEntityConfig", () => {
     expect(config.listPath).toBe("/projects/:projectId/releases");
     expect(config.createPath).toBe("/projects/:projectId/releases");
   });
+
+  /**
+   * ADR-0059: `projects` gets a `createPath` override too — unlike
+   * `releases`, only `createPath` is overridden (`listPath` stays the
+   * default flat `/projects`, since `list`/`get`/`update`/`delete` all fit
+   * the plain convention; only the real create route is org-path-nested).
+   */
+  it("applies the projects createPath override, leaving listPath at the plain default", () => {
+    const config = toEntityConfig("projects", schemaResponse({ resource: "project" }));
+
+    expect(config.createPath).toBe("/orgs/:orgId/projects");
+    expect(config.listPath).toBeUndefined();
+    expect(config.path).toBe("/projects");
+  });
 });
 
 describe("useEntitySchema", () => {

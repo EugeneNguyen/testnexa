@@ -2,16 +2,27 @@ import { execFileSync } from "node:child_process";
 import { expect, test } from "@playwright/test";
 
 /**
- * PROJ-1 E2E (ADR-0017): real browser, full stack, exercising
- * `OrgHome.tsx`'s "New Project" modal + "Edit Project" modal (DASH-2,
- * 2026-09-07 — replaced the original inline click-to-edit
- * `standards_profile` field with a dedicated modal editing `name` +
- * `standards_profile` together) — an already-authenticated org_admin
- * creating a Project via the UI and then editing it, mirroring
- * `org-create-second.spec.ts`'s conventions exactly
- * (fixture seeding via `docker exec ... python -` against the target env's
- * own backend container, FK-safe cleanup script, page-object-free
- * role/label selectors).
+ * PROJ-1 E2E (ADR-0017): real browser, full stack, exercising Project
+ * create + edit through the UI — an already-authenticated org_admin
+ * creating a Project and then editing it, mirroring
+ * `org-create-second.spec.ts`'s conventions exactly (fixture seeding via
+ * `docker exec ... python -` against the target env's own backend
+ * container, FK-safe cleanup script, page-object-free role/label
+ * selectors).
+ *
+ * **Revised [ADR-0060](../../docs/adr/0060-projects-page-retired-generic-surface.md):**
+ * the screen under test has moved twice since this spec was first written —
+ * `OrgHome.tsx`'s own "New Project" modal (PROJ-1) → the bespoke
+ * `ProjectsPage`'s own modal (PROJ-4/ADR-0047, DASH-2's edit-modal upgrade
+ * carried over unchanged) → the generic admin surface's `EntityListPage`
+ * create-modal/`EntityFormPage` edit-route (ADR-0025/ADR-0058/ADR-0059,
+ * this ADR). Same URL, same nav item — only the actual markup selectors
+ * below changed: "New" not "New Project" (generic surface's own button
+ * text), "Edit Projects" not "Edit Project" (plural — generic's `Edit
+ * {label}` heading), "No records found." not "No projects yet" (generic
+ * empty-state text). The row-name-links-to-`ProjectDetail` step near the
+ * bottom needed no change — this ADR's own `detailPath`/`detailLinkField`
+ * addition to `EntityTable` restores that exact behavior generically.
  *
  * Fixture seeding: a single human User who is org_admin (org-wide
  * RoleAssignment against RBAC-4's seeded `org_admin` system Role, which
@@ -160,7 +171,7 @@ function cleanup(admin: SeededOrgAdmin, projectIds: string[]): void {
   );
 }
 
-test.describe("PROJ-1: create a Project via OrgHome's New Project modal", () => {
+test.describe("PROJ-1: create a Project via the Projects page's New modal", () => {
   test("create, list, and edit standards_profile via the Edit modal persists server-side", async ({ page, request }) => {
     // DASH-2's Edit modal adds a real mount/transition round trip on top of
     // an already-long multi-step flow (create, edit, independent GET
@@ -186,10 +197,10 @@ test.describe("PROJ-1: create a Project via OrgHome's New Project modal", () => 
       await page.getByTestId("sidebar-nav-projects").click();
       await page.waitForURL(new RegExp(`/orgs/${admin.orgId}/projects$`));
       await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
-      await expect(page.getByText(/no projects yet/i)).toBeVisible();
+      await expect(page.getByText("No records found.")).toBeVisible();
 
       // --- Create a Project via the "New Project" modal ---------------------------------
-      await page.getByRole("button", { name: /new project/i }).click();
+      await page.getByRole("button", { name: "New" }).click();
       await expect(page.getByRole("heading", { name: /new project/i })).toBeVisible();
 
       const projectName = `PROJ-1 E2E Alpha ${Date.now().toString(36)}`;
@@ -220,7 +231,7 @@ test.describe("PROJ-1: create a Project via OrgHome's New Project modal", () => 
       const updatedProfile = "ISO29119-3 only";
       await row.getByRole("button", { name: /^edit$/i }).click();
 
-      await expect(page.getByRole("heading", { name: /^edit project$/i })).toBeVisible();
+      await expect(page.getByRole("heading", { name: /^edit projects$/i })).toBeVisible();
       // Pre-filled with the current name/profile — only the profile field changes here.
       await expect(page.getByLabel(/^name$/i)).toHaveValue(projectName);
       const profileField = page.getByLabel(/standards profile/i);
@@ -228,7 +239,7 @@ test.describe("PROJ-1: create a Project via OrgHome's New Project modal", () => 
       await page.getByRole("button", { name: /^save$/i }).click();
 
       // Modal closes -> row shows the new value.
-      await expect(page.getByRole("heading", { name: /^edit project$/i })).not.toBeVisible();
+      await expect(page.getByRole("heading", { name: /^edit projects$/i })).not.toBeVisible();
       await expect(row.getByText(updatedProfile)).toBeVisible();
       await expect(row.getByText(initialProfile)).not.toBeVisible();
 
@@ -265,7 +276,7 @@ test.describe("PROJ-1: create a Project via OrgHome's New Project modal", () => 
       await page.goBack();
       await expect(page).toHaveURL(new RegExp(`/orgs/${admin.orgId}/projects$`));
       await expect(page.getByRole("row", { name: new RegExp(projectName) })).toBeVisible();
-      await expect(page.getByText(/no projects yet/i)).not.toBeVisible();
+      await expect(page.getByText("No records found.")).not.toBeVisible();
     } finally {
       cleanup(admin, projectIds);
     }

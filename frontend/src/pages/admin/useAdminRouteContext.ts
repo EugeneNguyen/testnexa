@@ -55,13 +55,30 @@ export interface AdminRouteContext {
   /** Resolved for permission checks — direct `:orgId` route param, or fetched via the current Project. */
   orgId: string | undefined;
   projectId: string | undefined;
-  /** `{orgId, projectId}` — fed straight into `entityCrud`'s `:param` interpolation. */
+  /**
+   * `{orgId, projectId}` — fed straight into `entityCrud`'s `:param`
+   * interpolation. `orgId` is the **resolved** value (same as this
+   * interface's own `orgId` field above), not the raw `:orgId` route
+   * param — [ADR-0059](../../../docs/adr/0059-project-generic-admin-create.md):
+   * on a project-scoped route the URL carries no `:orgId` segment at all,
+   * but `ROUTE_OVERRIDES.projects.createPath` (`/orgs/:orgId/projects`)
+   * still needs a real value to interpolate there too, not just on the
+   * org-scoped route.
+   */
   routeParams: Record<string, string | undefined>;
 }
 
-export function useAdminRouteContext(): AdminRouteContext {
+/**
+ * ADR-0060: `overrideEntityKey`, for a route with no `:entity` segment at
+ * all — `EntityListPage`/`EntityFormPage` mounted at a fixed, entity-specific
+ * path (`/orgs/:orgId/projects`, `Project`'s retired-`ProjectsPage`
+ * replacement) rather than the generic `/orgs/:orgId/admin/:entity`. Every
+ * other admin route still resolves `entityKey` from `params.entity` exactly
+ * as before — this is additive, not a behavior change for the generic path.
+ */
+export function useAdminRouteContext(overrideEntityKey?: string): AdminRouteContext {
   const params = useParams<{ entity: string; orgId?: string; projectId?: string }>();
-  const entityKey = params.entity ?? "";
+  const entityKey = overrideEntityKey ?? params.entity ?? "";
   const { config, label: schemaLabel, isLoading: schemaLoading } = useEntitySchema(entityKey);
   const { config: projectConfig } = useEntitySchema("projects");
 
@@ -81,6 +98,6 @@ export function useAdminRouteContext(): AdminRouteContext {
     schemaLoading,
     orgId,
     projectId: params.projectId,
-    routeParams: { orgId: params.orgId, projectId: params.projectId },
+    routeParams: { orgId, projectId: params.projectId },
   };
 }

@@ -65,10 +65,21 @@
  * same split as `page`/`pageSize`.
  */
 import { ReactNode, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import Table from "../../../container/Table";
 import { EntityConfig, FieldConfig } from "../../../entityConfigs/types";
 import { EntityRow, getEntity } from "../../../lib/api/entityCrud";
 import { resolveEntityKey, useEntitySchemas } from "../../../pages/admin/useEntitySchema";
+
+/**
+ * ADR-0060: `config.detailPath`'s own `:id` placeholder, filled from the
+ * row's own id — deliberately narrower than `lib/api/entityCrud.ts`'s
+ * `interpolate()` (route-context params like `:orgId`), since a detail link
+ * only ever needs the row's own id, never ambient route context.
+ */
+function interpolateDetailPath(template: string, id: unknown): string {
+  return template.replace(":id", String(id));
+}
 
 function formatDate(value: unknown): string {
   if (!value) {
@@ -258,8 +269,17 @@ function EntityTable({
         const color = field.badgeColors?.[String(raw)] ?? "secondary";
         return <span className={`badge bg-${color}`}>{String(raw)}</span>;
       }
-      default:
-        return displayValue(raw);
+      default: {
+        const text = displayValue(raw);
+        // ADR-0060: restores ProjectsPage's "click a project's name to open
+        // it" navigation, generically — see EntityConfig.detailPath's own
+        // doc comment. Only fires for the one designated field, and only
+        // when the row actually has an id to link to (never on "—").
+        if (config.detailPath && config.detailLinkField === field.name && row.id !== undefined && text !== "—") {
+          return <Link to={interpolateDetailPath(config.detailPath, row.id)}>{text}</Link>;
+        }
+        return text;
+      }
     }
   }
 
