@@ -115,6 +115,8 @@ import { listMembers } from "../../../lib/api/members";
 import { listEntities, getEntity, type EntityRow } from "../../../lib/api/entityCrud";
 import FkAutocomplete from "../../../components/molecules/fk-autocomplete";
 import { InfoBox } from "../../../components/molecules/info-box";
+import { Alert } from "../../../components/atoms/alert";
+import { Spinner } from "../../../components/atoms/spinner";
 import { useEntitySchema } from "../../admin/useEntitySchema";
 import { pathFor } from "../../../entityConfigs/overrides";
 import type { EntityConfig } from "../../../entityConfigs/types";
@@ -344,23 +346,19 @@ function errorMessage(err: unknown): string {
  */
 
 /**
- * The former `CSpinner color="primary"`, hand-written (ADR-0042). The explicit
- * `role="status"` and the visually-hidden label are not decoration — CoreUI's
- * own spinner emitted both, and `role="status"` is what sibling screens'
- * `getByRole("status")` lookups resolve against.
- */
-function Spinner() {
-  return (
-    <div className="spinner-border text-primary" role="status">
-      <span className="visually-hidden">Loading...</span>
-    </div>
-  );
-}
-
-/**
  * The former `CModal` + `CModalHeader`/`CModalTitle` pair, hand-written
  * (ADR-0042 §2.3). One local helper rather than two copies of the same
  * Bootstrap modal skeleton.
+ *
+ * **Not swapped for the shared `components/molecules/modal` atom** (atomic
+ * design audit pass, 2026-09-12): that molecule's `ModalProps` has no
+ * `data-testid` passthrough and no `centered` variant, and both are
+ * load-bearing here — every modal root below carries a `data-testid` real
+ * Vitest assertions depend on (`queryByTestId("record-result-modal")`, etc.),
+ * and the history modal's `centered` prop renders `modal-dialog-centered`,
+ * the one vertically-centred modal in this codebase. This is a near-miss,
+ * not an exact-shape match, so it's left as local markup rather than forced
+ * into an atom that can't express the same contract.
  *
  * **Renders nothing at all when closed**, which is the property that matters
  * for behavior, not just for markup: `CModal` unmounted its content on
@@ -968,19 +966,13 @@ function TestCycleDetail() {
                 </div>
 
                 {cycleLoadError && (
-                  <div
-                    className="alert alert-danger"
-                    role="alert"
-                    data-testid="test-cycle-load-error"
-                  >
+                  <Alert color="danger" data-testid="test-cycle-load-error">
                     {cycleLoadError}
-                  </div>
+                  </Alert>
                 )}
 
                 {cycleLoading ? (
-                  <div className="d-flex justify-content-center py-4">
-                    <Spinner />
-                  </div>
+                  <Spinner wrapperClassName="py-4" />
                 ) : (
                   cycle && (
                     <div className="text-body-secondary" data-testid="test-cycle-meta">
@@ -1013,9 +1005,9 @@ function TestCycleDetail() {
                 <h2 className="fs-5 mb-3">Dashboard</h2>
 
                 {countsError && (
-                  <div className="alert alert-danger" role="alert" data-testid="dashboard-error">
+                  <Alert color="danger" data-testid="dashboard-error">
                     {countsError}
-                  </div>
+                  </Alert>
                 )}
 
                 {/* The former `CRow` — the testid stays on the `.row` itself. */}
@@ -1068,19 +1060,13 @@ function TestCycleDetail() {
                 <h2 className="fs-5 mb-3">Execution history</h2>
 
                 {historyLoadError && (
-                  <div
-                    className="alert alert-danger"
-                    role="alert"
-                    data-testid="execution-history-error"
-                  >
+                  <Alert color="danger" data-testid="execution-history-error">
                     {historyLoadError}
-                  </div>
+                  </Alert>
                 )}
 
                 {historyLoading ? (
-                  <div className="d-flex justify-content-center py-3">
-                    <Spinner />
-                  </div>
+                  <Spinner wrapperClassName="py-3" />
                 ) : !historyLoadError && executions.length === 0 ? (
                   <p className="text-body-secondary mb-0">No executions recorded yet.</p>
                 ) : (
@@ -1173,11 +1159,7 @@ function TestCycleDetail() {
               the former `CAlert dismissible` emitted.
             */}
             {recordError && (
-              <div
-                className="alert alert-danger alert-dismissible fade show"
-                role="alert"
-                data-testid="record-error"
-              >
+              <Alert color="danger" className="alert-dismissible fade show" data-testid="record-error">
                 {recordError}
                 <button
                   type="button"
@@ -1185,7 +1167,7 @@ function TestCycleDetail() {
                   aria-label="Close"
                   onClick={() => setRecordError(null)}
                 />
-              </div>
+              </Alert>
             )}
 
             {/*
@@ -1305,19 +1287,13 @@ function TestCycleDetail() {
       >
         <div className="modal-body">
           {logsLoadError && (
-            <div
-              className="alert alert-danger"
-              role="alert"
-              data-testid="execution-log-load-error"
-            >
+            <Alert color="danger" data-testid="execution-log-load-error">
               {logsLoadError}
-            </div>
+            </Alert>
           )}
 
           {logsLoading ? (
-            <div className="d-flex justify-content-center py-3">
-              <Spinner />
-            </div>
+            <Spinner wrapperClassName="py-3" />
           ) : (
             !logsLoadError && (
               /* Flat <ul>/<li>, never a <table> — frontend/CLAUDE.md. Ordered
@@ -1363,9 +1339,9 @@ function TestCycleDetail() {
             <h2 className="fs-6 mb-2">Add a comment</h2>
 
             {commentError && (
-              <div className="alert alert-danger" role="alert" data-testid="add-comment-error">
+              <Alert color="danger" data-testid="add-comment-error">
                 {commentError}
-              </div>
+              </Alert>
             )}
 
             <div className="mb-2">
@@ -1452,11 +1428,7 @@ function TestCycleDetail() {
               convention `onSubmitRecord`/EXEC-2's comment form already use.
             */}
             {raiseDefectError && (
-              <div
-                className="alert alert-danger alert-dismissible fade show"
-                role="alert"
-                data-testid="raise-defect-error"
-              >
+              <Alert color="danger" className="alert-dismissible fade show" data-testid="raise-defect-error">
                 {raiseDefectError}
                 <button
                   type="button"
@@ -1464,7 +1436,7 @@ function TestCycleDetail() {
                   aria-label="Close"
                   onClick={() => setRaiseDefectError(null)}
                 />
-              </div>
+              </Alert>
             )}
 
             <div className="mb-3">

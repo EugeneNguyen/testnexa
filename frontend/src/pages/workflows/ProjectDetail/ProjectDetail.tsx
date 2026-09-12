@@ -93,6 +93,9 @@ import {
 } from "react";
 import { Link, useParams } from "react-router-dom";
 import Table from "../../../container/Table";
+import { Alert } from "../../../components/atoms/alert";
+import { Spinner } from "../../../components/atoms/spinner";
+import { Modal } from "../../../components/molecules/modal";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -257,11 +260,15 @@ function dashIfEmpty(value: string | null): string {
 
 /**
  * ADR-0042: hand-rolled replacement for `CModal` + `CModalHeader`/
- * `CModalTitle`/`CModalBody`/`CModalFooter`. Extracted rather than inlined
- * because this page renders six of them (New Release, New Requirement, New
- * Test Suite, New Test Condition, and REQ-2's and REQ-3's two "New Test Case"
- * variants), and follows the same shape as `EntityListPage`'s own
- * `AdminModal` so the two hand-rolled modals in this codebase stay identical.
+ * `CModalTitle`/`CModalBody`/`CModalFooter`. Originally extracted because
+ * this page rendered six of them; three (New Release, New Requirement,
+ * REQ-2's "New Test Case") have since been swapped onto the shared
+ * `components/molecules/modal` atom (frontend/CLAUDE.md's component-reuse
+ * rule) — the remaining three below (New Test Suite, New Test Condition,
+ * REQ-3's "New Test Case") keep this local helper specifically because each
+ * needs a `testId` on the outer dialog that the shared `Modal` molecule's
+ * API has no prop for, and 3 existing tests assert on those exact
+ * data-testids (see each usage's own near-miss comment).
  *
  * The `<form>` sits inside `.modal-content` as a sibling of the header and
  * wraps both the body and the footer — exactly the nesting the
@@ -1328,18 +1335,10 @@ function ProjectDetail() {
                   </button>
                 </div>
 
-                {loadError && (
-                  <div className="alert alert-danger" role="alert">
-                    {loadError}
-                  </div>
-                )}
+                {loadError && <Alert color="danger">{loadError}</Alert>}
 
                 {loading ? (
-                  <div className="d-flex justify-content-center py-4">
-                    <div className="spinner-border text-primary" role="status">
-                      <span className="visually-hidden">Loading...</span>
-                    </div>
-                  </div>
+                  <Spinner wrapperClassName="py-4" />
                 ) : releases.length === 0 ? (
                   <p className="text-body-secondary mb-0">No releases yet.</p>
                 ) : (
@@ -1381,6 +1380,7 @@ function ProjectDetail() {
                           {expandedId === release.id && (
                             <tr key={`${release.id}-detail`}>
                               <td colSpan={2} className="bg-body-tertiary">
+                                {/* near-miss: spinner-border-sm has no Spinner-atom equivalent (wrapperClassName can't add the sm size to the inner spinner), left as raw markup */}
                                 {cyclesLoading && (
                                   <div className="d-flex justify-content-center py-2">
                                     <div className="spinner-border spinner-border-sm text-primary" role="status">
@@ -1388,11 +1388,7 @@ function ProjectDetail() {
                                     </div>
                                   </div>
                                 )}
-                                {cyclesError && (
-                                  <div className="alert alert-danger" role="alert">
-                                    {cyclesError}
-                                  </div>
-                                )}
+                                {cyclesError && <Alert color="danger">{cyclesError}</Alert>}
                                 {!cyclesLoading && !cyclesError && cycles.length === 0 && (
                                   <p className="text-body-secondary mb-0">No test cycles yet.</p>
                                 )}
@@ -1504,18 +1500,10 @@ function ProjectDetail() {
                   </div>
                 </form>
 
-                {reqLoadError && (
-                  <div className="alert alert-danger" role="alert">
-                    {reqLoadError}
-                  </div>
-                )}
+                {reqLoadError && <Alert color="danger">{reqLoadError}</Alert>}
 
                 {reqLoading ? (
-                  <div className="d-flex justify-content-center py-4">
-                    <div className="spinner-border text-primary" role="status">
-                      <span className="visually-hidden">Loading...</span>
-                    </div>
-                  </div>
+                  <Spinner wrapperClassName="py-4" />
                 ) : requirements.length === 0 ? (
                   <p className="text-body-secondary mb-0">
                     {searchTerm ? "No requirements match your search." : "No requirements yet."}
@@ -1578,12 +1566,9 @@ function ProjectDetail() {
                                     </button>
                                   </div>
 
-                                  {testCasesError && (
-                                    <div className="alert alert-danger" role="alert">
-                                      {testCasesError}
-                                    </div>
-                                  )}
+                                  {testCasesError && <Alert color="danger">{testCasesError}</Alert>}
 
+                                  {/* near-miss: spinner-border-sm has no Spinner-atom equivalent, left as raw markup */}
                                   {testCasesLoading ? (
                                     <div className="d-flex justify-content-center py-2">
                                       <div className="spinner-border spinner-border-sm text-primary" role="status">
@@ -1616,11 +1601,8 @@ function ProjectDetail() {
                                           </div>
                                           {expandedTestCaseId === testCase.id && (
                                             <div className="ms-3 mt-1">
-                                              {testStepsError && (
-                                                <div className="alert alert-danger" role="alert">
-                                                  {testStepsError}
-                                                </div>
-                                              )}
+                                              {testStepsError && <Alert color="danger">{testStepsError}</Alert>}
+                                              {/* near-miss: spinner-border-sm has no Spinner-atom equivalent, left as raw markup */}
                                               {testStepsLoading ? (
                                                 <div className="d-flex justify-content-center py-2">
                                                   <div
@@ -1659,12 +1641,9 @@ function ProjectDetail() {
                                                                 }
                                                               />
                                                               {editStepApiError && (
-                                                                <div
-                                                                  className="alert alert-danger py-1"
-                                                                  role="alert"
-                                                                >
+                                                                <Alert color="danger" className="py-1">
                                                                   {editStepApiError}
-                                                                </div>
+                                                                </Alert>
                                                               )}
                                                               <button
                                                                 type="button"
@@ -1741,9 +1720,9 @@ function ProjectDetail() {
                                                   </div>
                                                 )}
                                                 {testStepApiError && (
-                                                  <div className="alert alert-danger py-1" role="alert">
+                                                  <Alert color="danger" className="py-1">
                                                     {testStepApiError}
-                                                  </div>
+                                                  </Alert>
                                                 )}
                                               </form>
                                             </div>
@@ -1778,12 +1757,9 @@ function ProjectDetail() {
                                         </button>
                                       </div>
 
-                                      {conditionsLoadError && (
-                                        <div className="alert alert-danger" role="alert">
-                                          {conditionsLoadError}
-                                        </div>
-                                      )}
+                                      {conditionsLoadError && <Alert color="danger">{conditionsLoadError}</Alert>}
 
+                                      {/* near-miss: spinner-border-sm has no Spinner-atom equivalent, left as raw markup */}
                                       {loadingConditions ? (
                                         <div className="d-flex justify-content-center py-2">
                                           <div
@@ -1891,11 +1867,8 @@ function ProjectDetail() {
                                                         >
                                                           {casesExpanded && (
                                                             <div className="bg-body p-3">
-                                                              {casesLoadError && (
-                                                                <div className="alert alert-danger" role="alert">
-                                                                  {casesLoadError}
-                                                                </div>
-                                                              )}
+                                                              {casesLoadError && <Alert color="danger">{casesLoadError}</Alert>}
+                                                              {/* near-miss: spinner-border-sm has no Spinner-atom equivalent, left as raw markup */}
                                                               {loadingCases ? (
                                                                 <div className="d-flex justify-content-center py-2">
                                                                   <div
@@ -1953,9 +1926,9 @@ function ProjectDetail() {
                                                                           />
                                                                         </div>
                                                                         {addToSuiteError[testCase.id] && (
-                                                                          <div
-                                                                            className="alert alert-danger alert-dismissible mt-2 mb-0 py-1"
-                                                                            role="alert"
+                                                                          <Alert
+                                                                            color="danger"
+                                                                            className="alert-dismissible mt-2 mb-0 py-1"
                                                                             data-testid={`add-to-suite-error-${testCase.id}`}
                                                                           >
                                                                             {addToSuiteError[testCase.id]}
@@ -1969,7 +1942,7 @@ function ProjectDetail() {
                                                                                 )
                                                                               }
                                                                             />
-                                                                          </div>
+                                                                          </Alert>
                                                                         )}
                                                                       </li>
                                                                     ))}
@@ -2028,18 +2001,10 @@ function ProjectDetail() {
                   </button>
                 </div>
 
-                {suitesLoadError && (
-                  <div className="alert alert-danger" role="alert">
-                    {suitesLoadError}
-                  </div>
-                )}
+                {suitesLoadError && <Alert color="danger">{suitesLoadError}</Alert>}
 
                 {suitesLoading ? (
-                  <div className="d-flex justify-content-center py-3">
-                    <div className="spinner-border text-primary" role="status">
-                      <span className="visually-hidden">Loading...</span>
-                    </div>
-                  </div>
+                  <Spinner wrapperClassName="py-3" />
                 ) : !suitesLoadError && testSuites.length === 0 ? (
                   <p className="text-body-secondary mb-0">No test suites yet.</p>
                 ) : (
@@ -2082,12 +2047,9 @@ function ProjectDetail() {
                                       >
                                         <h3 className="fs-6 mb-2">Test cases in this suite</h3>
 
-                                        {suiteMembersError && (
-                                          <div className="alert alert-danger" role="alert">
-                                            {suiteMembersError}
-                                          </div>
-                                        )}
+                                        {suiteMembersError && <Alert color="danger">{suiteMembersError}</Alert>}
 
+                                        {/* near-miss: spinner-border-sm has no Spinner-atom equivalent, left as raw markup */}
                                         {suiteMembersLoading ? (
                                           <div className="d-flex justify-content-center py-2">
                                             <div
@@ -2171,17 +2133,13 @@ function ProjectDetail() {
                 <h2 className="fs-5 mb-3">Test Plans</h2>
 
                 {plansLoadError && (
-                  <div className="alert alert-danger" role="alert" data-testid="test-plans-error">
+                  <Alert color="danger" data-testid="test-plans-error">
                     {plansLoadError}
-                  </div>
+                  </Alert>
                 )}
 
                 {plansLoading ? (
-                  <div className="d-flex justify-content-center py-3">
-                    <div className="spinner-border text-primary" role="status">
-                      <span className="visually-hidden">Loading...</span>
-                    </div>
-                  </div>
+                  <Spinner wrapperClassName="py-3" />
                 ) : !plansLoadError && testPlans.length === 0 ? (
                   <p className="text-body-secondary mb-0">No test plans yet.</p>
                 ) : (
@@ -2249,22 +2207,9 @@ function ProjectDetail() {
         </div>
       </div>
 
-      <ProjectModal
-        visible={showTestCaseModal}
-        onClose={closeTestCaseModal}
-        onSubmit={handleSubmitTestCase(onSubmitTestCase)}
-        title="New Test Case"
-        footer={
-          <>
-            <button type="button" className="btn btn-outline-secondary" onClick={closeTestCaseModal}>
-              Cancel
-            </button>
-            <button type="submit" className="btn btn-primary" disabled={isSubmittingTestCase}>
-              {isSubmittingTestCase ? "Creating..." : "Create"}
-            </button>
-          </>
-        }
-      >
+      <Modal visible={showTestCaseModal} title="New Test Case" onClose={closeTestCaseModal}>
+      <form onSubmit={handleSubmitTestCase(onSubmitTestCase)} noValidate>
+      <Modal.Body>
         <div className="mb-3">
           <label className="form-label" htmlFor="testCaseTitle">Title</label>
           <input
@@ -2331,29 +2276,22 @@ function ProjectDetail() {
             <div className="invalid-feedback d-block">{testCaseErrors.testTypeId.message}</div>
           )}
         </div>
-        {testCaseApiError && (
-          <div className="alert alert-danger" role="alert">
-            {testCaseApiError}
-          </div>
-        )}
-      </ProjectModal>
+        {testCaseApiError && <Alert color="danger">{testCaseApiError}</Alert>}
+      </Modal.Body>
+      <Modal.Footer>
+        <button type="button" className="btn btn-outline-secondary" onClick={closeTestCaseModal}>
+          Cancel
+        </button>
+        <button type="submit" className="btn btn-primary" disabled={isSubmittingTestCase}>
+          {isSubmittingTestCase ? "Creating..." : "Create"}
+        </button>
+      </Modal.Footer>
+      </form>
+      </Modal>
 
-      <ProjectModal
-        visible={showReqModal}
-        onClose={closeReqModal}
-        onSubmit={handleSubmitRequirement(onSubmitRequirement)}
-        title="New Requirement"
-        footer={
-          <>
-            <button type="button" className="btn btn-outline-secondary" onClick={closeReqModal}>
-              Cancel
-            </button>
-            <button type="submit" className="btn btn-primary" disabled={isSubmittingRequirement}>
-              {isSubmittingRequirement ? "Creating..." : "Create"}
-            </button>
-          </>
-        }
-      >
+      <Modal visible={showReqModal} title="New Requirement" onClose={closeReqModal}>
+      <form onSubmit={handleSubmitRequirement(onSubmitRequirement)} noValidate>
+      <Modal.Body>
         <div className="mb-3">
           <label className="form-label" htmlFor="requirementTitle">Title</label>
           <input
@@ -2393,13 +2331,27 @@ function ProjectDetail() {
           />
           <div className="form-text">Optional — e.g. a Jira/GitHub issue id.</div>
         </div>
-        {reqApiError && (
-          <div className="alert alert-danger" role="alert">
-            {reqApiError}
-          </div>
-        )}
-      </ProjectModal>
+        {reqApiError && <Alert color="danger">{reqApiError}</Alert>}
+      </Modal.Body>
+      <Modal.Footer>
+        <button type="button" className="btn btn-outline-secondary" onClick={closeReqModal}>
+          Cancel
+        </button>
+        <button type="submit" className="btn btn-primary" disabled={isSubmittingRequirement}>
+          {isSubmittingRequirement ? "Creating..." : "Create"}
+        </button>
+      </Modal.Footer>
+      </form>
+      </Modal>
 
+      {/*
+        near-miss: this modal (and the two below it, "New Test Condition" and
+        REQ-3's "New Test Case") each carry a `testId` on the outer dialog —
+        the `Modal` molecule has no `data-testid` prop, so swapping to it
+        would silently drop a data-testid 3 existing tests assert on
+        (ProjectDetail.TestSuites.test.tsx, ProjectDetail.TestConditions.test.tsx).
+        Left as the local `ProjectModal` helper.
+      */}
       <ProjectModal
         visible={showSuiteModal}
         onClose={closeSuiteModal}
@@ -2448,11 +2400,7 @@ function ProjectDetail() {
             <div className="form-text">Optional — e.g. regression, smoke, acceptance.</div>
           )}
         </div>
-        {suiteApiError && (
-          <div className="alert alert-danger" role="alert">
-            {suiteApiError}
-          </div>
-        )}
+        {suiteApiError && <Alert color="danger">{suiteApiError}</Alert>}
       </ProjectModal>
 
       <ProjectModal
@@ -2509,11 +2457,7 @@ function ProjectDetail() {
             <div className="invalid-feedback d-block">{conditionErrors.priority.message}</div>
           )}
         </div>
-        {conditionApiError && (
-          <div className="alert alert-danger" role="alert">
-            {conditionApiError}
-          </div>
-        )}
+        {conditionApiError && <Alert color="danger">{conditionApiError}</Alert>}
       </ProjectModal>
 
       <ProjectModal
@@ -2615,16 +2559,8 @@ function ProjectDetail() {
           selects simply render empty, and the required-field validation
           above is what blocks an unselectable submit.
         */}
-        {catalogError && (
-          <div className="alert alert-warning" role="alert">
-            {catalogError}
-          </div>
-        )}
-        {testCaseApiError && (
-          <div className="alert alert-danger" role="alert">
-            {testCaseApiError}
-          </div>
-        )}
+        {catalogError && <Alert color="warning">{catalogError}</Alert>}
+        {testCaseApiError && <Alert color="danger">{testCaseApiError}</Alert>}
       </ProjectModal>
 
       <div className="toast-container position-fixed top-0 end-0 p-3">
@@ -2642,22 +2578,9 @@ function ProjectDetail() {
         )}
       </div>
 
-      <ProjectModal
-        visible={showModal}
-        onClose={closeModal}
-        onSubmit={handleSubmit(onSubmit)}
-        title="New Release"
-        footer={
-          <>
-            <button type="button" className="btn btn-outline-secondary" onClick={closeModal}>
-              Cancel
-            </button>
-            <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
-              {isSubmitting ? "Creating..." : "Create"}
-            </button>
-          </>
-        }
-      >
+      <Modal visible={showModal} title="New Release" onClose={closeModal}>
+      <form onSubmit={handleSubmit(onSubmit)} noValidate>
+      <Modal.Body>
         <div className="mb-3">
           <label className="form-label" htmlFor="releaseVersionLabel">Version label</label>
           <input
@@ -2673,12 +2596,18 @@ function ProjectDetail() {
           <input id="releaseTargetDate" type="date" className="form-control" {...register("targetDate")} />
           <div className="form-text">Optional.</div>
         </div>
-        {apiError && (
-          <div className="alert alert-danger" role="alert">
-            {apiError}
-          </div>
-        )}
-      </ProjectModal>
+        {apiError && <Alert color="danger">{apiError}</Alert>}
+      </Modal.Body>
+      <Modal.Footer>
+        <button type="button" className="btn btn-outline-secondary" onClick={closeModal}>
+          Cancel
+        </button>
+        <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
+          {isSubmitting ? "Creating..." : "Create"}
+        </button>
+      </Modal.Footer>
+      </form>
+      </Modal>
     </div>
   );
 }

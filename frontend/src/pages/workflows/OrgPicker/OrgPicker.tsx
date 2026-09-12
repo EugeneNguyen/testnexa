@@ -32,6 +32,10 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../../auth/AuthContext";
 import { ApiError } from "../../../lib/api/client";
 import { createOrg } from "../../../lib/api/organizations";
+import { Card } from "../../../components/atoms/card";
+import { Alert } from "../../../components/atoms/alert";
+import { Button } from "../../../components/atoms/button";
+import { Modal } from "../../../components/molecules/modal";
 
 const SLUG_PATTERN = /^[a-z0-9-]+$/;
 
@@ -49,19 +53,6 @@ function OrgPicker() {
       navigate("/login", { replace: true });
     }
   }, [orgs, navigate]);
-
-  // CoreUI's `CModal` closed on ESC by default (its `keyboard` prop); the
-  // hand-rolled replacement has to wire that up itself.
-  useEffect(() => {
-    if (!showModal) return;
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setShowModal(false);
-      }
-    }
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [showModal]);
 
   function openModal() {
     setNewOrgName("");
@@ -100,8 +91,8 @@ function OrgPicker() {
       <div className="container">
         <div className="row justify-content-center">
           <div className="col-md-8 col-lg-5">
-            <div className="card">
-              <div className="card-body p-4">
+            <Card>
+              <Card.Body className="p-4">
                 <h1 className="mb-3 fs-4">Choose an organization</h1>
                 {/*
                  * Bootstrap's own documented markup for an *actionable* list
@@ -123,91 +114,57 @@ function OrgPicker() {
                     </button>
                   ))}
                 </div>
-                <button type="button" className="btn btn-outline-secondary w-100" onClick={openModal}>
+                <Button color="secondary" outline className="w-100" onClick={openModal}>
                   New Organization
-                </button>
-              </div>
-            </div>
+                </Button>
+              </Card.Body>
+            </Card>
           </div>
         </div>
       </div>
 
-      {showModal && (
-        <>
-          <div
-            className="modal fade show d-block"
-            tabIndex={-1}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="newOrgModalTitle"
-          >
-            <div className="modal-dialog">
-              <div className="modal-content">
-                <div className="modal-header">
-                  <h5 className="modal-title" id="newOrgModalTitle">
-                    New Organization
-                  </h5>
-                  <button
-                    type="button"
-                    className="btn-close"
-                    aria-label="Close"
-                    onClick={() => setShowModal(false)}
-                  />
-                </div>
-                <form onSubmit={handleCreateOrg}>
-                  <div className="modal-body">
-                    <div className="mb-3">
-                      <label className="form-label" htmlFor="newOrgName">
-                        Name
-                      </label>
-                      <input
-                        className="form-control"
-                        id="newOrgName"
-                        type="text"
-                        required
-                        value={newOrgName}
-                        onChange={(event) => setNewOrgName(event.target.value)}
-                      />
-                    </div>
-                    <div className="mb-3">
-                      <label className="form-label" htmlFor="newOrgSlug">
-                        Slug
-                      </label>
-                      <input
-                        className="form-control"
-                        id="newOrgSlug"
-                        type="text"
-                        required
-                        value={newOrgSlug}
-                        onChange={(event) => setNewOrgSlug(event.target.value)}
-                      />
-                      <div className="form-text">Lowercase letters, numbers, and hyphens only.</div>
-                    </div>
-                    {createError && (
-                      <div className="alert alert-danger" role="alert">
-                        {createError}
-                      </div>
-                    )}
-                  </div>
-                  <div className="modal-footer">
-                    <button
-                      type="button"
-                      className="btn btn-outline-secondary"
-                      onClick={() => setShowModal(false)}
-                    >
-                      Cancel
-                    </button>
-                    <button type="submit" className="btn btn-primary" disabled={creating}>
-                      {creating ? "Creating..." : "Create"}
-                    </button>
-                  </div>
-                </form>
-              </div>
+      <Modal visible={showModal} title="New Organization" onClose={() => setShowModal(false)}>
+        <form onSubmit={handleCreateOrg}>
+          <Modal.Body>
+            <div className="mb-3">
+              <label className="form-label" htmlFor="newOrgName">
+                Name
+              </label>
+              <input
+                className="form-control"
+                id="newOrgName"
+                type="text"
+                required
+                value={newOrgName}
+                onChange={(event) => setNewOrgName(event.target.value)}
+              />
             </div>
-          </div>
-          <div className="modal-backdrop fade show" />
-        </>
-      )}
+            <div className="mb-3">
+              <label className="form-label" htmlFor="newOrgSlug">
+                Slug
+              </label>
+              <input
+                className="form-control"
+                id="newOrgSlug"
+                type="text"
+                required
+                value={newOrgSlug}
+                onChange={(event) => setNewOrgSlug(event.target.value)}
+              />
+              <div className="form-text">Lowercase letters, numbers, and hyphens only.</div>
+            </div>
+            {createError && <Alert color="danger">{createError}</Alert>}
+          </Modal.Body>
+          <Modal.Footer>
+            <Button color="secondary" outline onClick={() => setShowModal(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" color="primary" disabled={creating}>
+              {creating ? "Creating..." : "Create"}
+            </Button>
+          </Modal.Footer>
+        </form>
+      </Modal>
     </div>
   );
 }
