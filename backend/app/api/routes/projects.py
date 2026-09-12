@@ -217,6 +217,12 @@ async def create_project(
 # admin surface's "New" button now reaches it via `entityConfigs/overrides.ts`'s
 # `ROUTE_OVERRIDES.projects.createPath` (`:orgId`-interpolated), the same
 # precedent `Release`'s own nested `createPath` already established.
+#
+# ADR-0060: `search_fields=("name",)` added so the generic surface's `?q=`
+# box works for `Project` too — `ProjectsPage.tsx` (the bespoke screen this
+# generic surface replaces as of that ADR) had its own client-side name
+# filter; this is the server-side equivalent, reusing `apply_filters_and_search`
+# unchanged (no new backend mechanism).
 _PROJECT_FACTORY_CONFIG = CrudEntityConfig(
     model=Project,
     resource="project",
@@ -230,6 +236,9 @@ _PROJECT_FACTORY_CONFIG = CrudEntityConfig(
     # ADR-0059: create too now (schema-reported only, see this config's own
     # comment above) — the bespoke route it points at was already live.
     full_methods=frozenset({"list", "get", "create", "update", "delete"}),
+    # ADR-0060: `?q=` name search, closing the last gap between this surface
+    # and `ProjectsPage`'s own (now-retired) client-side name filter.
+    search_fields=("name",),
     label="Projects",
     scope_resolution=ScopeResolution(from_route_param="projectId", via_entity="project", via_field="org_id"),
     # `org_id` is summary-only (its real create is bespoke), so it derives last

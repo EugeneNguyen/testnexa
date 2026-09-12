@@ -21,9 +21,12 @@
  *    `Release` (`listPath`+`createPath`, fully bespoke, no factory route at
  *    all — see note 3) and, since
  *    [ADR-0059](../../../docs/adr/0059-project-generic-admin-create.md),
- *    `Project` (`createPath` only — its real create is the bespoke
- *    org-path-nested `POST /orgs/{org_id}/projects`, ADR-0017; `list`/`get`/
- *    `update`/`delete` all still fit the plain convention).
+ *    `Project` (`createPath` — its real create is the bespoke org-path-nested
+ *    `POST /orgs/{org_id}/projects`, ADR-0017; `list`/`get`/`update`/`delete`
+ *    all still fit the plain convention — plus, since
+ *    [ADR-0060](../../../docs/adr/0060-projects-page-retired-generic-surface.md),
+ *    `detailPath`/`detailLinkField`, restoring the row-name-links-to-
+ *    `ProjectDetail` navigation the retired bespoke `ProjectsPage` had).
  * 3. `STATIC_ENTITY_CONFIGS` — entities with **no backend `CrudEntityConfig`
  *    at all**, so there is nothing for `GET /entities/{resource}/schema` to
  *    derive and no route to fetch. `Release` again, and only `Release`: its
@@ -50,13 +53,20 @@ export function pathFor(entityKey: string): string {
  * established. `list`/`get`/`update`/`delete` all still use the plain
  * `/projects`/`/projects/{id}` paths (unaffected, no override needed).
  */
-export const ROUTE_OVERRIDES: Record<string, Pick<EntityConfig, "listPath" | "createPath">> = {
+export const ROUTE_OVERRIDES: Record<
+  string,
+  Pick<EntityConfig, "listPath" | "createPath" | "detailPath" | "detailLinkField">
+> = {
   releases: {
     listPath: "/projects/:projectId/releases",
     createPath: "/projects/:projectId/releases",
   },
   projects: {
     createPath: "/orgs/:orgId/projects",
+    // ADR-0060: restores ProjectsPage's "click a project's name to open it"
+    // navigation — see EntityConfig.detailPath's own doc comment.
+    detailPath: "/projects/:id",
+    detailLinkField: "name",
   },
 };
 

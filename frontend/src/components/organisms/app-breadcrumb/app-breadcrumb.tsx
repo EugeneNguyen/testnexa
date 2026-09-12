@@ -266,6 +266,19 @@ const ROUTE_BREADCRUMBS: RouteBreadcrumbConfig[] = [
     ],
   },
   {
+    // ADR-0060: the retired bespoke `ProjectsPage` had no dedicated edit
+    // *route* (edit was a modal) — this pattern is net-new now that
+    // `EntityFormPage` gives it a real one. Must precede the bare
+    // `/orgs/:orgId/projects` pattern below (more specific first), same
+    // ordering rule this file's own docstring already explains.
+    pattern: "/orgs/:orgId/projects/:id/edit",
+    segments: (params) => [
+      { label: "Dashboard", to: `/orgs/${params.orgId}` },
+      { label: "Projects", to: `/orgs/${params.orgId}/projects` },
+      { label: "Edit" },
+    ],
+  },
+  {
     // PROJ-4 (ADR-0047): must precede the generic `/orgs/:orgId` catch-all
     // below, same ordering rule the module docstring already explains for
     // `/orgs/pick`.

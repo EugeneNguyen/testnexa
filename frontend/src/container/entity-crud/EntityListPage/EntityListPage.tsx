@@ -13,6 +13,12 @@
  * `.update`/`.delete` gap makes the corresponding affordance absent, not
  * disabled.
  *
+ * **ADR-0060:** optional `entityKeyOverride` prop, for a route with no
+ * `:entity` segment at all (`/orgs/:orgId/projects`, `Project`'s
+ * retired-`ProjectsPage` replacement) — passed straight through to
+ * `useAdminRouteContext`. Every other mount omits it and behaves exactly as
+ * before.
+ *
  * **ADR-0042 (CoreUI -> AdminLTE v4):** raw Bootstrap 5 markup now.
  * `CContainer fluid` -> `<div class="container-fluid">`, `CCard`/`CCardBody`
  * -> `<div class="card">`/`<div class="card-body">`, `CAlert` -> `<div
@@ -129,10 +135,11 @@ function fieldErrorsFrom(error: unknown): Record<string, string> | undefined {
   return Object.fromEntries(Object.entries(body.field_errors).map(([field, messages]) => [field, messages[0]]));
 }
 
-function EntityListPage() {
+function EntityListPage({ entityKeyOverride }: { entityKeyOverride?: string } = {}) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { entityKey, config, label, schemaLoading, orgId, projectId, routeParams } = useAdminRouteContext();
+  const { entityKey, config, label, schemaLoading, orgId, projectId, routeParams } =
+    useAdminRouteContext(entityKeyOverride);
   const { scope, onScopeSelectorResolved } = useEntityScope(config, routeParams);
   const permissions = usePermissions(orgId);
 

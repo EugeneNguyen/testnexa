@@ -8,12 +8,11 @@ import OrgHome from "./pages/workflows/OrgHome";
 import OrgMembers from "./pages/workflows/OrgMembers";
 import OrgPicker from "./pages/workflows/OrgPicker";
 import ProjectDetail from "./pages/workflows/ProjectDetail";
-import ProjectsPage from "./pages/workflows/ProjectsPage";
 import RootRedirect from "./pages/workflows/RootRedirect";
 import Signup from "./pages/workflows/Signup";
 import TestCycleDetail from "./pages/workflows/TestCycleDetail";
 import TestPlanDetail from "./pages/workflows/TestPlanDetail";
-import { entityCrudRoutes } from "./container/entity-crud";
+import { EntityFormPage, EntityListPage, entityCrudRoutes } from "./container/entity-crud";
 
 function App() {
   return (
@@ -72,15 +71,29 @@ function App() {
           }
         />
         {/*
-          PROJ-4 (ADR-0047): Project CRUD's own dedicated page, extracted out
-          of `OrgHome`/"Dashboard" — reached via `AppSidebar`'s new "Projects"
-          nav item and the Dashboard's Project-count widget link.
+          PROJ-4 (ADR-0047) gave Project CRUD its own dedicated page,
+          extracted out of `OrgHome`/"Dashboard" — reached via `AppSidebar`'s
+          "Projects" nav item and the Dashboard's Project-count widget link.
+          ADR-0060 retires that bespoke `ProjectsPage` in favor of the
+          generic admin surface (`EntityListPage`/`EntityFormPage`,
+          ADR-0025/ADR-0058/ADR-0059) — same URL, same nav item, so nothing
+          else in the app needs to change. `entityKeyOverride="projects"`
+          is needed because this route has no `:entity` segment the way
+          `entityCrudRoutes()`'s own routes do.
         */}
         <Route
           path="/orgs/:orgId/projects"
           element={
             <ProtectedRoute>
-              <ProjectsPage />
+              <EntityListPage entityKeyOverride="projects" />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/orgs/:orgId/projects/:id/edit"
+          element={
+            <ProtectedRoute>
+              <EntityFormPage entityKeyOverride="projects" />
             </ProtectedRoute>
           }
         />

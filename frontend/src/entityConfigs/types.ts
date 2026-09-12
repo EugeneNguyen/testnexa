@@ -130,6 +130,21 @@ export interface EntityConfig {
   listPath?: string;
   /** Same override, for `create` (only `Release`). */
   createPath?: string;
+  /**
+   * ADR-0060 extension: only `Project` uses this today.
+   * `EntityTable` has no built-in "click a row to navigate elsewhere"
+   * concept — every entity's own detail view is its generic edit form.
+   * `Project`'s pre-existing bespoke screen (`ProjectsPage`) linked each
+   * row's name to `ProjectDetail`, a real per-entity workspace no other
+   * generic-admin entity has an equivalent of. `detailPath` (a template with
+   * a `:id` placeholder, e.g. `/projects/:id`) + `detailLinkField` (which
+   * field's table cell becomes the link, e.g. `"name"`) together restore
+   * that navigation generically, without inventing a per-entity special
+   * case in `EntityTable` itself. Both are frontend-only route-wiring
+   * (ADR-0053's split), set via `entityConfigs/overrides.ts`.
+   */
+  detailPath?: string;
+  detailLinkField?: string;
   /** Matches backend's scope_field shape (RiskItem's tuple case). */
   scopeField?: string | [string, string];
   /** RiskItem/Attachment (per §4) plus the other scope-selector entities documented above. */

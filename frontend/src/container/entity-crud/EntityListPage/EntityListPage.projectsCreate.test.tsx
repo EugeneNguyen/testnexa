@@ -62,7 +62,28 @@ function renderPage() {
   );
 }
 
-describe("EntityListPage — projects create route override (ADR-0059)", () => {
+/**
+ * ADR-0060: the retired `ProjectsPage`'s replacement route
+ * (`/orgs/:orgId/projects`, `App.tsx`) has no `:entity` segment at all —
+ * `entityKeyOverride="projects"` is what makes `EntityListPage` resolve the
+ * right entity there instead of an empty `entityKey`. Distinct from the
+ * createPath-interpolation proof above: this proves the override mechanism
+ * itself, on the actual route shape it's used for.
+ */
+function renderAtOverrideRoute() {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={["/orgs/org-1/projects"]}>
+        <Routes>
+          <Route path="/orgs/:orgId/projects" element={<EntityListPage entityKeyOverride="projects" />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
+describe("EntityListPage — projects create route override (ADR-0059) + entityKeyOverride (ADR-0060)", () => {
   afterEach(() => {
     vi.clearAllMocks();
   });
@@ -93,5 +114,23 @@ describe("EntityListPage — projects create route override (ADR-0059)", () => {
     expect(postCall?.[0]).toBe("/api/v1/orgs/org-1/projects");
     const body = JSON.parse((postCall?.[1] as RequestInit).body as string);
     expect(body).toMatchObject({ name: "New Project", org_id: "org-1" });
+  });
+
+  it("entityKeyOverride resolves the entity on a route with no :entity segment (ADR-0060)", async () => {
+    mockApiFetch
+      .mockResolvedValueOnce({ codes: [{ code: "project.create", project_id: null }] })
+      .mockResolvedValue({
+        items: [{ id: "proj-1", org_id: "org-1", name: "Existing Project", standards_profile: null }],
+        total: 1,
+        page: 1,
+        page_size: 25,
+      });
+
+    renderAtOverrideRoute();
+
+    // Not "Unknown admin entity" — proves entityKeyOverride, not the (here
+    // absent) :entity route param, resolved the schema.
+    expect(await screen.findByRole("heading", { name: "Projects" })).toBeInTheDocument();
+    expect(await screen.findByText("Existing Project")).toBeInTheDocument();
   });
 });

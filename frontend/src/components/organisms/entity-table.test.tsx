@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import EntityTable from "./entity-table";
 import { getEntity } from "../../lib/api/entityCrud";
@@ -350,5 +351,39 @@ describe("EntityTable", () => {
     // Partially coloured: the uncoloured value still gets grey.
     expect(screen.getByText("draft")).toHaveClass("badge", "bg-secondary");
     expect(screen.getByText("done")).toHaveClass("badge", "bg-success");
+  });
+
+  // ADR-0060: restores ProjectsPage's "click a row's name to open it"
+  // navigation, generically — only `Project` uses this today, but the
+  // mechanism itself is config-driven, not hardcoded to that entity.
+  describe("detailPath/detailLinkField (ADR-0060)", () => {
+    const DETAIL_LINK_CONFIG: EntityConfig = {
+      ...READ_ONLY_CONFIG,
+      detailPath: "/widgets/:id",
+      detailLinkField: "title",
+    };
+
+    it("renders the designated field's cell as a link to the interpolated detail path", () => {
+      render(
+        <MemoryRouter>
+          <EntityTable config={DETAIL_LINK_CONFIG} rows={ROWS} total={2} page={1} pageSize={25} onPageChange={vi.fn()} />
+        </MemoryRouter>,
+      );
+
+      const link = screen.getByRole("link", { name: "First widget" });
+      expect(link).toHaveAttribute("href", "/widgets/1");
+      // The other configured field (status) is never linked, even though a
+      // config could name any field — only the one designated field is.
+      expect(screen.queryByRole("link", { name: "draft" })).not.toBeInTheDocument();
+    });
+
+    it("renders a plain cell, no link, when detailPath/detailLinkField isn't configured", () => {
+      render(
+        <EntityTable config={READ_ONLY_CONFIG} rows={ROWS} total={2} page={1} pageSize={25} onPageChange={vi.fn()} />,
+      );
+
+      expect(screen.getByText("First widget")).toBeInTheDocument();
+      expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    });
   });
 });
