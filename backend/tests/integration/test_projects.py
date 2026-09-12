@@ -347,11 +347,21 @@ async def test_create_project_omitted_standards_profile_inherits_org_default() -
         await _cleanup(user_ids=user_ids, org_ids=org_ids, project_ids=project_ids)
 
 
-# --- TC-PROJ-007: explicit null overrides a non-null org default -----------------------------
+# --- TC-PROJ-007 (amended ADR-0059): explicit null now ALSO inherits the org default ---------
+#
+# Originally asserted the opposite (explicit `null` *overrides* a non-null
+# org default to stay `None`) — ADR-0017 Q3's own omitted-vs-explicit-null
+# distinction. ADR-0059 collapsed that distinction (see `create_project`'s
+# own docstring §3): the generic admin surface's `EntityForm` cannot express
+# "omit this key," only "send null," so create's own route logic no longer
+# reads `model_fields_set` at all — omitted and explicit-null are now
+# identical inputs. The schema layer still distinguishes them mechanically
+# (`test_projects_schemas.py`'s own test); only the route's business-logic
+# interpretation changed.
 
 
 @pytest.mark.asyncio
-async def test_create_project_explicit_null_overrides_org_default() -> None:  # TC-PROJ-007
+async def test_create_project_explicit_null_also_inherits_org_default() -> None:  # TC-PROJ-007
     user_ids: list = []
     org_ids: list = []
     project_ids: list = []
@@ -374,7 +384,7 @@ async def test_create_project_explicit_null_overrides_org_default() -> None:  # 
 
         assert response.status_code == 201
         body = response.json()
-        assert body["standards_profile"] is None
+        assert body["standards_profile"] == "NON-NULL-DEFAULT"
         project_ids = [body["id"]]
     finally:
         await _cleanup(user_ids=user_ids, org_ids=org_ids, project_ids=project_ids)

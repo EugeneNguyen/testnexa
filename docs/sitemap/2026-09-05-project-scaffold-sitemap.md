@@ -85,7 +85,7 @@ Two page components (`EntityListPage`, `EntityFormPage`), routed generically off
 | `test-levels` | `TestLevel` | Catalogs |
 | `test-types` | `TestType` | Catalogs |
 | `organizations` | `Organization` (coexists with `OrgHome`, UI Design Document §6) | Organization |
-| `projects` | `Project`, list/get/update/delete only — no create via this surface (bootstrap-aware creation stays bespoke, [ADR-0017](../adr/0017-project-creation-flow.md)); coexists with `ProjectsPage` | **None** — [ADR-0058](../adr/0058-project-generic-admin-org-scoped.md) added the registry entry (`org_id` scope resolves straight from `:orgId`, no fetch) but deliberately excludes it from the sidebar (`ORG_EXCLUDED_ENTITY_KEYS`) since `ProjectsPage`'s own flat "Projects" item is the real nav path — reachable only by direct URL |
+| `projects` | `Project`, full list/get/**create**/update/delete — **create added [ADR-0059](../adr/0059-project-generic-admin-create.md)**, reuses the bespoke `POST /orgs/{org_id}/projects` unchanged ([ADR-0017](../adr/0017-project-creation-flow.md)'s bootstrap-aware creation/`RoleAssignment` grant, not a new route) via `entityConfigs/overrides.ts`'s `createPath` override; coexists with `ProjectsPage` | **None** — [ADR-0058](../adr/0058-project-generic-admin-org-scoped.md) added the registry entry (`org_id` scope resolves straight from `:orgId`, no fetch) but deliberately excludes it from the sidebar (`ORG_EXCLUDED_ENTITY_KEYS`) since `ProjectsPage`'s own flat "Projects" item is the real nav path — reachable only by direct URL |
 
 **Project-scoped** — `/projects/:projectId/admin/:entity`, reached via `ProjectDetail`'s "Admin" tab:
 

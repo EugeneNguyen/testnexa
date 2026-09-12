@@ -55,7 +55,16 @@ export interface AdminRouteContext {
   /** Resolved for permission checks — direct `:orgId` route param, or fetched via the current Project. */
   orgId: string | undefined;
   projectId: string | undefined;
-  /** `{orgId, projectId}` — fed straight into `entityCrud`'s `:param` interpolation. */
+  /**
+   * `{orgId, projectId}` — fed straight into `entityCrud`'s `:param`
+   * interpolation. `orgId` is the **resolved** value (same as this
+   * interface's own `orgId` field above), not the raw `:orgId` route
+   * param — [ADR-0059](../../../docs/adr/0059-project-generic-admin-create.md):
+   * on a project-scoped route the URL carries no `:orgId` segment at all,
+   * but `ROUTE_OVERRIDES.projects.createPath` (`/orgs/:orgId/projects`)
+   * still needs a real value to interpolate there too, not just on the
+   * org-scoped route.
+   */
   routeParams: Record<string, string | undefined>;
 }
 
@@ -81,6 +90,6 @@ export function useAdminRouteContext(): AdminRouteContext {
     schemaLoading,
     orgId,
     projectId: params.projectId,
-    routeParams: { orgId: params.orgId, projectId: params.projectId },
+    routeParams: { orgId, projectId: params.projectId },
   };
 }

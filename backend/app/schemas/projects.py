@@ -13,12 +13,14 @@ from pydantic import BaseModel
 class CreateProjectRequest(BaseModel):
     """Body of `POST /orgs/{org_id}/projects`.
 
-    `standards_profile` omitted (not just `None`) is the trigger for
-    `Organization.default_standards_profile` inheritance (ADR-0017 Q3) — the
-    route reads this distinction via `exclude_unset`/`model_fields_set`, not
-    a schema-level default trick, so the field's default here is only the
-    ordinary "optional field" default, not itself load-bearing for that
-    behavior.
+    `standards_profile` omitted OR explicit `null` triggers
+    `Organization.default_standards_profile` inheritance (ADR-0017 Q3,
+    amended [ADR-0059](../../../docs/adr/0059-project-generic-admin-create.md)):
+    the route checks `payload.standards_profile is None`, not
+    `model_fields_set` — the original omitted-vs-null distinction was
+    collapsed because `EntityForm` (the generic admin surface, ADR-0025)
+    cannot express "omit this key," only "send it as `null`." A non-`null`
+    value always wins regardless of source.
     """
 
     name: str

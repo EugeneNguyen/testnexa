@@ -18,7 +18,12 @@
  *    So `pathFor()` below replaces 28 hand-written `path:` lines.
  * 2. `ROUTE_OVERRIDES` — the genuine exceptions, where the real backend route
  *    doesn't fit the `{path}` / `{path}?{scopeField}=` convention at all.
- *    `Release` is the only entity in this category.
+ *    `Release` (`listPath`+`createPath`, fully bespoke, no factory route at
+ *    all — see note 3) and, since
+ *    [ADR-0059](../../../docs/adr/0059-project-generic-admin-create.md),
+ *    `Project` (`createPath` only — its real create is the bespoke
+ *    org-path-nested `POST /orgs/{org_id}/projects`, ADR-0017; `list`/`get`/
+ *    `update`/`delete` all still fit the plain convention).
  * 3. `STATIC_ENTITY_CONFIGS` — entities with **no backend `CrudEntityConfig`
  *    at all**, so there is nothing for `GET /entities/{resource}/schema` to
  *    derive and no route to fetch. `Release` again, and only `Release`: its
@@ -33,11 +38,25 @@ export function pathFor(entityKey: string): string {
   return `/${entityKey}`;
 }
 
-/** See note 2 — `Release`'s list/create are project-nested, not flat. */
+/**
+ * See note 2 — `Release`'s list/create are project-nested, not flat.
+ *
+ * `projects.createPath` ([ADR-0059](../../../docs/adr/0059-project-generic-admin-create.md)):
+ * `Project`'s real create stays the bespoke, org-path-nested
+ * `POST /orgs/{org_id}/projects` (ADR-0017) — this override points the
+ * generic admin surface's "New" button at that exact path instead of the
+ * flat `/projects` a plain org-scoped entity's create would otherwise use,
+ * same `:param`-interpolation mechanism `Release`'s own override already
+ * established. `list`/`get`/`update`/`delete` all still use the plain
+ * `/projects`/`/projects/{id}` paths (unaffected, no override needed).
+ */
 export const ROUTE_OVERRIDES: Record<string, Pick<EntityConfig, "listPath" | "createPath">> = {
   releases: {
     listPath: "/projects/:projectId/releases",
     createPath: "/projects/:projectId/releases",
+  },
+  projects: {
+    createPath: "/orgs/:orgId/projects",
   },
 };
 

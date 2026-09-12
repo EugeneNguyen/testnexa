@@ -96,3 +96,12 @@ for the identical entity: `PROJECT_EXCLUDED_ENTITY_KEYS` already lists
   Rejected — duplicates `ProjectsPage`'s existing nav-reachable Project CRUD
   with a second, differently-scoped "Projects" link, confusing UX for no
   stated benefit.
+
+### Amendment (2026-09-12, [ADR-0059](0059-project-generic-admin-create.md))
+
+Consequences' "Create is absent by design — same as before this change" no
+longer holds: on direct instruction, ADR-0059 wired the generic surface's
+"New" button to the existing bespoke `POST /orgs/{org_id}/projects`
+(unchanged security logic — see that ADR). This paragraph is left as-written
+above (accurate as of this ADR's own original scope); ADR-0059 is the record
+of the follow-on decision, not a silent edit here.
