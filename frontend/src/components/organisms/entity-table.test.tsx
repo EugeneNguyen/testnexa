@@ -196,12 +196,13 @@ describe("EntityTable", () => {
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 
-  // TC-ADMIN-003: "Paginated ... list renders" -- `EntityTable` derives page
-  // count from `total`/`pageSize` and drives `onPageChange` generically,
-  // no entity-specific pagination code anywhere on this surface.
-  it("renders no pagination controls when everything fits on one page", () => {
+  // TC-ADMIN-003 (superseded): pagination now renders even when everything
+  // fits on one page — Previous/Next are just disabled.
+  it("renders a disabled pagination control when everything fits on one page", () => {
     render(<EntityTable config={READ_ONLY_CONFIG} rows={ROWS} total={2} page={1} pageSize={25} onPageChange={vi.fn()} />);
-    expect(screen.queryByRole("navigation", { name: /page navigation/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: /page navigation/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
   });
 
   it("renders one page-number control per page and calls onPageChange with the clicked page", () => {

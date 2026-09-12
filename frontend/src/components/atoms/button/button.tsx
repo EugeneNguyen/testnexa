@@ -141,7 +141,7 @@ export function Button({
   color = "default",
   outline = false,
   ghost = false,
-  size = "default",
+  size = "sm",
   shape = "default",
   active = false,
   disabled = false,
