@@ -4,13 +4,18 @@ import { expect, test } from "@playwright/test";
 /**
  * PROJ-2 E2E (ADR-0018): real browser, full stack, exercising
  * `ProjectDetail.tsx`'s "New Release" modal — an already-authenticated
- * org_admin creating a Project via `OrgHome.tsx`'s existing "New Project"
- * modal (reusing that flow inline, same as `project-create.spec.ts` itself
- * does — no exported helper exists in this codebase to import), navigating
- * to that project's detail page via the `OrgHome` project-list link (PROJ-2
- * scope item 4), then creating two Releases with distinct `target_date`s via
- * `ProjectDetail.tsx`'s own "New Release" modal and verifying both appear in
- * the release table sorted by `target_date` ascending (AC3/ADR-0018).
+ * org_admin creating a Project via the Projects page's own create modal
+ * (reusing that flow inline, same as `project-create.spec.ts` itself
+ * does — no exported helper exists in this codebase to import; screen
+ * behind that flow has moved twice since this comment was first written —
+ * `OrgHome` → the bespoke `ProjectsPage` → the generic admin surface,
+ * [ADR-0060](../../docs/adr/0060-projects-page-retired-generic-surface.md) —
+ * only the markup selectors changed each time, not this spec's own logic),
+ * navigating to that project's detail page via the Projects-page row's own
+ * name link (PROJ-2 scope item 4), then creating two Releases with distinct
+ * `target_date`s via `ProjectDetail.tsx`'s own "New Release" modal and
+ * verifying both appear in the release table sorted by `target_date`
+ * ascending (AC3/ADR-0018).
  *
  * Fixture seeding: a single human User who is org_admin (org-wide
  * RoleAssignment against RBAC-4's seeded `org_admin` system Role, which
@@ -172,8 +177,10 @@ test.describe("PROJ-2: create Releases via ProjectDetail's New Release modal", (
       await page.getByTestId("sidebar-nav-projects").click();
       await page.waitForURL(new RegExp(`/orgs/${admin.orgId}/projects$`));
 
-      // --- Create a Project via the "New Project" modal -----------------------------
-      await page.getByRole("button", { name: /new project/i }).click();
+      // --- Create a Project via the New-project modal --------------------------------
+      // ADR-0060: the generic admin surface's own "New" button, not "New
+      // Project" text (the retired bespoke ProjectsPage's own wording).
+      await page.getByRole("button", { name: "New" }).click();
       await expect(page.getByRole("heading", { name: /new project/i })).toBeVisible();
 
       const projectName = `PROJ-2 E2E Project ${Date.now().toString(36)}`;

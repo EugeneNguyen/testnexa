@@ -664,8 +664,13 @@ class TestMethods:
         assert derive_entity_schema(_config(methods=frozenset({"list", "get"})))["methods"] == ["get", "list"]
 
     def test_full_methods_overrides_methods_in_the_output(self) -> None:
-        # `Project`'s real shape: the factory only registers `list`/`delete`,
-        # but `get`/`update` exist as bespoke routes at the same URL shape.
+        # A `Project`-shaped fixture, as of ADR-0055 (before ADR-0059 added
+        # `create` to `Project`'s own real `full_methods` too) — this test is
+        # about the general mechanism (`full_methods` overriding `methods` in
+        # the served output), not a live assertion about Project's current
+        # real shape; see `test_adr53_entity_schema.py`'s own
+        # `test_projects_methods_reflect_full_methods_not_the_factory_registered_two`
+        # for that.
         config = _config(
             methods=frozenset({"list", "delete"}),
             full_methods=frozenset({"list", "get", "update", "delete"}),
