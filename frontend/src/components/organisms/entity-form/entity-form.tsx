@@ -39,11 +39,30 @@
  * into the payload directly by the caller (`EntityFormPage`) only on
  * `create`, matching the backend's own "scope fields aren't reassignable
  * through `update`" posture (every `Update*Request` schema omits them).
+ *
+ * `submitError`'s alert and the Cancel/Save buttons reuse the `Alert`/
+ * `Button` atoms (`frontend/CLAUDE.md`'s component-reuse rule) rather than
+ * hand-rolling the same markup a third time.
+ *
+ * `BodySection`/`FooterSection` (optional, default to a plain passthrough
+ * `Fragment`) let a caller wrap the fields+error region and the
+ * Cancel/Save row in its own `Card.Body`/`Card.Footer` (or
+ * `Modal.Body`/`Modal.Footer`) — `EntityFormPage` passes `Card.Body`/
+ * `Card.Footer` so the buttons render in a true `.card-footer`. This has to
+ * happen *inside* `EntityForm`'s own `<form>`, not around it from the
+ * caller, because the submit button must stay inside the `<form>` element
+ * for `handleSubmit` to fire (same reasoning as `Modal`'s own docstring for
+ * why it renders only `.modal-header` and leaves body/footer to the
+ * caller). Omitting both props (`EntityListPage`'s create modal still does)
+ * preserves the exact prior DOM shape — everything inside one `<form>`,
+ * no extra wrapper.
  */
-import { useEffect } from "react";
+import { Fragment, useEffect, type ComponentType, type ReactNode } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z, ZodTypeAny } from "zod";
+import { Alert } from "../../atoms/alert";
+import { Button } from "../../atoms/button";
 import FormField from "../../molecules/form-field";
 import { EntityConfig, FieldConfig } from "../../../entityConfigs/types";
 import FkAutocomplete from "../../molecules/fk-autocomplete";
@@ -60,6 +79,10 @@ export interface EntityFormProps {
   submitError?: string | null;
   /** `422 error.body.field_errors`, mapped onto the matching RHF field. */
   serverFieldErrors?: Record<string, string>;
+  /** Wraps fields + `submitError` alert — pass `Card.Body`/`Modal.Body`. Defaults to no wrap. */
+  BodySection?: ComponentType<{ children: ReactNode }>;
+  /** Wraps the Cancel/Save buttons — pass `Card.Footer`/`Modal.Footer`. Defaults to no wrap. */
+  FooterSection?: ComponentType<{ children: ReactNode }>;
 }
 
 function isLocked(field: FieldConfig, lockedValues?: Record<string, string>): boolean {
@@ -118,6 +141,8 @@ function EntityForm({
   onCancel,
   submitError,
   serverFieldErrors,
+  BodySection = Fragment,
+  FooterSection = Fragment,
 }: EntityFormProps) {
   const editableFields = config.fields.filter((f) => !f.readOnly && !isLocked(f, lockedValues));
   const displayOnlyFields = config.fields.filter((f) => f.readOnly || isLocked(f, lockedValues));
@@ -265,23 +290,23 @@ function EntityForm({
 
   return (
     <form onSubmit={handleSubmit(handleFormSubmit)} noValidate>
-      {displayOnlyFields.map(renderDisplayOnly)}
-      {editableFields.map(renderEditable)}
-      {submitError && (
-        <div className="alert alert-danger" role="alert">
-          {submitError}
+      <BodySection>
+        {displayOnlyFields.map(renderDisplayOnly)}
+        {editableFields.map(renderEditable)}
+        {submitError && <Alert color="danger">{submitError}</Alert>}
+      </BodySection>
+      <FooterSection>
+        <div className="d-flex gap-2 justify-content-end">
+          {onCancel && (
+            <Button outline color="secondary" onClick={onCancel}>
+              Cancel
+            </Button>
+          )}
+          <Button type="submit" color="primary" disabled={isSubmitting}>
+            {isSubmitting ? "Saving..." : mode === "create" ? "Create" : "Save"}
+          </Button>
         </div>
-      )}
-      <div className="d-flex gap-2 justify-content-end">
-        {onCancel && (
-          <button type="button" className="btn btn-outline-secondary" onClick={onCancel}>
-            Cancel
-          </button>
-        )}
-        <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
-          {isSubmitting ? "Saving..." : mode === "create" ? "Create" : "Save"}
-        </button>
-      </div>
+      </FooterSection>
     </form>
   );
 }
