@@ -113,10 +113,7 @@ import {
 import { getProject } from "../../../lib/api/projects";
 import { listMembers } from "../../../lib/api/members";
 import { listEntities, getEntity, type EntityRow } from "../../../lib/api/entityCrud";
-import FkAutocomplete from "../../../components/molecules/fk-autocomplete";
-import { InfoBox } from "../../../components/molecules/info-box";
-import { Alert } from "../../../components/atoms/alert";
-import { Spinner } from "../../../components/atoms/spinner";
+import { FkAutocomplete, InfoBox, Alert, Spinner } from "../../../components";
 import { useEntitySchema } from "../../admin/useEntitySchema";
 import { pathFor } from "../../../entityConfigs/overrides";
 import type { EntityConfig } from "../../../entityConfigs/types";

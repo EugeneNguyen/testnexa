@@ -56,9 +56,7 @@ import {
   revokeInvite,
   updateMembershipStatus,
 } from "../../../lib/api/members";
-import { Card } from "../../../components/atoms/card";
-import { Alert } from "../../../components/atoms/alert";
-import { Button } from "../../../components/atoms/button";
+import { Card, Alert, Button } from "../../../components";
 
 const inviteSchema = z.object({
   email: z.string().email("Enter a valid email address."),

@@ -2,8 +2,7 @@ import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-quer
 import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import AppBreadcrumb from "../components/organisms/app-breadcrumb";
-import AppSidebar from "../components/organisms/app-sidebar";
+import { AppBreadcrumb, AppSidebar } from "../components";
 import { useResolvedOrgId } from "./useResolvedOrgId";
 import { getProject } from "../lib/api/projects";
 

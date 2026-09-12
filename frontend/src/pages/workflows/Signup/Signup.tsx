@@ -46,10 +46,7 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { useAuth } from "../../../auth/AuthContext";
 import { ApiError } from "../../../lib/api/client";
-import FormField from "../../../components/molecules/form-field";
-import { Card } from "../../../components/atoms/card";
-import { Alert } from "../../../components/atoms/alert";
-import { Button } from "../../../components/atoms/button";
+import { FormField, Card, Alert, Button } from "../../../components";
 
 const SLUG_PATTERN = /^[a-z0-9-]+$/;
 

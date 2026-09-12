@@ -28,10 +28,7 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Alert } from "../../../components/atoms/alert";
-import { Card } from "../../../components/atoms/card";
-import { Spinner } from "../../../components/atoms/spinner";
-import EntityForm from "../../../components/organisms/entity-form";
+import { Alert, Card, Spinner, EntityForm } from "../../../components";
 import { ApiError } from "../../../lib/api/client";
 import { EntityRow, getEntity, updateEntity } from "../../../lib/api/entityCrud";
 import { listDefectsForTestCase, type DefectSummary } from "../../../lib/api/defects";

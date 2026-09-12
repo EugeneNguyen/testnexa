@@ -93,9 +93,7 @@ import {
 } from "react";
 import { Link, useParams } from "react-router-dom";
 import Table from "../../../container/Table";
-import { Alert } from "../../../components/atoms/alert";
-import { Spinner } from "../../../components/atoms/spinner";
-import { Modal } from "../../../components/molecules/modal";
+import { Alert, Spinner, Modal } from "../../../components";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";

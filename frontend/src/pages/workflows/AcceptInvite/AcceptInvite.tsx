@@ -33,9 +33,7 @@ import { z } from "zod";
 import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../../auth/AuthContext";
 import { ApiError } from "../../../lib/api/client";
-import { Card } from "../../../components/atoms/card";
-import { Alert } from "../../../components/atoms/alert";
-import { Button } from "../../../components/atoms/button";
+import { Card, Alert, Button } from "../../../components";
 
 const acceptInviteSchema = z
   .object({

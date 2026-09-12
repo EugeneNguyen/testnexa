@@ -30,7 +30,7 @@ import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getActiveMemberTotal, getProjectsTotal } from "../../../lib/api/dashboard";
 import RoleAssignmentsPanel from "../../../components/RoleAssignmentsPanel";
-import { InfoBox } from "../../../components/molecules/info-box";
+import { InfoBox } from "../../../components";
 
 /**
  * Renders a `useQuery` count result as a widget's `value` node — the one

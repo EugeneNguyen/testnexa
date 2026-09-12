@@ -113,10 +113,7 @@ import {
   updateEntity,
   type EntityRow,
 } from "../../../lib/api/entityCrud";
-import { Alert } from "../../../components/atoms/alert";
-import { Spinner } from "../../../components/atoms/spinner";
-import EntityForm from "../../../components/organisms/entity-form";
-import FkAutocomplete from "../../../components/molecules/fk-autocomplete";
+import { Alert, Spinner, EntityForm, FkAutocomplete } from "../../../components";
 import { pathFor } from "../../../entityConfigs/overrides";
 import { useEntitySchema } from "../../admin/useEntitySchema";
 import type { EntityConfig } from "../../../entityConfigs/types";

@@ -39,9 +39,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useAuth } from "../../../auth/AuthContext";
 import { ApiError } from "../../../lib/api/client";
-import { AuthBoxLayout } from "../../../components/templates/auth-box-layout";
-import { LoginPanel } from "../../../components/organisms/login-panel";
-import { Alert } from "../../../components/atoms/alert";
+import { AuthBoxLayout, LoginPanel, Alert } from "../../../components";
 
 const loginSchema = z.object({
   email: z.string().trim().min(1, "Email is required."),

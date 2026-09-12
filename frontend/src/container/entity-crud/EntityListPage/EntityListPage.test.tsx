@@ -25,12 +25,16 @@ import { listEntities } from "../../../lib/api/entityCrud";
  */
 const schemaState = vi.hoisted(() => ({ isLoading: false }));
 
-vi.mock("../../../pages/admin/registry", () => ({
-  entityLabelByKey: {
-    widgets: "Widgets",
-  },
-  ADMIN_ENTITY_KEYS: new Set(["widgets"]),
-}));
+vi.mock("../../../pages/admin/registry", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../pages/admin/registry")>();
+  return {
+    ...actual,
+    entityLabelByKey: {
+      widgets: "Widgets",
+    },
+    ADMIN_ENTITY_KEYS: new Set(["widgets"]),
+  };
+});
 
 vi.mock("../../../pages/admin/useEntitySchema", () => {
   const configs: Record<string, unknown> = {

@@ -32,10 +32,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../../auth/AuthContext";
 import { ApiError } from "../../../lib/api/client";
 import { createOrg } from "../../../lib/api/organizations";
-import { Card } from "../../../components/atoms/card";
-import { Alert } from "../../../components/atoms/alert";
-import { Button } from "../../../components/atoms/button";
-import { Modal } from "../../../components/molecules/modal";
+import { Card, Alert, Button, Modal } from "../../../components";
 
 const SLUG_PATTERN = /^[a-z0-9-]+$/;
 
