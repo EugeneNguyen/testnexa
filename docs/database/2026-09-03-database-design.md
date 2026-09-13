@@ -263,6 +263,8 @@ Unique: `(org_id, name)`.
 
 **DS-3** ([ADR-0045](../adr/0045-ds-3-infobox-widget-consolidation.md)) — reviewed, no schema impact. A frontend-only markup swap (new `InfoBox` component, retires `WidgetStatsTile`/`StatTile`) over data both retired components already sourced from existing routes' `total` fields — no new column, table, FK, or query shape.
 
+**MCP Integration screen** ([ADR-0063](../adr/0063-mcp-integration-screen.md), FR-MCP-4) — reviewed, no schema impact. The new `GET /orgs/{org_id}/agents` list route is a query over the already-defined `ai_agent`/`actor` tables (this section, `AIAgent.last_used_at`/`key_prefix` entries above) — no new column, table, index, or FK. The frontend screen itself (client-connection docs, key-management panel) is presentation over that same existing data plus the already-shipped `create`/`revoke` routes.
+
 **Release**
 | Column | Type | Constraints |
 |---|---|---|

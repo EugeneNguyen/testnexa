@@ -261,6 +261,12 @@ Concrete test cases derived from each user story's acceptance criteria. IDs grou
 | TC-MCP-005 | MCP permission enforcement | AIAgent scoped to Project X only | Call `update_test_case` against a Project Y TestCase | 403 | P2 | MCP-2 |
 | TC-MCP-006 | Create execution via MCP | AIAgent with `test_execution.create` | Call `create_test_execution` | Row created exactly as EXEC-1, `executed_by_actor_id` = agent | P3 | MCP-3 |
 | TC-MCP-007 | Read-only Requirement via MCP | AIAgent with `requirement.read` | Call `read_requirement` | Same data a human sees via REST; no create/update tool exists for Requirement via MCP | P3 | MCP-3 |
+| TC-MCP-010 | List agents returns envelope, ordered | Human org member with `ai_agent.create`, 2 agents issued | `GET /orgs/{org_id}/agents` | `{items,total,page,page_size}` envelope; items ordered by `issued_at` ascending; no row includes `api_key` | P2 | MCP-4 |
+| TC-MCP-011 | List includes revoked agents | 1 active + 1 revoked agent in the org | `GET /orgs/{org_id}/agents` | Both rows returned; revoked row's `revoked_at` populated, active row's is `null` — not filtered out | P2 | MCP-4 |
+| TC-MCP-012 | List agents 404-vs-403 boundary | Caller A has zero `OrgMembership` in `org_id`; caller B has membership but no `ai_agent.create` | `GET /orgs/{org_id}/agents` as each | A → `404 not_found`; B → `403 permission_denied` | P2 | MCP-4 |
+| TC-MCP-013 | List agents rejects an AIAgent caller | An `AIAgent` credential, even one mistakenly granted `ai_agent.create` via `RoleAssignment` | `GET /orgs/{org_id}/agents` using the agent's own bearer key | `403 actor_forbidden`, unconditionally — same human-only gate as create/revoke | P2 | MCP-4 |
+| TC-MCP-014 | MCP Integration screen: full UI flow | Human org member with `ai_agent.create`/`.update`/`org_membership.read`, logged in | Navigate via sidebar "MCP Integration" link; verify Claude Code/Codex/Cursor connection docs render; issue a key via the form; revoke it | Client-connection headings/snippets visible; raw key shown exactly once (copy-once alert); new row appears Active; after Revoke, row shows Revoked and the Revoke button disappears | P1 | MCP-4 |
+| TC-MCP-015 | MCP Integration screen: non-admin acting-on-behalf-of restricted to self | Human org member with `ai_agent.create`/`.update` only — **no** `org_membership.read` (ADR-0063 Amendment) | Load the API-keys panel; issue a key | No member picker rendered (a disabled "You (email)" display instead); the created key's `acting_on_behalf_of_user_id` is the logged-in user's own id, not selectable to anyone else | P2 | MCP-4 |
 
 ---
 
@@ -382,12 +388,16 @@ Concrete test cases derived from each user story's acceptance criteria. IDs grou
 | Governance | 8 | 3 |
 | Taxonomy & Generic Admin CRUD | 39 | 25 |
 | Traceability Matrix | 5 | 4 |
-| AI Agent / MCP | 7 | 0 |
+| AI Agent / MCP | 13 | 1 |
 | Layout & Navigation | 29 | 16 |
 | Design System / Shared Components | 32 | 19 |
 | ~~Landing Page~~ (superseded, excluded from total — see Dashboard & Root Redirect) | ~~5~~ | ~~3~~ |
 | Dashboard & Root Redirect | 6 | 3 |
-| **Total** | **257** | **151** |
+| **Total** | **263** | **152** |
+
+**MCP Integration screen ([ADR-0063](../adr/0063-mcp-integration-screen.md), 2026-09-13):** before adding anything, directly summed every row above per `docs/CLAUDE.md`'s own rule — confirmed the prior pass's **257/151** total agrees with a fresh column sum. AI Agent / MCP extends from 7/0 to **12/1** with five new rows, TC-MCP-010..014 (4 P2 backend-list-route cases + 1 P1 full-UI-flow case), bringing the grand total to **262/152** by direct summation (34+39+21+9+16+12+8+39+5+12+29+32+6 = 262; P1 22+23+11+7+11+7+3+25+4+1+16+19+3 = 152).
+
+**Same-branch amendment (ADR-0063's own `### Amendment`, 2026-09-13, same day):** a CTO manual-verification pass found the `acting_on_behalf_of_user_id` picker was over-broad (any `ai_agent.create` holder could pick any active member, not just an `org_membership.read` holder) and — separately — that the member-list fetch was an accidental hard blocker on the whole panel. Fixed the same day, same branch, unmerged — one new row, TC-MCP-015 (P2), AI Agent / MCP 12/1 → **13/1**, grand total **263/152** (34+39+21+9+16+12+8+39+5+13+29+32+6 = 263; P1 unchanged at 152, the new row is P2).
 
 (Recomputed at merge time — RBAC-3 and ADMIN-2 landed independently and each only updated their own row: RBAC & Multi-Tenancy corrected from a stale 19/13 to 39/23 (TC-RBAC-020..023 had been added by RBAC-1 without this table being updated, plus RBAC-3's own 16 new rows — TC-RBAC-024..035 (API) and TC-RBAC-036..039 (the `GET /orgs/{org_id}/roles` endpoint + Role Assignments UI, added on top of the original API-only scope per user direction)); Taxonomy & Generic Admin CRUD from 5/2 to 13/7 (ADMIN-2's TC-ADMIN-006..013). DS-1 then added its own new row, Design System / Shared Components (8/6, TC-DS-001..008), on merge into this table. Neither the RBAC-3/ADMIN-2 merge total (163/93) nor either individual branch's pre-merge total (155/88, 143/84, 143/85) accounted for every row above — 171/99 was the sum of all twelve rows as of the DS-1 merge. LANDING-1 then added its own new row, Landing Page (5/3, TC-LANDING-001..005), bringing the total to 176/102 — the sum of all thirteen rows in this table, not any single branch's pre-merge total. ADR-0027's completion pass then extended Taxonomy & Generic Admin CRUD from 13/7 to 26/16 (TC-ADMIN-014..026 — frontend field-type/permission/scope-selector behavior plus the `TestExecution`/`TestLog`/link-table backend completion), bringing the total to 189/111. Further story rows (REQ-3/4, PLAN-1/2/3, EXEC-1) brought the total to 197/117 before this pass. **DASH-1 (2026-09-07, [ADR-0035](../adr/0035-dash-1-root-redirect-and-dashboard-placeholder.md)):** Landing Page's 5/3 is superseded and dropped from the active total (the screen it tested no longer exists); a new Dashboard & Root Redirect row (6/3, TC-DASH-001..006) replaces it — net **+1/+0**, bringing the total to 198/117.)
 
