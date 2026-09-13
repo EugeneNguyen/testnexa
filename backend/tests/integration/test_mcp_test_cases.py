@@ -496,7 +496,12 @@ async def test_mcp_create_and_list_test_case_with_attribution_and_schema_parity(
             await _mcp_initialize(client)
             tools = await _mcp_tools_list(client)
             tool_names = {tool["name"] for tool in tools["tools"]}
-            assert tool_names == {"create_test_case", "list_test_cases"}, tool_names
+            # MCP-1's own 2 tools stay advertised unchanged; MCP-5 (ADR-0065)
+            # adds 6 more alongside them — corrected in place (this claim's
+            # own literal wording, "no other tools leaked in," is no longer
+            # a meaningful negative once a whole second tool family is a
+            # deliberate, documented addition, not a leak).
+            assert {"create_test_case", "list_test_cases"} <= tool_names, tool_names
 
             # --- TC-MCP-001 + AC2: create_test_case via MCP --------------------
             create_result = await _mcp_call_tool(

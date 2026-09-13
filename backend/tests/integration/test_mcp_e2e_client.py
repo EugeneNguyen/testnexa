@@ -153,8 +153,11 @@ async def test_mcp_sdk_client_handshake_and_tools_list() -> None:
         await session.initialize()
         tools = await session.list_tools()
 
-    assert [tool.name for tool in tools.tools] == ["create_test_case", "list_test_cases"]
-    assert len(tools.tools) == 2
+    # MCP-1's own 2 tools stay advertised unchanged; MCP-5 (ADR-0065)
+    # adds 6 more alongside them, corrected in place same as
+    # `test_mcp_test_cases.py`'s own equivalent assertion.
+    assert {"create_test_case", "list_test_cases"} <= {tool.name for tool in tools.tools}
+    assert len(tools.tools) == 8
     assert tools.tools[0].inputSchema == {
         "properties": {
             "requirement_id": {"format": "uuid", "title": "Requirement Id", "type": "string"},
@@ -312,9 +315,66 @@ async def test_mcp_sdk_client_list_test_cases_returns_seeded_case() -> None:
 
 
 @pytest.mark.asyncio
+async def test_mcp5_generic_tools_full_crud_cycle_via_real_sdk_client() -> None:
+    """MCP-5's own end-to-end proof (ADR-0065) — the full `create_entity` ->
+    `get_entity` -> `update_entity` -> `list_entities` -> `delete_entity`
+    cycle against `requirements`, driven by the real MCP SDK `ClientSession`
+    (not raw JSON-RPC over `httpx`, same "proves real client interop"
+    distinction this file's own module docstring already draws for MCP-1)."""
+    scope = await _seed_agent_scope("tc016e2e", permission_codes=("requirement.create", "requirement.read", "requirement.update", "requirement.delete"))
+    try:
+        async with _open_sdk_session(MCP_BASE_URL, headers=_bearer_headers(scope.raw_key)) as session:
+            await session.initialize()
+
+            create_result = await session.call_tool(
+                "create_entity",
+                {"resource": "requirements", "fields": {"project_id": str(scope.project_ids[0]), "title": "MCP-5 E2E Requirement", "description": "created via real SDK client"}},
+            )
+            assert create_result.isError is False, create_result
+            created_id = create_result.structuredContent["id"]
+
+            get_result = await session.call_tool("get_entity", {"resource": "requirements", "id": created_id})
+            assert get_result.isError is False, get_result
+            assert get_result.structuredContent["title"] == "MCP-5 E2E Requirement"
+
+            update_result = await session.call_tool(
+                "update_entity", {"resource": "requirements", "id": created_id, "fields": {"title": "MCP-5 E2E Requirement (updated)"}}
+            )
+            assert update_result.isError is False, update_result
+            assert update_result.structuredContent["title"] == "MCP-5 E2E Requirement (updated)"
+
+            list_result = await session.call_tool("list_entities", {"resource": "requirements", "scope": {"project_id": str(scope.project_ids[0])}})
+            assert list_result.isError is False, list_result
+            assert list_result.structuredContent["total"] == 2  # the fixture's own seeded requirement + this one
+            assert any(item["id"] == created_id for item in list_result.structuredContent["items"])
+
+            delete_result = await session.call_tool("delete_entity", {"resource": "requirements", "id": created_id})
+            assert delete_result.isError is False, delete_result
+
+            confirm_result = await session.call_tool("get_entity", {"resource": "requirements", "id": created_id})
+            assert confirm_result.isError is True
+            assert _tool_error_payload(confirm_result)["code"] == "not_found"
+    finally:
+        await _cleanup(
+            emails=[scope.email],
+            user_ids=scope.user_ids,
+            org_ids=scope.org_ids,
+            project_ids=scope.project_ids,
+            requirement_ids=scope.requirement_ids,
+            test_level_ids=scope.test_level_ids,
+            test_type_ids=scope.test_type_ids,
+            role_ids=scope.role_ids,
+            agent_ids=scope.agent_ids,
+        )
+
+
+@pytest.mark.asyncio
 async def test_mcp_sdk_client_handshake_and_tools_list_over_lan_ip() -> None:
     async with _open_sdk_session(LAN_MCP_BASE_URL) as session:
         await session.initialize()
         tools = await session.list_tools()
 
-    assert [tool.name for tool in tools.tools] == ["create_test_case", "list_test_cases"]
+    # MCP-1's own 2 tools stay advertised unchanged; MCP-5 (ADR-0065)
+    # adds 6 more alongside them, corrected in place same as
+    # `test_mcp_test_cases.py`'s own equivalent assertion.
+    assert {"create_test_case", "list_test_cases"} <= {tool.name for tool in tools.tools}

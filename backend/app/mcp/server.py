@@ -23,6 +23,7 @@ import contextlib
 
 from mcp.server.fastmcp import FastMCP
 
+from app.mcp.tools import generic_crud as _generic_crud_tools
 from app.mcp.tools import test_cases as _test_cases_tools
 
 # Single shared instance; ADR-0033 deliberately rejects any per-route or
@@ -62,6 +63,7 @@ mcp.settings.transport_security.enable_dns_rebinding_protection = False
 # catches "imported the module but forgot to register" without a runtime
 # request — cheap, improves diagnostic surface.
 _test_cases_tools.register_tools(mcp)
+_generic_crud_tools.register_tools(mcp)
 
 
 @contextlib.asynccontextmanager

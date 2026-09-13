@@ -926,7 +926,7 @@ def make_crud_router(config: CrudEntityConfig) -> APIRouter:
                 return row, None
             return None, _error(404, "not_found", f"{display_name} not found.")
 
-        if not await _org_membership_exists(db, org_id, actor.actor_id):
+        if not await _actor_membership_exists(db, org_id, actor):
             return None, _error(404, "not_found", f"{display_name} not found.")
         if not await has_permission(str(actor.actor_id), str(org_id), f"{resource}.{action}"):
             return None, _error(403, "permission_denied", _PERMISSION_DENIED_MESSAGE)
@@ -948,7 +948,7 @@ def make_crud_router(config: CrudEntityConfig) -> APIRouter:
             return scope_validation_error(config, data)
         field_name, raw_value = scope
         org_id = await config.resolve_org_id(db, types.SimpleNamespace(**{field_name: raw_value}))
-        if org_id is None or not await _org_membership_exists(db, org_id, actor.actor_id):
+        if org_id is None or not await _actor_membership_exists(db, org_id, actor):
             return _error(404, "not_found", f"{display_name} not found.")
         if not await has_permission(str(actor.actor_id), str(org_id), f"{resource}.{action}"):
             return _error(403, "permission_denied", _PERMISSION_DENIED_MESSAGE)
@@ -1170,6 +1170,51 @@ def make_crud_router(config: CrudEntityConfig) -> APIRouter:
     return router
 
 
+def get_crud_handlers(config: CrudEntityConfig) -> dict[str, Any]:
+    """MCP-5/ADR-0065: the generic-entity route handler closures for `config`,
+    keyed by CRUD verb (`"list"`/`"get"`/`"create"`/`"update"`/`"delete"`) —
+    only whichever verbs `config.methods` actually registers are present.
+
+    Builds a throwaway `APIRouter` via `make_crud_router(config)` (never
+    `include_router`-ed into the FastAPI app — `make_crud_router` has no
+    side effect beyond constructing local closures and calling
+    `router.add_api_route` on that one new router instance, so building a
+    second one purely to introspect it is safe) and reads the exact
+    `APIRoute.endpoint` object FastAPI would otherwise dispatch to. This is
+    the *same* handler function the real REST route calls — not a second,
+    reimplemented copy — so `app/mcp/tool_registry.py`'s generic tools
+    reuse it the same "direct-call dispatch" way `app/mcp/tools/test_cases.py`
+    (MCP-1) already established for the bespoke routes: pass `actor=`/`db=`
+    explicitly, bypassing the `Depends(get_current_actor)`/`Depends(get_db)`
+    defaults without invoking their dependency bodies.
+
+    `list`'s handler still declares `request: Request` (for `.query_params`,
+    the one thing `list_items` reads off it) — callers needing to invoke it
+    directly pass any object exposing a `.query_params` mapping (e.g.
+    `types.SimpleNamespace(query_params={...})`), not a real Starlette
+    `Request`; nothing else on `request` is ever touched.
+    """
+    router = make_crud_router(config)
+    path = _resource_path(config.resource)
+    handlers: dict[str, Any] = {}
+    for route in router.routes:
+        methods = getattr(route, "methods", None) or set()
+        endpoint = getattr(route, "endpoint", None)
+        if endpoint is None:
+            continue
+        if route.path == f"/{path}" and "GET" in methods:
+            handlers["list"] = endpoint
+        elif route.path == f"/{path}/{{id}}" and "GET" in methods:
+            handlers["get"] = endpoint
+        elif route.path == f"/{path}" and "POST" in methods:
+            handlers["create"] = endpoint
+        elif route.path == f"/{path}/{{id}}" and "PATCH" in methods:
+            handlers["update"] = endpoint
+        elif route.path == f"/{path}/{{id}}" and "DELETE" in methods:
+            handlers["delete"] = endpoint
+    return handlers
+
+
 __all__ = [
     "CrudEntityConfig",
     "NoSchema",
@@ -1178,6 +1223,7 @@ __all__ = [
     "chain_resolver",
     "clamp_pagination",
     "extract_scope_value",
+    "get_crud_handlers",
     "make_crud_router",
     "resolve_global_org_id",
     "resolve_organization_org_id",
