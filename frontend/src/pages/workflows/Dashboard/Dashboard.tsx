@@ -1,51 +1,212 @@
 /**
- * DASH-1 dashboard placeholder (ADR-0035, UI Design Document §3).
+ * DASH-3 dashboard org list + chooser (ADR-0063, UI Design Document,
+ * supersedes DASH-1's empty placeholder, ADR-0035).
  *
- * The authenticated destination of the new `/` root guard
- * (`RootRedirect.tsx`). Routed at `/dashboard` and wrapped in the existing
- * `ProtectedRoute` in `App.tsx`, which gives it the `AppShell`
- * (sidebar + navbar) for free and makes a logged-out direct navigation to
- * `/dashboard` redirect to `/login` through the same mechanism every other
- * protected route already uses — no second bespoke guard.
+ * Routed at `/dashboard`, global (no `:orgId` — no org is chosen yet at the
+ * point a user reaches it) and `ProtectedRoute`-wrapped like every other
+ * authenticated screen (unchanged from DASH-1). On mount, fetches the
+ * caller's active org memberships fresh via `GET /auth/me/orgs`
+ * (`getMyOrgs`, unchanged since SHELL-6/ADR-0036) — deliberately never reads
+ * `AuthContext.orgs`, which is populated only at login/signup/accept-invite
+ * time and never refreshed afterward (the AUTH-2 gap NFR-35 already
+ * documents), so a reload landing here would otherwise see a stale/empty
+ * list.
  *
- * **Deliberately empty.** Content is explicitly out of scope for ADR-0035:
- * no stat widgets (nothing borrowed from `OrgHome`'s `CWidgetStats*`
- * pattern), no counts, no charts, and — a hard requirement, NFR-47, not a
- * stub that merely happens not to need data yet — **no `apiFetch`/`useQuery`
- * call of any kind**. A future story that gives this screen real content
- * needs its own ADR/UI-Design update, including a decision on whether it
- * becomes org-scoped (`/orgs/:orgId/dashboard`, matching `OrgHome`'s
- * convention) or stays a single global route.
+ * Branches on the fetch result:
+ * - 0 orgs: empty state + a "Create organization" CTA (reuses `POST /orgs`,
+ *   the same call `OrgPicker.tsx` used to make — no new backend surface).
+ * - exactly 1 org: no render at all — immediately `navigate()`s to
+ *   `/orgs/{id}`, replacing history so the back button doesn't return here.
+ * - 2+ orgs: a "Select an organization" card list; clicking a card
+ *   navigates to `/orgs/{id}`. A "Create organization" affordance stays
+ *   available here too (same posture `OrgPicker` already had — pick or
+ *   create together).
  *
- * None of the deleted `LandingPage`'s marketing/pitch copy is ported here —
- * ADR-0035 removes that content from the product entirely.
+ * `/orgs/pick`/`OrgPicker.tsx` are retired by this same story — this screen
+ * now owns 100% of "list orgs, let the user pick or create one," reached
+ * uniformly via `/dashboard` regardless of whether the visit came from `/`'s
+ * root guard or a post-login/signup/accept-invite redirect (`Login.tsx`/
+ * `Signup.tsx`/`AcceptInvite.tsx` all now navigate here unconditionally).
  *
- * Built with raw Bootstrap 5 / AdminLTE markup (ADR-0042, superseding the
- * CoreUI build of ADR-0012), same `container-fluid`/`card`/`card-body` page
- * shell every other bespoke screen uses.
- *
- * `h-100` on both the container and the card (2026-09-07): without it, this
- * screen's near-empty content ("Nothing here yet.") only occupies the
- * height its own text needs, leaving a large unfilled grey gap below the
- * card down to `AppFooter` — confirmed empirically (`.flex-grow-1`, the
- * `AppShell` content column, is a real flexed 795px in a 900px-tall
- * viewport; the un-stretched `container-fluid`/`card` were only ~104px).
- * `AppShell.tsx`'s own `flex-grow-1` on that content column already
- * resolves to a definite height (a real flex-computed box, not `auto`), so
- * `h-100`'s percentage chain resolves correctly down through both levels —
- * verified against a live render, not assumed from source alone.
+ * Heading text is deliberately never the literal word "Dashboard" — this
+ * incidentally softens (does not resolve) the separate `/dashboard`-vs-
+ * `OrgHome` "Dashboard" naming overlap (ADR-0039/NFR-49), which stays an
+ * open, accepted, unrelated issue.
  */
+import { FormEvent, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { ApiError } from "../../../lib/api/client";
+import { getMyOrgs, OrgSummary } from "../../../lib/api/auth";
+import { createOrg } from "../../../lib/api/organizations";
+import { Card, Alert, Button, Modal, Spinner } from "../../../components";
+
+const SLUG_PATTERN = /^[a-z0-9-]+$/;
+
+type LoadState = "loading" | "empty" | "list" | "error";
+
 function Dashboard() {
+  const navigate = useNavigate();
+  const [state, setState] = useState<LoadState>("loading");
+  const [orgs, setOrgs] = useState<OrgSummary[]>([]);
+  const [showModal, setShowModal] = useState(false);
+  const [newOrgName, setNewOrgName] = useState("");
+  const [newOrgSlug, setNewOrgSlug] = useState("");
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setState("loading");
+
+    getMyOrgs()
+      .then((response) => {
+        if (cancelled) return;
+        if (response.orgs.length === 1) {
+          navigate(`/orgs/${response.orgs[0].id}`, { replace: true });
+          return;
+        }
+        setOrgs(response.orgs);
+        setState(response.orgs.length === 0 ? "empty" : "list");
+      })
+      .catch(() => {
+        if (!cancelled) setState("error");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [navigate]);
+
+  function openModal() {
+    setNewOrgName("");
+    setNewOrgSlug("");
+    setCreateError(null);
+    setShowModal(true);
+  }
+
+  async function handleCreateOrg(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCreateError(null);
+
+    if (!SLUG_PATTERN.test(newOrgSlug)) {
+      setCreateError("Slug may only contain lowercase letters, numbers, and hyphens.");
+      return;
+    }
+
+    setCreating(true);
+    try {
+      const org = await createOrg({ name: newOrgName, slug: newOrgSlug });
+      setShowModal(false);
+      navigate(`/orgs/${org.id}`);
+    } catch (err) {
+      setCreateError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  const createOrgModal = (
+    <Modal visible={showModal} title="New Organization" onClose={() => setShowModal(false)}>
+      <form onSubmit={handleCreateOrg}>
+        <Modal.Body>
+          <div className="mb-3">
+            <label className="form-label" htmlFor="newOrgName">
+              Name
+            </label>
+            <input
+              className="form-control"
+              id="newOrgName"
+              type="text"
+              required
+              value={newOrgName}
+              onChange={(event) => setNewOrgName(event.target.value)}
+            />
+          </div>
+          <div className="mb-3">
+            <label className="form-label" htmlFor="newOrgSlug">
+              Slug
+            </label>
+            <input
+              className="form-control"
+              id="newOrgSlug"
+              type="text"
+              required
+              value={newOrgSlug}
+              onChange={(event) => setNewOrgSlug(event.target.value)}
+            />
+            <div className="form-text">Lowercase letters, numbers, and hyphens only.</div>
+          </div>
+          {createError && <Alert color="danger">{createError}</Alert>}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button color="secondary" outline onClick={() => setShowModal(false)}>
+            Cancel
+          </Button>
+          <Button type="submit" color="primary" disabled={creating}>
+            {creating ? "Creating..." : "Create"}
+          </Button>
+        </Modal.Footer>
+      </form>
+    </Modal>
+  );
+
+  if (state === "loading") {
+    return (
+      <div className="container-fluid h-100">
+        <Spinner wrapperClassName="py-5" />
+      </div>
+    );
+  }
+
+  if (state === "error") {
+    return (
+      <div className="container-fluid h-100">
+        <Alert color="danger">Couldn't load your organizations. Please try reloading the page.</Alert>
+      </div>
+    );
+  }
+
+  if (state === "empty") {
+    return (
+      <div className="container-fluid h-100">
+        <Card>
+          <Card.Body className="p-4">
+            <h1 className="mb-3 fs-4">No organizations yet</h1>
+            <p className="text-body-secondary">You don't belong to an organization yet.</p>
+            <Button color="primary" onClick={openModal}>
+              Create organization
+            </Button>
+          </Card.Body>
+        </Card>
+        {createOrgModal}
+      </div>
+    );
+  }
+
   return (
     <div className="container-fluid h-100">
-      <div className="card h-100">
-        <div className="card-header">
-          <h1 className="mb-0 fs-4">Dashboard</h1>
-        </div>
-        <div className="card-body">
-          <p className="mb-0 text-body-secondary">Nothing here yet.</p>
-        </div>
-      </div>
+      <Card>
+        <Card.Body className="p-4">
+          <h1 className="mb-3 fs-4">Select an organization</h1>
+          <div className="list-group mb-3">
+            {orgs.map((org) => (
+              <button
+                key={org.id}
+                type="button"
+                onClick={() => navigate(`/orgs/${org.id}`)}
+                className="list-group-item list-group-item-action text-start"
+              >
+                <div className="fw-semibold">{org.name}</div>
+                <div className="text-body-secondary small">{org.slug}</div>
+              </button>
+            ))}
+          </div>
+          <Button color="secondary" outline onClick={openModal}>
+            Create organization
+          </Button>
+        </Card.Body>
+      </Card>
+      {createOrgModal}
     </div>
   );
 }

@@ -5,20 +5,21 @@
  *
  * Route -> label mapping is a small, explicit, ordered table
  * (`ROUTE_BREADCRUMBS`), matched with React Router's own `matchPath` — not a
- * bespoke path-parsing regex. Order matters: `/orgs/pick` is listed BEFORE
- * the generic `/orgs/:orgId` pattern, because `:orgId` is a plain path
- * param that would otherwise happily match the literal string "pick" too
- * (`orgId = "pick"`) — `Array.prototype.find` returns the FIRST match, so
- * the literal, more-specific entry has to come first to win that ambiguity.
- * `/orgs/pick` itself maps to an empty segment list (the org-picker screen
- * has no meaningful breadcrumb trail), which renders nothing, same as a
- * route with no table entry at all.
+ * bespoke path-parsing regex. Order still matters for the other literal/
+ * more-specific-before-generic pairs below (e.g. `/orgs/:orgId/projects`
+ * before the bare `/orgs/:orgId` catch-all) — `Array.prototype.find` returns
+ * the FIRST match, so a more-specific entry has to come first to win any
+ * such ambiguity. (Historical: `/orgs/pick` used to need this same
+ * ordering treatment, to stop `/orgs/:orgId`'s `:orgId` param from matching
+ * the literal string "pick" — retired 2026-09-13, DASH-3/ADR-0063, along
+ * with the route itself.)
  *
  * Graceful degradation (TC-SHELL-008): any path with no matching table
  * entry — or a matched entry whose `segments()` returns `[]` — renders
  * `null`. There is no fallback branch that echoes a raw route param or
  * builds a label from an unmapped path segment, so an unmapped/root route
- * never produces a raw param or `undefined` fragment.
+ * (e.g. `/dashboard`, which carries no table entry of its own) never
+ * produces a raw param or `undefined` fragment.
  *
  * The final (`active`) segment in a resolved trail is rendered as plain
  * text on an `<li class="breadcrumb-item active" aria-current="page">` (no
@@ -234,10 +235,6 @@ function projectTrail(
 // catch-all — see the module docstring for why order is load-bearing here.
 const ROUTE_BREADCRUMBS: RouteBreadcrumbConfig[] = [
   {
-    pattern: "/orgs/pick",
-    segments: () => [],
-  },
-  {
     pattern: "/orgs/:orgId/members",
     segments: (params) => [{ label: "Dashboard", to: `/orgs/${params.orgId}` }, { label: "Members" }],
   },
@@ -280,8 +277,8 @@ const ROUTE_BREADCRUMBS: RouteBreadcrumbConfig[] = [
   },
   {
     // PROJ-4 (ADR-0047): must precede the generic `/orgs/:orgId` catch-all
-    // below, same ordering rule the module docstring already explains for
-    // `/orgs/pick`.
+    // below, same literal/more-specific-before-generic ordering rule the
+    // module docstring already explains.
     pattern: "/orgs/:orgId/projects",
     segments: (params) => [{ label: "Dashboard", to: `/orgs/${params.orgId}` }, { label: "Projects" }],
   },

@@ -66,7 +66,7 @@ function renderBreadcrumb(initialEntry: string) {
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <MemoryRouter initialEntries={[initialEntry]}>
         <Routes>
-          <Route path="/orgs/pick" element={<AppBreadcrumb />} />
+          <Route path="/dashboard" element={<AppBreadcrumb />} />
           <Route path="/orgs/:orgId" element={<AppBreadcrumb />} />
           <Route path="/orgs/:orgId/projects" element={<AppBreadcrumb />} />
           <Route path="/orgs/:orgId/members" element={<AppBreadcrumb />} />
@@ -134,12 +134,11 @@ describe("AppBreadcrumb", () => {
     expect(screen.getByText("Colors")).toBeInTheDocument();
   });
 
-  it("TC-SHELL-008: degrades gracefully on an unmapped/root route (/orgs/pick) — renders nothing, no raw param or undefined fragment", () => {
-    const { container } = renderBreadcrumb("/orgs/pick");
+  it("TC-SHELL-008: degrades gracefully on an unmapped/root route (/dashboard, route corrected 2026-09-13 from the retired /orgs/pick, ADR-0063/DASH-3) — renders nothing, no raw param or undefined fragment", () => {
+    const { container } = renderBreadcrumb("/dashboard");
 
     expect(container.querySelector(".breadcrumb")).not.toBeInTheDocument();
     expect(screen.queryByText("undefined")).not.toBeInTheDocument();
-    expect(screen.queryByText("pick")).not.toBeInTheDocument();
   });
 
   it("TC-SHELL-018: resolves an org-scoped admin list route's entity label from the registry", () => {

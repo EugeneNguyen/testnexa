@@ -7,9 +7,20 @@ import { expect, test } from "@playwright/test";
  * tested — `/` is now a pure auth-state redirect with no content of its own.
  *
  * Covers TC-DASH-001 (anon `/` -> `/login`), TC-DASH-002 (anon `/dashboard`
- * direct -> `/login`), TC-DASH-003 (authed `/` -> `/dashboard`), and
- * TC-DASH-006 (the regression test this story exists for: a real page reload
- * while logged in still reaches `/dashboard`).
+ * direct -> `/login`), TC-DASH-003 (authed `/` -> `/dashboard`, 0-or-2+-org
+ * precondition), TC-DASH-006 (the regression test this story exists for: a
+ * real page reload while logged in still reaches `/dashboard`), and — since
+ * DASH-3 (ADR-0063) — TC-DASH-007 (single-org auto-redirect), TC-DASH-011
+ * (the org list itself survives a reload, fetched fresh not read from
+ * `AuthContext.orgs`), and TC-DASH-012 (`/orgs/pick` no longer resolves to
+ * anything).
+ *
+ * **DASH-3 precondition update:** `Dashboard` now auto-advances past
+ * `/dashboard` for an exactly-1-org account (TC-DASH-007), so TC-DASH-003/
+ * TC-DASH-006 — which assert the visitor actually *settles* on `/dashboard`
+ * — now seed a 2-org fixture instead of the original 1-org one, matching
+ * both TCs' own corrected "0 or 2+ orgs" precondition in
+ * `docs/test-cases/2026-09-03-test-cases.md`.
  *
  * TC-DASH-006 is the load-bearing one. The bug being fixed is that ADR-0024's
  * root logic branched on `orgContext`/`orgs`, which `AuthContext`'s
@@ -21,14 +32,15 @@ import { expect, test } from "@playwright/test";
  * `orgContext` alive in memory. This spec therefore asserts on a genuine
  * *document* load (`page.goto` / `page.reload`, both of which discard the JS
  * heap) and additionally proves, in-test, that (a) the boot-time silent
- * refresh really fired and succeeded on that fresh load, and (b)
- * `orgContext`/`orgs` really are unresolved afterward — using `OrgPicker`'s
- * own pre-existing empty-`orgs` bounce to `/login` as the observable signal.
- * Without (a) and (b) the test could pass for the wrong reason.
+ * refresh really fired and succeeded on that fresh load, and (b) the org
+ * list rendered after the reload came from a fresh `GET /auth/me/orgs` call
+ * `Dashboard` itself makes — not from any surviving in-memory state, since
+ * none survives a real document load. Without (a) and (b) the test could
+ * pass for the wrong reason.
  *
  * Fixture seeding follows this directory's standard pattern (see
- * `req1-requirements-ui.spec.ts`): one user + Organization + active
- * OrgMembership + org-wide `org_admin` RoleAssignment, seeded via
+ * `req1-requirements-ui.spec.ts`): one user + Organization(s) + active
+ * OrgMembership(s) + org-wide `org_admin` RoleAssignment, seeded via
  * `docker exec` into the isolated stack's backend container, cleaned up
  * FK-safe in a `finally`.
  *
@@ -44,6 +56,16 @@ interface SeededFixture {
   password: string;
   userId: string;
   orgId: string;
+}
+
+interface SeededTwoOrgFixture {
+  email: string;
+  password: string;
+  userId: string;
+  orgAId: string;
+  orgAName: string;
+  orgBId: string;
+  orgBName: string;
 }
 
 const SEED_SCRIPT = `
@@ -123,6 +145,91 @@ async def main():
 asyncio.run(main())
 `;
 
+// DASH-3: a 2-org fixture, for TCs that need Dashboard to render its
+// "Select an organization" chooser rather than auto-advancing.
+const TWO_ORG_SEED_SCRIPT = `
+import asyncio, json
+from datetime import UTC, datetime
+from uuid import uuid4
+
+from sqlalchemy import select
+
+from app.core.security import hash_password
+from app.db.session import AsyncSessionLocal
+from app.models.actor import User
+from app.models.auth import AuthIdentity, AuthProvider
+from app.models.rbac import Role, RoleAssignment
+from app.models.tenancy import Organization, OrgMembership, OrgMembershipStatus
+
+PASSWORD = "${TEST_PASSWORD}"
+
+async def main():
+    suffix = uuid4().hex[:8]
+    email = f"e2e-dash3-{suffix}@example.com"
+    org_a_name = f"DASH-3 E2E Org A {suffix}"
+    org_b_name = f"DASH-3 E2E Org B {suffix}"
+    async with AsyncSessionLocal() as session:
+        user = User(name="DASH-3 E2E User", email=email, password_hash=hash_password(PASSWORD))
+        session.add(user)
+        await session.flush()
+        session.add(AuthIdentity(user_id=user.actor_id, provider=AuthProvider.local, is_primary=True))
+
+        org_a = Organization(name=org_a_name, slug=f"dash3-e2e-a-{suffix}")
+        org_b = Organization(name=org_b_name, slug=f"dash3-e2e-b-{suffix}")
+        session.add_all([org_a, org_b])
+        await session.flush()
+
+        now = datetime.now(UTC)
+        session.add(OrgMembership(org_id=org_a.id, user_id=user.actor_id, status=OrgMembershipStatus.active, joined_at=now))
+        session.add(OrgMembership(org_id=org_b.id, user_id=user.actor_id, status=OrgMembershipStatus.active, joined_at=now))
+
+        org_admin_role = (
+            await session.execute(select(Role).where(Role.name == "org_admin", Role.org_id.is_(None)))
+        ).scalars().first()
+        assert org_admin_role is not None, "expected the RBAC-4-seeded org_admin system Role to already exist"
+        session.add(RoleAssignment(actor_id=user.actor_id, org_id=org_a.id, project_id=None, role_id=org_admin_role.id))
+        session.add(RoleAssignment(actor_id=user.actor_id, org_id=org_b.id, project_id=None, role_id=org_admin_role.id))
+
+        await session.commit()
+        print(json.dumps({
+            "email": email,
+            "password": PASSWORD,
+            "userId": str(user.actor_id),
+            "orgAId": str(org_a.id),
+            "orgAName": org_a_name,
+            "orgBId": str(org_b.id),
+            "orgBName": org_b_name,
+        }))
+
+asyncio.run(main())
+`;
+
+const TWO_ORG_CLEANUP_SCRIPT = `
+import asyncio, sys
+from sqlalchemy import delete
+
+from app.db.session import AsyncSessionLocal
+from app.models.actor import Actor, User
+from app.models.auth import AuthIdentity, RefreshToken
+from app.models.rbac import RoleAssignment
+from app.models.tenancy import Organization, OrgMembership
+
+user_id, org_a_id, org_b_id = sys.argv[1], sys.argv[2], sys.argv[3]
+
+async def main():
+    async with AsyncSessionLocal() as session:
+        await session.execute(delete(RoleAssignment).where(RoleAssignment.actor_id == user_id))
+        await session.execute(delete(RefreshToken).where(RefreshToken.user_id == user_id))
+        await session.execute(delete(OrgMembership).where(OrgMembership.user_id == user_id))
+        await session.execute(delete(AuthIdentity).where(AuthIdentity.user_id == user_id))
+        await session.execute(delete(Organization).where(Organization.id.in_([org_a_id, org_b_id])))
+        await session.execute(delete(User).where(User.actor_id == user_id))
+        await session.execute(delete(Actor).where(Actor.id == user_id))
+        await session.commit()
+
+asyncio.run(main())
+`;
+
 function seedFixture(): SeededFixture {
   const output = execFileSync("docker", ["exec", "-i", BACKEND_CONTAINER, "python", "-"], {
     input: SEED_SCRIPT,
@@ -136,6 +243,22 @@ function cleanup(fixture: SeededFixture): void {
     input: CLEANUP_SCRIPT,
     encoding: "utf-8",
   });
+}
+
+function seedTwoOrgFixture(): SeededTwoOrgFixture {
+  const output = execFileSync("docker", ["exec", "-i", BACKEND_CONTAINER, "python", "-"], {
+    input: TWO_ORG_SEED_SCRIPT,
+    encoding: "utf-8",
+  });
+  return JSON.parse(output.trim()) as SeededTwoOrgFixture;
+}
+
+function cleanupTwoOrgFixture(fixture: SeededTwoOrgFixture): void {
+  execFileSync(
+    "docker",
+    ["exec", "-i", BACKEND_CONTAINER, "python", "-", fixture.userId, fixture.orgAId, fixture.orgBId],
+    { input: TWO_ORG_CLEANUP_SCRIPT, encoding: "utf-8" },
+  );
 }
 
 test.describe("DASH-1: root route redirects on auth state, dashboard placeholder", () => {
@@ -166,79 +289,143 @@ test.describe("DASH-1: root route redirects on auth state, dashboard placeholder
     await expect(page.getByRole("heading", { name: /^dashboard$/i })).toHaveCount(0);
   });
 
-  // TC-DASH-003
-  test("authenticated visitor loading / is redirected to /dashboard", async ({ page }) => {
-    const fixture = seedFixture();
+  // TC-DASH-003 (DASH-3: 0-or-2+-org precondition — a 2-org fixture here)
+  test("authenticated visitor (2+ orgs) loading / is redirected to /dashboard, showing the org chooser", async ({
+    page,
+  }) => {
+    const fixture = seedTwoOrgFixture();
     try {
       await page.goto("/login");
       await page.getByLabel(/email/i).fill(fixture.email);
       await page.getByLabel(/password/i).fill(fixture.password);
       await page.getByRole("button", { name: /log in|sign in/i }).click();
-      // Login.tsx's own post-auth orgContext redirect — untouched by ADR-0035.
-      await page.waitForURL(new RegExp(`/orgs/${fixture.orgId}`));
+      // Login.tsx's own post-auth redirect (DASH-3/ADR-0063): always /dashboard.
+      await page.waitForURL(/\/dashboard$/);
 
       await page.goto("/");
 
       await page.waitForURL(/\/dashboard$/);
-      await expect(page.getByRole("heading", { name: /^dashboard$/i })).toBeVisible();
-      await expect(page.getByText(/nothing here yet/i)).toBeVisible();
+      await expect(page.getByRole("heading", { name: /select an organization/i })).toBeVisible();
+      await expect(page.getByText(fixture.orgAName)).toBeVisible();
+      await expect(page.getByText(fixture.orgBName)).toBeVisible();
+    } finally {
+      cleanupTwoOrgFixture(fixture);
+    }
+  });
+
+  // TC-DASH-007 (DASH-3): single-org auto-redirect, no intermediate render.
+  // Also the login-with-1-org half of TC-DASH-013 (post-login always lands
+  // on /dashboard first, even for the auto-advancing case) — the
+  // GET /auth/me/orgs wait below is the literal proof Dashboard actually
+  // mounted and fetched before bouncing onward, not just that the login
+  // eventually ends up at the right org by some other path.
+  test("authenticated visitor (exactly 1 org) loading /dashboard lands straight on their org, no click", async ({
+    page,
+  }) => {
+    const fixture = seedFixture();
+    try {
+      await page.goto("/login");
+      await page.getByLabel(/email/i).fill(fixture.email);
+      await page.getByLabel(/password/i).fill(fixture.password);
+      const dashboardOrgsFetch = page.waitForResponse(
+        (response) =>
+          response.url().includes("/api/v1/auth/me/orgs") && response.request().method() === "GET",
+      );
+      await page.getByRole("button", { name: /log in|sign in/i }).click();
+      // TC-DASH-013: the post-login redirect lands on /dashboard first —
+      // proven by Dashboard's own GET /auth/me/orgs firing — before its own
+      // single-org branching (TC-DASH-007) bounces onward.
+      const dashboardOrgsFetchResponse = await dashboardOrgsFetch;
+      expect(dashboardOrgsFetchResponse.status()).toBe(200);
+      await page.waitForURL(new RegExp(`/orgs/${fixture.orgId}$`));
+
+      // A direct hit on /dashboard (not via /) must also bounce onward.
+      await page.goto("/dashboard");
+      await page.waitForURL(new RegExp(`/orgs/${fixture.orgId}$`));
+      await expect(page.getByText(/select an organization/i)).toHaveCount(0);
     } finally {
       cleanup(fixture);
     }
   });
 
-  // TC-DASH-006 — the regression test for the bug this story fixes.
-  test("reloading while logged in still lands on /dashboard, not /login, with orgContext unresolved", async ({
+  // TC-DASH-006 (DASH-3: 0-or-2+-org precondition) + TC-DASH-011 (org list
+  // survives a reload, fetched fresh).
+  test("reloading while logged in (2+ orgs) still lands on /dashboard with the org list intact, fetched fresh", async ({
     page,
   }) => {
-    const fixture = seedFixture();
+    const fixture = seedTwoOrgFixture();
     try {
-      // --- Log in normally. This populates orgContext/orgs in memory. -------
+      // --- Log in normally. ---
       await page.goto("/login");
       await page.getByLabel(/email/i).fill(fixture.email);
       await page.getByLabel(/password/i).fill(fixture.password);
       await page.getByRole("button", { name: /log in|sign in/i }).click();
-      await page.waitForURL(new RegExp(`/orgs/${fixture.orgId}`));
+      await page.waitForURL(/\/dashboard$/);
+      await expect(page.getByText(fixture.orgAName)).toBeVisible();
 
-      // --- A real document load of `/`. ------------------------------------
+      // --- A real document load of `/`. ---
       // This is the actual reload semantics under test: `page.goto` discards
-      // the JS heap, so the in-memory orgContext/orgs from the login response
-      // above are gone and only the httpOnly refresh cookie survives. The
-      // boot-time silent refresh is therefore the only thing that can restore
-      // a session — and per the AUTH-2 gap it restores the access token
-      // *only*, never orgContext/orgs.
+      // the JS heap, so any in-memory AuthContext state from the login above
+      // is gone and only the httpOnly refresh cookie survives. The boot-time
+      // silent refresh is therefore the only thing that can restore a
+      // session — and per the AUTH-2 gap it restores the access token
+      // *only*, never `AuthContext.orgs`.
       const bootRefresh = page.waitForResponse(
         (response) =>
           response.url().includes("/api/v1/auth/refresh") && response.request().method() === "POST",
       );
+      // The fresh-fetch proof this pass adds (TC-DASH-011): Dashboard's own
+      // GET /auth/me/orgs call must fire again after the reload — it cannot
+      // be reusing any surviving in-memory list, because a real document
+      // load leaves none.
+      const orgsRefetch = page.waitForResponse(
+        (response) =>
+          response.url().includes("/api/v1/auth/me/orgs") && response.request().method() === "GET",
+      );
       await page.goto("/");
       const bootRefreshResponse = await bootRefresh;
+      const orgsRefetchResponse = await orgsRefetch;
 
-      // Proof this really was a cold boot restoring a session from the cookie,
-      // rather than a same-document navigation that never lost its state.
+      // Proof this really was a cold boot restoring a session from the cookie.
       expect(bootRefreshResponse.status()).toBe(200);
+      expect(orgsRefetchResponse.status()).toBe(200);
 
-      // The assertion the whole story exists for: /dashboard, not /login.
+      // The assertion the whole story exists for: /dashboard, not /login —
+      // and the chooser list itself renders correctly from that fresh fetch.
       await page.waitForURL(/\/dashboard$/);
-      await expect(page.getByRole("heading", { name: /^dashboard$/i })).toBeVisible();
+      await expect(page.getByRole("heading", { name: /select an organization/i })).toBeVisible();
+      await expect(page.getByText(fixture.orgAName)).toBeVisible();
+      await expect(page.getByText(fixture.orgBName)).toBeVisible();
       expect(new URL(page.url()).pathname).toBe("/dashboard");
 
-      // --- Same again via a literal browser reload. -------------------------
-      // `/` replace-navigates to `/dashboard`, so the address bar is never
-      // sitting on `/` to be reloaded directly; this reloads the settled
-      // destination instead, proving the protected route survives a reload
-      // too and not just the root guard.
+      // --- Same again via a literal browser reload. ---
       await page.reload();
-      await expect(page.getByRole("heading", { name: /^dashboard$/i })).toBeVisible();
+      await expect(page.getByRole("heading", { name: /select an organization/i })).toBeVisible();
       expect(new URL(page.url()).pathname).toBe("/dashboard");
+    } finally {
+      cleanupTwoOrgFixture(fixture);
+    }
+  });
 
-      // --- Prove orgContext/orgs really are unresolved after the reload. ----
-      // Otherwise the /dashboard result above could pass for the wrong
-      // reason. OrgPicker's own pre-existing empty-`orgs` guard bounces to
-      // /login — that bounce happening here is the observable symptom of the
-      // AUTH-2 gap, i.e. exactly the state that used to break `/`.
+  // TC-DASH-012 (DASH-3): /orgs/pick no longer resolves to anything.
+  test("/orgs/pick no longer resolves to OrgPicker — the route is retired, not merely re-labeled", async ({
+    page,
+  }) => {
+    const fixture = seedFixture();
+    try {
+      await page.goto("/login");
+      await page.getByLabel(/email/i).fill(fixture.email);
+      await page.getByLabel(/password/i).fill(fixture.password);
+      await page.getByRole("button", { name: /log in|sign in/i }).click();
+      await page.waitForURL(new RegExp(`/orgs/${fixture.orgId}$`));
+
       await page.goto("/orgs/pick");
-      await page.waitForURL(/\/login$/);
+
+      // OrgPicker's own distinguishing content (its heading, its "New
+      // Organization"/"Create organization" button) must be absent — no
+      // route in App.tsx matches this path anymore.
+      await expect(page.getByRole("heading", { name: /choose an organization/i })).toHaveCount(0);
+      await expect(page.getByRole("heading", { name: /select an organization/i })).toHaveCount(0);
     } finally {
       cleanup(fixture);
     }

@@ -52,8 +52,8 @@ export interface ResolvedOrgContext {
   /**
    * Which *kind* of route this is, independent of whether `orgId` has resolved
    * yet — `"project"` whenever the route carries a `:projectId` (the fetch
-   * branch), `"org"` otherwise (the route-param branch, including `/orgs/pick`
-   * where the answer is legitimately `undefined`).
+   * branch), `"org"` otherwise (the route-param branch, including
+   * `/dashboard` where the answer is legitimately `undefined`).
    *
    * Added by SHELL-10 (ADR-0050), which renders a *different nav entirely* on
    * project-scoped routes and so needs to branch on the route's kind rather
@@ -72,7 +72,7 @@ export interface ResolvedOrgContext {
   mode: "org" | "project";
   /**
    * The `:orgId` route param when present, else the fetched Project's own
-   * `org_id`, else `undefined` (`/orgs/pick`, or while the fetch is
+   * `org_id`, else `undefined` (`/dashboard`, or while the fetch is
    * pending/failed).
    */
   orgId: string | undefined;
@@ -87,7 +87,7 @@ export interface ResolvedOrgContext {
   project: ProjectSummary | undefined;
   /**
    * `"success"` whenever `orgId` needed no fetch to resolve (an `:orgId` route,
-   * or `/orgs/pick` where the answer is legitimately `undefined`); otherwise the
+   * or `/dashboard` where the answer is legitimately `undefined`); otherwise the
    * underlying query's own status. Callers use this to distinguish "still
    * loading" from "resolved to nothing" — both of which render the same
    * degraded state today (ADR-0050 Decision §4), but only one of which is

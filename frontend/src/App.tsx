@@ -7,7 +7,6 @@ import Login from "./pages/workflows/Login";
 import OrgHome from "./pages/workflows/OrgHome";
 import McpIntegration from "./pages/workflows/McpIntegration";
 import OrgMembers from "./pages/workflows/OrgMembers";
-import OrgPicker from "./pages/workflows/OrgPicker";
 import ProjectDetail from "./pages/workflows/ProjectDetail";
 import RootRedirect from "./pages/workflows/RootRedirect";
 import Signup from "./pages/workflows/Signup";
@@ -33,11 +32,14 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
         {/*
-          DASH-1 (ADR-0035) dashboard placeholder — the authenticated
-          destination of the root guard above. Deliberately empty this pass;
-          `ProtectedRoute`-wrapped like every other authenticated screen, which
-          is also what makes a logged-out direct hit on `/dashboard` redirect
-          to `/login` without a second bespoke guard.
+          DASH-3 (ADR-0063) dashboard: org list + chooser — the authenticated
+          destination of the root guard above, and now also the uniform
+          post-login/signup/accept-invite redirect target (retiring
+          `/orgs/pick`/`OrgPicker`, which used to be a second, separate
+          "list orgs, pick one" screen). `ProtectedRoute`-wrapped like every
+          other authenticated screen, which is also what makes a logged-out
+          direct hit on `/dashboard` redirect to `/login` without a second
+          bespoke guard.
         */}
         <Route
           path="/dashboard"
@@ -55,14 +57,6 @@ function App() {
           `Authorization`-gated.
         */}
         <Route path="/invites/:token/accept" element={<AcceptInvite />} />
-        <Route
-          path="/orgs/pick"
-          element={
-            <ProtectedRoute>
-              <OrgPicker />
-            </ProtectedRoute>
-          }
-        />
         <Route
           path="/orgs/:orgId"
           element={

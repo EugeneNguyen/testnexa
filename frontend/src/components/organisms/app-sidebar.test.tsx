@@ -53,7 +53,7 @@ function renderSidebar(initialEntry: string) {
     <QueryClientProvider client={newQueryClient()}>
       <MemoryRouter initialEntries={[initialEntry]}>
         <Routes>
-          <Route path="/orgs/pick" element={<AppSidebar />} />
+          <Route path="/dashboard" element={<AppSidebar />} />
           <Route path="/orgs/:orgId" element={<AppSidebar />} />
           <Route path="/orgs/:orgId/projects" element={<AppSidebar />} />
           <Route path="/orgs/:orgId/members" element={<AppSidebar />} />
@@ -217,9 +217,11 @@ describe("AppSidebar", () => {
   });
 
   it("renders an empty nav-item list (brand only, no org-home/org-members links) when orgId is absent", () => {
-    renderSidebar("/orgs/pick");
+    renderSidebar("/dashboard");
 
-    // TC-SHELL-005's own contract, unchanged by BRAND-1: the sidebar's
+    // TC-SHELL-005's own contract, unchanged by BRAND-1 (route corrected
+    // 2026-09-13 from the retired /orgs/pick, ADR-0063/DASH-3 — same "no
+    // orgId route param" precondition): the sidebar's
     // `.brand-text` wordmark stays in the DOM (and visible — asserted live in
     // `e2e/tests/shell-nav.spec.ts`) alongside the new mark.
     expect(screen.getByText("TestNexa")).toBeInTheDocument();
@@ -427,7 +429,7 @@ describe("AppSidebar", () => {
   });
 
   it("renders none of the 3 new groups when orgId is absent", () => {
-    renderSidebar("/orgs/pick");
+    renderSidebar("/dashboard");
 
     for (const groupTestId of Object.keys(EXPECTED_PARTITION)) {
       expect(screen.queryByTestId(groupTestId)).not.toBeInTheDocument();
@@ -763,7 +765,8 @@ describe("AppSidebar", () => {
 
     const { container } = renderSidebarAtProjectRoute(`/projects/${PROJECT_ID}`);
 
-    // Brand only — byte-identical to the pre-existing `/orgs/pick` state.
+    // Brand only — byte-identical to the pre-existing `/dashboard` (formerly
+    // `/orgs/pick`, retired 2026-09-13, ADR-0063/DASH-3) no-org state.
     expect(screen.getByText("TestNexa")).toBeInTheDocument();
     expect(topLevelLabels(container)).toEqual([]);
     expect(screen.queryByTestId("sidebar-nav-org-home")).not.toBeInTheDocument();

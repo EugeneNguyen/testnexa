@@ -24,9 +24,10 @@
  * ADR-0035's Context/Decision sections).
  *
  * `Login.tsx`/`Signup.tsx`/`AcceptInvite.tsx`'s own separate post-auth
- * `orgContext`/`orgs` redirect (to `/orgs/{id}` or `/orgs/pick`, run
- * immediately after an explicit login/signup/accept-invite) is untouched —
- * this guard only governs a direct/reloaded hit on `/`.
+ * `orgContext` redirect (to `/dashboard`, unconditionally, as of DASH-3/
+ * ADR-0063 — run immediately after an explicit login/signup/accept-invite)
+ * is untouched by this guard; this guard only governs a direct/reloaded hit
+ * on `/`, which lands on the exact same `/dashboard` target either way.
  */
 import { Navigate } from "react-router-dom";
 import AuthLoadingSpinner from "../../../components/AuthLoadingSpinner";

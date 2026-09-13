@@ -33,12 +33,12 @@
  *
  * `signup()` resolves `void` and updates `AuthContext` state asynchronously
  * (same as `login()`), so post-success navigation is driven by the same
- * `useEffect` pattern watching `orgContext`/`orgs` — a fresh signup always
- * yields `org_context: "auto"` with exactly one org (this route creates
- * the org itself), so this always lands on `/orgs/{orgs[0].id}` in
- * practice, but reusing the exact same effect as `Login.tsx` (rather than a
- * hardcoded redirect) keeps the two screens' post-auth behavior identical
- * and avoids a second place this logic could drift.
+ * `useEffect` pattern watching `orgContext` — once it resolves, navigation
+ * always targets `/dashboard` (DASH-3/ADR-0063), which then auto-advances
+ * onward for this route's own always-exactly-1-org case (a fresh signup
+ * creates its own org). Reusing the exact same effect as `Login.tsx`
+ * (rather than a hardcoded redirect) keeps the two screens' post-auth
+ * behavior identical and avoids a second place this logic could drift.
  */
 import { FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -65,7 +65,7 @@ const signupSchema = z.object({
 type SignupFormValues = z.infer<typeof signupSchema>;
 
 function Signup() {
-  const { signup, orgContext, orgs } = useAuth();
+  const { signup, orgContext } = useAuth();
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -79,12 +79,10 @@ function Signup() {
   } = useForm<SignupFormValues>();
 
   useEffect(() => {
-    if (orgContext === "auto" && orgs.length > 0) {
-      navigate(`/orgs/${orgs[0].id}`, { replace: true });
-    } else if (orgContext === "picker") {
-      navigate("/orgs/pick", { replace: true });
+    if (orgContext !== null) {
+      navigate("/dashboard", { replace: true });
     }
-  }, [orgContext, orgs, navigate]);
+  }, [orgContext, navigate]);
 
   async function submitSignup(values: SignupFormValues) {
     setError(null);

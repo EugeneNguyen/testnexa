@@ -30,15 +30,13 @@ import { expect, test } from "@playwright/test";
  * One user is seeded with TWO active `OrgMembership`s (Org A + Org B) and an
  * org-wide `org_admin` `RoleAssignment` in Org A only (enough to render Org
  * A's Members screen with full content, not just a 403). Two active
- * memberships is what makes `POST /auth/login` resolve
- * `org_context: "picker"`, which is the ONLY way to reach `/orgs/pick` with
- * `AuthContext`'s in-memory `orgs` list populated: `Login.tsx`'s own
- * `orgContext === "picker" -> navigate("/orgs/pick")` effect is a
- * client-side transition, unlike a raw `page.goto("/orgs/pick")`, which
- * would be a full page reload that resets `AuthContext.orgs` back to `[]`
- * and immediately bounces `OrgPicker` back to `/login` (see that
- * component's own docstring, and `AuthContext.tsx`'s "Known simplification"
- * note on why org context does not survive a reload).
+ * memberships is what makes `Dashboard` (`/dashboard`, DASH-3/ADR-0063 —
+ * formerly `/orgs/pick`/`OrgPicker`) render its "Select an organization"
+ * chooser list for a real UI-driven navigation into Org A. `Dashboard`
+ * fetches this list itself via `GET /auth/me/orgs` on every mount, so
+ * (unlike the retired `OrgPicker`) it needs no in-memory `AuthContext.orgs`
+ * carried over from login — a real page load lands here correctly either
+ * way.
  *
  * Target environment: the isolated `testnexa-shell1-test` Compose project
  * (`E2E_BASE_URL`, set externally per this task's brief), never the main
@@ -161,27 +159,28 @@ test.describe("SHELL-1 persistent sidebar + navbar shell", () => {
     const user = seedUser();
 
     try {
-      // --- Log in: two active memberships -> org_context "picker" ->
-      // Login.tsx's own client-side redirect lands on /orgs/pick with
-      // AuthContext.orgs populated (real UI flow, not a raw page.goto). ---
+      // --- Log in: two active memberships -> Dashboard's own 2+-org
+      // branching renders the "Select an organization" chooser list (route
+      // corrected 2026-09-13 from the retired /orgs/pick, ADR-0063/DASH-3).
+      // ---
       await page.goto("/login");
       await page.getByLabel(/email/i).fill(user.email);
       await page.getByLabel(/password/i).fill(user.password);
       await page.getByRole("button", { name: /log in|sign in/i }).click();
-      await page.waitForURL(/\/orgs\/pick/);
+      await page.waitForURL(/\/dashboard$/);
 
-      // TC-SHELL-001 (part 1/3): shell renders on /orgs/pick.
+      // TC-SHELL-001 (part 1/3): shell renders on /dashboard.
       await expect(page.locator("aside.navbar-vertical")).toBeVisible();
       await expect(page.locator("header.navbar")).toBeVisible();
       await expect(page.getByTestId("logout-button")).toBeVisible();
 
       // TC-SHELL-005: brand renders, org-scoped nav items absent (no orgId
-      // route param on /orgs/pick).
+      // route param on /dashboard).
       await expect(page.locator("aside.navbar-vertical").getByText("TestNexa")).toBeVisible();
       await expect(page.getByTestId("sidebar-nav-org-home")).toHaveCount(0);
       await expect(page.getByTestId("sidebar-nav-org-members")).toHaveCount(0);
 
-      // --- Navigate into Org A via the real UI (OrgPicker's list item). ---
+      // --- Navigate into Org A via the real UI (Dashboard's list item). ---
       await page.getByText("SHELL-1 E2E Org A").click();
       await page.waitForURL(new RegExp(`/orgs/${user.orgAId}$`));
 
@@ -244,7 +243,7 @@ test.describe("SHELL-1 persistent sidebar + navbar shell", () => {
       await page.getByLabel(/email/i).fill(user.email);
       await page.getByLabel(/password/i).fill(user.password);
       await page.getByRole("button", { name: /log in|sign in/i }).click();
-      await page.waitForURL(/\/orgs\/pick/);
+      await page.waitForURL(/\/dashboard$/);
       await page.getByText("SHELL-1 E2E Org A").click();
       await page.waitForURL(new RegExp(`/orgs/${user.orgAId}$`));
 
