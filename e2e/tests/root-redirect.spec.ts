@@ -314,6 +314,11 @@ test.describe("DASH-1: root route redirects on auth state, dashboard placeholder
   });
 
   // TC-DASH-007 (DASH-3): single-org auto-redirect, no intermediate render.
+  // Also the login-with-1-org half of TC-DASH-013 (post-login always lands
+  // on /dashboard first, even for the auto-advancing case) — the
+  // GET /auth/me/orgs wait below is the literal proof Dashboard actually
+  // mounted and fetched before bouncing onward, not just that the login
+  // eventually ends up at the right org by some other path.
   test("authenticated visitor (exactly 1 org) loading /dashboard lands straight on their org, no click", async ({
     page,
   }) => {
@@ -322,7 +327,16 @@ test.describe("DASH-1: root route redirects on auth state, dashboard placeholder
       await page.goto("/login");
       await page.getByLabel(/email/i).fill(fixture.email);
       await page.getByLabel(/password/i).fill(fixture.password);
+      const dashboardOrgsFetch = page.waitForResponse(
+        (response) =>
+          response.url().includes("/api/v1/auth/me/orgs") && response.request().method() === "GET",
+      );
       await page.getByRole("button", { name: /log in|sign in/i }).click();
+      // TC-DASH-013: the post-login redirect lands on /dashboard first —
+      // proven by Dashboard's own GET /auth/me/orgs firing — before its own
+      // single-org branching (TC-DASH-007) bounces onward.
+      const dashboardOrgsFetchResponse = await dashboardOrgsFetch;
+      expect(dashboardOrgsFetchResponse.status()).toBe(200);
       await page.waitForURL(new RegExp(`/orgs/${fixture.orgId}$`));
 
       // A direct hit on /dashboard (not via /) must also bounce onward.
