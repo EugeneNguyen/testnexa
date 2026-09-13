@@ -9,13 +9,17 @@ class of test. The package-level `tests/integration/conftest.py` fixture
 (`_require_live_server`, autouse=True, session-scoped) applies automatically.
 
 Covers TC-ADMIN-040/041/042 (`docs/test-cases/2026-09-03-test-cases.md`,
-Test Design §54). TC-ADMIN-041/042 shell out to the real `alembic` CLI
-already installed in this venv (`_run_alembic`, copied from
-`test_rbac_seed.py`'s own helper of the same name/shape) against the same
-`DATABASE_URL` the live server under test uses — this exercises the real
-migration file, not a re-implementation of its logic in Python.
+Test Design §54). TC-ADMIN-042 shells out to the real `alembic` CLI already
+installed in this venv (`_run_alembic`, copied from `test_rbac_seed.py`'s own
+helper of the same name/shape) against the same `DATABASE_URL` the live
+server under test uses, since it needs a genuine revision transition.
+TC-ADMIN-041 does NOT use the CLI — see that test's own comment for why an
+`alembic upgrade head` call is a no-op (and therefore a vacuous assertion)
+once the DB is already at this migration's own revision, and how invoking
+`upgrade()` directly instead avoids that.
 """
 
+import importlib.util
 import os
 import subprocess
 import sys
@@ -35,6 +39,16 @@ from app.models.auth import AuthIdentity, AuthProvider
 from app.models.rbac import Role, RoleAssignment
 from app.models.taxonomy import TestLevel
 from app.models.tenancy import Organization, OrgMembership, OrgMembershipStatus
+
+# Loaded via `importlib` (not a normal `import`) since alembic revision
+# filenames aren't valid Python module identifiers — same technique
+# `tests/unit/test_admin5_seed_test_level_catalog.py` already uses.
+_MIGRATION_PATH = (
+    Path(__file__).resolve().parents[2] / "alembic" / "versions" / "63f8478c1c12_seed_test_level_catalog.py"
+)
+_migration_spec = importlib.util.spec_from_file_location("admin5_seed_migration_integration", _MIGRATION_PATH)
+_seed_migration = importlib.util.module_from_spec(_migration_spec)
+_migration_spec.loader.exec_module(_seed_migration)
 
 TEST_API_BASE_URL = os.environ.get("TEST_API_BASE_URL", "http://localhost:8000")
 API_PREFIX = "/api/v1"
@@ -177,19 +191,43 @@ async def test_seed_produces_exactly_five_istqb_test_levels() -> None:  # TC-ADM
         await _cleanup(user_ids=user_ids, org_ids=org_ids)
 
 
-# --- TC-ADMIN-041: re-running `alembic upgrade head` is idempotent ------------------------------
+# --- TC-ADMIN-041: re-running the migration's own upgrade() is idempotent ----------------------
+# --- Deliberately does NOT shell out to `alembic upgrade head` (unlike TC-ADMIN-042 below,       --
+# --- which needs a genuine revision transition) — when the DB is already at this migration's     --
+# --- own revision, `alembic upgrade head` is a pure no-op at Alembic's own bookkeeping layer      --
+# --- (confirmed live: no "Running upgrade..." log line, and the migration's `upgrade()` Python    --
+# --- function body never executes a second time) — asserting `before == after` around that call   --
+# --- would trivially pass regardless of whether the migration's own existence-check logic is      --
+# --- actually idempotent, since nothing would have run at all. To exercise the *function's own*   --
+# --- insert-existence-check logic twice, its `upgrade()` is invoked directly (not via the CLI),   --
+# --- through a real `alembic.operations.Operations` context bound to the app's own async engine   --
+# --- (`app.db.session.engine`, via `AsyncConnection.run_sync` — the same technique `alembic/env.py`--
+# --- itself already uses to run migrations against an async driver) — bypassing Alembic's         --
+# --- revision-tracking table entirely, so both calls genuinely execute the SQL.
 
 
 @pytest.mark.asyncio
 async def test_seed_migration_upgrade_is_idempotent() -> None:  # TC-ADMIN-041
+    from alembic.operations import Operations
+    from alembic.runtime.migration import MigrationContext
+
+    from app.db.session import engine as app_engine
+
     async def _count() -> int:
         async with AsyncSessionLocal() as session:
             return (await session.execute(select(func.count()).select_from(TestLevel))).scalar_one()
 
     before = await _count()
 
-    result = _run_alembic("upgrade", "head")
-    assert result.returncode == 0, f"alembic upgrade head failed:\n{result.stdout}\n{result.stderr}"
+    def _run_upgrade_twice(sync_conn) -> None:
+        ctx = MigrationContext.configure(sync_conn)
+        with Operations.context(ctx):
+            _seed_migration.upgrade()
+            _seed_migration.upgrade()
+
+    async with app_engine.connect() as conn:
+        await conn.run_sync(_run_upgrade_twice)
+        await conn.commit()
 
     after = await _count()
     assert before == after

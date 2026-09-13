@@ -177,12 +177,19 @@ test.describe("ADMIN-5: TestLevel catalog is pre-seeded (ADR-0066)", () => {
       await page.getByRole("button", { name: /new test case/i }).click();
       await expect(page.getByRole("heading", { name: /new test case/i })).toBeVisible({ timeout: 15000 });
 
+      // `listTestLevels()` is fetched once at page-mount (`ProjectDetail.tsx`),
+      // not re-triggered by opening this modal — the options populate
+      // asynchronously shortly after mount, so `.allTextContents()` (a
+      // one-shot, non-retrying read) can race a genuinely-correct render
+      // that just hasn't landed yet. `toHaveCount` auto-retries; wait for
+      // it before taking the one-shot content snapshot below.
       const testLevelSelect = page.getByLabel(/test level/i);
-      const optionLabels = await testLevelSelect.locator("option").allTextContents();
+      const testLevelOptions = testLevelSelect.locator("option");
+      await expect(testLevelOptions).toHaveCount(EXPECTED_ISTQB_TEST_LEVELS.length + 1, { timeout: 15000 });
 
+      const optionLabels = await testLevelOptions.allTextContents();
       // Placeholder + exactly the 5 seeded names, no more, no fewer, no
       // test-authored fixture row mixed in.
-      expect(optionLabels).toHaveLength(EXPECTED_ISTQB_TEST_LEVELS.length + 1);
       for (const name of EXPECTED_ISTQB_TEST_LEVELS) {
         expect(optionLabels).toContain(name);
       }
