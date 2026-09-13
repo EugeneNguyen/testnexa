@@ -42,3 +42,18 @@
 **Acceptance criteria:**
 - Given an `AIAgent` with `test_execution.create` permission, when it calls the create-TestExecution tool with a result and actual_result notes, then a TestExecution row is created exactly as in EXEC-1, with `executed_by_actor_id` pointing at the agent.
 - Given an `AIAgent` with `requirement.read` permission, when it calls the read-Requirement tool, then it receives the same Requirement data a human would see via the REST API — read-only, no ability to create/edit Requirements via MCP in this scaffold (matches 26's MVP-scoped MCP surface: "create/list/update TestCase, create TestExecution, read Requirement" — no requirement-write, no approval, no membership/role management via MCP).
+
+---
+
+## Story MCP-4: Human sets up and manages MCP client access
+
+**As** an org member configuring the human side of the agent-primary workflow MCP-1..3 build the mechanism for,
+**I want** an in-app screen that explains what the MCP server is, gives me copy-pasteable client-connection instructions, and lets me issue/list/revoke an `AIAgent` bearer credential without touching the API directly,
+**so that** connecting Claude Code, Codex, or any other MCP-HTTP client to this org's TestNexa instance doesn't require reading the backend's own implementation notes or crafting raw HTTP requests.
+
+**Acceptance criteria:**
+- Given an authenticated human org member, when they navigate to the org's MCP Integration screen (org-scoped, since `AIAgent` credentials are org-scoped, ADR-0015), then they see the server URL, a plain-language explanation of MCP, and connection instructions for at least Claude Code, Codex, and Cursor.
+- Given the same screen, when they submit the issue-key form (agent name + optional model/provider + an active org member to hold accountability via `acting_on_behalf_of_user_id`), then a new `AIAgent` credential is created via the existing `POST /orgs/{org_id}/agents` route (ADR-0015) and the raw key is shown exactly once, never persisted or re-fetchable client-side.
+- Given one or more previously-issued credentials, when the screen loads, then it lists them (name, model/provider, key prefix, issued/last-used timestamps, active/revoked status) via a new `GET /orgs/{org_id}/agents` route, including already-revoked ones — management needs the history, not just the active set.
+- Given an active credential's row, when the member clicks Revoke, then `POST /orgs/{org_id}/agents/{agent_id}/revoke` (ADR-0015, already-shipped) is called and the row updates to Revoked without a page reload.
+- Given a project-scoped route (`/projects/:projectId/mcp`), when a member visits it, then they see the same connection docs plus a link back to the org-scoped screen for key management — no separate per-project credential exists (agents are org-scoped only).

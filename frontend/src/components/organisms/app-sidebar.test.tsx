@@ -397,6 +397,7 @@ describe("AppSidebar", () => {
       "Dashboard",
       "Projects",
       "Members",
+      "MCP Integration",
       "Access Control",
       "Catalogs",
       "Organization",
@@ -594,7 +595,12 @@ describe("AppSidebar", () => {
     // (same posture as org-mode's "Dashboard" not hiding on `/orgs/:orgId`),
     // just active-styled rather than suppressed as a dead self-link.
     expect(screen.getByTestId("sidebar-nav-project-overview")).toHaveClass("active");
-    expect(topLevelLabels(container)).toEqual(["Overview", ...PROJECT_NAV_GROUPS, "Back to Projects"]);
+    expect(topLevelLabels(container)).toEqual([
+      "Overview",
+      "MCP Integration",
+      ...PROJECT_NAV_GROUPS,
+      "Back to Projects",
+    ]);
 
     // The org nav is NOT rendered alongside or instead of this — negative check.
     expect(screen.queryByTestId("sidebar-nav-org-home")).not.toBeInTheDocument();
@@ -636,6 +642,7 @@ describe("AppSidebar", () => {
       });
       expect(topLevelLabels(view.container)).toEqual([
         "Overview",
+        "MCP Integration",
         ...PROJECT_NAV_GROUPS,
         "Back to Projects",
       ]);

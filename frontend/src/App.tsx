@@ -5,6 +5,7 @@ import AcceptInvite from "./pages/workflows/AcceptInvite";
 import Dashboard from "./pages/workflows/Dashboard";
 import Login from "./pages/workflows/Login";
 import OrgHome from "./pages/workflows/OrgHome";
+import McpIntegration from "./pages/workflows/McpIntegration";
 import OrgMembers from "./pages/workflows/OrgMembers";
 import ProjectDetail from "./pages/workflows/ProjectDetail";
 import RootRedirect from "./pages/workflows/RootRedirect";
@@ -106,11 +107,34 @@ function App() {
             </ProtectedRoute>
           }
         />
+        {/*
+          ADR-0063: MCP Integration screens — one shared component
+          (`McpIntegration`, resolves org-vs-project mode itself via
+          `useResolvedOrgId()`) behind both an org route and a project
+          route, same "shared component, no `scope` prop" reasoning as that
+          component's own docstring.
+        */}
+        <Route
+          path="/orgs/:orgId/mcp"
+          element={
+            <ProtectedRoute>
+              <McpIntegration />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/projects/:projectId"
           element={
             <ProtectedRoute>
               <ProjectDetail />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/projects/:projectId/mcp"
+          element={
+            <ProtectedRoute>
+              <McpIntegration />
             </ProtectedRoute>
           }
         />

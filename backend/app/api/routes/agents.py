@@ -36,16 +36,28 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.crud_factory import clamp_pagination
 from app.api.deps import get_current_actor, get_db, require_permission
 from app.core.security import generate_api_key, hash_api_key
 from app.models.actor import AIAgent, User
 from app.models.tenancy import OrgMembership, OrgMembershipStatus
-from app.schemas.agents import CreateAgentRequest, CreateAgentResponse, RevokeAgentResponse
+from app.schemas.agents import (
+    AgentSummary,
+    CreateAgentRequest,
+    CreateAgentResponse,
+    ListAgentsResponse,
+    RevokeAgentResponse,
+)
 
 router = APIRouter()
+
+# ADR-0063: same default/max as `role_assignments.py`'s own bespoke list
+# route (DS-2/ADR-0041) — a plain literal at the call site, no shared
+# constant, per that route's own precedent.
+_DEFAULT_PAGE_SIZE = 25
 
 
 def _error(status_code: int, code: str, message: str) -> JSONResponse:
@@ -214,3 +226,95 @@ async def revoke_agent(
     await db.refresh(agent)
 
     return RevokeAgentResponse(agent_id=agent.actor_id, revoked_at=agent.revoked_at)
+
+
+def _summary(agent: AIAgent) -> AgentSummary:
+    return AgentSummary(
+        agent_id=agent.actor_id,
+        agent_name=agent.agent_name,
+        model_or_provider=agent.model_or_provider,
+        key_prefix=agent.key_prefix,
+        acting_on_behalf_of_user_id=agent.acting_on_behalf_of_user_id,
+        issued_at=agent.issued_at,
+        revoked_at=agent.revoked_at,
+        last_used_at=agent.last_used_at,
+    )
+
+
+@router.get("/orgs/{org_id}/agents", response_model=ListAgentsResponse)
+async def list_agents(
+    org_id: UUID,
+    request: Request,
+    actor: User | AIAgent = Depends(get_current_actor),
+    db: AsyncSession = Depends(get_db),
+    page: int = 1,
+    page_size: int = _DEFAULT_PAGE_SIZE,
+) -> ListAgentsResponse | JSONResponse:
+    """List every `AIAgent` credential issued "on behalf of" a member of `org_id` (ADR-0063).
+
+    Same gate order as `create_agent`/`revoke_agent` (human-only, then the
+    404-vs-403 boundary, then a permission check) — an `AIAgent` caller can
+    view other agents' credential metadata no more than it can mint or
+    revoke one.
+
+    **Permission code reuse, not a new one**: ADR-0015 seeded only
+    `ai_agent.create`/`ai_agent.update`, no `.read` code, and this route
+    deliberately reuses `ai_agent.create` rather than adding a third
+    permission code + its own RBAC seed-bundle migration (`backend/CLAUDE.md`
+    "RBAC bundle extensions always need a new data migration") for a single
+    read route — the same minimal-RBAC-now posture ADR-0015 itself already
+    took. Revisit if a future story needs to grant list-only access without
+    create rights.
+
+    **"Belongs to `org_id`" resolution**: `AIAgent` carries no direct
+    `org_id` column (same schema shape `revoke_agent`'s own docstring
+    explains) — an agent belongs to `org_id` transitively, via its
+    `acting_on_behalf_of_user_id`'s `OrgMembership` row(s) in that org (any
+    status, same boundary posture as the 404 check below). Includes revoked
+    agents (`revoked_at` populated, not filtered out) — management needs the
+    full history, not just currently-active keys.
+
+    Ordered by `issued_at` ascending, then `agent_id` — same explicit,
+    stable-order requirement offset pagination always needs
+    (`role_assignments.py`'s own list route already established this).
+    """
+    # 1. Human-only gate.
+    if not isinstance(actor, User):
+        return _error(403, "actor_forbidden", "This action is restricted to human users.")
+
+    # 2. 404-vs-403 boundary.
+    if not await _org_membership_exists(db, org_id, actor.actor_id):
+        return _error(404, "not_found", "Organization not found.")
+
+    # 3. Permission check — invoked directly, same posture as the other two routes.
+    await require_permission("ai_agent.create")(request, actor)
+
+    page, page_size = clamp_pagination(page, page_size, 100)
+
+    # An agent "belongs to" org_id via its acting_on_behalf_of_user_id's own
+    # OrgMembership — resolved as a subquery of user_ids with any-status
+    # membership in this org, not a join (an agent can be
+    # acting-on-behalf-of a user with multiple OrgMembership rows across
+    # orgs; a join would need an explicit DISTINCT to avoid duplicate rows).
+    member_user_ids = select(OrgMembership.user_id).where(OrgMembership.org_id == org_id)
+
+    total = await db.scalar(
+        select(func.count())
+        .select_from(AIAgent)
+        .where(AIAgent.acting_on_behalf_of_user_id.in_(member_user_ids))
+    )
+    result = await db.execute(
+        select(AIAgent)
+        .where(AIAgent.acting_on_behalf_of_user_id.in_(member_user_ids))
+        .order_by(AIAgent.issued_at.asc(), AIAgent.actor_id.asc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+    rows = result.scalars().all()
+
+    return ListAgentsResponse(
+        items=[_summary(row) for row in rows],
+        total=total or 0,
+        page=page,
+        page_size=page_size,
+    )
