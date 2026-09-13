@@ -507,6 +507,8 @@ Each FK: not null, indexed, `on delete cascade`. Unique constraint on `(fk_1, fk
 | name | varchar | not null, unique |
 | created_at, updated_at | timestamptz | not null |
 
+**Seed data ([ADR-0066](../adr/0066-testtype-catalog-default-seed.md), 2026-09-13):** `TestType` ships 5 permanent default rows via an idempotent Alembic data migration (`854917c76ac5`) — `Functional Testing`, `Non-functional Testing`, `Black-box Testing`, `White-box Testing`, `Confirmation Testing` (ISTQB CTFL v4.0.1-aligned, NFR-5). No schema change — pure data. `TestLevel` (above) is deliberately **not** seeded by this decision — stays empty, a separate future decision.
+
 **TestCaseTestDesignTechnique** *(junction, many-to-many, ADMIN-1)*
 | Column | Type | Constraints |
 |---|---|---|
