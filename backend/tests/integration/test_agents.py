@@ -14,6 +14,10 @@ routes are built), see the AUTH-4 scope plan §1's "AC1 is verified at the
 mechanism level" note; TC-AUTH-011 is RBAC-5's/a future business-route
 story's coverage obligation, not AUTH-4's.
 
+Also covers TC-MCP-010..013 (ADR-0063's `GET /orgs/{org_id}/agents` list
+route — same file, since it's the same `agents.py` module and shares every
+seed/cleanup helper below).
+
 Each test seeds its own `User`/`Organization`/`OrgMembership`/`AIAgent`/
 `Role`/`Permission`/`RoleAssignment` rows directly via `AsyncSessionLocal`
 (the test process shares `DATABASE_URL` with the live server under test),
@@ -77,6 +81,10 @@ def _agents_path(org_id) -> str:
 
 def _revoke_path(org_id, agent_id) -> str:
     return f"{API_PREFIX}/orgs/{org_id}/agents/{agent_id}/revoke"
+
+
+def _list_path(org_id) -> str:
+    return f"{API_PREFIX}/orgs/{org_id}/agents"
 
 
 # --- seeding / cleanup helpers ---------------------------------------------------------------
@@ -708,5 +716,169 @@ async def test_org_wide_role_assignment_grants_permission_without_project_scope(
 
         assert response.status_code == 200
         assert response.json() == {"actor_id": str(agent_id)}
+    finally:
+        await _cleanup(emails=[email], user_ids=user_ids, org_ids=org_ids, role_ids=role_ids, agent_ids=agent_ids)
+
+
+# --- TC-MCP-010..013: GET /orgs/{org_id}/agents (ADR-0063) ---------------------------------
+
+
+@pytest.mark.asyncio
+async def test_list_agents_returns_envelope_ordered_by_issued_at() -> None:  # TC-MCP-010
+    email = _unique_email("tcmcp010")
+    user_ids: list = []
+    org_ids: list = []
+    role_ids: list = []
+    agent_ids: list = []
+    try:
+        async with AsyncSessionLocal() as session:
+            admin_user = await _create_user(session, email)
+            org = await _create_org(session, "tcmcp010")
+            await _create_membership(session, admin_user, org, OrgMembershipStatus.active)
+
+            create_perm = await _get_permission_by_code(session, "ai_agent.create")
+            role = await _create_role(session, org, "org_admin_equivalent")
+            await _grant_permission(session, role, create_perm)
+            await _assign_role(session, actor_id=admin_user.actor_id, org=org, role=role)
+
+            agent_a, _ = await _create_agent(session, acting_on_behalf_of_user_id=admin_user.actor_id, agent_name="Agent A")
+            agent_b, _ = await _create_agent(session, acting_on_behalf_of_user_id=admin_user.actor_id, agent_name="Agent B")
+
+            await session.commit()
+            user_ids, org_ids, role_ids = [admin_user.actor_id], [org.id], [role.id]
+            agent_ids = [agent_a.actor_id, agent_b.actor_id]
+            org_id, admin_user_id = org.id, admin_user.actor_id
+
+        access_token = _access_token_for(admin_user_id)
+
+        async with httpx.AsyncClient(base_url=TEST_API_BASE_URL) as client:
+            response = await client.get(_list_path(org_id), headers={"Authorization": f"Bearer {access_token}"})
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["total"] == 2
+        assert body["page"] == 1
+        assert body["page_size"] == 25
+        assert [item["agent_name"] for item in body["items"]] == ["Agent A", "Agent B"]
+        # Never leaks the raw key, on any row.
+        assert all("api_key" not in item for item in body["items"])
+    finally:
+        await _cleanup(emails=[email], user_ids=user_ids, org_ids=org_ids, role_ids=role_ids, agent_ids=agent_ids)
+
+
+@pytest.mark.asyncio
+async def test_list_agents_includes_revoked_rows_not_filtered_out() -> None:  # TC-MCP-011
+    email = _unique_email("tcmcp011")
+    user_ids: list = []
+    org_ids: list = []
+    role_ids: list = []
+    agent_ids: list = []
+    try:
+        async with AsyncSessionLocal() as session:
+            admin_user = await _create_user(session, email)
+            org = await _create_org(session, "tcmcp011")
+            await _create_membership(session, admin_user, org, OrgMembershipStatus.active)
+
+            create_perm = await _get_permission_by_code(session, "ai_agent.create")
+            role = await _create_role(session, org, "org_admin_equivalent")
+            await _grant_permission(session, role, create_perm)
+            await _assign_role(session, actor_id=admin_user.actor_id, org=org, role=role)
+
+            active_agent, _ = await _create_agent(session, acting_on_behalf_of_user_id=admin_user.actor_id, agent_name="Active")
+            revoked_agent, _ = await _create_agent(
+                session,
+                acting_on_behalf_of_user_id=admin_user.actor_id,
+                agent_name="Revoked",
+                revoked_at=datetime.now(UTC),
+            )
+
+            await session.commit()
+            user_ids, org_ids, role_ids = [admin_user.actor_id], [org.id], [role.id]
+            agent_ids = [active_agent.actor_id, revoked_agent.actor_id]
+            org_id, admin_user_id = org.id, admin_user.actor_id
+
+        access_token = _access_token_for(admin_user_id)
+
+        async with httpx.AsyncClient(base_url=TEST_API_BASE_URL) as client:
+            response = await client.get(_list_path(org_id), headers={"Authorization": f"Bearer {access_token}"})
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["total"] == 2
+        by_name = {item["agent_name"]: item for item in body["items"]}
+        assert by_name["Active"]["revoked_at"] is None
+        assert by_name["Revoked"]["revoked_at"] is not None
+    finally:
+        await _cleanup(emails=[email], user_ids=user_ids, org_ids=org_ids, role_ids=role_ids, agent_ids=agent_ids)
+
+
+@pytest.mark.asyncio
+async def test_list_agents_no_membership_404_membership_without_permission_403() -> None:  # TC-MCP-012
+    email_a = _unique_email("tcmcp012a")
+    email_b = _unique_email("tcmcp012b")
+    user_ids: list = []
+    org_ids: list = []
+    try:
+        async with AsyncSessionLocal() as session:
+            outsider = await _create_user(session, email_a)
+            member_without_permission = await _create_user(session, email_b)
+            org = await _create_org(session, "tcmcp012")
+            await _create_membership(session, member_without_permission, org, OrgMembershipStatus.active)
+            await session.commit()
+            user_ids = [outsider.actor_id, member_without_permission.actor_id]
+            org_ids = [org.id]
+            org_id = org.id
+
+        outsider_token = _access_token_for(outsider.actor_id)
+        member_token = _access_token_for(member_without_permission.actor_id)
+
+        async with httpx.AsyncClient(base_url=TEST_API_BASE_URL) as client:
+            outsider_response = await client.get(_list_path(org_id), headers={"Authorization": f"Bearer {outsider_token}"})
+            member_response = await client.get(_list_path(org_id), headers={"Authorization": f"Bearer {member_token}"})
+
+        assert outsider_response.status_code == 404
+        assert outsider_response.json()["code"] == "not_found"
+
+        assert member_response.status_code == 403
+        assert member_response.json()["code"] == "permission_denied"
+    finally:
+        await _cleanup(emails=[email_a, email_b], user_ids=user_ids, org_ids=org_ids)
+
+
+@pytest.mark.asyncio
+async def test_list_agents_rejects_agent_caller_even_with_permission_granted() -> None:  # TC-MCP-013
+    email = _unique_email("tcmcp013")
+    user_ids: list = []
+    org_ids: list = []
+    role_ids: list = []
+    agent_ids: list = []
+    try:
+        async with AsyncSessionLocal() as session:
+            accountable_user = await _create_user(session, email)
+            org = await _create_org(session, "tcmcp013")
+            await _create_membership(session, accountable_user, org, OrgMembershipStatus.active)
+            agent, raw_key = await _create_agent(session, acting_on_behalf_of_user_id=accountable_user.actor_id)
+
+            # Same "incorrectly grant the permission anyway" shape as
+            # TC-AUTH-031 — the human-only gate must reject regardless.
+            create_perm = await _get_permission_by_code(session, "ai_agent.create")
+            role = await _create_role(session, org, "mistakenly_agent_eligible")
+            await _grant_permission(session, role, create_perm)
+            await _assign_role(session, actor_id=agent.actor_id, org=org, role=role)
+
+            await session.commit()
+            user_ids, org_ids, role_ids, agent_ids = (
+                [accountable_user.actor_id],
+                [org.id],
+                [role.id],
+                [agent.actor_id],
+            )
+            org_id = org.id
+
+        async with httpx.AsyncClient(base_url=TEST_API_BASE_URL) as client:
+            response = await client.get(_list_path(org_id), headers={"Authorization": f"Bearer {raw_key}"})
+
+        assert response.status_code == 403
+        assert response.json()["code"] == "actor_forbidden"
     finally:
         await _cleanup(emails=[email], user_ids=user_ids, org_ids=org_ids, role_ids=role_ids, agent_ids=agent_ids)

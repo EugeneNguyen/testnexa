@@ -304,6 +304,16 @@ function AppSidebar({ mobileOpen = false }: AppSidebarProps) {
           testId: "sidebar-nav-org-members",
           icon: "fa-solid fa-users",
         },
+        {
+          // ADR-0063: MCP Integration — API key issuance/management lives
+          // here (org-scoped, ADR-0015), plus client-connection docs.
+          key: "mcp-integration",
+          label: "MCP Integration",
+          to: `/orgs/${orgId}/mcp`,
+          end: false,
+          testId: "sidebar-nav-mcp-integration",
+          icon: "fa-solid fa-plug",
+        },
       ]
     : mode === "project" && projectId && orgId
       ? [
@@ -325,6 +335,17 @@ function AppSidebar({ mobileOpen = false }: AppSidebarProps) {
             end: true,
             testId: "sidebar-nav-project-overview",
             icon: "fa-solid fa-circle-info",
+          },
+          {
+            // ADR-0063: project-mode counterpart — usage docs only + a link
+            // back to the org page for key management (agents are
+            // org-scoped, ADR-0015), same component either way.
+            key: "mcp-integration",
+            label: "MCP Integration",
+            to: `/projects/${projectId}/mcp`,
+            end: false,
+            testId: "sidebar-nav-mcp-integration",
+            icon: "fa-solid fa-plug",
           },
         ]
       : [];
