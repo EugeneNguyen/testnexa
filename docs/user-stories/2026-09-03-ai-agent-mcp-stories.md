@@ -57,3 +57,18 @@
 - Given one or more previously-issued credentials, when the screen loads, then it lists them (name, model/provider, key prefix, issued/last-used timestamps, active/revoked status) via a new `GET /orgs/{org_id}/agents` route, including already-revoked ones — management needs the history, not just the active set.
 - Given an active credential's row, when the member clicks Revoke, then `POST /orgs/{org_id}/agents/{agent_id}/revoke` (ADR-0015, already-shipped) is called and the row updates to Revoked without a page reload.
 - Given a project-scoped route (`/projects/:projectId/mcp`), when a member visits it, then they see the same connection docs plus a link back to the org-scoped screen for key management — no separate per-project credential exists (agents are org-scoped only).
+
+---
+
+## Story MCP-5: Agent performs full CRUD on every entity via MCP
+
+**As** an AI coding agent operating on behalf of an agent-primary team,
+**I want** list/get/create/update/delete access to every entity this product manages via MCP — not just the `TestCase`/`TestExecution`/`Requirement` slice MCP-1..3 opened — restricted to exactly the methods a human REST caller already has for that entity,
+**so that** an agent can drive the full test-management workflow (plan, author, execute, triage, administer) without a human relaying every other entity's changes through the web UI on its behalf.
+
+**Acceptance criteria:**
+- Given an `AIAgent` actor with the relevant permission code, when it calls a generic entity tool (`list_entities`/`get_entity`/`create_entity`/`update_entity`/`delete_entity`) against any entity the generic CRUD factory serves (ADR-0022), then it performs the same validation/permission/tenant-boundary check the REST route for that entity performs — no separate, weaker code path for MCP (same AC1 posture MCP-1 established, now generalized to every entity instead of just `TestCase`).
+- Given an entity whose `CrudEntityConfig.methods` excludes a given operation on REST (e.g. `TestCase` has no factory `create`, the 4 link tables have no `create`/`update`/`delete` at all), when the matching MCP tool is called for that operation, then it is rejected with the same error shape a REST client hitting the unregistered method would see — the MCP surface never grants an entity a capability its REST surface doesn't have.
+- Given an entity whose create path is bespoke rather than factory-registered (e.g. `TestCase`'s two create routes, `TestCondition`, `TestExecution`, `Defect`, `Project`, `RoleAssignment`, `OrgMembership`), when the matching MCP create tool is called, then it dispatches to that same bespoke route handler, preserving every business-rule rejection (PLAN-3's scope check, `TestSuite`/`TestPlan` cross-project rejection, etc.) the REST path enforces.
+- Given an `AIAgent` actor calling any generic-factory entity's tool, when the underlying tenant-boundary check runs, then it resolves the calling agent's accountable human via `acting_on_behalf_of_user_id` (the same `_actor_membership_exists` mechanism NFR-43 already requires of the bespoke `TestCase` routes) rather than the actor's own `actor_id` — closing a gap where the generic factory's own gate never adopted that mechanism, so no `AIAgent` could reach any of the 27 factory-served entities via MCP before this story, regardless of its granted permissions.
+- Given a future new bespoke mutating route or a `CrudEntityConfig.methods` change on `main`, the MCP tool surface reflects it without a parallel, hand-maintained MCP-side edit — both surfaces read from one registry, not two independently-kept lists.

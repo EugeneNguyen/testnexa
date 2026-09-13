@@ -331,11 +331,23 @@ Thin client over the **same service layer** as the REST routes above — no sepa
 |---|---|---|
 | `create_test_case` | `POST /requirements/{id}/test-cases` or `/test-conditions/{id}/test-cases`, `test_case.create` | FR-MCP-1 |
 | `list_test_cases` | `GET /requirements/{id}/test-cases` (filtered list), `test_case.read` | FR-MCP-1 |
-| `update_test_case` | `PATCH /test-cases/{id}`, `test_case.update` | FR-MCP-2 |
-| `create_test_execution` | `POST /test-cycles/{id}/executions`, `test_execution.create` | FR-MCP-3 — route built [ADR-0033](../adr/0033-plan3-test-cycle-creation-and-execution-scope-check.md); the same PLAN-3 scope-check applies to MCP-originated calls, no separate/weaker validation path (MCP-1) |
-| `read_requirement` | `GET /requirements/{id}`, `requirement.read` | FR-MCP-3 — read-only, no requirement-write/approval/membership tools in this scaffold, matching 26's MVP-scoped MCP surface |
 
-Every MCP-originated write records `created_by_actor_id`/`executed_by_actor_id` pointing at the calling `AIAgent`, with `AIAgent.acting_on_behalf_of_user_id` carried through for accountability (MCP-1). Tool error responses surface the API Document §1 `{code, message, field_errors}` envelope verbatim (see ADR-0033's decision 4) — an MCP client's pattern-match on `code`/`field_errors` works identically to the frontend's RHF/Zod layer against the REST surface.
+**MCP-5 ([ADR-0065](../adr/0065-mcp-5-full-crud-all-entities.md)) generalizes the surface above** — rather than adding `update_test_case`/`create_test_execution`/`read_requirement` as three more hand-wired tools (ADR-0033's originally-planned MCP-2/MCP-3 shape), the underlying REST calls those would have wrapped are reachable via 6 reflective tools instead, dispatched from one registry (`app/mcp/tool_registry.py`) shared with the REST surface's own `ALL_ENTITY_CONFIGS` (ADR-0055):
+
+| Tool | Args | Dispatches to | Maps to |
+|---|---|---|---|
+| `list_entities` | `resource`, scope field(s), `filter`/`search`/`sort`/`page`/`page_size` | The entity's own generic `list` route (§3) if registered, `422`/`404` (registry-driven, not tool-specific) otherwise | FR-MCP-5 |
+| `get_entity` | `resource`, `id` | The entity's own generic `get` route (§3) | FR-MCP-5 |
+| `create_entity` | `resource`, `fields` (a dict matching the entity's own `create_schema`) | The entity's registered generic factory `create` (§3) **or**, for the ~13 entities whose create is bespoke (§4 — `TestCase` ×2, `TestCondition`, `TestExecution`, `Defect`, `TestLog`/comment, `Project`, `Organization`, `OrgMembership`/invite, `RoleAssignment`, `TestSuiteTestCase`/`TestPlanTestSuite` link-add, `Release`), the named bespoke route handler — same registry row picks the branch, same business-rule rejections (PLAN-3 scope check, cross-project rejection, etc.) apply either way | FR-MCP-5 |
+| `update_entity` | `resource`, `id`, `fields` | The entity's own generic `update` route (§3) | FR-MCP-5 |
+| `delete_entity` | `resource`, `id` | The entity's own generic `delete` route (§3) | FR-MCP-5 |
+| `describe_entity` | `resource` | `GET /entities/{resource}/schema` (§3.1) — same `derive_entity_schema` output verbatim, no second description | FR-MCP-5 |
+
+A tool call for a method the target `resource`'s registry row doesn't include (e.g. `create_entity` against `test_case`, which has no generic factory `create` — only its two bespoke create routes above) returns the same error shape a REST client hitting the unregistered method would get — the registry is the single gate for "which methods exist for this entity," read identically by both surfaces, so a future new bespoke route or `CrudEntityConfig.methods` change needs one registry-row edit, not a second, independently-kept MCP-side tool definition.
+
+**A pre-existing defect in the generic factory's own gates is fixed as part of MCP-5, not a REST-visible change.** `crud_factory.py`'s `_fetch_and_gate`/`_resolve_scope_for_write` — the shared gates every one of the 27 generic-factory entities' `list`/`get`/`create`/`update`/`delete` routes above funnel through — previously called the older `_org_membership_exists(org_id, actor.actor_id)` rather than the `_actor_membership_exists` helper the module already defined (added for EXEC-2's bespoke routes) but never used on its own generic routes. Since `OrgMembership.user_id` FKs `user.actor_id`, this meant every generic-factory route 404'd unconditionally for any `AIAgent` caller regardless of granted permissions — invisible until MCP-5's own generic tools tried to reach the generic factory for the first time (MCP-1..4's tools all dispatch onto the already-correct bespoke routes in §4). Fixed to use `_actor_membership_exists` uniformly; no change in behavior for a `User` actor, since a human's `actor_id` already IS the value that helper resolves to.
+
+Every MCP-originated write records `created_by_actor_id`/`executed_by_actor_id`/the entity's own equivalent audit column pointing at the calling `AIAgent`, with `AIAgent.acting_on_behalf_of_user_id` carried through for accountability (MCP-1, generalized by MCP-5 to every entity with such a column). Tool error responses surface the API Document §1 `{code, message, field_errors}` envelope verbatim (see ADR-0033's decision 4) — an MCP client's pattern-match on `code`/`field_errors` works identically to the frontend's RHF/Zod layer against the REST surface.
 
 ## 7. Cross-cutting error examples
 
