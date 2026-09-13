@@ -1,4 +1,4 @@
-# ADR-0063: DASH-3 — `/dashboard` becomes an org list + chooser, single-org auto-redirect, `/orgs/pick` retired
+# ADR-0064: DASH-3 — `/dashboard` becomes an org list + chooser, single-org auto-redirect, `/orgs/pick` retired
 
 **Date:** 2026-09-13
 **Status:** Accepted

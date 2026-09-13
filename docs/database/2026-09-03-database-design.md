@@ -44,7 +44,7 @@ This document is the implementation-level schema, refined from the [07 ERD](../p
 
 **Tabler CDN install, Phase 1** ([ADR-0053](../adr/0053-tabler-install-phase-1-cdn.md), FR-DS-3) — reviewed, no schema impact. A static frontend asset addition only (`frontend/index.html` gains two CDN tags) — no table, column, index, or migration of any kind.
 
-**DASH-3** ([ADR-0063](../adr/0063-dash-3-dashboard-org-list-and-chooser.md), FR-DASH-3/FR-DASH-4) — reviewed, no schema impact. `Dashboard` reads existing `OrgMembership`/`Organization` rows (§3.1) via the already-shipped `GET /auth/me/orgs` (SHELL-6/ADR-0036) — no new table, column, index, or query shape. Retiring `/orgs/pick`/`OrgPicker.tsx` is a frontend route/component removal only. Noted here explicitly so the gap isn't mistaken for an oversight.
+**DASH-3** ([ADR-0064](../adr/0064-dash-3-dashboard-org-list-and-chooser.md), FR-DASH-3/FR-DASH-4) — reviewed, no schema impact. `Dashboard` reads existing `OrgMembership`/`Organization` rows (§3.1) via the already-shipped `GET /auth/me/orgs` (SHELL-6/ADR-0036) — no new table, column, index, or query shape. Retiring `/orgs/pick`/`OrgPicker.tsx` is a frontend route/component removal only. Noted here explicitly so the gap isn't mistaken for an oversight.
 
 ---
 

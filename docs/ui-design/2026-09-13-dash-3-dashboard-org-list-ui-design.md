@@ -1,9 +1,9 @@
 # UI Design Document — DASH-3: `Dashboard` becomes an org list + chooser
 
 **Date:** 2026-09-13
-**Related:** [ADR-0063](../adr/0063-dash-3-dashboard-org-list-and-chooser.md), [DASH-1 UI Design Document](2026-09-07-dash-1-root-redirect-dashboard-ui-design.md) (the placeholder this document replaces), [SHELL-6 UI Design Document](2026-09-07-shell-6-org-switcher-ui-design.md) (`GET /auth/me/orgs`, reused unchanged)
+**Related:** [ADR-0064](../adr/0064-dash-3-dashboard-org-list-and-chooser.md), [DASH-1 UI Design Document](2026-09-07-dash-1-root-redirect-dashboard-ui-design.md) (the placeholder this document replaces), [SHELL-6 UI Design Document](2026-09-07-shell-6-org-switcher-ui-design.md) (`GET /auth/me/orgs`, reused unchanged)
 
-**This document is about `/dashboard` (`Dashboard`) only — not `OrgHome` (`/orgs/:orgId`), which is a separate screen also labeled "Dashboard" in its own UI (ADR-0039). That naming overlap is unaffected by this pass**, except that `/dashboard`'s own 2+-org heading text below is deliberately "Select an organization," not the literal word "Dashboard" — an incidental softening, not a fix (see ADR-0063 Consequences).
+**This document is about `/dashboard` (`Dashboard`) only — not `OrgHome` (`/orgs/:orgId`), which is a separate screen also labeled "Dashboard" in its own UI (ADR-0039). That naming overlap is unaffected by this pass**, except that `/dashboard`'s own 2+-org heading text below is deliberately "Select an organization," not the literal word "Dashboard" — an incidental softening, not a fix (see ADR-0064 Consequences).
 
 ## 1. Scope
 
@@ -75,7 +75,7 @@ No render at all — the fetch's `then` immediately calls `navigate("/orgs/{id}"
 - Org cards are real `<button>`s (or an anchor-styled-as-card with a real `href`), not `<div onClick>` — keyboard/screen-reader reachable, same posture root `CLAUDE.md`'s "hand-written markup owns its own accessible semantics" rule already requires everywhere else.
 - Loading spinner keeps `role="status"`.
 
-## 6. Open questions resolved (see ADR-0063 for the full reasoning)
+## 6. Open questions resolved (see ADR-0064 for the full reasoning)
 
 1. Single-org auto-redirect vs. always-show-list: **auto-redirect**, confirmed.
 2. Consolidate `/orgs/pick` into `/dashboard`: **yes**, confirmed.
