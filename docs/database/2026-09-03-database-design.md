@@ -500,6 +500,8 @@ Each FK: not null, indexed, `on delete cascade`. Unique constraint on `(fk_1, fk
 | name | varchar | not null, unique |
 | created_at, updated_at | timestamptz | not null |
 
+**Seeded (ADMIN-5, [ADR-0066](../adr/0066-admin-5-seed-test-level-catalog.md)):** 5 rows, ISTQB CTFL v4.0.1 test levels — Component Testing, Component Integration Testing, System Testing, System Integration Testing, Acceptance Testing. Via a new Alembic data migration, same `sa.table()`-proxy shape as RBAC-4's own seed migrations (§ above, "Seeded catalog (RBAC-4, ~100 rows)"), existence-checked by `name` against this table's own unique constraint — idempotent, `downgrade()` deletes exactly these 5 rows. `TestType` (immediately below) remains unseeded — no canonical vocabulary decided for it yet, deliberately out of scope this pass.
+
 **TestType**
 | Column | Type | Constraints |
 |---|---|---|

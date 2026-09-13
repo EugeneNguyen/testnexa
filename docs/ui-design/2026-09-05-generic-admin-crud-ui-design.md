@@ -110,3 +110,5 @@ Shape-A entities (global/org-scoped) get a new "Admin" `CNavGroup` in `AppSideba
 ## 8. Non-goals
 
 No bulk-edit, no CSV import, no per-column sort UI beyond what `filter_fields` already exposes as exact-match filters, no drag-reorder — none of FR-ADMIN-2's ACs ask for any of these, and adding them would be scope creep into what's deliberately a plain, generic list/form surface.
+
+**ADMIN-5 ([ADR-0066](../adr/0066-admin-5-seed-test-level-catalog.md), 2026-09-13) — reviewed, no UI impact.** This screen and every consumer of `TestLevel` (the `TestCase` create-form dropdown, `TestLevel`'s own generic admin list/form here) are unchanged — the seed migration only makes the data non-empty.
