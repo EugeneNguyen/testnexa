@@ -1,7 +1,7 @@
 # ADR-0033: First-party MCP server — streamable-HTTP, direct-call tool dispatch, per-tool bearer resolution
 
 **Date:** 2026-09-06
-**Status:** Accepted (MCP-1 ships the direct-link path only — see "Drift" note below; rigor-path twin + MCP-2/MCP-3 backlog)
+**Status:** Accepted (MCP-1 ships the direct-link path only — see "Drift" note below; rigor-path twin + MCP-2/MCP-3 backlog — **superseded by [ADR-0065](0065-mcp-5-full-crud-all-entities.md), 2026-09-14**, which subsumes MCP-2/MCP-3's own hand-wired-tool backlog into a registry-driven generic tool surface instead — see that ADR's Drift note)
 
 **Drift (post-MCP-1 ship, 2026-09-06):** The §"Tool → REST route mapping" line says `create_test_case` covers both `POST /requirements/{id}/test-cases` and `POST /test-conditions/{id}/test-cases`. MCP-1 only shipped the direct-link branch (REQ-2 path); the rigor-path branch (REQ-3 path, `create_test_case_for_test_condition`) is queued as WBS §5.2a backlog. The ADR's reasoning stands — both paths reuse the same `test_case.create` permission + `created_by_actor_id` stamping; the dispatch is a one-parameter-shape change in the tool — but the shipped surface is half what the ADR documents. Not silently edited (per root `CLAUDE.md`'s "ADR-vs-implementation drift must surface in the completion report" rule); backlog row carries the gap.
 **Deciders:** xuanbinh91@gmail.com (CTO)
