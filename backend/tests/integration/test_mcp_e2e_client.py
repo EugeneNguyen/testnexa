@@ -25,6 +25,7 @@ import pytest
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 from app.db.session import AsyncSessionLocal
+from app.mcp.tools.entity_tools import generated_tool_names
 from app.models.tenancy import OrgMembershipStatus
 
 from .test_mcp_test_cases import (
@@ -47,7 +48,15 @@ from .test_mcp_test_cases import (
 
 TEST_API_BASE_URL = os.environ.get("TEST_API_BASE_URL", "http://localhost:8000")
 MCP_BASE_URL = f"{TEST_API_BASE_URL}/mcp/"
-LAN_MCP_BASE_URL = "http://192.168.25.203:54594/mcp/"
+# Optional cross-machine smoke target. Previously a hardcoded
+# `http://192.168.25.203:54594/mcp/` — one session's own LAN IP and a port
+# that never matched main's nginx (`54593`), so the test failed against every
+# stack, permanently, and `backend/CLAUDE.md` flagged it as genuinely broken
+# rather than a topology artifact, naming this exact fix. Made env-driven here
+# (the change touches this file's own tool-surface assertions anyway, and a
+# permanently-red test masks real regressions in the surface under test).
+# Unset -> the test skips; set `E2E_LAN_MCP_BASE_URL` to exercise the LAN path.
+LAN_MCP_BASE_URL = os.environ.get("E2E_LAN_MCP_BASE_URL")
 
 
 @dataclass(slots=True)
@@ -153,42 +162,48 @@ async def test_mcp_sdk_client_handshake_and_tools_list() -> None:
         await session.initialize()
         tools = await session.list_tools()
 
-    # MCP-1's own 2 tools stay advertised unchanged; MCP-5 (ADR-0065)
-    # adds 6 more alongside them, corrected in place same as
-    # `test_mcp_test_cases.py`'s own equivalent assertion.
-    assert {"create_test_case", "list_test_cases"} <= {tool.name for tool in tools.tools}
-    assert len(tools.tools) == 8
-    assert tools.tools[0].inputSchema == {
-        "properties": {
-            "requirement_id": {"format": "uuid", "title": "Requirement Id", "type": "string"},
-            "title": {"title": "Title", "type": "string"},
-            "test_level_id": {"format": "uuid", "title": "Test Level Id", "type": "string"},
-            "test_type_id": {"format": "uuid", "title": "Test Type Id", "type": "string"},
-            "preconditions": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None, "title": "Preconditions"},
-            "expected_result": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None, "title": "Expected Result"},
-            "status": {
-                "default": "draft",
-                "enum": ["draft", "reviewed", "approved", "deprecated"],
-                "title": "Status",
-                "type": "string",
-            },
-        },
-        "required": ["requirement_id", "title", "test_level_id", "test_type_id"],
-        "title": "create_test_caseArguments",
+    # ADR-0067: the surface is now one tool per entity per supported action
+    # (`tn_<resource>_<action>`), generated from `TOOL_REGISTRY` — ADR-0033's
+    # `create_test_case`/`list_test_cases` and ADR-0065's 6 reflective
+    # `*_entity`/`*_entities` tools are all gone, folded into this scheme.
+    #
+    # Asserted here only for what a *real SDK client over the wire* can see —
+    # that the advertised set exactly equals what the server generates, and
+    # that representative names/schemas arrive intact. The set's correctness
+    # against `ALL_ENTITY_CONFIGS`/`full_methods` is proved separately, in
+    # `tests/unit/test_mcp_tool_naming.py`; duplicating that diff here would
+    # make this test fail for a reason that has nothing to do with transport.
+    by_name = {tool.name: tool for tool in tools.tools}
+    assert set(by_name) == set(generated_tool_names())
+    assert {"create_test_case", "list_test_cases", "create_entity", "list_entities"}.isdisjoint(by_name)
+    assert {"tn_test_case_create", "tn_test_case_list", "tn_requirement_list", "tn_project_get"} <= set(by_name)
+
+    assert by_name["tn_test_case_create"].inputSchema == {
+        "properties": {"fields": {"additionalProperties": True, "title": "Fields", "type": "object"}},
+        "required": ["fields"],
+        "title": "tn_test_case_createArguments",
         "type": "object",
     }
-    assert tools.tools[1].inputSchema == {
-        "properties": {
-            "requirement_id": {"format": "uuid", "title": "Requirement Id", "type": "string"},
-            "page": {"default": 1, "title": "Page", "type": "integer"},
-            "page_size": {"default": 25, "title": "Page Size", "type": "integer"},
-        },
-        "required": ["requirement_id"],
-        "title": "list_test_casesArguments",
+    assert by_name["tn_requirement_get"].inputSchema == {
+        "properties": {"id": {"format": "uuid", "title": "Id", "type": "string"}},
+        "required": ["id"],
+        "title": "tn_requirement_getArguments",
         "type": "object",
     }
-    assert tools.tools[0].outputSchema == {"additionalProperties": True, "title": "create_test_caseDictOutput", "type": "object"}
-    assert tools.tools[1].outputSchema == {"additionalProperties": True, "title": "list_test_casesDictOutput", "type": "object"}
+    assert by_name["tn_requirement_describe"].inputSchema == {
+        "properties": {},
+        "title": "tn_requirement_describeArguments",
+        "type": "object",
+    }
+    assert by_name["tn_test_case_create"].outputSchema == {
+        "additionalProperties": True,
+        "title": "tn_test_case_createDictOutput",
+        "type": "object",
+    }
+    # Every tool arrives with its generated description intact (the only
+    # signal a client model has for picking among ~146 tools).
+    assert "requirement_id" in by_name["tn_test_case_create"].description
+    assert all(tool.description for tool in tools.tools)
 
 
 @pytest.mark.asyncio
@@ -198,14 +213,19 @@ async def test_mcp_sdk_client_create_test_case_stamps_created_by_actor_id() -> N
         async with _open_sdk_session(MCP_BASE_URL, headers=_bearer_headers(scope.raw_key)) as session:
             await session.initialize()
             result = await session.call_tool(
-                "create_test_case",
+                "tn_test_case_create",
                 {
-                    "requirement_id": str(scope.requirement_id),
-                    "title": "SDK create_test_case round-trip",
-                    "test_level_id": str(scope.test_level_id),
-                    "test_type_id": str(scope.test_type_id),
-                    "preconditions": "Preconditions from SDK.",
-                    "expected_result": "Created row is stamped by the AIAgent.",
+                    "fields": {
+                        # ADR-0067: the bespoke create's own parent id rides in
+                        # `fields` alongside the payload, not as a top-level
+                        # tool argument the way MCP-1's hand-wired tool took it.
+                        "requirement_id": str(scope.requirement_id),
+                        "title": "SDK tn_test_case_create round-trip",
+                        "test_level_id": str(scope.test_level_id),
+                        "test_type_id": str(scope.test_type_id),
+                        "preconditions": "Preconditions from SDK.",
+                        "expected_result": "Created row is stamped by the AIAgent.",
+                    }
                 },
             )
 
@@ -232,12 +252,14 @@ async def test_mcp_sdk_client_create_test_case_without_authorization_returns_inv
     async with _open_sdk_session(MCP_BASE_URL) as session:
         await session.initialize()
         result = await session.call_tool(
-            "create_test_case",
+            "tn_test_case_create",
             {
-                "requirement_id": str(bogus_id),
-                "title": "Should never authorize",
-                "test_level_id": str(bogus_id),
-                "test_type_id": str(bogus_id),
+                "fields": {
+                    "requirement_id": str(bogus_id),
+                    "title": "Should never authorize",
+                    "test_level_id": str(bogus_id),
+                    "test_type_id": str(bogus_id),
+                }
             },
         )
 
@@ -255,12 +277,14 @@ async def test_mcp_sdk_client_create_test_case_with_wrong_agent_key_returns_inva
     async with _open_sdk_session(MCP_BASE_URL, headers=_bearer_headers(fake_key)) as session:
         await session.initialize()
         result = await session.call_tool(
-            "create_test_case",
+            "tn_test_case_create",
             {
-                "requirement_id": str(bogus_id),
-                "title": "Should never authorize",
-                "test_level_id": str(bogus_id),
-                "test_type_id": str(bogus_id),
+                "fields": {
+                    "requirement_id": str(bogus_id),
+                    "title": "Should never authorize",
+                    "test_level_id": str(bogus_id),
+                    "test_type_id": str(bogus_id),
+                }
             },
         )
 
@@ -279,7 +303,7 @@ async def test_mcp_sdk_client_list_test_cases_returns_seeded_case() -> None:
             create_response = await client.post(
                 _requirement_path(scope.requirement_id),
                 json={
-                    "title": "Seeded via REST for SDK list_test_cases",
+                    "title": "Seeded via REST for SDK tn_test_case_list",
                     "test_level_id": str(scope.test_level_id),
                     "test_type_id": str(scope.test_type_id),
                 },
@@ -291,8 +315,11 @@ async def test_mcp_sdk_client_list_test_cases_returns_seeded_case() -> None:
         async with _open_sdk_session(MCP_BASE_URL, headers=_bearer_headers(scope.raw_key)) as session:
             await session.initialize()
             result = await session.call_tool(
-                "list_test_cases",
-                {"requirement_id": str(scope.requirement_id)},
+                "tn_test_case_list",
+                # ADR-0067: the nested list's parent id rides in `scope`, the
+                # same dict every other `tn_*_list` tool uses for its own scope
+                # field — MCP-1's tool took it as a top-level `requirement_id`.
+                {"scope": {"requirement_id": str(scope.requirement_id)}},
             )
 
         assert result.isError is False
@@ -315,9 +342,10 @@ async def test_mcp_sdk_client_list_test_cases_returns_seeded_case() -> None:
 
 
 @pytest.mark.asyncio
-async def test_mcp5_generic_tools_full_crud_cycle_via_real_sdk_client() -> None:
-    """MCP-5's own end-to-end proof (ADR-0065) — the full `create_entity` ->
-    `get_entity` -> `update_entity` -> `list_entities` -> `delete_entity`
+async def test_per_entity_tools_full_crud_cycle_via_real_sdk_client() -> None:
+    """MCP-5's own end-to-end proof (ADR-0065), re-addressed for ADR-0067's
+    per-entity names — the full `tn_requirement_create` -> `tn_requirement_get`
+    -> `tn_requirement_update` -> `tn_requirement_list` -> `tn_requirement_delete`
     cycle against `requirements`, driven by the real MCP SDK `ClientSession`
     (not raw JSON-RPC over `httpx`, same "proves real client interop"
     distinction this file's own module docstring already draws for MCP-1)."""
@@ -327,31 +355,31 @@ async def test_mcp5_generic_tools_full_crud_cycle_via_real_sdk_client() -> None:
             await session.initialize()
 
             create_result = await session.call_tool(
-                "create_entity",
-                {"resource": "requirements", "fields": {"project_id": str(scope.project_ids[0]), "title": "MCP-5 E2E Requirement", "description": "created via real SDK client"}},
+                "tn_requirement_create",
+                {"fields": {"project_id": str(scope.project_ids[0]), "title": "MCP-5 E2E Requirement", "description": "created via real SDK client"}},
             )
             assert create_result.isError is False, create_result
             created_id = create_result.structuredContent["id"]
 
-            get_result = await session.call_tool("get_entity", {"resource": "requirements", "id": created_id})
+            get_result = await session.call_tool("tn_requirement_get", {"id": created_id})
             assert get_result.isError is False, get_result
             assert get_result.structuredContent["title"] == "MCP-5 E2E Requirement"
 
             update_result = await session.call_tool(
-                "update_entity", {"resource": "requirements", "id": created_id, "fields": {"title": "MCP-5 E2E Requirement (updated)"}}
+                "tn_requirement_update", {"id": created_id, "fields": {"title": "MCP-5 E2E Requirement (updated)"}}
             )
             assert update_result.isError is False, update_result
             assert update_result.structuredContent["title"] == "MCP-5 E2E Requirement (updated)"
 
-            list_result = await session.call_tool("list_entities", {"resource": "requirements", "scope": {"project_id": str(scope.project_ids[0])}})
+            list_result = await session.call_tool("tn_requirement_list", {"scope": {"project_id": str(scope.project_ids[0])}})
             assert list_result.isError is False, list_result
             assert list_result.structuredContent["total"] == 2  # the fixture's own seeded requirement + this one
             assert any(item["id"] == created_id for item in list_result.structuredContent["items"])
 
-            delete_result = await session.call_tool("delete_entity", {"resource": "requirements", "id": created_id})
+            delete_result = await session.call_tool("tn_requirement_delete", {"id": created_id})
             assert delete_result.isError is False, delete_result
 
-            confirm_result = await session.call_tool("get_entity", {"resource": "requirements", "id": created_id})
+            confirm_result = await session.call_tool("tn_requirement_get", {"id": created_id})
             assert confirm_result.isError is True
             assert _tool_error_payload(confirm_result)["code"] == "not_found"
     finally:
@@ -370,11 +398,13 @@ async def test_mcp5_generic_tools_full_crud_cycle_via_real_sdk_client() -> None:
 
 @pytest.mark.asyncio
 async def test_mcp_sdk_client_handshake_and_tools_list_over_lan_ip() -> None:
+    if not LAN_MCP_BASE_URL:
+        pytest.skip("E2E_LAN_MCP_BASE_URL not set — LAN-IP transport smoke is opt-in (see LAN_MCP_BASE_URL above).")
     async with _open_sdk_session(LAN_MCP_BASE_URL) as session:
         await session.initialize()
         tools = await session.list_tools()
 
-    # MCP-1's own 2 tools stay advertised unchanged; MCP-5 (ADR-0065)
-    # adds 6 more alongside them, corrected in place same as
-    # `test_mcp_test_cases.py`'s own equivalent assertion.
-    assert {"create_test_case", "list_test_cases"} <= {tool.name for tool in tools.tools}
+    # ADR-0067 tool surface — see the localhost twin above. This test's own
+    # point is the LAN-IP transport path, not the tool set, so it asserts only
+    # that the handshake returns the same generated surface.
+    assert {tool.name for tool in tools.tools} == set(generated_tool_names())

@@ -1183,7 +1183,7 @@ def get_crud_handlers(config: CrudEntityConfig) -> dict[str, Any]:
     `APIRoute.endpoint` object FastAPI would otherwise dispatch to. This is
     the *same* handler function the real REST route calls — not a second,
     reimplemented copy — so `app/mcp/tool_registry.py`'s generic tools
-    reuse it the same "direct-call dispatch" way `app/mcp/tools/test_cases.py`
+    reuse it the same "direct-call dispatch" way `app/mcp/tools/entity_tools.py`
     (MCP-1) already established for the bespoke routes: pass `actor=`/`db=`
     explicitly, bypassing the `Depends(get_current_actor)`/`Depends(get_db)`
     defaults without invoking their dependency bodies.
