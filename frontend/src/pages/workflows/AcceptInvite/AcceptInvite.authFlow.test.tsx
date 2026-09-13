@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import AcceptInvite from "./AcceptInvite";
+import Dashboard from "../Dashboard";
 import { AuthProvider } from "../../../auth/AuthContext";
 import { clearAccessToken, getAccessToken } from "../../../lib/auth/tokenStore";
 
@@ -12,6 +13,10 @@ import { clearAccessToken, getAccessToken } from "../../../lib/auth/tokenStore";
  * `Signup.authFlow.test.tsx`'s own convention exactly (see that file's
  * docstring for why this needs to be its own file, not a second `describe`
  * block in `AcceptInvite.test.tsx` — Vitest's `vi.mock` hoisting).
+ *
+ * Since DASH-3 (ADR-0063), `AcceptInvite.tsx`'s effect always targets
+ * `/dashboard` first, not the org directly — a real `Dashboard` is mounted
+ * here too, and the fetch stub also answers its `GET /auth/me/orgs` call.
  */
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -28,15 +33,18 @@ describe("AcceptInvite page — real AuthProvider (success path updates auth sta
 
   it("stores the access token, resolves org_context/orgs, and redirects into the app authenticated", async () => {
     const org = { id: "22222222-2222-2222-2222-222222222222", name: "Acme Corp", slug: "acme-corp" };
-    const fetchMock = vi.fn((_url: string | URL | Request, _init?: RequestInit) =>
-      Promise.resolve(
+    const fetchMock = vi.fn((url: string | URL | Request, _init?: RequestInit) => {
+      if (String(url).includes("/auth/me/orgs")) {
+        return Promise.resolve(jsonResponse({ orgs: [org] }));
+      }
+      return Promise.resolve(
         jsonResponse({
           access_token: "invite-issued-access-token",
           org_context: "auto",
           orgs: [org],
         }),
-      ),
-    );
+      );
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     render(
@@ -44,6 +52,7 @@ describe("AcceptInvite page — real AuthProvider (success path updates auth sta
         <AuthProvider>
           <Routes>
             <Route path="/invites/:token/accept" element={<AcceptInvite />} />
+            <Route path="/dashboard" element={<Dashboard />} />
             <Route path={`/orgs/${org.id}`} element={<div>Landed on the org, authenticated</div>} />
           </Routes>
         </AuthProvider>

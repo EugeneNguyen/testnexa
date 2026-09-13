@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import Signup from "./Signup";
+import Dashboard from "../Dashboard";
 import { AuthProvider } from "../../../auth/AuthContext";
 import { clearAccessToken, getAccessToken } from "../../../lib/auth/tokenStore";
 
@@ -14,6 +15,12 @@ import { clearAccessToken, getAccessToken } from "../../../lib/auth/tokenStore";
  * (watching those exact fields) navigates correctly — a mocked `useAuth`
  * (`Signup.test.tsx`, this directory) can't prove that wiring end to end
  * since it never re-renders with updated state after `signup()` resolves.
+ *
+ * Since DASH-3 (ADR-0063), `Signup.tsx`'s effect always targets `/dashboard`
+ * first, not the org directly — so a real `Dashboard` is mounted here too,
+ * and the fetch stub also answers its `GET /auth/me/orgs` call (single org
+ * -> `Dashboard` auto-`navigate()`s onward to `/orgs/{id}`, proving the
+ * whole chain end to end, not just the first hop).
  *
  * Deliberately its own file, not a second `describe` block in
  * `Signup.test.tsx`: that file's `vi.mock("../../../auth/AuthContext", * ...)` is hoisted to the top of its module by Vitest (same hoisting
@@ -45,8 +52,11 @@ describe("Signup page — real AuthProvider (success path updates auth state and
     // instance — a `Response` body can only be read (`.json()`) once, and
     // the boot-time refresh call consumes the first one before this test's
     // own signup submission ever runs.
-    const fetchMock = vi.fn((_url: string | URL | Request, _init?: RequestInit) =>
-      Promise.resolve(
+    const fetchMock = vi.fn((url: string | URL | Request, _init?: RequestInit) => {
+      if (String(url).includes("/auth/me/orgs")) {
+        return Promise.resolve(jsonResponse({ orgs: [newOrg] }));
+      }
+      return Promise.resolve(
         jsonResponse(
           {
             access_token: "signup-issued-access-token",
@@ -55,8 +65,8 @@ describe("Signup page — real AuthProvider (success path updates auth state and
           },
           201,
         ),
-      ),
-    );
+      );
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     render(
@@ -64,6 +74,7 @@ describe("Signup page — real AuthProvider (success path updates auth state and
         <AuthProvider>
           <Routes>
             <Route path="/signup" element={<Signup />} />
+            <Route path="/dashboard" element={<Dashboard />} />
             <Route path={`/orgs/${newOrg.id}`} element={<div>Landed on the new org</div>} />
           </Routes>
         </AuthProvider>

@@ -52,9 +52,12 @@
  * `org_context`/`orgs` after a reload without a dedicated endpoint that
  * doesn't exist yet. Practical effect: after a page reload, a direct
  * navigation to `/orgs/:orgId` still works (that route only needs the access
- * token), but `/orgs/pick` will render its own already-existing empty-`orgs`
- * redirect back to `/login` (see `OrgPicker.tsx`) until the user's next
- * explicit login. This is an accepted AUTH-2-scope limitation, not a bug.
+ * token). `Dashboard` (`/dashboard`, DASH-3/ADR-0063) is unaffected by this
+ * gap — it deliberately never reads this context's `orgs`, fetching
+ * `GET /auth/me/orgs` fresh on every mount instead, specifically so a
+ * reload lands on a correct org list rather than the stale/empty one this
+ * gap would otherwise produce. This is an accepted AUTH-2-scope limitation,
+ * not a bug.
  *
  * AUTH-3 logout (ADR-0014): `logout()` calls the `POST /auth/logout` API
  * function, then — in a `finally` block, so it runs whether that call

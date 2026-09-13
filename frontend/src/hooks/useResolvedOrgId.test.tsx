@@ -87,7 +87,7 @@ function renderProbe(initialEntry: string) {
     <QueryClientProvider client={newQueryClient()}>
       <MemoryRouter initialEntries={[initialEntry]}>
         <Routes>
-          <Route path="/orgs/pick" element={<HookProbe />} />
+          <Route path="/dashboard" element={<HookProbe />} />
           <Route path="/orgs/:orgId" element={<HookProbe />} />
           <Route path="/projects/:projectId" element={<HookProbe />} />
         </Routes>
@@ -109,8 +109,8 @@ describe("useResolvedOrgId", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("returns undefined with no fetch when neither param is present (/orgs/pick)", () => {
-    renderProbe("/orgs/pick");
+  it("returns undefined with no fetch when neither param is present (/dashboard, route corrected 2026-09-13 from the retired /orgs/pick, ADR-0063/DASH-3)", () => {
+    renderProbe("/dashboard");
 
     expect(screen.getByTestId("probe-org-id")).toHaveTextContent("(undefined)");
     expect(screen.getByTestId("probe-status")).toHaveTextContent("success");

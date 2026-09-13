@@ -6,10 +6,10 @@
  * the way `OrgHome.tsx`'s pre-existing pattern does.
  *
  * `orgId` comes from `useResolvedOrgId()` (SHELL-9, see below), not a
- * required route param: on `/orgs/pick` (`OrgPicker`, no org selected yet)
- * there is no `orgId` to link org-scoped items to, so the nav-item list is
- * empty rather than a disabled/greyed pair (ADR-0018) — a disabled control
- * implies a temporarily-unavailable action, which isn't the case here.
+ * required route param: on `/dashboard` (no org selected yet) there is no
+ * `orgId` to link org-scoped items to, so the nav-item list is empty rather
+ * than a disabled/greyed pair (ADR-0018) — a disabled control implies a
+ * temporarily-unavailable action, which isn't the case here.
  *
  * Active-route highlighting is React Router's own `NavLink` default
  * className behavior (an "active" class appended when the route matches),

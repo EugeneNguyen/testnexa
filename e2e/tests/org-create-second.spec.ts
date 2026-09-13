@@ -2,26 +2,27 @@ import { execFileSync } from "node:child_process";
 import { expect, test } from "@playwright/test";
 
 /**
- * RBAC-1 E2E (ADR-0016 AC2): real browser, full stack, exercising
- * `OrgPicker.tsx`'s "New Organization" modal — an already-authenticated
+ * RBAC-1 E2E (ADR-0016 AC2): real browser, full stack, exercising the
+ * "New Organization"/"Create organization" modal — an already-authenticated
  * org_admin minting a further Organization via `POST /orgs`.
+ *
+ * **Updated 2026-09-13 (DASH-3/ADR-0063):** this modal moved from the
+ * retired `OrgPicker.tsx`/`/orgs/pick` onto `Dashboard.tsx`/`/dashboard`'s
+ * own "2+ orgs" list state — same `createOrg()` call, same modal fields,
+ * same post-create navigation straight to the new org, just reached via the
+ * new uniform post-login redirect target rather than a `picker`-specific
+ * route.
  *
  * Fixture seeding: a human User who is org_admin (org-wide RoleAssignment
  * against RBAC-4's seeded `org_admin` system Role, which grants
  * `organization.create` among everything else) of one Organization ("Org
  * A"), PLUS a second, merely-member `active` `OrgMembership` in a
- * throwaway "Org B" — two active memberships is what makes
- * `POST /auth/login` resolve `org_context: "picker"` (mirrors
- * `test_auth_login.py`'s TC-AUTH-004 precondition and `Login.tsx`'s own
- * `org_context === "picker" -> navigate("/orgs/pick")` redirect), which is
- * the only way to reach `OrgPicker` — and therefore its "New Organization"
- * button — through real UI navigation rather than a raw `page.goto` (a full
- * page reload would lose the in-memory `AuthContext.orgs` list `OrgPicker`
- * needs, per that component's own docstring). Seeded directly via
- * `AsyncSessionLocal` inside the target env's own backend container
- * (`docker exec ... python -`), the same established convention
- * `auth-agents.spec.ts`/`auth-logout.spec.ts` use — there is no bootstrap
- * API for arbitrary `Role`/`RoleAssignment` fixtures beyond what
+ * throwaway "Org B" — two active memberships is what makes `Dashboard`
+ * render its "Select an organization" list rather than auto-advancing.
+ * Seeded directly via `AsyncSessionLocal` inside the target env's own
+ * backend container (`docker exec ... python -`), the same established
+ * convention `auth-agents.spec.ts`/`auth-logout.spec.ts` use — there is no
+ * bootstrap API for arbitrary `Role`/`RoleAssignment` fixtures beyond what
  * `POST /auth/signup` itself produces.
  *
  * Target environment: the isolated `testnexa-rbac1` Compose project
@@ -142,7 +143,7 @@ function cleanup(admin: SeededOrgAdmin, newOrgId: string | null): void {
 }
 
 test.describe("RBAC-1 AC2: existing org_admin creates a second organization via the UI", () => {
-  test("OrgPicker's New Organization modal creates a second org and navigates to it", async ({ page }) => {
+  test("Dashboard's Create organization modal creates a second org and navigates to it", async ({ page }) => {
     const admin = seedOrgAdmin();
     let newOrgId: string | null = null;
     try {
@@ -151,14 +152,14 @@ test.describe("RBAC-1 AC2: existing org_admin creates a second organization via 
       await page.getByLabel(/password/i).fill(admin.password);
       await page.getByRole("button", { name: /log in|sign in/i }).click();
 
-      // Two active memberships -> org_context "picker" -> Login.tsx's own
-      // redirect effect lands here automatically (never /orgs/{orgId}).
-      await page.waitForURL(/\/orgs\/pick/);
-      await expect(page.getByRole("heading", { name: /choose an organization/i })).toBeVisible();
+      // Two active memberships -> Dashboard's own 2+-org branching renders
+      // the chooser list (never auto-advances to a single /orgs/{orgId}).
+      await page.waitForURL(/\/dashboard$/);
+      await expect(page.getByRole("heading", { name: /select an organization/i })).toBeVisible();
       await expect(page.getByText("RBAC-1 E2E Org A")).toBeVisible();
       await expect(page.getByText("RBAC-1 E2E Org B")).toBeVisible();
 
-      await page.getByRole("button", { name: /new organization/i }).click();
+      await page.getByRole("button", { name: "Create organization" }).click();
 
       const newOrgName = "RBAC-1 E2E Second Org";
       const newOrgSlug = `rbac1-e2e-second-${Date.now().toString(36)}`;
@@ -166,11 +167,11 @@ test.describe("RBAC-1 AC2: existing org_admin creates a second organization via 
       await page.getByLabel(/^slug$/i).fill(newOrgSlug);
       await page.getByRole("button", { name: /^create$/i }).click();
 
-      // On success, OrgPicker navigates straight to the new org's own view
-      // (it does not try to splice the new org into its own `orgs` list —
-      // see OrgPicker.tsx's docstring).
+      // On success, Dashboard navigates straight to the new org's own view
+      // (it does not try to splice the new org into its own list — see
+      // Dashboard.tsx's docstring).
       await page.waitForURL(/\/orgs\/[0-9a-f-]+/i);
-      await expect(page).not.toHaveURL(/\/orgs\/pick/);
+      await expect(page).not.toHaveURL(/\/dashboard$/);
       await expect(page).not.toHaveURL(new RegExp(`/orgs/${admin.orgAId}`));
       await expect(page).not.toHaveURL(new RegExp(`/orgs/${admin.orgBId}`));
 

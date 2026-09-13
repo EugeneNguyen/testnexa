@@ -23,7 +23,7 @@
  *   alert-role nodes at once and turn a singular `getByRole("alert")` into
  *   a strict-mode multiple-match failure.
  *
- * Permission gating: unlike `Login`/`Signup`/`OrgPicker`, this repo has no
+ * Permission gating: unlike `Login`/`Signup`/`Dashboard`, this repo has no
  * existing client-side signal of the current actor's *permissions* to reuse
  * — `AuthContext`'s `orgs` are `{id, name, slug}` only (no role/permission
  * field), and `GET /auth/me` deliberately ships identity-only, its "+
@@ -40,7 +40,7 @@
  * reject anyway. Per-row mutation calls (invite/suspend/reactivate/revoke)
  * are otherwise attempted unconditionally once the list loads and surface
  * any `403`/`422` inline, the same `ApiError.message`-inline convention
- * every other screen in this codebase uses (`Login`/`Signup`/`OrgPicker`).
+ * every other screen in this codebase uses (`Login`/`Signup`/`Dashboard`).
  */
 import { FormEvent as ReactFormEvent, useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";

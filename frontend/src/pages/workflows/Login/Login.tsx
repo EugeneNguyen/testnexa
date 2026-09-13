@@ -13,8 +13,11 @@
  *
  * `login()` resolves `void` and updates `AuthContext` state asynchronously,
  * so post-success navigation is driven by a `useEffect` watching
- * `orgContext`/`orgs` rather than a return value: `org_context: "auto"` goes
- * to `/orgs/{orgs[0].id}`, `"picker"` goes to `/orgs/pick`. On failure, the
+ * `orgContext` rather than a return value: once it resolves (either
+ * `"auto"` or `"picker"`), navigation always targets `/dashboard`
+ * (DASH-3/ADR-0063) — `Dashboard` itself owns the org-count branching
+ * (auto-advance on exactly 1 org, a chooser on 2+, an empty state on 0),
+ * so this screen no longer needs to know which case it is. On failure, the
  * thrown `ApiError`'s `message` (the backend's message, or a generic
  * fallback for the 422 validation-error case — see `lib/api/auth.ts`) is
  * shown via `LoginForm`'s `errorSlot` (non-field error, outside the
@@ -49,7 +52,7 @@ const loginSchema = z.object({
 type LoginFormValues = z.infer<typeof loginSchema>;
 
 function Login() {
-  const { login, orgContext, orgs } = useAuth();
+  const { login, orgContext } = useAuth();
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -61,12 +64,10 @@ function Login() {
   } = useForm<LoginFormValues>({ resolver: zodResolver(loginSchema) });
 
   useEffect(() => {
-    if (orgContext === "auto" && orgs.length > 0) {
-      navigate(`/orgs/${orgs[0].id}`, { replace: true });
-    } else if (orgContext === "picker") {
-      navigate("/orgs/pick", { replace: true });
+    if (orgContext !== null) {
+      navigate("/dashboard", { replace: true });
     }
-  }, [orgContext, orgs, navigate]);
+  }, [orgContext, navigate]);
 
   async function onSubmit(values: LoginFormValues) {
     setError(null);

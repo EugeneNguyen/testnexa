@@ -12,9 +12,10 @@ import { expect, test } from "@playwright/test";
  * Fixture: one user, TWO active `OrgMembership`s (Org A, Org B) — `org_admin`
  * in Org A, `tester` in Org B (a role with zero `role.*` codes, per
  * `app/db/rbac_seed_catalog.py`'s `tester` bundle). Two active memberships
- * is what makes `POST /auth/login` resolve `org_context: "picker"`, landing
- * on `/orgs/pick` with `AuthContext.orgs` populated for a real UI-driven
- * navigation into Org A (same reasoning `shell-nav.spec.ts` documents).
+ * is what makes `Dashboard` (`/dashboard`, DASH-3/ADR-0063 — formerly
+ * `/orgs/pick`/`OrgPicker`) render its "Select an organization" chooser
+ * list for a real UI-driven navigation into Org A (same reasoning
+ * `shell-nav.spec.ts` documents).
  *
  * Seeding/cleanup pattern copied verbatim from `shell-nav.spec.ts`
  * (`docker exec ... python -`, `AsyncSessionLocal` direct seed).
@@ -144,7 +145,7 @@ async function loginAndEnterOrgA(page: import("@playwright/test").Page, user: Se
   await page.getByLabel(/email/i).fill(user.email);
   await page.getByLabel(/password/i).fill(user.password);
   await page.getByRole("button", { name: /log in|sign in/i }).click();
-  await page.waitForURL(/\/orgs\/pick/);
+  await page.waitForURL(/\/dashboard$/);
   await page.getByText(user.orgAName).click();
   await page.waitForURL(new RegExp(`/orgs/${user.orgAId}$`));
 }

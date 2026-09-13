@@ -20,9 +20,10 @@
  * `useAuth().acceptInvite()` resolves `void` and updates `AuthContext` state
  * asynchronously (`access_token`/`org_context`/`orgs`), exactly the same
  * shape `login()`/`signup()` do — so, like those two screens, post-success
- * navigation is driven by the same `useEffect` watching `orgContext`/`orgs`
- * rather than a return value. This is what "lands logged in, not back at a
- * login screen" (ADR-0017) actually means on the frontend: the same
+ * navigation is driven by the same `useEffect` watching `orgContext` rather
+ * than a return value: once it resolves, navigation always targets
+ * `/dashboard` (DASH-3/ADR-0063). This is what "lands logged in, not back
+ * at a login screen" (ADR-0017) actually means on the frontend: the same
  * token-store + redirect wiring `Login`/`Signup` already use, not a bespoke
  * path.
  */
@@ -49,7 +50,7 @@ type AcceptInviteFormValues = z.infer<typeof acceptInviteSchema>;
 
 function AcceptInvite() {
   const { token } = useParams<{ token: string }>();
-  const { acceptInvite, orgContext, orgs } = useAuth();
+  const { acceptInvite, orgContext } = useAuth();
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -61,12 +62,10 @@ function AcceptInvite() {
   } = useForm<AcceptInviteFormValues>({ resolver: zodResolver(acceptInviteSchema) });
 
   useEffect(() => {
-    if (orgContext === "auto" && orgs.length > 0) {
-      navigate(`/orgs/${orgs[0].id}`, { replace: true });
-    } else if (orgContext === "picker") {
-      navigate("/orgs/pick", { replace: true });
+    if (orgContext !== null) {
+      navigate("/dashboard", { replace: true });
     }
-  }, [orgContext, orgs, navigate]);
+  }, [orgContext, navigate]);
 
   async function onSubmit(values: AcceptInviteFormValues) {
     if (!token) return;
