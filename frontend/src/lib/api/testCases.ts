@@ -41,6 +41,8 @@ export interface TestCaseSummary {
   test_type_id: string;
   created_by_actor_id: string;
   title: string;
+  /** 2026-09-15, live-manual-test feedback — a short summary, separate from `preconditions`/`expected_result`. */
+  description?: string | null;
   preconditions: string | null;
   expected_result: string | null;
   status: TestCaseStatus;
@@ -48,6 +50,7 @@ export interface TestCaseSummary {
 
 export interface CreateTestCasePayload {
   title: string;
+  description?: string | null;
   test_level_id: string;
   test_type_id: string;
   preconditions?: string | null;
@@ -57,6 +60,7 @@ export interface CreateTestCasePayload {
 
 export interface CreateTestCaseForTestConditionPayload {
   title: string;
+  description?: string;
   preconditions?: string;
   expected_result?: string;
   test_level_id: string;

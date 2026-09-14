@@ -82,6 +82,15 @@ export interface FieldConfig {
    * payload, always rendered disabled by `EntityForm`.
    */
   readOnly?: boolean;
+  /**
+   * fk only (2026-09-15, live-manual-test feedback) — render as a plain
+   * native `<select>` (fetches the ref entity's full list once, no
+   * debounced search) instead of `FkAutocomplete`'s type-to-search widget.
+   * Server-derived from `crud_factory.FieldMeta.select`; only set `true` for
+   * a small, bounded catalog (`TestLevel`/`TestType`/per-project
+   * `TestCondition`) — leave unset/`false` for an unbounded ref entity.
+   */
+  select?: boolean;
 }
 
 /** One option for `EntityConfig.scopeSelector` (see module doc comment, point 2). */

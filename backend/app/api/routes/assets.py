@@ -125,6 +125,7 @@ def _test_case_summary(test_case: TestCase) -> TestCaseSummary:
         id=test_case.id,
         test_condition_id=test_case.test_condition_id,
         project_id=test_case.project_id,
+        description=test_case.description,
         test_level_id=test_case.test_level_id,
         test_type_id=test_case.test_type_id,
         created_by_actor_id=test_case.created_by_actor_id,
@@ -206,17 +207,26 @@ _TEST_CASE_CONFIG = CrudEntityConfig(
         "test_level_id",
         "test_type_id",
         "title",
+        "description",
         "preconditions",
         "expected_result",
         "status",
     ),
     field_meta={
         "project_id": FieldMeta(ref_entity="project", label_field="name", label="Project"),
+        # `select=True` on these three (2026-09-15, live-manual-test feedback):
+        # small, bounded catalogs — a native dropdown is less friction than
+        # `FkAutocomplete`'s type-to-search for a handful of rows. `project_id`
+        # itself stays an autocomplete (unbounded, one org can have many).
         "test_condition_id": FieldMeta(
-            ref_entity="test-condition", label_field="description", label="Test condition"
+            ref_entity="test-condition", label_field="description", label="Test condition", select=True
         ),
-        "test_level_id": FieldMeta(ref_entity="test-level", label_field="name", label="Test level"),
-        "test_type_id": FieldMeta(ref_entity="test-type", label_field="name", label="Test type"),
+        "test_level_id": FieldMeta(
+            ref_entity="test-level", label_field="name", label="Test level", select=True
+        ),
+        "test_type_id": FieldMeta(
+            ref_entity="test-type", label_field="name", label="Test type", select=True
+        ),
         "preconditions": FieldMeta(show_in_table=False),
         "expected_result": FieldMeta(show_in_table=False),
         # Summary-only (so already `readOnly`), and never on any form/table the
@@ -310,6 +320,7 @@ async def create_test_case_for_requirement(
 
     test_case = TestCase(
         title=payload.title,
+        description=payload.description,
         preconditions=payload.preconditions,
         expected_result=payload.expected_result,
         status=payload.status,

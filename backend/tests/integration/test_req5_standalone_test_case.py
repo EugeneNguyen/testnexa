@@ -637,3 +637,126 @@ async def test_requirement_link_read_reflects_standalone_then_linked_state() -> 
         assert after_response.json()["requirement_id"] == requirement_id
     finally:
         await fx.cleanup()
+
+
+# --- 2026-09-15, live-manual-test feedback: `description` field + `select` dropdown flag --------
+
+
+@pytest.mark.asyncio
+async def test_standalone_create_with_description_round_trips() -> None:
+    """The standalone create path (`POST /test-cases`) accepts and returns `description`."""
+    fx, token, project_id, level_id, type_id = await _seed_admin_project("desc-a")
+    try:
+        async with httpx.AsyncClient(base_url=TEST_API_BASE_URL) as client:
+            response = await client.post(
+                f"{API_PREFIX}/test-cases",
+                json={
+                    "project_id": project_id,
+                    "title": "Standalone case with description",
+                    "description": "Covers the checkout happy path",
+                    "test_level_id": level_id,
+                    "test_type_id": type_id,
+                },
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert response.status_code == 201
+        body = response.json()
+        fx.test_case_ids = [body["id"]]
+        assert body["description"] == "Covers the checkout happy path"
+    finally:
+        await fx.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_direct_link_create_with_description_round_trips() -> None:
+    """The direct-link path (`POST /requirements/{id}/test-cases`, REQ-2) accepts `description` too."""
+    fx, token, project_id, level_id, type_id = await _seed_admin_project("desc-b")
+    try:
+        async with AsyncSessionLocal() as session:
+            project = await session.get(Project, project_id)
+            requirement = await _create_requirement(session, project, "desc-b")
+            await session.commit()
+            fx.requirement_ids = [requirement.id]
+            requirement_id = str(requirement.id)
+
+        async with httpx.AsyncClient(base_url=TEST_API_BASE_URL) as client:
+            response = await client.post(
+                f"{API_PREFIX}/requirements/{requirement_id}/test-cases",
+                json={
+                    "title": "Direct-link case with description",
+                    "description": "Covers the login happy path",
+                    "test_level_id": level_id,
+                    "test_type_id": type_id,
+                },
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert response.status_code == 201
+        body = response.json()
+        fx.test_case_ids = [body["id"]]
+        assert body["description"] == "Covers the login happy path"
+    finally:
+        await fx.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_rigor_path_create_with_description_round_trips() -> None:
+    """The rigor path (`POST /test-conditions/{id}/test-cases`, REQ-3) accepts `description` too."""
+    fx, token, project_id, level_id, type_id = await _seed_admin_project("desc-c")
+    try:
+        async with AsyncSessionLocal() as session:
+            project = await session.get(Project, project_id)
+            requirement = await _create_requirement(session, project, "desc-c")
+            await session.commit()
+            fx.requirement_ids = [requirement.id]
+            requirement_id = str(requirement.id)
+
+        async with httpx.AsyncClient(base_url=TEST_API_BASE_URL) as client:
+            condition_response = await client.post(
+                f"{API_PREFIX}/requirements/{requirement_id}/test-conditions",
+                json={"description": "Some condition", "priority": "medium"},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert condition_response.status_code == 201
+            condition_id = condition_response.json()["id"]
+            fx.test_condition_ids = [condition_id]
+
+            response = await client.post(
+                f"{API_PREFIX}/test-conditions/{condition_id}/test-cases",
+                json={
+                    "title": "Rigor-path case with description",
+                    "description": "Covers the rate-limit boundary",
+                    "test_level_id": level_id,
+                    "test_type_id": type_id,
+                },
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert response.status_code == 201
+        body = response.json()
+        fx.test_case_ids = [body["id"]]
+        assert body["description"] == "Covers the rate-limit boundary"
+    finally:
+        await fx.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_test_case_schema_marks_test_level_type_condition_as_select() -> None:
+    """`GET /entities/test-cases/schema` emits `select: true` on the 3 small
+    bounded-catalog fk fields (`test_level_id`/`test_type_id`/
+    `test_condition_id`) and NOT on `project_id` (unbounded, stays an
+    `FkAutocomplete`)."""
+    fx, token, _project_id, _level_id, _type_id = await _seed_admin_project("desc-d")
+    try:
+        async with httpx.AsyncClient(base_url=TEST_API_BASE_URL) as client:
+            response = await client.get(
+                f"{API_PREFIX}/entities/test-cases/schema",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert response.status_code == 200
+        fields = {f["name"]: f for f in response.json()["fields"]}
+        assert fields["test_level_id"]["select"] is True
+        assert fields["test_type_id"]["select"] is True
+        assert fields["test_condition_id"]["select"] is True
+        assert "select" not in fields["project_id"]
+        assert "description" in fields
+    finally:
+        await fx.cleanup()

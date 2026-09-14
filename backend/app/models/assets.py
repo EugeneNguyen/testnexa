@@ -86,6 +86,10 @@ class TestCase(Base):
         Uuid(as_uuid=True), ForeignKey("actor.id", ondelete="RESTRICT"), nullable=False
     )
     title: Mapped[str] = mapped_column(String, nullable=False)
+    # Nullable — a short summary of what's under test, separate from
+    # `preconditions`/`expected_result`'s own narrower roles. Added post-hoc
+    # (2026-09-15), same optionality posture as its two siblings.
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     preconditions: Mapped[str | None] = mapped_column(Text, nullable=True)
     expected_result: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[TestCaseStatus] = mapped_column(

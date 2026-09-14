@@ -215,6 +215,13 @@ class FieldMeta:
     # them is always valid SQL; this exists purely for a field where sorting
     # would be misleading rather than for correctness (none needed yet).
     sortable: bool = True
+    # fk only — render as a plain native `<select>` (fetches the ref
+    # entity's full list once, no search) instead of `FkAutocomplete`'s
+    # debounced type-to-search widget. For a small, bounded catalog
+    # (`TestLevel`/`TestType`/per-project `TestCondition`) a dropdown is
+    # less friction than typing to search; large/unbounded ref entities
+    # (`Requirement`, `Project`) should leave this `False` (the default).
+    select: bool = False
 
 
 @dataclass
@@ -859,6 +866,8 @@ def derive_entity_schema(config: CrudEntityConfig) -> dict[str, Any]:
         if field_type == "fk":
             entry["refEntity"] = meta.ref_entity
             entry["labelField"] = meta.label_field
+            if meta.select:
+                entry["select"] = True
         if field_type == "enum" and enum_values:
             # Per-field override, else the shared palette — then filtered to
             # this field's own values, so a field never advertises a colour

@@ -156,6 +156,7 @@ class CreateTestCaseRequest(BaseModel):
     """
 
     title: str
+    description: str | None = None
     test_level_id: UUID
     test_type_id: UUID
     preconditions: str | None = None
@@ -180,6 +181,7 @@ class CreateTestCaseForTestConditionRequest(BaseModel):
     """
 
     title: str
+    description: str | None = None
     preconditions: str | None = None
     expected_result: str | None = None
     test_level_id: UUID
@@ -203,6 +205,7 @@ class CreateStandaloneTestCaseRequest(BaseModel):
 
     project_id: UUID
     title: str
+    description: str | None = None
     test_level_id: UUID
     test_type_id: UUID
     preconditions: str | None = None
@@ -220,6 +223,7 @@ class UpdateTestCaseRequest(BaseModel):
     """Body of `PATCH /test-cases/{id}` — partial update, `exclude_unset` semantics."""
 
     title: str | None = None
+    description: str | None = None
     preconditions: str | None = None
     expected_result: str | None = None
     status: TestCaseStatus | None = None
@@ -232,6 +236,7 @@ class TestCaseSummary(BaseModel):
     id: UUID
     test_condition_id: UUID | None = None
     project_id: UUID | None = None
+    description: str | None = None
     test_level_id: UUID
     test_type_id: UUID
     created_by_actor_id: UUID

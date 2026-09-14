@@ -388,6 +388,37 @@ class TestForeignKeyOverrides:
         assert _fields(schema)["name"]["type"] == "fk"
 
 
+class TestSelectOverride:
+    """`FieldMeta.select` (2026-09-15, live-manual-test feedback): fk fields
+    for a small, bounded catalog render a native `<select>` on the frontend
+    (`FkSelect`) instead of `FkAutocomplete`'s debounced search."""
+
+    def test_select_true_is_emitted_on_the_fk_entry(self) -> None:
+        schema = derive_entity_schema(
+            _widget_config(
+                field_meta={"project_id": FieldMeta(ref_entity="project", label_field="name", select=True)}
+            )
+        )
+        entry = _fields(schema)["project_id"]
+        assert entry["type"] == "fk"
+        assert entry["select"] is True
+
+    def test_select_defaults_to_false_and_is_omitted(self) -> None:
+        schema = derive_entity_schema(
+            _widget_config(field_meta={"project_id": FieldMeta(ref_entity="project", label_field="name")})
+        )
+        entry = _fields(schema)["project_id"]
+        assert "select" not in entry
+
+    def test_select_true_on_a_non_fk_field_is_inert(self) -> None:
+        # `select` only means something once `ref_entity` promotes a field to
+        # `fk` — mirrors `TestForeignKeyOverrides`'s own inert-metadata posture.
+        schema = derive_entity_schema(_widget_config(field_meta={"name": FieldMeta(select=True)}))
+        entry = _fields(schema)["name"]
+        assert entry["type"] == "string"
+        assert "select" not in entry
+
+
 class TestLabelOverrides:
     def test_default_label_is_title_cased_from_the_field_name(self) -> None:
         fields = _fields(derive_entity_schema(_widget_config()))

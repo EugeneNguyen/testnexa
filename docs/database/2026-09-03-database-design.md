@@ -318,6 +318,7 @@ No uniqueness constraint on `version_label` — AC doesn't require it, and unlik
 | test_type_id | uuid | FK → test_type.id, not null |
 | created_by_actor_id | uuid | FK → actor.id, not null |
 | title | varchar | not null |
+| description | text | nullable — added 2026-09-15, live-manual-test feedback on REQ-5's standalone form; a short summary of what's under test, separate from `preconditions`/`expected_result`'s own narrower roles. Migration `9a2f7c4d8b1e`, chained onto REQ-5's `project_id` migration. Accepted by all 3 create paths (standalone/direct-link/rigor) and `UpdateTestCaseRequest`. |
 | preconditions | text | nullable |
 | expected_result | text | nullable |
 | status | enum(draft, reviewed, approved, deprecated) | not null, default draft |

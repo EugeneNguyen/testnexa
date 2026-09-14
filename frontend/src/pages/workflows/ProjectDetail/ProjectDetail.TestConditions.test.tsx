@@ -326,6 +326,9 @@ describe("ProjectDetail — TestCondition rigor path (REQ-3)", () => {
     fireEvent.change(screen.getByTestId("test-case-title"), {
       target: { value: "Sixth attempt returns 429" },
     });
+    fireEvent.change(screen.getByTestId("test-case-description"), {
+      target: { value: "Rate-limit boundary check" },
+    });
     fireEvent.change(screen.getByTestId("test-case-preconditions"), {
       target: { value: "Five failed attempts already recorded" },
     });
@@ -339,6 +342,7 @@ describe("ProjectDetail — TestCondition rigor path (REQ-3)", () => {
     await waitFor(() =>
       expect(mockCreateTestCase).toHaveBeenCalledWith(CONDITION_ID, {
         title: "Sixth attempt returns 429",
+        description: "Rate-limit boundary check",
         preconditions: "Five failed attempts already recorded",
         expected_result: "HTTP 429",
         test_level_id: LEVEL_ID,

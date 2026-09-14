@@ -68,6 +68,7 @@ import FormField from "../../molecules/form-field";
 import { LabeledCheckbox } from "../../molecules/labeled-checkbox";
 import { EntityConfig, FieldConfig } from "../../../entityConfigs/types";
 import FkAutocomplete from "../../molecules/fk-autocomplete";
+import FkSelect from "../../molecules/fk-select";
 
 export interface EntityFormProps {
   config: EntityConfig;
@@ -218,9 +219,10 @@ function EntityForm({
             />
           </div>
         );
-      case "fk":
+      case "fk": {
+        const FkControl = field.select ? FkSelect : FkAutocomplete;
         return (
-          <FkAutocomplete
+          <FkControl
             key={field.name}
             id={field.name}
             label={field.label}
@@ -231,6 +233,7 @@ function EntityForm({
             error={error}
           />
         );
+      }
       default:
         return null;
     }
@@ -239,8 +242,9 @@ function EntityForm({
   function renderDisplayOnly(field: FieldConfig) {
     const value = lockedValues?.[field.name] ?? initialValues?.[field.name];
     if (field.type === "fk") {
+      const FkControl = field.select ? FkSelect : FkAutocomplete;
       return (
-        <FkAutocomplete
+        <FkControl
           key={field.name}
           id={field.name}
           label={field.label}

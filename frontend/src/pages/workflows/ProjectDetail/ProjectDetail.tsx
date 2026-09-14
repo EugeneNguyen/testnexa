@@ -180,6 +180,7 @@ type NewTestConditionFormValues = z.infer<typeof newTestConditionSchema>;
  */
 const newTestCaseSchema = z.object({
   title: z.string().trim().min(1, "Title is required"),
+  description: z.string().trim().optional(),
   preconditions: z.string().trim().optional(),
   expectedResult: z.string().trim().optional(),
   testLevelId: z.string().trim().min(1, "Test level is required"),
@@ -652,7 +653,7 @@ function ProjectDetail() {
     formState: { errors: testCaseErrors, isSubmitting: isSubmittingTestCase },
   } = useForm<NewTestCaseFormValues>({
     resolver: zodResolver(newTestCaseSchema),
-    defaultValues: { title: "", preconditions: "", expectedResult: "", testLevelId: "", testTypeId: "" },
+    defaultValues: { title: "", description: "", preconditions: "", expectedResult: "", testLevelId: "", testTypeId: "" },
   });
 
   // --- REQ-4 (ADR-0030, UI Design Document 2026-09-06): Test Suites section ---
@@ -788,7 +789,7 @@ function ProjectDetail() {
 
   function openTestCaseModal(requirementId: string) {
     setTestCaseApiError(null);
-    resetTestCase({ title: "", preconditions: "", expectedResult: "", testLevelId: "", testTypeId: "" });
+    resetTestCase({ title: "", description: "", preconditions: "", expectedResult: "", testLevelId: "", testTypeId: "" });
     setTestCaseModalConditionId(null);
     setTestCaseModalRequirementId(requirementId);
     setShowTestCaseModal(true);
@@ -818,6 +819,7 @@ function ProjectDetail() {
           title: values.title,
           test_level_id: values.testLevelId,
           test_type_id: values.testTypeId,
+          ...(values.description ? { description: values.description } : {}),
           ...(values.preconditions ? { preconditions: values.preconditions } : {}),
           ...(values.expectedResult ? { expected_result: values.expectedResult } : {}),
         });
@@ -848,6 +850,7 @@ function ProjectDetail() {
         title: values.title,
         // Omitted (not sent as an empty string) when blank, matching the
         // backend's `str | None = None` optional-field convention.
+        ...(values.description ? { description: values.description } : {}),
         ...(values.preconditions ? { preconditions: values.preconditions } : {}),
         ...(values.expectedResult ? { expected_result: values.expectedResult } : {}),
         test_level_id: values.testLevelId,
@@ -1026,7 +1029,7 @@ function ProjectDetail() {
 
   function openConditionTestCaseModal(testConditionId: string) {
     setTestCaseApiError(null);
-    resetTestCase({ title: "", preconditions: "", expectedResult: "", testLevelId: "", testTypeId: "" });
+    resetTestCase({ title: "", description: "", preconditions: "", expectedResult: "", testLevelId: "", testTypeId: "" });
     setTestCaseModalRequirementId(null);
     setTestCaseModalConditionId(testConditionId);
   }
@@ -2219,6 +2222,16 @@ function ProjectDetail() {
           {testCaseErrors.title && <div className="invalid-feedback d-block">{testCaseErrors.title.message}</div>}
         </div>
         <div className="mb-3">
+          <label className="form-label" htmlFor="testCaseDescription">Description</label>
+          <textarea
+            id="testCaseDescription"
+            className="form-control"
+            rows={2}
+            {...registerTestCase("description")}
+          />
+          <div className="form-text">Optional.</div>
+        </div>
+        <div className="mb-3">
           <label className="form-label" htmlFor="testCasePreconditions">Preconditions</label>
           <textarea
             id="testCasePreconditions"
@@ -2490,6 +2503,17 @@ function ProjectDetail() {
             {...registerTestCase("title")}
           />
           {testCaseErrors.title && <div className="invalid-feedback d-block">{testCaseErrors.title.message}</div>}
+        </div>
+        <div className="mb-3">
+          <label className="form-label" htmlFor="conditionTestCaseDescription">Description</label>
+          <textarea
+            id="conditionTestCaseDescription"
+            className="form-control"
+            rows={2}
+            data-testid="test-case-description"
+            {...registerTestCase("description")}
+          />
+          <div className="form-text">Optional.</div>
         </div>
         <div className="mb-3">
           <label className="form-label" htmlFor="conditionTestCasePreconditions">Preconditions</label>

@@ -210,13 +210,16 @@ test.describe("REQ-5: standalone TestCase authoring via the sidebar's generic ad
 
       const testCaseTitle = `REQ-5 UI E2E standalone case ${Date.now().toString(36)}`;
       await page.getByLabel(/^title$/i).fill(testCaseTitle);
+      await page.getByLabel(/^description$/i).fill("Covers the checkout happy path end-to-end.");
 
-      // `test_level_id`/`test_type_id` are FK fields — `FkAutocomplete`
-      // (type-to-search), not a plain `<select>`, on this generic form.
-      await page.getByLabel(/test level/i).fill(fixture.testLevelName.slice(0, 8));
-      await page.getByText(fixture.testLevelName, { exact: true }).click();
-      await page.getByLabel(/test type/i).fill(fixture.testTypeName.slice(0, 8));
-      await page.getByText(fixture.testTypeName, { exact: true }).click();
+      // `test_level_id`/`test_type_id` (and `test_condition_id`) are fk
+      // fields marked `select: true` (2026-09-15, live-manual-test
+      // feedback) — small, bounded catalogs, so they render as plain
+      // native `<select>`s (`FkSelect`), not `FkAutocomplete`'s
+      // type-to-search widget.
+      await expect(page.getByLabel(/test level/i)).toHaveRole("combobox");
+      await page.getByLabel(/test level/i).selectOption({ label: fixture.testLevelName });
+      await page.getByLabel(/test type/i).selectOption({ label: fixture.testTypeName });
       // `status` is a plain enum `<select>`, no default pre-selected on this
       // generic create form — pick one explicitly, same as a real user would.
       await page.getByLabel(/^status$/i).selectOption("draft");
@@ -232,6 +235,7 @@ test.describe("REQ-5: standalone TestCase authoring via the sidebar's generic ad
       testCaseIds.push(createdTestCase.id);
       expect(createdTestCase.test_condition_id).toBeNull();
       expect(createdTestCase.project_id).toBe(fixture.projectId);
+      expect(createdTestCase.description).toBe("Covers the checkout happy path end-to-end.");
 
       // --- Sidebar-reachability: the new case appears on the same list ---------
       await page.waitForURL(new RegExp(`/projects/${fixture.projectId}/admin/test-cases$`));
