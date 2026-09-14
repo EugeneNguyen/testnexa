@@ -23,6 +23,7 @@ import { useEffect, useState } from "react";
 import { EntityRow, listEntities } from "../../../lib/api/entityCrud";
 import { useEntitySchema } from "../../../pages/admin/useEntitySchema";
 import type { EntityConfig } from "../../../entityConfigs/types";
+import { Select } from "../../atoms/select";
 
 /** Comfortably above any of today's bounded catalogs (5 test levels, a handful of test types/conditions). */
 const FULL_LIST_PAGE_SIZE = 100;
@@ -106,8 +107,8 @@ function FkSelect({
       <label className="form-label" htmlFor={id}>
         {label}
       </label>
-      <select
-        className={`form-select${error ? " is-invalid" : ""}`}
+      <Select
+        invalid={Boolean(error)}
         id={id}
         value={value ?? ""}
         disabled={disabled || !canList || isLoading}
@@ -121,7 +122,7 @@ function FkSelect({
             {labelFor(row, labelField)}
           </option>
         ))}
-      </select>
+      </Select>
       {error && (
         <div className="invalid-feedback d-block" role="alert">
           {error}

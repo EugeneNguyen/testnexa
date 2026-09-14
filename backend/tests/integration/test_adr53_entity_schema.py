@@ -389,7 +389,9 @@ async def test_every_registered_entity_serves_a_ported_schema(
     # Every field carries the four always-present keys.
     for field_entry in body["fields"]:
         assert {"name", "label", "type", "required", "showInTable"} <= set(field_entry), field_entry
-        assert field_entry["type"] in {"string", "enum", "date", "boolean", "fk"}
+        # "text" (2026-09-15, `FieldMeta.long_text`) — a nullable/unbounded
+        # `Text` column, rendered as a `<textarea>` on the frontend.
+        assert field_entry["type"] in {"string", "text", "enum", "date", "boolean", "fk"}
         if field_entry["type"] == "fk":
             assert field_entry["refEntity"], field_entry
         if field_entry["type"] == "enum":

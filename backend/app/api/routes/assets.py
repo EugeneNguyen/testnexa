@@ -227,6 +227,10 @@ _TEST_CASE_CONFIG = CrudEntityConfig(
         "test_type_id": FieldMeta(
             ref_entity="test-type", label_field="name", label="Test type", select=True
         ),
+        # `long_text=True` (2026-09-15, live-manual-test feedback) — a
+        # nullable, unbounded `Text` column, rendered as a `<textarea>`
+        # rather than a single-line input.
+        "description": FieldMeta(long_text=True),
         "preconditions": FieldMeta(show_in_table=False),
         "expected_result": FieldMeta(show_in_table=False),
         # Summary-only (so already `readOnly`), and never on any form/table the

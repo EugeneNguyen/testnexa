@@ -758,5 +758,6 @@ async def test_test_case_schema_marks_test_level_type_condition_as_select() -> N
         assert fields["test_condition_id"]["select"] is True
         assert "select" not in fields["project_id"]
         assert "description" in fields
+        assert fields["description"]["type"] == "text"
     finally:
         await fx.cleanup()

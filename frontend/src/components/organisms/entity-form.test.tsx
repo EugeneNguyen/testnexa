@@ -73,6 +73,7 @@ const CONFIG: EntityConfig = {
     },
     { name: "due_date", label: "Due date", type: "date" },
     { name: "is_active", label: "Active", type: "boolean" },
+    { name: "description", label: "Description", type: "text" },
   ],
 };
 
@@ -100,6 +101,11 @@ describe("EntityForm", () => {
     const category = await screen.findByLabelText("Category");
     expect(category.tagName).toBe("SELECT");
     expect(await screen.findByRole("option", { name: "Bugs" })).toBeInTheDocument();
+  });
+
+  it("renders a textarea, not a single-line input, for a text field", () => {
+    render(<EntityForm config={CONFIG} mode="create" onSubmit={vi.fn()} />);
+    expect(screen.getByLabelText("Description").tagName).toBe("TEXTAREA");
   });
 
   it("renders a native date input for a date field", () => {

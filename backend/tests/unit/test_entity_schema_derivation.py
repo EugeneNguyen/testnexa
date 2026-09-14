@@ -419,6 +419,30 @@ class TestSelectOverride:
         assert "select" not in entry
 
 
+class TestLongTextOverride:
+    """`FieldMeta.long_text` (2026-09-15, live-manual-test feedback):
+    promotes a bare `str` field to `type: "text"` — the frontend renders it
+    as a `<textarea>` instead of a single-line input."""
+
+    def test_long_text_true_promotes_type_to_text(self) -> None:
+        schema = derive_entity_schema(_widget_config(field_meta={"name": FieldMeta(long_text=True)}))
+        assert _fields(schema)["name"]["type"] == "text"
+
+    def test_long_text_defaults_to_false_and_stays_string(self) -> None:
+        schema = derive_entity_schema(_widget_config())
+        assert _fields(schema)["name"]["type"] == "string"
+
+    def test_long_text_and_ref_entity_together_prefers_text_last_write_wins(self) -> None:
+        # Not a real combination any config actually uses (a field is either
+        # an fk or free text, never both) — pins down the derivation's own
+        # literal order (`long_text` checked after `ref_entity`) rather than
+        # leaving it to guesswork if the two ever accidentally coexist.
+        schema = derive_entity_schema(
+            _widget_config(field_meta={"project_id": FieldMeta(ref_entity="project", long_text=True)})
+        )
+        assert _fields(schema)["project_id"]["type"] == "text"
+
+
 class TestLabelOverrides:
     def test_default_label_is_title_cased_from_the_field_name(self) -> None:
         fields = _fields(derive_entity_schema(_widget_config()))

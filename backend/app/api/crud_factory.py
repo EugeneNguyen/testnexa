@@ -222,6 +222,14 @@ class FieldMeta:
     # less friction than typing to search; large/unbounded ref entities
     # (`Requirement`, `Project`) should leave this `False` (the default).
     select: bool = False
+    # Promotes a bare `str` annotation to `type: "text"` — a nullable/
+    # unbounded SQLAlchemy `Text` column (as opposed to a length-limited
+    # `String`), same "can't be inferred from the Pydantic annotation alone"
+    # reasoning as `ref_entity` above (both `String`/`Text` columns type-check
+    # identically as `str` in the schema). The frontend renders this as a
+    # `<textarea>` (`EntityForm`'s `Textarea` atom) instead of a single-line
+    # input. 2026-09-15, live-manual-test feedback on `TestCase.description`.
+    long_text: bool = False
 
 
 @dataclass
@@ -852,6 +860,8 @@ def derive_entity_schema(config: CrudEntityConfig) -> dict[str, Any]:
         field_type, enum_values = _field_type_and_values(info.annotation)
         if meta.ref_entity:
             field_type = "fk"
+        if meta.long_text:
+            field_type = "text"
 
         entry: dict[str, Any] = {
             "name": name,

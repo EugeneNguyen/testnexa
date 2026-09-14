@@ -210,6 +210,10 @@ test.describe("REQ-5: standalone TestCase authoring via the sidebar's generic ad
 
       const testCaseTitle = `REQ-5 UI E2E standalone case ${Date.now().toString(36)}`;
       await page.getByLabel(/^title$/i).fill(testCaseTitle);
+      // `description` is `type: "text"` (2026-09-15, live-manual-test
+      // feedback — a nullable/unbounded `Text` column) — a `<textarea>`
+      // (`atoms/textarea`), not a single-line `<input>`.
+      await expect(page.getByLabel(/^description$/i)).toHaveJSProperty("tagName", "TEXTAREA");
       await page.getByLabel(/^description$/i).fill("Covers the checkout happy path end-to-end.");
 
       // `test_level_id`/`test_type_id` (and `test_condition_id`) are fk

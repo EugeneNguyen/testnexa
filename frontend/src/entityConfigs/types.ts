@@ -33,7 +33,14 @@
  *    `entityConfigs/release.ts`.
  */
 
-export type FieldType = "string" | "enum" | "fk" | "date" | "boolean";
+/**
+ * `"text"` (2026-09-15, live-manual-test feedback): a nullable, unbounded
+ * `Text` column (as opposed to `"string"`'s length-limited `String`) —
+ * server-derived from `crud_factory.FieldMeta.long_text`, since a Pydantic
+ * `str` annotation can't distinguish the two on its own. `EntityForm` renders
+ * it as a `<textarea>` (`atoms/textarea`) instead of a single-line input.
+ */
+export type FieldType = "string" | "text" | "enum" | "fk" | "date" | "boolean";
 
 export interface FieldConfig {
   /** Matches the API's JSON field name exactly. */
