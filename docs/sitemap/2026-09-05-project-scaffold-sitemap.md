@@ -82,6 +82,8 @@ First sitemap for this repo — no prior one existed; routes accreted story-by-s
 
 Two page components (`EntityListPage`, `EntityFormPage`), routed generically off an entity registry — the rows below are the registry's contents, not 28 separate `<Route>` declarations in `App.tsx`. **One exception as of EXEC-3:** `EntityFormPage` renders one extra, bespoke read-only section (a `test-case`'s raised Defects, most recent first) when `entityKey === "test-cases"` specifically — every other entity's edit page is still the plain generic field form with no such addition ([ADR-0044](../adr/0044-exec-3-raise-defect-from-execution.md)).
 
+**Read-only detail route added 2026-09-15 ([ADR-0070](../adr/0070-generic-entity-detail-page.md)):** both admin scopes gain `/admin/:entity/:id`, served by a new third page component `EntityDetailPage` — a read-only view of **every** field the entity's served schema declares, not just the list table's visible columns. It applies to all 28 entities in both tables below with no per-entity wiring (the routes are added inside ADR-0057's `entityCrudRoutes()`, so `App.tsx`'s two existing calls pick them up unchanged), and it is reached by clicking a row. The one exception is navigational, not structural: an entity declaring `EntityConfig.detailPath` ([ADR-0060](../adr/0060-projects-page-retired-generic-surface.md) — only `projects` does) sends its row click to that bespoke workspace instead, so `/orgs/:orgId/admin/projects/:id` exists but is reachable by URL only, the same posture the `projects` list row in the table below already notes for its own nav.
+
 **Org/global-scoped** — `/orgs/:orgId/admin/:entity`. **Restructured 2026-09-08 ([ADR-0046](../adr/0046-shell-7-sidebar-mini-org-crud-restructure.md), SHELL-7):** the single flat "Admin" nav group is replaced by 3 named groups — routes/entities below are unchanged, only which sidebar group reaches each one changed.
 
 | `:entity` | Backs | Sidebar group (as of SHELL-7) |
@@ -145,10 +147,12 @@ Chrome rendered inside `AppHeader` on every `ProtectedRoute` screen, not tied to
 ├── /members                             OrgMembers
 ├── /mcp                                 McpIntegration (ADR-0063 — docs + live key management)
 └── /admin/:entity                       EntityListPage — 9 org/global entities (table above; 8 nav-linked, `projects` reachable by URL only, ADR-0058)
+    ├── /admin/:entity/:id               EntityDetailPage (ADR-0070 — read-only, every served field; row click opens it)
     └── /admin/:entity/:id/edit          EntityFormPage
 /projects/:projectId                     ProjectDetail
 ├── /test-plans/:testPlanId              TestPlanDetail (PLAN-1)
 ├── /mcp                                 McpIntegration (ADR-0063 — docs only, no key management; same component as the org row above)
 └── /admin/:entity                       EntityListPage — 20 project-scoped entities (table above)
+    ├── /admin/:entity/:id               EntityDetailPage (ADR-0070 — read-only, every served field; row click opens it)
     └── /admin/:entity/:id/edit          EntityFormPage
 ```

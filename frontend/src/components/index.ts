@@ -38,6 +38,7 @@ export * from "./atoms/text-link";
 
 // molecules
 export * from "./molecules/button-stack";
+export * from "./molecules/entity-field-value";
 export * from "./molecules/featured-card";
 export { default as FkAutocomplete } from "./molecules/fk-autocomplete";
 export type { FkAutocompleteProps } from "./molecules/fk-autocomplete";

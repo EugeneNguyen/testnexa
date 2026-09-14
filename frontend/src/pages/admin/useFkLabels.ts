@@ -1,0 +1,99 @@
+/**
+ * ADR-0070: batched, deduped FK-label resolution for any `EntityConfig`-driven
+ * surface — extracted verbatim out of `EntityTable`'s own body so
+ * `EntityDetailPage` reuses it instead of shipping a second copy (the
+ * component-reuse rule `frontend/CLAUDE.md` makes mandatory; this is a reuse
+ * extraction, not a new architecture decision of its own).
+ *
+ * Resolves one `getEntity` call per **distinct** FK id per FK field across the
+ * rows handed in — §3's own "not one request per row" requirement. The detail
+ * page passes a single-element `rows` array, so the same code trivially
+ * degrades to "one request per distinct FK on this record."
+ *
+ * Two separate field lists, deliberately:
+ *
+ * - `labelFields` — the fields whose labels are actually wanted (`EntityTable`
+ *   passes only its visible `showInTable !== false` columns; `EntityDetailPage`
+ *   passes every field).
+ * - `schemaFields` — the fields whose `refEntity` schemas get fetched. Kept
+ *   separate because `EntityTable` has always fetched schemas for **every**
+ *   `refEntity` on the config, visible column or not, and narrowing that here
+ *   would be a silent behavior change bundled into an unrelated extraction.
+ */
+import { useEffect, useMemo, useState } from "react";
+import { FieldConfig } from "../../entityConfigs/types";
+import { EntityRow, getEntity } from "../../lib/api/entityCrud";
+import { resolveEntityKey, useEntitySchemas } from "./useEntitySchema";
+
+/** `{ fieldName: { fkId: resolvedLabel } }` — an unresolved id maps to itself. */
+export type FkLabelMap = Record<string, Record<string, string>>;
+
+export function useFkLabels(
+  labelFields: FieldConfig[],
+  rows: EntityRow[],
+  schemaFields: FieldConfig[],
+): FkLabelMap {
+  const fkFields = useMemo(
+    () => labelFields.filter((f) => f.type === "fk" && f.refEntity),
+    [labelFields],
+  );
+  const [fkLabels, setFkLabels] = useState<FkLabelMap>({});
+
+  const refEntityKeys = useMemo(
+    () => schemaFields.filter((f) => f.refEntity).map((f) => f.refEntity as string),
+    [schemaFields],
+  );
+  const refConfigs = useEntitySchemas(refEntityKeys);
+
+  // A *primitive* fingerprint of which ref schemas have actually landed. The
+  // effect below has to re-run when one arrives (they resolve after first
+  // render), but keying it on `refConfigs`' object identity would make it
+  // re-run on every render for any caller that passes a fresh `config` object,
+  // and each run calls `setFkLabels`, i.e. a render loop. A joined string
+  // can't do that.
+  const refConfigFingerprint = fkFields
+    .map((f) => `${f.name}:${refConfigs[resolveEntityKey(f.refEntity as string)]?.path ?? ""}`)
+    .join("|");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function resolve() {
+      const next: FkLabelMap = {};
+      for (const field of fkFields) {
+        const refConfig = field.refEntity ? refConfigs[resolveEntityKey(field.refEntity)] : undefined;
+        if (!refConfig) {
+          continue;
+        }
+        const ids = Array.from(
+          new Set(rows.map((row) => row[field.name]).filter((v): v is string => typeof v === "string")),
+        );
+        const entries = await Promise.all(
+          ids.map(async (id) => {
+            try {
+              const row = await getEntity<EntityRow>(refConfig, id);
+              const label = field.labelField ? row[field.labelField] : row.id;
+              return [id, label === null || label === undefined ? id : String(label)] as const;
+            } catch {
+              return [id, id] as const;
+            }
+          }),
+        );
+        next[field.name] = Object.fromEntries(entries);
+      }
+      if (!cancelled) {
+        setFkLabels(next);
+      }
+    }
+
+    if (fkFields.length > 0) {
+      void resolve();
+    }
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, refConfigFingerprint]);
+
+  return fkLabels;
+}
