@@ -5,6 +5,12 @@ diff-based completeness test, not spot-checks" note requires.
 TC-MCP-024 (naming scheme + per-entity/per-action completeness),
 TC-MCP-025 (nothing orphaned, no leftover pre-ADR-0067 tool name).
 
+**Also carries TC-MCP-023** (MCP-5's own registry-completeness row), which
+moved here from `test_mcp5_generic_crud.py` when ADR-0067 generalized that
+row's spot-checks into the full diff below — the marker is stated explicitly
+rather than left implicit in a sibling file's docstring, so a coverage audit
+grepping for `TC-MCP-023` finds it.
+
 The whole risk this file exists to close: with ~146 generated tools, an
 entity or a method silently missing its tool is invisible — that capability
 just quietly stops being reachable over MCP, with no error anywhere, exactly
@@ -27,6 +33,8 @@ diff against `methods` false-positives on exactly that one entity.
 """
 
 from __future__ import annotations
+
+import re
 
 import pytest
 
@@ -202,10 +210,68 @@ def test_pre_adr_0067_tool_names_are_gone(retired: str) -> None:
 
 def test_every_registered_tool_carries_a_nonempty_description() -> None:
     """`tools/list` descriptions are the only signal a model has for choosing
-    among ~146 tools — an empty one is a silent usability hole."""
+    among 146 tools — an empty one is a silent usability hole."""
     for name, tool in _registered().items():
         assert tool.description, f"{name} has no description"
         assert len(tool.description) > 40, f"{name}'s description is too thin to disambiguate: {tool.description!r}"
+
+
+def test_generated_descriptions_carry_the_facts_adr_0067_decision_7_promises() -> None:
+    """ADR-0067 Decision §7 says each description names the entity, the scope
+    key or parent id where one exists, and points at that entity's own
+    `describe` tool. Length alone (the test above) proves none of that — and
+    `BESPOKE_CREATE_PARENT_FIELDS`/`BESPOKE_LIST_SCOPE_FIELDS` being *complete*
+    (asserted further down) proves only that the maps have the right keys, not
+    that their values ever reach the rendered text. This closes that gap: the
+    declared parent id/scope key must actually appear in the generated
+    description of the tool it belongs to."""
+    registered = _registered()
+
+    # Every bespoke create's declared parent id(s) reach its own description.
+    for resource, parent in BESPOKE_CREATE_PARENT_FIELDS.items():
+        if parent is None:  # `organization`'s create takes no parent id
+            continue
+        description = registered[tool_name(resource, "create")].description
+        for field in re.findall(r'"([a-z_]+)"', parent):
+            assert field in description, f"{resource}: create description never names {field!r}"
+
+    # Every bespoke list's declared scope key reaches its own description.
+    for resource, scope_key in BESPOKE_LIST_SCOPE_FIELDS.items():
+        description = registered[tool_name(resource, "list")].description
+        assert scope_key in description, f"{resource}: list description never names scope key {scope_key!r}"
+
+    # Every *generic* scoped list names its own scope field, from the config.
+    for resource, config in ENTITY_CONFIGS_BY_RESOURCE.items():
+        if "list" not in TOOL_REGISTRY[resource] or config.scope_field is None:
+            continue
+        description = registered[tool_name(resource, "list")].description
+        fields = config.scope_field if isinstance(config.scope_field, tuple) else (config.scope_field,)
+        for field in fields:
+            assert field in description, f"{resource}: list description never names scope field {field!r}"
+
+    # Every list/create on a described entity points at that entity's own
+    # `describe` tool, so a client's next step is spelled out rather than guessed.
+    for resource in ENTITY_CONFIGS_BY_RESOURCE:
+        for action in ("list", "create"):
+            if action not in TOOL_REGISTRY[resource]:
+                continue
+            description = registered[tool_name(resource, action)].description
+            assert tool_name(resource, "describe") in description, f"{resource}.{action} does not point at its describe tool"
+
+
+def test_generated_tool_count_is_the_number_adr_0067_states() -> None:
+    """ADR-0067 states 146 tools (119 CRUD actions across 30 resources + 27
+    `describe`). Every other assertion here is a *derived* diff on purpose
+    (Decision §8 — a hardcoded name list would drift with the thing it
+    polices), which means none of them would notice if the derivation itself
+    and the ADR's published number silently diverged. This one literal anchor
+    catches that, and is cheap to update deliberately when an entity is added
+    — unlike a 146-name list, which would have to be re-typed."""
+    describe_count = len(ENTITY_CONFIGS_BY_RESOURCE)
+    crud_count = sum(len(set(entry) - {"describe"}) for entry in TOOL_REGISTRY.values())
+    assert len(TOOL_REGISTRY) == 30, "resource count changed — update ADR-0067 and this anchor together"
+    assert (crud_count, describe_count) == (119, 27), (crud_count, describe_count)
+    assert len(_registered()) == crud_count + describe_count == 146
 
 
 def test_no_tool_takes_a_resource_argument() -> None:

@@ -33,14 +33,14 @@ from sqlalchemy import delete, select
 from app.core.security import generate_api_key, hash_api_key
 from app.db.session import AsyncSessionLocal
 from app.models.actor import Actor, AIAgent, User
-from app.models.assets import Requirement, TestCase, TestCaseStatus, TestSuite, TestSuiteTestCase
+from app.models.assets import Requirement, TestCase, TestCaseStatus, TestCondition, TestConditionPriority, TestSuite, TestSuiteTestCase
 from app.models.auth import AuthIdentity, AuthProvider, RefreshToken
 from app.models.governance import RiskItem
 from app.models.planning import Environment, TestCycle, TestPlan, TestPlanTestSuite
 from app.models.project import Project, Release
 from app.models.rbac import Permission, Role, RoleAssignment, RolePermission
 from app.models.taxonomy import TestLevel, TestType
-from app.models.trace import RequirementTestCaseLink
+from app.models.trace import RequirementTestCaseLink, RequirementTestConditionLink, TestConditionTestCaseLink
 from app.models.tenancy import Organization, OrgMembership, OrgMembershipStatus
 
 TEST_API_BASE_URL = os.environ.get("TEST_API_BASE_URL", "http://localhost:8000")
@@ -152,6 +152,7 @@ async def _cleanup(
     test_level_ids: list | None = None,
     test_type_ids: list | None = None,
     test_case_ids: list | None = None,
+    test_condition_ids: list | None = None,
     test_suite_ids: list | None = None,
     test_plan_ids: list | None = None,
     test_cycle_ids: list | None = None,
@@ -168,6 +169,7 @@ async def _cleanup(
     test_level_ids = test_level_ids or []
     test_type_ids = test_type_ids or []
     test_case_ids = test_case_ids or []
+    test_condition_ids = test_condition_ids or []
     test_suite_ids = test_suite_ids or []
     test_plan_ids = test_plan_ids or []
     test_cycle_ids = test_cycle_ids or []
@@ -199,7 +201,15 @@ async def _cleanup(
         if test_case_ids:
             await session.execute(delete(RequirementTestCaseLink).where(RequirementTestCaseLink.test_case_id.in_(test_case_ids)))
             await session.execute(delete(TestSuiteTestCase).where(TestSuiteTestCase.test_case_id.in_(test_case_ids)))
+            await session.execute(delete(TestConditionTestCaseLink).where(TestConditionTestCaseLink.test_case_id.in_(test_case_ids)))
             await session.execute(delete(TestCase).where(TestCase.id.in_(test_case_ids)))
+        if test_condition_ids:
+            # REQ-3 rigor-path chain: both of a TestCondition's link tables must
+            # go before the row itself, and the TestCase rows it points at are
+            # cleaned by `test_case_ids` above (so pass both, children first).
+            await session.execute(delete(TestConditionTestCaseLink).where(TestConditionTestCaseLink.test_condition_id.in_(test_condition_ids)))
+            await session.execute(delete(RequirementTestConditionLink).where(RequirementTestConditionLink.test_condition_id.in_(test_condition_ids)))
+            await session.execute(delete(TestCondition).where(TestCondition.id.in_(test_condition_ids)))
         if requirement_ids:
             await session.execute(delete(RequirementTestCaseLink).where(RequirementTestCaseLink.requirement_id.in_(requirement_ids)))
             await session.execute(delete(Requirement).where(Requirement.id.in_(requirement_ids)))
@@ -285,14 +295,24 @@ async def _mcp_tool_names(client: httpx.AsyncClient, raw_key: str, req_id: int =
     return {tool["name"] for tool in response.json()["result"]["tools"]}
 
 
-def _extract_unknown_tool_error(result: dict) -> str:
-    """FastMCP's own rejection for a name it never registered — plain text, not
-    this app's `{code, message, field_errors}` envelope, because the request
-    never reaches any of this app's code at all."""
+def _extract_unknown_tool_error(result: dict, name: str) -> str:
+    """FastMCP's own rejection for a name it never registered.
+
+    Asserts the *form* as well as the content, because "not this app's envelope"
+    is half of TC-MCP-017/022's own literal expected result: the text must be
+    the SDK's plain-text `Unknown tool: <name>`, and must NOT parse as this
+    project's API Doc §1 `{code, message, field_errors}` envelope — the request
+    never reaches application code, so §1's parity contract does not apply. A
+    bare `name in text` check would pass on a JSON envelope that happened to
+    mention the tool, which is exactly the outcome this asserts against."""
     assert result.get("isError") is True, f"expected isError=True, got: {result!r}"
     for item in result.get("content", []):
         if item.get("type") == "text":
-            return item["text"]
+            text = item["text"]
+            assert "Unknown tool" in text, f"expected the SDK's plain-text unknown-tool rejection, got: {text!r}"
+            assert name in text, f"rejection does not name the tool: {text!r}"
+            assert "{" not in text, f"expected plain text, not a JSON envelope: {text!r}"
+            return text
     raise AssertionError(f"no error text in tool result: {result!r}")
 
 
@@ -403,6 +423,21 @@ async def test_agent_reaches_generic_factory_and_user_via_rest_is_unaffected() -
             )
             assert rest_resp.status_code == 200, rest_resp.text
             assert rest_resp.json()["total"] == 2, rest_resp.json()
+
+            # TC-MCP-018's Expected result says the User's own result is
+            # byte-identical to its pre-fix behaviour, "same 200/201 it always
+            # got" — the `200` above is only half of that. The `_actor_membership_exists`
+            # swap touches `_resolve_scope_for_write` (the create/list scope gate)
+            # as much as `_fetch_and_gate`, so a `User`-path narrowing would show
+            # up on the write gate specifically, which a read-only assertion
+            # cannot see. Same role, same session, same actor set.
+            rest_create = await client.post(
+                f"{API_PREFIX}/requirements",
+                json={"project_id": str(project_id), "title": "MCP-5 user-created requirement", "description": "via REST"},
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            assert rest_create.status_code == 201, rest_create.text
+            requirement_ids.append(UUID(rest_create.json()["id"]))
     finally:
         await _cleanup(user_ids=user_ids, org_ids=org_ids, project_ids=project_ids, requirement_ids=requirement_ids, role_ids=role_ids, agent_ids=agent_ids)
 
@@ -584,6 +619,24 @@ async def test_generic_dispatch_across_tenant_generic_and_global_catalog_classes
             )
             assert _extract_tool_payload(update_result)["title"] == "MCP-5 TC016 updated"
 
+            # --- TC-MCP-016's second Expected-result clause: "response shape
+            # matches the REST route's own schema VERBATIM (no divergent
+            # MCP-only contract)". Every assertion above compares against a
+            # literal, which proves the call worked but says nothing about
+            # shape parity — a divergent MCP serializer producing the same
+            # `title` would pass all of them. Fetch the same rows over REST and
+            # diff the whole payload, for all three named entity classes, not
+            # just the one this block happens to mutate.
+            for tool, rest_path, row_id in (
+                ("tn_requirement_get", f"{API_PREFIX}/requirements/{created_id}", created_id),
+                ("tn_test_level_get", f"{API_PREFIX}/test-levels/{level_id}", str(level_id)),
+                ("tn_requirement_test_case_link_get", f"{API_PREFIX}/requirement-test-case-links/{link_id}", str(link_id)),
+            ):
+                mcp_payload = _extract_tool_payload(await _mcp_call_tool(client, raw_key, tool, {"id": row_id}))
+                rest_resp = await client.get(rest_path, headers=_bearer_headers(raw_key))
+                assert rest_resp.status_code == 200, rest_resp.text
+                assert mcp_payload == rest_resp.json(), f"{tool} diverges from {rest_path}"
+
             delete_result = await _mcp_call_tool(client, raw_key, "tn_requirement_delete", {"id": created_id})
             assert _extract_tool_payload(delete_result) == {"status": "deleted"}
             confirm = await _mcp_call_tool(client, raw_key, "tn_requirement_get", {"id": created_id})
@@ -664,7 +717,7 @@ async def test_describe_tool_parity_with_rest_schema_route_and_release_has_none(
             # reaching any app code — asserted explicitly so the "never
             # advertised" claim isn't silently weaker than it reads.
             release_result = await _mcp_call_tool(client, raw_key, "tn_release_describe", {}, req_id=5)
-            assert "tn_release_describe" in _extract_unknown_tool_error(release_result)
+            _extract_unknown_tool_error(release_result, "tn_release_describe")
     finally:
         await _cleanup(user_ids=user_ids, org_ids=org_ids, role_ids=role_ids, agent_ids=agent_ids)
 
@@ -748,12 +801,12 @@ async def test_no_tool_is_advertised_for_a_method_the_entity_does_not_support() 
             update_result = await _mcp_call_tool(
                 client, raw_key, "tn_test_log_update", {"id": str(uuid.uuid4()), "fields": {"event_type": "comment"}}, req_id=4
             )
-            assert "tn_test_log_update" in _extract_unknown_tool_error(update_result)
+            _extract_unknown_tool_error(update_result, "tn_test_log_update")
 
             create_result = await _mcp_call_tool(
                 client, raw_key, "tn_requirement_test_case_link_create", {"fields": {}}, req_id=5
             )
-            assert "tn_requirement_test_case_link_create" in _extract_unknown_tool_error(create_result)
+            _extract_unknown_tool_error(create_result, "tn_requirement_test_case_link_create")
     finally:
         await _cleanup(user_ids=user_ids, org_ids=org_ids, role_ids=role_ids, agent_ids=agent_ids)
 
@@ -797,13 +850,30 @@ async def test_create_entity_risk_item_rejects_both_and_neither_scope_fields() -
                 client, raw_key, "tn_risk_item_create",
                 {"fields": {"description": "x", "likelihood": "low", "impact": "low"}},
             )
-            assert _extract_tool_error(neither_result)["code"] == "validation_error"
+            neither_error = _extract_tool_error(neither_result)
+            assert neither_error["code"] == "validation_error"
+            # TC-MCP-020's literal claim is the "exactly one, both/neither is
+            # invalid" rule specifically — `code == "validation_error"` alone
+            # cannot distinguish it from any other validation failure, so pin
+            # the rule's own field_errors (same discipline TC-MCP-021's test
+            # applies by asserting its exact scope-check message).
+            # `scope_validation_error` (crud_factory.py) keys the error by the
+            # scope's own `primary_field` only ("requirement_id" — the first
+            # candidate), never by every candidate field, for both the
+            # "neither present" and "both present" cases below.
+            assert set(neither_error["field_errors"]) == {"requirement_id"}, neither_error
 
             both_result = await _mcp_call_tool(
                 client, raw_key, "tn_risk_item_create",
                 {"fields": {"requirement_id": str(requirement_id), "test_plan_id": str(uuid.uuid4()), "description": "x", "likelihood": "low", "impact": "low"}},
             )
-            assert _extract_tool_error(both_result)["code"] == "validation_error"
+            both_error = _extract_tool_error(both_result)
+            assert both_error["code"] == "validation_error"
+            # The both-case passes a syntactically valid but nonexistent
+            # `test_plan_id`; without this the test would still pass if a guard
+            # reordering made it fail for "no such test plan" instead of the
+            # branching-scope rule the TC actually names.
+            assert set(both_error["field_errors"]) == {"requirement_id"}, both_error
 
             ok_result = await _mcp_call_tool(
                 client, raw_key, "tn_risk_item_create",
@@ -970,3 +1040,128 @@ async def test_bespoke_create_entity_test_execution_preserves_plan3_scope_check(
             test_level_ids=test_level_ids,
             test_type_ids=test_type_ids,
         )
+
+
+# --- ADR-0067 Decision §5: the rigor-path branch `tn_test_case_create` gained ---------------
+
+
+@pytest.mark.asyncio
+async def test_tn_test_case_create_dispatches_the_rigor_path_when_given_a_test_condition_id() -> None:
+    """ADR-0067 Decision §5 calls folding MCP-1's `create_test_case` into
+    `tn_test_case_create` "a strict capability gain, not a port," because the
+    registry executor supports **both** REQ-2's direct-link path and REQ-3's
+    rigor path, while the hand-wired tool only ever shipped the former (that
+    omission is ADR-0033's own documented Drift note).
+
+    Nothing tested that claim. Every other MCP create in this suite passes
+    `requirement_id`, so the `test_condition_id` branch in
+    `tool_registry._test_case_create` — the one clause the ADR advertises as
+    *new* — had zero coverage, which is exactly the "an ADR claims a capability
+    nothing exercises" gap this repo's own ADR-vs-implementation-drift
+    convention exists to surface.
+
+    Asserts the branch is genuinely taken, not merely that a row appears: the
+    created `TestCase` must carry `test_condition_id` (the direct-link path
+    leaves it null), its link row must be a `TestConditionTestCaseLink` and
+    **not** a `RequirementTestCaseLink`, and `status` must be `draft` — which
+    the rigor route forces regardless of input, per ADR-0028.
+    """
+    email = _unique_email("adr67rigor")
+    user_ids: list = []
+    org_ids: list = []
+    project_ids: list = []
+    requirement_ids: list = []
+    test_condition_ids: list = []
+    test_case_ids: list = []
+    test_level_ids: list = []
+    test_type_ids: list = []
+    role_ids: list = []
+    agent_ids: list = []
+
+    try:
+        async with AsyncSessionLocal() as session:
+            user = await _create_user(session, email)
+            org = await _create_org(session, "adr67-rigor")
+            await _create_membership(session, user, org)
+            project = await _create_project(session, org)
+            requirement = await _create_requirement(session, project, title="ADR-0067 rigor-path requirement")
+            condition = TestCondition(
+                requirement_id=requirement.id,
+                description="ADR-0067 rigor-path condition",
+                priority=TestConditionPriority.medium,
+            )
+            session.add(condition)
+            await session.flush()
+            level = TestLevel(name=f"ADR67 level {uuid.uuid4().hex[:8]}")
+            type_ = TestType(name=f"ADR67 type {uuid.uuid4().hex[:8]}")
+            session.add_all([level, type_])
+            await session.flush()
+            role = await _create_role(session, org, "adr67_rigor_role")
+            for code in ("test_case.create", "test_case.read"):
+                await _grant_permission(session, role, await _get_permission_by_code(session, code))
+            agent, raw_key = await _create_agent(session, acting_on_behalf_of_user_id=user.actor_id, agent_name="ADR-0067 Rigor Agent")
+            await _assign_role(session, actor_id=agent.actor_id, org=org, role=role)
+            await session.commit()
+            user_ids, org_ids, project_ids = [user.actor_id], [org.id], [project.id]
+            requirement_ids, test_condition_ids = [requirement.id], [condition.id]
+            test_level_ids, test_type_ids = [level.id], [type_.id]
+            role_ids, agent_ids = [role.id], [agent.actor_id]
+            condition_id, level_id, type_id = condition.id, level.id, type_.id
+
+        async with httpx.AsyncClient(base_url=TEST_API_BASE_URL, timeout=30.0) as client:
+            await _mcp_initialize(client)
+
+            result = await _mcp_call_tool(
+                client,
+                raw_key,
+                "tn_test_case_create",
+                {
+                    "fields": {
+                        "test_condition_id": str(condition_id),
+                        "title": "ADR-0067 rigor-path test case",
+                        "test_level_id": str(level_id),
+                        "test_type_id": str(type_id),
+                    }
+                },
+            )
+            payload = _extract_tool_payload(result)
+            test_case_ids.append(UUID(payload["id"]))
+
+            # The rigor branch stamps `test_condition_id`; the direct-link
+            # branch leaves it null. This is the assertion that proves which
+            # of the two executor branches actually ran.
+            assert payload["test_condition_id"] == str(condition_id), payload
+            assert payload["status"] == "draft", payload  # ADR-0028: always draft on this route
+
+            # And the link table written is the rigor path's, not REQ-2's.
+            async with AsyncSessionLocal() as session:
+                rigor_links = (await session.execute(
+                    select(TestConditionTestCaseLink).where(TestConditionTestCaseLink.test_case_id == UUID(payload["id"]))
+                )).scalars().all()
+                direct_links = (await session.execute(
+                    select(RequirementTestCaseLink).where(RequirementTestCaseLink.test_case_id == UUID(payload["id"]))
+                )).scalars().all()
+            assert len(rigor_links) == 1, rigor_links
+            assert rigor_links[0].test_condition_id == condition_id
+            assert direct_links == [], "rigor path must not also write REQ-2's direct link"
+
+            # Round-trip read (backend/CLAUDE.md's resolver-completeness rule:
+            # a create-only assertion cannot catch an unresolvable-tenant 404
+            # on the very next read, which is exactly what ADR-0029 fixed for
+            # this entity's *other* create path).
+            read_back = _extract_tool_payload(await _mcp_call_tool(client, raw_key, "tn_test_case_get", {"id": payload["id"]}, req_id=4))
+            assert read_back == payload
+    finally:
+        await _cleanup(
+            user_ids=user_ids,
+            org_ids=org_ids,
+            project_ids=project_ids,
+            requirement_ids=requirement_ids,
+            test_case_ids=test_case_ids,
+            test_condition_ids=test_condition_ids,
+            test_level_ids=test_level_ids,
+            test_type_ids=test_type_ids,
+            role_ids=role_ids,
+            agent_ids=agent_ids,
+        )
+

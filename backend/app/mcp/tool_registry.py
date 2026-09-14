@@ -504,7 +504,7 @@ ENTITY_CONFIGS_BY_RESOURCE: dict[str, CrudEntityConfig] = {config.resource: conf
 #: per entity (read verbs, then write verbs, then reflection).
 ACTIONS: tuple[str, ...] = ("list", "get", "create", "update", "delete", "describe")
 
-#: Every generated MCP tool name carries this prefix. It namespaces the ~145
+#: Every generated MCP tool name carries this prefix. It namespaces the 146
 #: tools this server publishes against whatever *other* MCP servers a client
 #: has mounted at the same time (ADR-0067 Decision §3) — an unprefixed
 #: `project_create` would be an obvious collision candidate in any multi-server

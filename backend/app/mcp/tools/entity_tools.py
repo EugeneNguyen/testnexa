@@ -24,7 +24,7 @@ tool's input schema carries only the arguments that action genuinely takes
 AC gets strictly stronger — an unsupported entity/action pair is not refused
 at call time, it is never advertised.
 
-The cost, stated plainly: ~145 tools instead of 8. See ADR-0067's
+The cost, stated plainly: 146 tools instead of 8. See ADR-0067's
 Consequences for the trade-off discussion.
 
 **Generation is data-driven, never hand-listed.** The (entity, action) pairs
@@ -129,7 +129,7 @@ async def _run(resource: str, action: str, **kwargs: Any) -> dict[str, Any]:
 #
 # Every generated tool carries a hand-quality description (FastMCP hands it to
 # the client verbatim in `tools/list`) — this is the only surface a model has
-# to decide *which* of ~145 tools to call, so it names the entity, the REST
+# to decide *which* of 146 tools to call, so it names the entity, the REST
 # route it mirrors, and any parent id the bespoke path needs. Built once at
 # import time, not per call.
 
