@@ -91,7 +91,7 @@ Two page components (`EntityListPage`, `EntityFormPage`), routed generically off
 | `permissions` | `Permission` (read-only) | Access Control |
 | `org-memberships` | `OrgMembership` (coexists with `OrgMembers`) | Access Control |
 | `test-design-techniques` | `TestDesignTechnique` | Catalogs |
-| `test-levels` | `TestLevel` | Catalogs |
+| `test-levels` | `TestLevel` — 5 rows seeded [ADR-0066](../adr/0066-admin-5-seed-test-level-catalog.md), no route change | Catalogs |
 | `test-types` | `TestType` | Catalogs |
 | `organizations` | `Organization` (coexists with `OrgHome`, UI Design Document §6) | Organization |
 | `projects` | `Project`, full list/get/**create**/update/delete — **create added [ADR-0059](../adr/0059-project-generic-admin-create.md)**, reuses the bespoke `POST /orgs/{org_id}/projects` unchanged ([ADR-0017](../adr/0017-project-creation-flow.md)'s bootstrap-aware creation/`RoleAssignment` grant, not a new route) via `entityConfigs/overrides.ts`'s `createPath` override; `search_fields=("name",)` added [ADR-0060](../adr/0060-projects-page-retired-generic-surface.md) | **None** — [ADR-0058](../adr/0058-project-generic-admin-org-scoped.md) added the registry entry (`org_id` scope resolves straight from `:orgId`, no fetch) but deliberately excludes it from the sidebar (`ORG_EXCLUDED_ENTITY_KEYS`) since the flat "Projects" nav item ([ADR-0047](../adr/0047-proj-4-projects-page-sidebar-entry.md), now rendering the generic surface itself per [ADR-0060](../adr/0060-projects-page-retired-generic-surface.md)) is the real nav path — this `/orgs/:orgId/admin/projects` row is reachable only by direct URL |

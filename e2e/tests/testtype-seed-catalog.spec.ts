@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { expect, test } from "@playwright/test";
 
 /**
- * TestType catalog default seed (ADR-0066, TC-ADMIN-040): real browser,
+ * TestType catalog default seed (ADR-0067, TC-ADMIN-043): real browser,
  * full stack, proving the 5 seeded `TestType` rows are actually visible
  * through the real generic admin CRUD surface (`/orgs/:orgId/admin/test-types`),
  * reached via the sidebar's Catalogs nav group — not just present in the DB.
@@ -133,7 +133,7 @@ async function login(page: import("@playwright/test").Page, email: string, passw
   await page.waitForURL(new RegExp(`/orgs/${orgId}`));
 }
 
-test.describe("TestType catalog default seed (ADR-0066)", () => {
+test.describe("TestType catalog default seed (ADR-0067)", () => {
   test("the 5 seeded TestType rows render on the real admin list, reached via the sidebar's Catalogs nav group", async ({
     page,
   }) => {

@@ -1,13 +1,25 @@
 """Integration tests for the TestType catalog seed migration
-(`854917c76ac5_seed_test_type_catalog`, ADR-0066).
+(`854917c76ac5_seed_test_type_catalog`, ADR-0067 — drafted as ADR-0066,
+renumbered at merge time after ADMIN-5 independently claimed that number for
+the sibling `TestLevel` catalog).
 
-Covers TC-ADMIN-040 (`docs/test-cases/2026-09-03-test-cases.md`, Test Design
-§54): seed presence, re-apply idempotency, and admin-added custom-row
+Covers TC-ADMIN-043 (`docs/test-cases/2026-09-03-test-cases.md`, Test Design
+§55): seed presence, re-apply idempotency, and admin-added custom-row
 survival across both a re-apply and a `downgrade()`. Same shape as
-`test_rbac_seed.py`'s own TC-RBAC-016/019 migration-mechanics tests — direct
+`test_rbac_seed.py`'s own TC-RBAC-016/019 migration-mechanics tests and
+`test_admin5_seed_test_level.py`'s own TC-ADMIN-041/042 — direct
 `AsyncSessionLocal` assertions plus shelling out to the real `alembic` CLI
 against `DATABASE_URL`, not a re-implementation of the migration's own logic
 in Python.
+
+**Idempotency is asserted via direct `upgrade()` invocation, not a second
+CLI `upgrade head` call** — confirmed live (ADMIN-5's own retro,
+`backend/CLAUDE.md`) that a CLI re-invocation when the DB is already at that
+revision is a pure bookkeeping no-op and never re-enters the migration
+file's `upgrade()` body at all, which would make the assertion pass
+regardless of whether the migration's own existence-check logic works. See
+`_run_upgrade_twice` below, same technique `test_admin5_seed_test_level.py`
+already established for the sibling `TestLevel` migration.
 
 The package-level `tests/integration/conftest.py` fixture still applies —
 it probes `{TEST_API_BASE_URL}/health` and skips the whole suite if
@@ -17,6 +29,7 @@ so this file is DB-level, same posture `test_rbac_seed.py` documents for
 RBAC-4.
 """
 
+import importlib.util
 import os
 import subprocess
 import uuid
@@ -26,6 +39,7 @@ import pytest
 from sqlalchemy import func, select
 
 from app.db.session import AsyncSessionLocal
+from app.db.session import engine as app_engine
 from app.models.assets import TestCase
 from app.models.taxonomy import TestType
 
@@ -43,9 +57,21 @@ SEED_NAMES = [
 # This migration's own `down_revision` — the absolute target for downgrade
 # tests, not a relative `-1`, per `test_rbac_seed.py`'s own documented reason
 # (a relative offset stops meaning "undo this migration" the moment anything
-# stacks on top of it).
+# stacks on top of it). Re-pointed to ADMIN-5's `63f8478c1c12` after the
+# merge-time Alembic-chain reconciliation (see the migration file's own
+# docstring).
 MIGRATION_REVISION = "854917c76ac5"
-DOWN_REVISION = "f19a7c3e5b62"
+DOWN_REVISION = "63f8478c1c12"
+
+
+def _load_migration_module():
+    migration_path = BACKEND_DIR / "alembic" / "versions" / "854917c76ac5_seed_test_type_catalog.py"
+    assert migration_path.exists(), migration_path
+    spec = importlib.util.spec_from_file_location("_testtype_seed_migration_live", migration_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def _run_alembic(*args: str) -> subprocess.CompletedProcess:
@@ -66,12 +92,14 @@ async def _seeded_names() -> list[str]:
 
 
 @pytest.mark.asyncio
-async def test_seed_presence_exactly_five_rows() -> None:  # TC-ADMIN-040 (positive)
+async def test_seed_presence_exactly_five_rows() -> None:  # TC-ADMIN-043 (positive)
     assert await _seeded_names() == sorted(SEED_NAMES)
 
 
 @pytest.mark.asyncio
-async def test_migration_rerun_is_idempotent() -> None:  # TC-ADMIN-040 (idempotency)
+async def test_migration_upgrade_is_idempotent() -> None:  # TC-ADMIN-043 (idempotency)
+    migration = _load_migration_module()
+
     async def _count() -> int:
         async with AsyncSessionLocal() as session:
             return (
@@ -85,15 +113,25 @@ async def test_migration_rerun_is_idempotent() -> None:  # TC-ADMIN-040 (idempot
     before = await _count()
     assert before == 5
 
-    result = _run_alembic("upgrade", "head")
-    assert result.returncode == 0, f"alembic upgrade head failed:\n{result.stdout}\n{result.stderr}"
+    def _run_upgrade_twice(sync_conn) -> None:
+        from alembic.operations import Operations
+        from alembic.runtime.migration import MigrationContext
+
+        ctx = MigrationContext.configure(sync_conn)
+        with Operations.context(ctx):
+            migration.upgrade()
+            migration.upgrade()
+
+    async with app_engine.connect() as conn:
+        await conn.run_sync(_run_upgrade_twice)
+        await conn.commit()
 
     after = await _count()
     assert after == before == 5
 
 
 @pytest.mark.asyncio
-async def test_custom_row_survives_reapply_and_downgrade() -> None:  # TC-ADMIN-040 (custom-row survival)
+async def test_custom_row_survives_reapply_and_downgrade() -> None:  # TC-ADMIN-043 (custom-row survival)
     custom_name = f"Custom Regression Suite {uuid.uuid4().hex[:8]}"
 
     async with AsyncSessionLocal() as session:
@@ -123,7 +161,10 @@ async def test_custom_row_survives_reapply_and_downgrade() -> None:  # TC-ADMIN-
             assert seeded_count == 5
 
         # Downgrade: only the 5 seeded rows are deleted, by name — the
-        # custom row survives. Same FK-safety posture as
+        # custom row survives. A real revision transition (unlike the
+        # same-revision idempotency test above) genuinely executes the
+        # migration's own `downgrade()` body — confirmed via ADMIN-5's own
+        # documented distinction. Same FK-safety posture as
         # `test_rbac_seed.py`'s TC-RBAC-019: if any real `TestCase` in this
         # DB happens to reference one of the 5 seeded rows by id (a RESTRICT
         # FK), the downgrade would correctly fail rather than exercise this

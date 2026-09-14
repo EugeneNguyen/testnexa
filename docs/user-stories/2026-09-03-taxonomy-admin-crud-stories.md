@@ -13,7 +13,7 @@
 **so that** I can report "% of test cases using a documented design technique" — a report 07 notes no competitor in this research offers.
 
 **Acceptance criteria:**
-- Given the seeded `TestDesignTechnique`, `TestLevel`, `TestType` lookup tables (ISTQB CTFL v4.0.1 vocabulary, seeded via Alembic data migration), when a user edits a TestCase, then they can select one TestLevel, one TestType, and zero-or-more TestDesignTechniques from dropdowns/multi-select — not free-text fields. **Status ([ADR-0066](../adr/0066-testtype-catalog-default-seed.md), 2026-09-13): `TestType` now ships this seed; `TestLevel`/`TestDesignTechnique` do not yet — this AC's precondition holds for the TestType dropdown only, the other two remain empty until their own future seed.**
+- Given the seeded `TestDesignTechnique`, `TestLevel`, `TestType` lookup tables (ISTQB CTFL v4.0.1 vocabulary, seeded via Alembic data migration), when a user edits a TestCase, then they can select one TestLevel, one TestType, and zero-or-more TestDesignTechniques from dropdowns/multi-select — not free-text fields. **Status (2026-09-13, two independently-landed same-day stories): `TestLevel` ships via ADMIN-5/[ADR-0066](../adr/0066-admin-5-seed-test-level-catalog.md); `TestType` ships via [ADR-0067](../adr/0067-testtype-catalog-default-seed.md) — this AC's precondition now holds for both dropdowns. `TestDesignTechnique` remains unseeded, the one still-open piece of this AC.**
 - Given a Project, a report view shows "% of test cases with at least one TestDesignTechnique assigned," filterable by TestSuite/TestPlan.
 
 ---

@@ -1,8 +1,15 @@
 """seed test_type catalog
 
 Revision ID: 854917c76ac5
-Revises: f19a7c3e5b62
+Revises: 63f8478c1c12
 Create Date: 2026-09-13 00:00:00.000000
+
+Rebased onto ADMIN-5's `63f8478c1c12` (seeds the sibling `TestLevel`
+catalog) — both this migration and ADMIN-5's independently chained off the
+prior head `f19a7c3e5b62` before either branch saw the other, which would
+have produced two Alembic heads on merge; re-pointed here to keep a single
+linear chain, found via `git fetch` immediately before merging main into
+this branch.
 
 TESTTYPE-1: `TestType` ships full CRUD (ADR-0022 generic factory) but zero
 seeded rows — confirmed empty on `main` itself, blocking the TestCase
@@ -23,7 +30,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = '854917c76ac5'
-down_revision: Union[str, None] = 'f19a7c3e5b62'
+down_revision: Union[str, None] = '63f8478c1c12'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

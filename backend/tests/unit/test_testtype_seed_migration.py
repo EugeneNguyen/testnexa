@@ -1,4 +1,4 @@
-"""Unit coverage for the TestType catalog seed migration (TC-ADMIN-040, ADR-0066).
+"""Unit coverage for the TestType catalog seed migration (TC-ADMIN-043, ADR-0067).
 
 No DB/network — loads the Alembic migration module directly (same
 `importlib.util.spec_from_file_location` pattern `test_rbac_seed_catalog.py`
@@ -28,7 +28,7 @@ def _load_migration_module():
     return module
 
 
-def test_seed_names_match_adr_0066_exactly() -> None:
+def test_seed_names_match_adr_0067_exactly() -> None:
     module = _load_migration_module()
     assert module.SEED_NAMES == [
         "Functional Testing",
@@ -44,9 +44,9 @@ def test_seed_names_has_no_duplicates() -> None:
     assert len(module.SEED_NAMES) == len(set(module.SEED_NAMES)) == 5
 
 
-def test_migration_wiring_chains_onto_the_current_head() -> None:
+def test_migration_wiring_chains_onto_admin5s_test_level_seed() -> None:
     module = _load_migration_module()
-    assert module.down_revision == "f19a7c3e5b62"
+    assert module.down_revision == "63f8478c1c12"  # ADMIN-5's TestLevel seed migration
     assert module.revision == "854917c76ac5"
 
 
