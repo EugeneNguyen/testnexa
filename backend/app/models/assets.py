@@ -70,6 +70,12 @@ class TestCase(Base):
     test_condition_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("test_condition.id", ondelete="RESTRICT"), nullable=True
     )
+    # Nullable per ADR-0068 (REQ-5 standalone authoring path) — set only by
+    # the generic factory's create; never cleared once a standalone case
+    # later gains a RequirementTestCaseLink via the retrofit route.
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("project.id", ondelete="RESTRICT"), nullable=True
+    )
     test_level_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("test_level.id", ondelete="RESTRICT"), nullable=False
     )

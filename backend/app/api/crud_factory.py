@@ -435,20 +435,23 @@ def chain_resolver(hops: Sequence[tuple[type, str]]) -> ResolveOrgId:
 
 
 async def resolve_test_case_org_id(db: AsyncSession, row: Any) -> uuid.UUID | None:
-    """Bespoke `TestCase` resolver (ADR-0022): nullable-hop with two link-table fallbacks.
+    """Bespoke `TestCase` resolver (ADR-0022): nullable-hop with three fallbacks.
 
     `test_condition_id` (if set) -> `TestCondition.requirement_id` ->
     `Requirement.project_id` -> `Project.org_id`. If `test_condition_id` is
     `None` (ADR-0006), falls back first to any linked `RequirementTestCaseLink`
     -> `Requirement.project_id` -> `Project.org_id` (REQ-2's direct-link
     path — the whole point of ADR-0006 is that this shape is first-class, not
-    an edge case), then to any linked `TestSuiteTestCase` -> `TestSuite.project_id`
-    -> `Project.org_id`. A `TestCase` reachable by none of the three resolves
-    `None` — genuinely orphaned (schema-legal, no create path in this
-    codebase produces it) — the caller must treat this as "unresolvable
-    tenant", i.e. `404`, never the any-org global-catalog fallback (ADR-0022
-    edge case #1; `is_global_catalog=False` on `TestCase`'s own config makes
-    that distinction automatically).
+    an edge case), then to `project_id` if set -> `Project.org_id` directly
+    (REQ-5's standalone path, ADR-0068 — checked after both link-table
+    branches, so a since-linked standalone case resolves via the more
+    specific branch instead), then to any linked `TestSuiteTestCase` ->
+    `TestSuite.project_id` -> `Project.org_id`. A `TestCase` reachable by
+    none of the four resolves `None` — genuinely orphaned (schema-legal, no
+    create path in this codebase produces it) — the caller must treat this
+    as "unresolvable tenant", i.e. `404`, never the any-org global-catalog
+    fallback (ADR-0022 edge case #1; `is_global_catalog=False` on `TestCase`'s
+    own config makes that distinction automatically).
     """
     test_condition_id = getattr(row, "test_condition_id", None)
     if test_condition_id is not None:
@@ -461,17 +464,38 @@ async def resolve_test_case_org_id(db: AsyncSession, row: Any) -> uuid.UUID | No
         return await resolve_terminal_org_id(db, requirement)
 
     row_id = getattr(row, "id", None)
+
+    # `row_id` is `None` for the scope-resolution call `_resolve_scope_for_write`
+    # makes for the new generic `create`/`list` (a `types.SimpleNamespace`
+    # carrying only `project_id`, ADR-0068) — the requirement-link and
+    # suite-link branches below both need a real row id, so they're skipped
+    # for that call rather than short-circuiting to `None` outright; the
+    # `project_id` branch (which needs no row id) still runs.
+    if row_id is not None:
+        requirement_link = await db.scalar(
+            select(RequirementTestCaseLink).where(RequirementTestCaseLink.test_case_id == row_id).limit(1)
+        )
+        if requirement_link is not None:
+            requirement = await db.get(Requirement, requirement_link.requirement_id)
+            if requirement is None:
+                return None
+            return await resolve_terminal_org_id(db, requirement)
+
+    project_id = getattr(row, "project_id", None)
+    if project_id is not None:
+        # REQ-2's/REQ-3's own resolved-parent chains above are checked first —
+        # a standalone case that has since gained a `RequirementTestCaseLink`
+        # via `link_test_case_to_requirement` resolves via that branch above,
+        # not this one, even though `project_id` is deliberately never
+        # cleared on link (ADR-0068). This branch only actually fires for a
+        # case with no Requirement/TestCondition traceability yet.
+        project = await db.get(Project, project_id)
+        if project is None:
+            return None
+        return project.org_id
+
     if row_id is None:
         return None
-
-    requirement_link = await db.scalar(
-        select(RequirementTestCaseLink).where(RequirementTestCaseLink.test_case_id == row_id).limit(1)
-    )
-    if requirement_link is not None:
-        requirement = await db.get(Requirement, requirement_link.requirement_id)
-        if requirement is None:
-            return None
-        return await resolve_terminal_org_id(db, requirement)
 
     suite_link = await db.scalar(select(TestSuiteTestCase).where(TestSuiteTestCase.test_case_id == row_id).limit(1))
     if suite_link is None:

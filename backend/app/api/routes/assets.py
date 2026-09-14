@@ -3,17 +3,21 @@ plus REQ-2's bespoke atomic-create/list routes.
 
 `Requirement`, `TestStep`, `TestSuite` get all 5 factory methods.
 
-`TestCase` gets `GET`/`PATCH`/`DELETE` via the factory only — `create` is
-bespoke instead, and there are two such bespoke create routes, coexisting
-per-TestCase within a project (ADR-0006): `POST /requirements/{id}/test-cases`
-(below, this module) for REQ-2's direct-link path, and
-`POST /test-conditions/{id}/test-cases`
+`TestCase` gets `GET`/`PATCH`/`DELETE`/`list`/`create` via the factory as of
+REQ-5/ADR-0068 — `create`'s `scope_field="project_id"` is the new standalone
+authoring path (`CreateStandaloneTestCaseRequest`), the one creation shape
+with no atomic link-table write to protect. Two bespoke create routes still
+coexist alongside it, per-TestCase within a project (ADR-0006):
+`POST /requirements/{id}/test-cases` (below, this module) for REQ-2's
+direct-link path, and `POST /test-conditions/{id}/test-cases`
 (`app/api/routes/test_condition_authoring.py`) for REQ-3's rigor path
-(ADR-0028). `list` is deliberately not registered via the factory at all —
-`TestCase` has no single non-nullable FK the factory's `scope_field`
-mechanism could use as a safe, tenant-isolating list scope (see
-`app/schemas/assets.py`'s module docstring); `GET /requirements/{id}/test-cases`
-(below) is REQ-2's own bespoke, requirement-scoped list instead.
+(ADR-0028) — both still needed since they atomically write a link-table row
+the generic factory has no mechanism for. `GET /requirements/{id}/test-cases`
+(below) remains REQ-2's own bespoke, requirement-scoped list, distinct from
+the new generic `GET /test-cases?project_id=` (only standalone/`project_id`-set
+cases). A new bespoke retrofit route, `POST /test-cases/{id}/link-requirement`
+(below), lets a standalone case gain a `RequirementTestCaseLink` after
+creation.
 
 `TestCondition` gets `GET`/`PATCH`/`DELETE`/`list` — its `create` was
 withdrawn from the factory by REQ-3/ADR-0028 for the same reason `TestCase`'s
@@ -56,11 +60,14 @@ from app.models.tenancy import OrgMembership
 from app.models.trace import RequirementTestCaseLink
 from app.schemas.assets import (
     CreateRequirementRequest,
+    CreateStandaloneTestCaseRequest,
     CreateTestCaseRequest,
     CreateTestStepRequest,
     CreateTestSuiteRequest,
+    LinkTestCaseToRequirementRequest,
     RequirementSummary,
     TestCaseListResponse,
+    TestCaseRequirementLinkResponse,
     TestCaseSummary,
     TestConditionSummary,
     TestStepSummary,
@@ -117,6 +124,7 @@ def _test_case_summary(test_case: TestCase) -> TestCaseSummary:
     return TestCaseSummary(
         id=test_case.id,
         test_condition_id=test_case.test_condition_id,
+        project_id=test_case.project_id,
         test_level_id=test_case.test_level_id,
         test_type_id=test_case.test_type_id,
         created_by_actor_id=test_case.created_by_actor_id,
@@ -141,8 +149,10 @@ _REQUIREMENT_CONFIG = CrudEntityConfig(
     field_meta={"project_id": FieldMeta(ref_entity="project", label_field="name", label="Project")},
 )
 
-# No `create` — see module docstring (REQ-3/ADR-0028); same posture as
-# `_TEST_CASE_CONFIG` below, for the identical reason.
+# No `create` — see module docstring (REQ-3/ADR-0028); `TestCondition`'s own
+# `create` would still need a `RequirementTestConditionLink` written
+# atomically, unlike `_TEST_CASE_CONFIG`'s new standalone `create` below
+# (ADR-0068), which needs no link write at all.
 _TEST_CONDITION_CONFIG = CrudEntityConfig(
     model=TestCondition,
     resource="test_condition",
@@ -166,34 +176,32 @@ _TEST_CONDITION_CONFIG = CrudEntityConfig(
     },
 )
 
-# No `list`/`create` — see module docstring.
+# `list`/`create` enabled as of REQ-5/ADR-0068 — see module docstring.
 _TEST_CASE_CONFIG = CrudEntityConfig(
     model=TestCase,
     resource="test_case",
-    create_schema=None,
+    create_schema=CreateStandaloneTestCaseRequest,
     update_schema=UpdateTestCaseRequest,
     summary_schema=TestCaseSummary,
-    scope_field=None,
+    scope_field="project_id",
     resolve_org_id=resolve_test_case_org_id,
     filter_fields=("status", "test_level_id", "test_type_id"),
     search_fields=("title", "preconditions", "expected_result"),
-    methods=frozenset({"get", "update", "delete"}),
-    # ADR-0053. `methods` above is already this entity's whole REST surface for
-    # the admin CRUD screens, so no `full_methods` override: the two bespoke
-    # `TestCase` routes (`POST`/`GET /requirements/{id}/test-cases`, REQ-2/
-    # ADR-0028) hang off `Requirement`'s own path, not `/test-cases`, so
-    # `EntityListPage`/`EntityFormPage` genuinely cannot call them for this
-    # entity — `entityConfigs/test-case.ts` said the same thing.
+    methods=frozenset({"get", "update", "delete", "list", "create"}),
+    # ADR-0068. `list`/`create` are scoped by `project_id` — only standalone
+    # cases (REQ-5's own new authoring path) are reachable this way; a
+    # direct-link/rigor-path case (created via the two bespoke routes below,
+    # `project_id` left `null`) is invisible to this generic list, same as
+    # before. This is the route the project-mode sidebar's "Test cases" nav
+    # item (ADR-0051) has pointed at since that story — non-functional until
+    # now.
     #
-    # `field_order` is needed because `create_schema=None` leaves
-    # `UpdateTestCaseRequest`'s own declaration order as the only derived
-    # order, and that lists the three FKs *last* — `entityConfigs/test-case.ts`
-    # led with them. `required`/`readOnly` legitimately diverge from the old
-    # `.ts` for the same reason `_TEST_CONDITION_CONFIG` above documents: no
-    # generic create route exists, so "required on create" describes a form
-    # that cannot exist.
+    # `field_order` leads with `project_id` (the new create-form scope field,
+    # mirrors `_TEST_SUITE_CONFIG`'s own `project_id`-first order) then
+    # `test_condition_id` (update-only — never set by the generic create).
     label="Test cases",
     field_order=(
+        "project_id",
         "test_condition_id",
         "test_level_id",
         "test_type_id",
@@ -203,6 +211,7 @@ _TEST_CASE_CONFIG = CrudEntityConfig(
         "status",
     ),
     field_meta={
+        "project_id": FieldMeta(ref_entity="project", label_field="name", label="Project"),
         "test_condition_id": FieldMeta(
             ref_entity="test-condition", label_field="description", label="Test condition"
         ),
@@ -373,6 +382,120 @@ async def list_test_cases_for_requirement(
         page=page,
         page_size=page_size,
     )
+
+
+# --- REQ-5: retrofit link, standalone TestCase -> Requirement, ADR-0068 ---------------------------
+
+
+@router.post("/test-cases/{id}/link-requirement", response_model=TestCaseSummary, status_code=201)
+async def link_test_case_to_requirement(
+    id: UUID,
+    payload: LinkTestCaseToRequirementRequest,
+    actor: User | AIAgent = Depends(get_current_actor),
+    db: AsyncSession = Depends(get_db),
+) -> TestCaseSummary | JSONResponse:
+    """Attach an existing `TestCase` to a `Requirement` after creation (REQ-5, ADR-0068).
+
+    Inserts exactly one `RequirementTestCaseLink` row — the same table
+    REQ-2's own `create_test_case_for_requirement` writes atomically at
+    creation time; this route is the decoupled, after-the-fact equivalent.
+    Gated `test_case.update` only (no second gate on `requirement.read`,
+    same single-permission posture `add_test_case_to_suite` already takes).
+
+    404-vs-403 boundary applies to *both* the path `TestCase` and the body's
+    `requirement_id` — resolved via `resolve_test_case_org_id`/the
+    Requirement's own `project_id` chain respectively, each independently
+    checked against the caller's `OrgMembership` (NFR-1, existence never
+    confirmable across an org boundary). Past that: same org, different
+    project -> `422 validation_error` (NFR-38/NFR-41 precedent). The
+    `TestCase` already carrying any Requirement traceability
+    (`test_condition_id` set, or an existing `RequirementTestCaseLink`) ->
+    `409 already_linked_to_requirement`. `project_id` (if set) is left
+    unchanged — the resolver's own branch order means the now-more-specific
+    `RequirementTestCaseLink` resolves first regardless.
+    """
+    test_case = await db.get(TestCase, id)
+    if test_case is None:
+        return _error(404, "not_found", "Test case not found.")
+
+    case_org_id = await resolve_test_case_org_id(db, test_case)
+    if case_org_id is None or not await _actor_membership_exists(db, case_org_id, actor):
+        return _error(404, "not_found", "Test case not found.")
+
+    if not await has_permission(str(actor.actor_id), str(case_org_id), "test_case.update"):
+        return _error(403, "permission_denied", "You do not have permission to perform this action.")
+
+    requirement = await db.get(Requirement, payload.requirement_id)
+    if requirement is None:
+        return _error(404, "not_found", "Requirement not found.")
+
+    requirement_project = await db.get(Project, requirement.project_id)
+    if requirement_project is None or not await _actor_membership_exists(db, requirement_project.org_id, actor):
+        return _error(404, "not_found", "Requirement not found.")
+
+    if requirement_project.org_id != case_org_id:
+        # Caller may hold membership in both orgs, but a Requirement/TestCase
+        # pair spanning two different orgs is never a valid link — treated as
+        # existence-hiding (NFR-1) rather than leaked as a business-rule 422,
+        # since a cross-org relationship isn't something either party's own
+        # org boundary should confirm exists.
+        return _error(404, "not_found", "Requirement not found.")
+
+    existing_link = await db.scalar(
+        select(RequirementTestCaseLink).where(RequirementTestCaseLink.test_case_id == id).limit(1)
+    )
+    if test_case.test_condition_id is not None or existing_link is not None:
+        return _error(409, "already_linked_to_requirement", "Test case already has a Requirement link.")
+
+    # Same-org, cross-project is a business-rule rejection (422), never 404
+    # (NFR-38/NFR-41 precedent). Reachable here only via `test_case.project_id`
+    # (the standalone-create column) — a case with neither `test_condition_id`
+    # nor an existing link, per the 409 check above, was necessarily created
+    # via the generic standalone path (ADR-0068), so `project_id` is set.
+    if test_case.project_id is not None and requirement.project_id != test_case.project_id:
+        return _error(422, "validation_error", "Requirement belongs to a different project.")
+
+    db.add(RequirementTestCaseLink(requirement_id=requirement.id, test_case_id=test_case.id))
+    try:
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+        return _error(422, "validation_error", "Request failed validation.")
+
+    await db.commit()
+    await db.refresh(test_case)
+    return _test_case_summary(test_case)
+
+
+@router.get("/test-cases/{id}/requirement-link", response_model=TestCaseRequirementLinkResponse)
+async def get_test_case_requirement_link(
+    id: UUID,
+    actor: User | AIAgent = Depends(get_current_actor),
+    db: AsyncSession = Depends(get_db),
+) -> TestCaseRequirementLinkResponse | JSONResponse:
+    """Whether `TestCase` `id` already has Requirement traceability, and its
+    id if so (REQ-5, ADR-0068) — backs `EntityFormPage`'s "Link to
+    Requirement" section, the same read-on-mount shape EXEC-3's own
+    "Defects" section already established for this page. Gated
+    `test_case.read`, same 404-vs-403 boundary as every other route here.
+    """
+    test_case = await db.get(TestCase, id)
+    if test_case is None:
+        return _error(404, "not_found", "Test case not found.")
+
+    case_org_id = await resolve_test_case_org_id(db, test_case)
+    if case_org_id is None or not await _actor_membership_exists(db, case_org_id, actor):
+        return _error(404, "not_found", "Test case not found.")
+
+    if not await has_permission(str(actor.actor_id), str(case_org_id), "test_case.read"):
+        return _error(403, "permission_denied", "You do not have permission to perform this action.")
+
+    if test_case.test_condition_id is not None:
+        condition = await db.get(TestCondition, test_case.test_condition_id)
+        return TestCaseRequirementLinkResponse(requirement_id=condition.requirement_id if condition else None)
+
+    link = await db.scalar(select(RequirementTestCaseLink).where(RequirementTestCaseLink.test_case_id == id).limit(1))
+    return TestCaseRequirementLinkResponse(requirement_id=link.requirement_id if link else None)
 
 
 __all__ = ["router"]

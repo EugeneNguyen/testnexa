@@ -121,7 +121,7 @@ def test_lookup_raises_tool_error_for_unknown_resource() -> None:
 @pytest.mark.parametrize(
     ("resource", "action"),
     [
-        ("test-cases", "list"),  # TestCase has no flat list route at all (nested under Requirement)
+        ("releases", "list"),  # Release has no generic config at all — registry only carries `create`
         ("test-logs", "update"),  # TestLog is get/list/create(comment) only — immutable otherwise
         ("test-logs", "delete"),
         ("requirement-test-case-links", "create"),  # link tables are read-only
@@ -138,6 +138,14 @@ def test_lookup_raises_tool_error_for_a_method_the_entity_does_not_register(reso
 def test_lookup_succeeds_for_a_registered_method() -> None:
     executor = _lookup("requirements", "list")
     assert callable(executor)
+
+
+def test_lookup_succeeds_for_test_case_list_and_create_after_req5() -> None:
+    """REQ-5/ADR-0068 — `test-cases:list`/`:create` are now genuinely
+    registered (the standalone-authoring path), unlike the pre-ADR-0068
+    state the parametrized negative test above used to assert for `list`."""
+    assert callable(_lookup("test-cases", "list"))
+    assert callable(_lookup("test-cases", "create"))
 
 
 # --- `_materialize` result normalization -------------------------------------------------

@@ -60,7 +60,7 @@ from fastapi.responses import JSONResponse
 
 from app.api.crud_factory import CrudEntityConfig, _resource_path, get_crud_handlers
 from app.api.entity_registry import ALL_ENTITY_CONFIGS
-from app.api.routes.assets import create_test_case_for_requirement
+from app.api.routes.assets import _TEST_CASE_CONFIG, create_test_case_for_requirement, link_test_case_to_requirement
 from app.api.routes.execution import add_test_execution_comment, raise_defect_for_execution
 from app.api.routes.execution_authoring import create_execution_for_cycle
 from app.api.routes.org_memberships import invite_member
@@ -77,9 +77,11 @@ from app.api.routes.test_plan_membership import include_suite_in_plan
 from app.api.routes.test_suite_membership import add_test_case_to_suite
 from app.models.actor import AIAgent, User
 from app.schemas.assets import (
+    CreateStandaloneTestCaseRequest,
     CreateTestCaseForTestConditionRequest,
     CreateTestCaseRequest,
     CreateTestConditionForRequirementRequest,
+    LinkTestCaseToRequirementRequest,
 )
 from app.schemas.execution import (
     AddTestLogCommentRequest,
@@ -232,9 +234,16 @@ def _build_generic_registry() -> dict[str, dict[str, Callable]]:
 
 
 async def _test_case_create(*, actor: Any, db: Any, fields: dict[str, Any] | None = None, **_ignored: Any) -> Any:
-    """`test_case`'s two create paths (direct-link / rigor-path), same branch
-    `app/mcp/tools/test_cases.py`'s own `create_test_case` MCP-1 tool already
-    uses: dispatched on a non-null `test_condition_id`."""
+    """`test_case`'s three create paths (direct-link / rigor-path / standalone,
+    ADR-0068), same branch `app/mcp/tools/test_cases.py`'s own
+    `create_test_case` MCP-1 tool already uses for the first two: dispatched
+    on a non-null `test_condition_id`, then `requirement_id`, then falling
+    back to the newly-enabled generic-factory create (REQ-5's standalone
+    path, `project_id` scoped) — introspected via `get_crud_handlers`
+    (`backend/CLAUDE.md`'s "handler produced inside a factory function has
+    no importable name" note), since this bespoke row's own override of
+    `test_case`'s `create` entry in `TOOL_REGISTRY` would otherwise shadow
+    the generic one the registry-build step already enabled."""
     data = dict(fields or {})
     requirement_id = data.pop("requirement_id", None)
     test_condition_id = data.pop("test_condition_id", None)
@@ -244,7 +253,29 @@ async def _test_case_create(*, actor: Any, db: Any, fields: dict[str, Any] | Non
     if requirement_id is not None:
         payload = CreateTestCaseRequest(**data)
         return await create_test_case_for_requirement(id=requirement_id, payload=payload, actor=actor, db=db)
+    if "project_id" in data:
+        handler = get_crud_handlers(_TEST_CASE_CONFIG)["create"]
+        payload = CreateStandaloneTestCaseRequest(**data)
+        return await handler(payload=payload, actor=actor, db=db)
     return _missing("requirement_id")
+
+
+async def _test_case_link_requirement(*, actor: Any, db: Any, fields: dict[str, Any] | None = None, **_ignored: Any) -> Any:
+    """`POST /test-cases/{id}/link-requirement` (REQ-5, ADR-0068) — retrofit
+    an existing standalone `TestCase` onto a `Requirement`. Both ids travel
+    in `fields` (same shape `_test_suite_test_case_create` already
+    establishes for a junction/action resource, not a plain entity `create`)
+    — reachable via `create_entity` against a dedicated
+    `test_case_link_requirement` resource slug."""
+    data = dict(fields or {})
+    test_case_id = data.get("test_case_id")
+    requirement_id = data.get("requirement_id")
+    if test_case_id is None:
+        return _missing("test_case_id")
+    if requirement_id is None:
+        return _missing("requirement_id")
+    payload = LinkTestCaseToRequirementRequest(requirement_id=requirement_id)
+    return await link_test_case_to_requirement(id=test_case_id, payload=payload, actor=actor, db=db)
 
 
 async def _test_condition_create(*, actor: Any, db: Any, fields: dict[str, Any] | None = None, **_ignored: Any) -> Any:
@@ -390,6 +421,7 @@ _BESPOKE_CREATE: dict[str, Callable] = {
     _resource_path("test_cycle"): _test_cycle_create,
     _resource_path("test_suite_test_case"): _test_suite_test_case_create,
     _resource_path("test_plan_test_suite"): _test_plan_test_suite_create,
+    _resource_path("test_case_link_requirement"): _test_case_link_requirement,
 }
 
 

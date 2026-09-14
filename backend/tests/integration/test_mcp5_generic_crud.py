@@ -616,8 +616,10 @@ async def test_describe_entity_parity_with_rest_schema_route_and_release_404() -
 
 @pytest.mark.asyncio
 async def test_create_entity_rejected_for_an_entity_with_no_create_method() -> None:  # TC-MCP-017
-    """TC-MCP-017 literally (corrected 2026-09-14 — see the TC's own note):
-    `test-cases` has no `list_entities` (nested under `Requirement` only),
+    """TC-MCP-017 literally (corrected 2026-09-14, then again 2026-09-15
+    after REQ-5/ADR-0068 gave `test-cases` a genuine `list_entities`/
+    `create_entity` — see the TC's own note): `releases` has no
+    `list_entities` at all (100% bespoke, no generic `CrudEntityConfig`),
     `test-logs` has no `update_entity` (immutable), and a link table
     (`requirement-test-case-links`) has no `create_entity` (read-only) —
     all three get the exact `405`/`{"detail": "Method Not Allowed"}` shape
@@ -642,7 +644,7 @@ async def test_create_entity_rejected_for_an_entity_with_no_create_method() -> N
         async with httpx.AsyncClient(base_url=TEST_API_BASE_URL, timeout=30.0) as client:
             await _mcp_initialize(client)
 
-            list_result = await _mcp_call_tool(client, raw_key, "list_entities", {"resource": "test-cases"})
+            list_result = await _mcp_call_tool(client, raw_key, "list_entities", {"resource": "releases"})
             assert _extract_tool_error(list_result) == {"detail": "Method Not Allowed"}
 
             update_result = await _mcp_call_tool(

@@ -115,23 +115,26 @@ class TestConditionListResponse(BaseModel):
 
 # --- TestCase ------------------------------------------------------------------------------------
 #
-# No factory-registered `Create*Request`/`list` — `create` is reserved for
-# two bespoke atomic-create routes (ADR-0022, API Document §4): `POST
-# /requirements/{id}/test-cases` for REQ-2's direct link (`CreateTestCaseRequest`
-# below, `app/api/routes/assets.py`, ADR-0029), and `POST
-# /test-conditions/{id}/test-cases` for REQ-3's rigor path
+# Revised 2026-09-15 (ADR-0068, REQ-5) — `list`/`create` are now factory-
+# registered after all. ~~No factory-registered `Create*Request`/`list` —
+# `create` is reserved for two bespoke atomic-create routes... unlike every
+# other scoped entity, `TestCase` has no single non-nullable FK the
+# factory's `scope_field` mechanism could require as a list-scope query
+# param~~ (superseded text, kept for history — true until REQ-5 gave
+# `TestCase` a genuinely direct, non-nullable-at-the-route-level scope: the
+# new `project_id` column). `CreateStandaloneTestCaseRequest` below is the
+# factory's `create_schema`, `scope_field="project_id"` — REQ-5's standalone
+# authoring path, the one creation shape with no atomic link-table write to
+# protect (a standalone case has nothing to link), so it's safe to route
+# through the plain factory the way `TestSuite`'s own `project_id`-scoped
+# create already does. The two pre-existing bespoke atomic create+link
+# routes are unaffected and still the only way to create a `TestCase` with
+# a Requirement/TestCondition link at creation time (ADR-0022, API Document
+# §4): `POST /requirements/{id}/test-cases` for REQ-2's direct link
+# (`CreateTestCaseRequest` below, `app/api/routes/assets.py`, ADR-0029), and
+# `POST /test-conditions/{id}/test-cases` for REQ-3's rigor path
 # (`CreateTestCaseForTestConditionRequest` below,
-# `app/api/routes/test_condition_authoring.py`, ADR-0028). `list` is
-# deliberately not registered via the factory either: unlike every other
-# scoped entity, `TestCase` has no single non-nullable FK the factory's
-# `scope_field` mechanism could require as a list-scope query param
-# (`test_condition_id` is nullable per ADR-0006, and the suite-link fallback
-# is a many-to-many join, not a column) — requiring one would either wrongly
-# 404 legitimately suite-only-linked test cases or leave `list` unscoped and
-# leak across tenants (CLAUDE.md's multi-tenancy rule). `GET
-# /requirements/{id}/test-cases` (REQ-2) is its own bespoke, requirement-
-# scoped list instead. See this story's final report for this deviation from
-# the plan's literal "everything else gets all 5 methods" framing.
+# `app/api/routes/test_condition_authoring.py`, ADR-0028).
 
 
 class CreateTestCaseRequest(BaseModel):
@@ -183,6 +186,36 @@ class CreateTestCaseForTestConditionRequest(BaseModel):
     test_type_id: UUID
 
 
+class CreateStandaloneTestCaseRequest(BaseModel):
+    """Body of the generic-factory `POST /test-cases` (REQ-5, ADR-0068).
+
+    `project_id` is the factory's own scope field (`scope_field="project_id"`
+    on `_TEST_CASE_CONFIG`) — required in the body per `crud_factory.py`'s
+    "a query param on list, a body field on create" convention, same as
+    `CreateTestSuiteRequest`'s own `project_id`. Neither `requirement_id`
+    nor `test_condition_id` is a field here — this is the one creation shape
+    with genuinely no Requirement/TestCondition traceability at creation
+    time; use `POST /test-cases/{id}/link-requirement` afterward to attach
+    one. `created_by_actor_id` is stamped from the authenticated caller,
+    never accepted from the body, same posture `CreateTestCaseRequest`
+    already establishes.
+    """
+
+    project_id: UUID
+    title: str
+    test_level_id: UUID
+    test_type_id: UUID
+    preconditions: str | None = None
+    expected_result: str | None = None
+    status: TestCaseStatus = "draft"
+
+
+class LinkTestCaseToRequirementRequest(BaseModel):
+    """Body of `POST /test-cases/{id}/link-requirement` (REQ-5, ADR-0068)."""
+
+    requirement_id: UUID
+
+
 class UpdateTestCaseRequest(BaseModel):
     """Body of `PATCH /test-cases/{id}` — partial update, `exclude_unset` semantics."""
 
@@ -198,6 +231,7 @@ class UpdateTestCaseRequest(BaseModel):
 class TestCaseSummary(BaseModel):
     id: UUID
     test_condition_id: UUID | None = None
+    project_id: UUID | None = None
     test_level_id: UUID
     test_type_id: UUID
     created_by_actor_id: UUID
@@ -205,6 +239,16 @@ class TestCaseSummary(BaseModel):
     preconditions: str | None = None
     expected_result: str | None = None
     status: TestCaseStatus
+
+
+class TestCaseRequirementLinkResponse(BaseModel):
+    """Body of `GET /test-cases/{id}/requirement-link` (REQ-5, ADR-0068) —
+    tells `EntityFormPage`'s "Link to Requirement" section whether the case
+    already has any Requirement traceability, and the linked Requirement's
+    id if so (via either the `test_condition_id` chain or a direct
+    `RequirementTestCaseLink`)."""
+
+    requirement_id: UUID | None = None
 
 
 class TestCaseListResponse(BaseModel):
@@ -288,6 +332,9 @@ __all__ = [
     "CreateRequirementRequest",
     "CreateTestCaseForTestConditionRequest",
     "CreateTestCaseRequest",
+    "CreateStandaloneTestCaseRequest",
+    "LinkTestCaseToRequirementRequest",
+    "TestCaseRequirementLinkResponse",
     "CreateTestConditionForRequirementRequest",
     "CreateTestStepRequest",
     "CreateTestSuiteRequest",

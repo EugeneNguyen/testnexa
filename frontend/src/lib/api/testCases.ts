@@ -33,6 +33,10 @@ export type TestCaseStatus = "draft" | "reviewed" | "approved" | "deprecated";
 export interface TestCaseSummary {
   id: string;
   test_condition_id: string | null;
+  /** REQ-5 (ADR-0068) — optional in the TS type so pre-existing test
+   * fixtures that predate this field don't all need updating; the backend
+   * always sends it (`null` for a REQ-2/REQ-3-created case). */
+  project_id?: string | null;
   test_level_id: string;
   test_type_id: string;
   created_by_actor_id: string;
@@ -134,6 +138,45 @@ export async function listTestCasesForRequirement(requirementId: string): Promis
  */
 export async function getTestCase(testCaseId: string): Promise<TestCaseSummary> {
   return apiFetch<TestCaseSummary>(`/api/v1/test-cases/${testCaseId}`);
+}
+
+export interface LinkTestCaseToRequirementPayload {
+  requirement_id: string;
+}
+
+export interface TestCaseRequirementLinkResponse {
+  requirement_id: string | null;
+}
+
+/**
+ * REQ-5 (ADR-0068) retrofit route: attach an existing standalone `TestCase`
+ * (created via the generic factory's `POST /test-cases`, not through
+ * `createTestCase`/`createTestCaseForTestCondition` above) to a Requirement
+ * after the fact, inserting `RequirementTestCaseLink`.
+ *
+ * Rejects with an `ApiError`: `404` if either side doesn't resolve or the
+ * caller lacks membership in the resolved org, `422 validation_error` if
+ * the Requirement is in a different project than the TestCase's own,
+ * `409 already_linked_to_requirement` if the case already has any
+ * Requirement traceability (`test_condition_id` set, or an existing link).
+ */
+export async function linkTestCaseToRequirement(
+  testCaseId: string,
+  payload: LinkTestCaseToRequirementPayload,
+): Promise<TestCaseSummary> {
+  return apiFetch<TestCaseSummary>(`/api/v1/test-cases/${testCaseId}/link-requirement`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * Whether TestCase `testCaseId` already has Requirement traceability
+ * (REQ-5, ADR-0068) — backs `EntityFormPage`'s "Link to Requirement"
+ * section, same read-on-mount shape as `listDefectsForTestCase`.
+ */
+export async function getTestCaseRequirementLink(testCaseId: string): Promise<TestCaseRequirementLinkResponse> {
+  return apiFetch<TestCaseRequirementLinkResponse>(`/api/v1/test-cases/${testCaseId}/requirement-link`);
 }
 
 interface TestConditionTestCaseLinkRow {
