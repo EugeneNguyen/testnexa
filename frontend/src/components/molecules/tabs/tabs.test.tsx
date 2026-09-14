@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { Tabs, panelId } from "./tabs";
+import { Tabs, panelId, tabTriggerId } from "./tabs";
 
 /**
  * ADR-0071: the `Tabs` molecule built for `EntityDetailPage`'s Info +
@@ -57,6 +57,47 @@ describe("Tabs molecule (ADR-0071)", () => {
     expect(screen.getByTestId("entity-detail-tab-test-steps")).toHaveAttribute(
       "aria-controls",
       panelId("entity-detail", "test-steps"),
+    );
+  });
+
+  /**
+   * ADR-0071's Amendment: the panel points back with `aria-labelledby`, so
+   * each trigger needs an `id` of its own — `tabTriggerId` is what the caller
+   * uses, so the pair can't drift.
+   */
+  it("gives each tab the id tabTriggerId() generates, for the panel's aria-labelledby", () => {
+    renderTabs();
+
+    ITEMS.forEach((item) => {
+      expect(screen.getByTestId(`entity-detail-tab-${item.id}`)).toHaveAttribute(
+        "id",
+        tabTriggerId("entity-detail", item.id),
+      );
+    });
+  });
+
+  /**
+   * ADR-0071's Amendment: Tabler's "tabs in the card header" pattern needs
+   * `card-header-tabs` on this `<ul>`. It is deliberately not baked in — a
+   * strip mounted anywhere else must not carry it — so the caller passes it
+   * through `className`, and it must land on the list itself, alongside (not
+   * instead of) the stock classes.
+   */
+  it("appends className to the nav-tabs list, for a card-header mount", () => {
+    render(
+      <Tabs
+        items={ITEMS}
+        activeId="info"
+        onSelect={vi.fn()}
+        testIdPrefix="entity-detail"
+        className="card-header-tabs"
+      />,
+    );
+
+    expect(screen.getByTestId("entity-detail-tablist")).toHaveClass(
+      "nav",
+      "nav-tabs",
+      "card-header-tabs",
     );
   });
 

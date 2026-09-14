@@ -156,6 +156,21 @@ export interface EntityTableProps {
    * about *where* a row click goes is the caller's.
    */
   onRowClick?: (row: EntityRow) => void;
+  /**
+   * ADR-0071 (Amendment): render the `.card-body` sections **without** the
+   * surrounding `.card`/`.card-header`, for a caller that already owns a card
+   * — `EntityDetailPage`'s relationship tab pane, which lives inside one card
+   * whose header is the tab strip itself (Tabler's documented "tabs in the
+   * card header" pattern). Nesting this component's own card inside that
+   * card's body would paint a second border/shadow around the table and
+   * repeat the tab's label as a card title.
+   *
+   * Opt-in and default-off, so all 24 list screens and every existing
+   * `entity-table.test.tsx` fixture render byte-for-byte as before. `title`
+   * and the search box live in the header and are therefore not rendered in
+   * this mode; the relationship tab passes neither.
+   */
+  bare?: boolean;
 }
 
 function EntityTable({
@@ -180,6 +195,7 @@ function EntityTable({
   onEdit,
   onDelete,
   onRowClick,
+  bare = false,
 }: EntityTableProps) {
   const tableFields = config.fields.filter((f) => f.showInTable !== false);
 
@@ -226,25 +242,8 @@ function EntityTable({
   // Loading/empty states fall back to a normally-padded body.
   const showTable = !loading && rows.length > 0;
 
-  return (
-    <Card className="h-100">
-      <Card.Header className="d-flex flex-wrap align-items-center justify-content-between">
-        <Card.Title>{title}</Card.Title>
-        <div className="card-tools d-flex flex-wrap align-items-center gap-2 ms-auto">
-          {showSearch && (
-            <TextInput
-              type="text"
-              style={{ width: 200, maxWidth: "100%" }}
-              placeholder="Search..."
-              value={search ?? ""}
-              onChange={(event) => onSearchChange!(event.target.value)}
-              data-testid="entity-table-search"
-            />
-          )}
-          {headerActions}
-        </div>
-      </Card.Header>
-
+  const sections = (
+    <>
       {loadError && (
         <Card.Body className="border-bottom">
           <Alert color="danger" className="mb-0">
@@ -350,6 +349,34 @@ function EntityTable({
         />
       )}
       </Card.Body>
+    </>
+  );
+
+  // ADR-0071 (Amendment): the caller already owns the card — see `bare`.
+  if (bare) {
+    return sections;
+  }
+
+  return (
+    <Card className="h-100">
+      <Card.Header className="d-flex flex-wrap align-items-center justify-content-between">
+        <Card.Title>{title}</Card.Title>
+        <div className="card-tools d-flex flex-wrap align-items-center gap-2 ms-auto">
+          {showSearch && (
+            <TextInput
+              type="text"
+              style={{ width: 200, maxWidth: "100%" }}
+              placeholder="Search..."
+              value={search ?? ""}
+              onChange={(event) => onSearchChange!(event.target.value)}
+              data-testid="entity-table-search"
+            />
+          )}
+          {headerActions}
+        </div>
+      </Card.Header>
+
+      {sections}
     </Card>
   );
 }

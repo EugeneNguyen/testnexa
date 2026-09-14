@@ -370,6 +370,133 @@ describe("EntityDetailPage relationship tabs (ADR-0071)", () => {
   });
 
   /**
+   * ADR-0071's Amendment — Tabler's documented "tabs in the card header"
+   * markup, asserted structurally rather than by eye, because every class here
+   * is load-bearing: `.tab-content > .tab-pane` is `display:none` in both
+   * design systems' shipped CSS, so a pane that loses `active` renders an
+   * invisible (but present, and therefore still query-able) panel.
+   */
+  it("mounts the tab strip as the card header and each panel as a .tab-pane in the card body", async () => {
+    primeMocks();
+
+    const { container } = renderPage();
+    await screen.findByTestId("entity-detail-field-title");
+
+    // The strip is the card header's own — and only — child.
+    const tablist = screen.getByTestId("entity-detail-tablist");
+    expect(tablist).toHaveClass("nav", "nav-tabs", "card-header-tabs");
+    const header = tablist.parentElement!;
+    expect(header).toHaveClass("card-header");
+    expect(header.children).toHaveLength(1);
+
+    // The panel is an active pane inside the card body's own `.tab-content`.
+    const panel = screen.getByRole("tabpanel");
+    expect(panel).toHaveClass("tab-pane", "active", "show");
+    expect(panel.parentElement).toHaveClass("card-body", "tab-content");
+
+    // Header and body belong to the *same* card — one card spans every tab.
+    const card = container.querySelector(".card")!;
+    expect(card).toContainElement(header as HTMLElement);
+    expect(card).toContainElement(panel);
+    expect(container.querySelectorAll(".card")).toHaveLength(1);
+  });
+
+  /**
+   * The a11y pair ADR-0071's Amendment completes: the active tab points at the
+   * panel with `aria-controls`, and the panel points back with
+   * `aria-labelledby`. Both ends move together when a tab is switched.
+   */
+  it("links the rendered panel and the active tab in both directions", async () => {
+    const user = userEvent.setup();
+    primeMocks();
+
+    renderPage();
+    await screen.findByTestId("entity-detail-field-title");
+
+    const infoTab = screen.getByTestId("entity-detail-tab-info");
+    const infoPanel = screen.getByRole("tabpanel");
+    expect(infoTab).toHaveAttribute("aria-controls", infoPanel.id);
+    expect(infoPanel).toHaveAttribute("aria-labelledby", infoTab.id);
+    // The id as a *string*: React reuses the same panel element across a tab
+    // switch and rewrites its attributes in place, so holding the node and
+    // reading `.id` later would read the new value (`frontend/CLAUDE.md`'s
+    // "don't hold a DOM reference across a state change" rule).
+    const infoPanelId = infoPanel.id;
+
+    await user.click(screen.getByTestId("entity-detail-tab-sprockets"));
+
+    const sprocketsTab = screen.getByTestId("entity-detail-tab-sprockets");
+    const sprocketsPanel = screen.getByRole("tabpanel");
+    expect(sprocketsPanel.id).not.toBe(infoPanelId);
+    expect(sprocketsTab).toHaveAttribute("aria-controls", sprocketsPanel.id);
+    expect(sprocketsPanel).toHaveAttribute("aria-labelledby", sprocketsTab.id);
+  });
+
+  /**
+   * The relationship pane renders `EntityTable` in `bare` mode, so the page's
+   * one card isn't given a second card inside its own body — the visible
+   * defect (a bordered, shadowed box around the table, titled with the tab's
+   * own label) that moving the strip into the header would otherwise create.
+   */
+  it("renders a relationship tab's table inside the page's own card, not a nested one", async () => {
+    const user = userEvent.setup();
+    primeMocks([{ id: "s-1", name: "First sprocket", widget_id: "w-1" }]);
+
+    const { container } = renderPage();
+    await screen.findByTestId("entity-detail-field-title");
+    await user.click(screen.getByTestId("entity-detail-tab-sprockets"));
+    expect(await screen.findByText("First sprocket")).toBeInTheDocument();
+
+    expect(container.querySelectorAll(".card")).toHaveLength(1);
+    // ...and exactly one card header: the tab strip's.
+    expect(container.querySelectorAll(".card-header")).toHaveLength(1);
+    expect(screen.getByRole("tabpanel")).toContainElement(screen.getByRole("table"));
+  });
+
+  /**
+   * The negative half: with no relationships there is no header to give the
+   * strip, so the card carries none — and nothing renders `tab-content`/
+   * `tab-pane`/`role="tabpanel"`, which would be a tabpanel with no tablist.
+   */
+  it("renders no card header and no tabpanel markup for an entity with no relationships", async () => {
+    primeMocks();
+
+    const { container } = renderPage("gadgets");
+    await screen.findByTestId("entity-detail-fields");
+
+    expect(container.querySelector(".card-header")).toBeNull();
+    expect(container.querySelector(".tab-content")).toBeNull();
+    expect(container.querySelector(".tab-pane")).toBeNull();
+    expect(screen.queryByRole("tabpanel")).not.toBeInTheDocument();
+  });
+
+  /**
+   * The heading and Back/Edit moved out of the card header, because Tabler's
+   * `.card-header-tabs` is `flex:1` with negative margins on all four sides
+   * and paints over any sibling there. They must still be present on *every*
+   * tab, not only Info — which is what putting them above the card buys.
+   */
+  it("keeps the heading and Back action above the card, on every tab", async () => {
+    const user = userEvent.setup();
+    primeMocks([{ id: "s-1", name: "First sprocket", widget_id: "w-1" }]);
+
+    const { container } = renderPage();
+    await screen.findByTestId("entity-detail-field-title");
+
+    const card = container.querySelector(".card")!;
+    const heading = screen.getByRole("heading", { name: "Widgets details" });
+    expect(card).not.toContainElement(heading);
+    expect(card).not.toContainElement(screen.getByTestId("entity-detail-back"));
+
+    // Still there after switching to a relationship tab — under the old
+    // markup the whole header lived in the Info panel and vanished with it.
+    await user.click(screen.getByTestId("entity-detail-tab-sprockets"));
+    expect(await screen.findByText("First sprocket")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Widgets details" })).toBeInTheDocument();
+    expect(screen.getByTestId("entity-detail-back")).toBeInTheDocument();
+  });
+
+  /**
    * A relationship tab is read-only, matching the page it sits on: no Edit, no
    * Delete, no New. Every related record is fully editable on its own screen.
    */

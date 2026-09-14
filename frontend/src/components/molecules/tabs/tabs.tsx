@@ -18,6 +18,23 @@
  * elsewhere; neither invents its own class here). Per ADR-0042 the class
  * names are the library's own, verbatim, not invented.
  *
+ * ## Mounting it in a card header (ADR-0071's Amendment)
+ *
+ * Tabler's documented "tabs in the card header" pattern is this same `<ul>`
+ * with `card-header-tabs` added, as the *only* child of a `.card-header`, with
+ * the panels in `.card-body > .tab-content > .tab-pane.active.show`. That
+ * class is deliberately **not** baked in here — a strip mounted anywhere else
+ * must not carry it. Callers pass it through `className`; `EntityDetailPage`
+ * is the one that does.
+ *
+ * Read out of the shipped CSS rather than assumed (ADR-0042's own rule):
+ * Tabler sets `.card-header{display:flex}` and `.card-header-tabs{flex:1;
+ * margin:calc(-1*cap-padding-y) calc(-1*cap-padding-x); background:
+ * var(--tblr-bg-surface-tertiary)}` — i.e. the nav is sized and positioned to
+ * *become* the whole header. A title or button sibling in that header would be
+ * overlapped by the nav's own negative margins, which is why the caller keeps
+ * its page heading and actions above the card rather than beside the strip.
+ *
  * ## No `data-bs-toggle`
  *
  * Deliberately absent, and this is load-bearing rather than an omission:
@@ -31,11 +48,14 @@
  * ## Accessibility
  *
  * Hand-written markup owns its own semantics (ADR-0042): `role="tablist"` on
- * the list, `role="tab"` + `aria-selected` + `aria-controls` on each control,
- * and the caller is expected to put the matching `id` and `role="tabpanel"`
- * on its panel — `panelId` returns the id to use, so the two can't drift.
+ * the list, `role="tab"` + `aria-selected` + `aria-controls` + its own `id` on
+ * each control, and the caller is expected to put the matching `id`,
+ * `role="tabpanel"` and `aria-labelledby` on its panel — `panelId` and
+ * `tabTriggerId` return the two ids to use, so the pair can't drift.
  * A real `<button>` is keyboard-reachable and Enter/Space-activated for free,
- * which a `<a href="#">` or a `<div>` would not be.
+ * which a `<a href="#">` or a `<div>` would not be. Tabler's reference markup
+ * uses `<a href="#...">`; that is Bootstrap's stock anchor-driven variant, not
+ * a requirement, and it would cost exactly those free keyboard semantics.
  */
 
 export interface TabItem {
@@ -75,6 +95,15 @@ export function panelId(testIdPrefix: string, tabId: string): string {
   return `${testIdPrefix}-panel-${tabId}`;
 }
 
+/**
+ * The `id` this component puts on `tabId`'s own trigger — the caller points
+ * its panel's `aria-labelledby` at it, completing the pair `aria-controls`
+ * starts. Exported so the caller never hand-types the string.
+ */
+export function tabTriggerId(testIdPrefix: string, tabId: string): string {
+  return `${testIdPrefix}-tab-${tabId}`;
+}
+
 export function Tabs({ items, activeId, onSelect, testIdPrefix, className }: TabsProps) {
   return (
     <ul
@@ -89,6 +118,7 @@ export function Tabs({ items, activeId, onSelect, testIdPrefix, className }: Tab
             <button
               type="button"
               role="tab"
+              id={tabTriggerId(testIdPrefix, item.id)}
               className={`nav-link${isActive ? " active" : ""}`}
               aria-selected={isActive}
               aria-controls={panelId(testIdPrefix, item.id)}

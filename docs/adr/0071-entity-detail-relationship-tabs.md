@@ -212,6 +212,71 @@ in a story that isn't fixing it.
   *derivation* of one fact, never a second hand-kept list, and a test asserts
   they agree for every registered entity.
 
+### Amendment 1 (2026-09-14) — the strip is mounted as the card header, per Tabler's own "tabs in a card" pattern
+
+A same-branch, pre-merge correction to this ADR's own Decision §8, on CTO
+instruction after a live look at the shipped result (`docs/CLAUDE.md`'s
+`### Amendment` case, not a new ADR: no architecture, contract or schema
+changes — the derivation, the exclusion rules, the `?tab=` posture, the hidden
+scoping column and the read-only stance are all untouched, and so is every
+`data-testid`).
+
+**What shipped first:** the strip was a bare `ul.nav.nav-tabs` *above* the
+card, with each panel rendering its own card underneath — so a relationship tab
+showed a second card titled with the tab's own label, and the page's Back/Edit
+actions (which lived in the Info card's header) disappeared entirely whenever a
+relationship tab was open.
+
+**What it is now**, matching https://docs.tabler.io/ui/components/tab verbatim:
+one card spans every tab; the strip is the **only** child of its `.card-header`,
+as `ul.nav.nav-tabs.card-header-tabs`; each panel is a `.tab-pane.active.show`
+inside `.card-body > .tab-content`.
+
+Three consequences of that pattern, each read out of the shipped CSS rather
+than assumed (ADR-0042's own rule), not inferred from the reference HTML:
+
+1. **The heading and Back/Edit moved above the card, not beside the strip.**
+   Tabler sets `.card-header{display:flex}` and `.card-header-tabs{flex:1;
+   margin:calc(-1*cap-padding-y) calc(-1*cap-padding-x); background:
+   var(--tblr-bg-surface-tertiary)}` — the nav is built to *become* the whole
+   header and would paint over any sibling in it. Confirmed by live
+   measurement, not by reading the rule: the rendered nav's box is the header's
+   box (958x47 in a 958x48 header). A side effect worth naming: Back/Edit are
+   now present on every tab, where before they vanished with the Info panel.
+2. **`EntityTable` gained an opt-in `bare` prop** (default off, so all 24 list
+   screens render byte-for-byte as before) that drops its own `.card`/
+   `.card-header` wrapper. The relationship pane uses it — a card nested in the
+   page's card body would paint a second border and shadow around the table and
+   repeat the tab's label as a card title. `EntityRelationTab` therefore renders
+   card *sections*, not a card, and is no longer a standalone mount.
+3. **`.active` on the rendered pane is load-bearing, not decorative.**
+   `.tab-content > .tab-pane{display:none}` in both design systems' shipped CSS,
+   so a pane that lost the class would be present in the DOM, pass every
+   query-by-testid assertion, and render nothing. `show` is the reference
+   markup's own companion class.
+
+**Explicitly unchanged: still no `data-bs-toggle`, and still real `<button>`
+triggers.** Decision §8's reasoning survives the relocation intact — Tabler's JS
+bundle is loaded (ADR-0053) and would take ownership of panel visibility from
+React; the reference's own `<a href="#...">` is Bootstrap's stock anchor variant,
+not a requirement, and adopting it would cost the free keyboard semantics a real
+`<button>` has. Only class names and DOM placement changed. `Tabs` additionally
+now gives each trigger an `id` (`tabTriggerId`) so the panel can point back with
+`aria-labelledby`, completing the pair `aria-controls` already started;
+`card-header-tabs` is passed in by the caller rather than baked into the
+molecule, since a strip mounted anywhere else must not carry it.
+
+**Coverage.** No new TC — this is a markup correction inside TC-ADMIN-050..054's
+existing scope, and the assertions were added to the specs those TCs already
+name: `tabs.test.tsx` (trigger ids, `className` reaching the list),
+`EntityDetailPage.tabs.test.tsx` (strip is the card header's only child, pane is
+`.tab-pane.active.show` in `.card-body.tab-content`, one card not two, heading
+and Back outside the card on every tab, and the no-relations negative),
+`entity-table.test.tsx` (`bare` drops the wrapper, default keeps it), and
+`admin7-entity-relation-tabs.spec.ts` — which carries the half no unit test can
+reach, since jsdom applies no CSS: a real engine confirming the pane is actually
+`visible` and the nav actually sits flush above it.
+
 ## Alternatives considered
 
 - **Hand-author the relationship map on the frontend.** Rejected outright: this

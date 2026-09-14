@@ -327,6 +327,37 @@ test.describe("ADR-0071: entity detail relationship tabs", () => {
       await expect(page.getByTestId("entity-detail-field-project_id")).toBeVisible();
       // ...and must not have become a tab.
       await expect(page.getByTestId("entity-detail-tab-projects")).toHaveCount(0);
+
+      /**
+       * ADR-0071's Amendment — Tabler's documented "tabs in the card header"
+       * markup, asserted in a real browser because this is the half the unit
+       * tests structurally cannot answer: jsdom applies no CSS, so only a real
+       * engine can confirm the classes actually *resolve* (`.tab-content >
+       * .tab-pane` is `display:none` without `.active`, and a strip whose
+       * `card-header-tabs` were dropped would still pass every DOM assertion
+       * while rendering as a detached row of tabs above the card).
+       */
+      const detailPage = page.getByTestId("entity-detail-page");
+      const tablist = page.getByTestId("entity-detail-tablist");
+      await expect(tablist).toHaveClass(/\bcard-header-tabs\b/);
+      // The strip is inside the card's own header...
+      await expect(detailPage.locator(".card > .card-header > .nav-tabs.card-header-tabs")).toHaveCount(1);
+      // ...and the panel is an active pane in that same card's body.
+      const panel = page.getByRole("tabpanel");
+      await expect(panel).toHaveClass(/\btab-pane\b.*\bactive\b/);
+      await expect(detailPage.locator(".card > .card-body.tab-content > .tab-pane.active")).toHaveCount(1);
+      // Really painted, not merely present — the `display:none` trap above.
+      await expect(panel).toBeVisible();
+      // The nav sits above the panel, and both are in the one card.
+      const navBox = (await tablist.boundingBox())!;
+      const panelBox = (await panel.boundingBox())!;
+      expect(navBox.y + navBox.height).toBeLessThanOrEqual(panelBox.y + 1);
+
+      // The heading and Back action live above the card (Tabler's
+      // `.card-header-tabs` is `flex:1` with negative margins on all four
+      // sides, so it consumes the header) — and stay put on every tab.
+      await expect(detailPage.locator(".card").getByTestId("entity-detail-back")).toHaveCount(0);
+      await expect(page.getByTestId("entity-detail-back")).toBeVisible();
     } finally {
       cleanup(fixture);
     }
@@ -373,6 +404,22 @@ test.describe("ADR-0071: entity detail relationship tabs", () => {
       const headers = await page.getByRole("columnheader").allTextContents();
       expect(headers).toContain("Description");
       expect(headers).not.toContain("Requirement");
+
+      /**
+       * ADR-0071's Amendment: the related table renders inside the page's one
+       * card (`EntityTable` in `bare` mode), not as a second card nested in
+       * that card's body — the visible defect the relocation would otherwise
+       * introduce, and one no unit test can see, since a nested `.card`'s
+       * border and shadow are purely CSS.
+       */
+      const detailPage = page.getByTestId("entity-detail-page");
+      await expect(detailPage.locator(".card")).toHaveCount(1);
+      await expect(detailPage.locator(".card-header")).toHaveCount(1);
+      await expect(page.getByRole("tabpanel").getByRole("table")).toHaveCount(1);
+      // Back survives the tab switch — under the pre-Amendment markup the
+      // whole header lived in the Info panel and vanished with it.
+      await expect(page.getByTestId("entity-detail-back")).toBeVisible();
+      await expect(detailPage.getByRole("heading", { name: /details$/i })).toBeVisible();
 
       // TC-ADMIN-054: the active tab is in the URL, so this view is shareable.
       await expect(page).toHaveURL(/\?tab=test-conditions/);
@@ -501,6 +548,15 @@ test.describe("ADR-0071: entity detail relationship tabs", () => {
       await expect(page.getByTestId("entity-detail-fields")).toBeVisible();
       await expect(page.getByTestId("entity-detail-tablist")).toHaveCount(0);
       await expect(page.getByRole("tab")).toHaveCount(0);
+
+      // ADR-0071's Amendment: with no strip there is no header to give it, so
+      // the card carries none — and no `tab-content`/`tab-pane`/`tabpanel`
+      // either, which would be a tabpanel with no tablist.
+      const detailPage = page.getByTestId("entity-detail-page");
+      await expect(detailPage.locator(".card-header")).toHaveCount(0);
+      await expect(detailPage.locator(".tab-content")).toHaveCount(0);
+      await expect(detailPage.locator(".tab-pane")).toHaveCount(0);
+      await expect(page.getByRole("tabpanel")).toHaveCount(0);
     } finally {
       cleanup(fixture);
     }

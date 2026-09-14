@@ -38,6 +38,16 @@
  * Both destinations are built from the current admin route's own prefix
  * (`/orgs/:orgId/admin` or `/projects/:projectId/admin`), so a relationship
  * tab navigates within the scope the user is already in.
+ *
+ * ## It renders card *sections*, not a card (ADR-0071's Amendment)
+ *
+ * This component is mounted inside `EntityDetailPage`'s single card, in the
+ * `.tab-pane` of its `.card-body` — Tabler's documented "tabs in the card
+ * header" pattern, where one card spans every tab. So it renders
+ * `EntityTable` with `bare`, and its own schema-loading/error branch is a bare
+ * `.card-body` too: a card of its own here would paint a second border and
+ * shadow inside the page's card, and repeat the tab's label as a card title.
+ * It is not a standalone mount — it expects a `.card` ancestor.
  */
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -109,23 +119,26 @@ function EntityRelationTab({
 
   if (schemaLoading || !config) {
     return (
-      <Card className="h-100">
-        <Card.Body>
-          {schemaLoading ? (
-            <Spinner wrapperClassName="py-4" />
-          ) : (
-            <Alert color="danger" data-testid="entity-relation-schema-error">
-              Could not load the schema for related records.
-            </Alert>
-          )}
-        </Card.Body>
-      </Card>
+      <Card.Body>
+        {schemaLoading ? (
+          <Spinner wrapperClassName="py-4" />
+        ) : (
+          <Alert color="danger" data-testid="entity-relation-schema-error">
+            Could not load the schema for related records.
+          </Alert>
+        )}
+      </Card.Body>
     );
   }
 
   return (
     <EntityTable
-      title={relation.label}
+      /**
+       * No `title`: the tab the user just clicked already carries
+       * `relation.label`, and in `bare` mode there is no card header to put it
+       * in — the page's card header is the tab strip itself.
+       */
+      bare
       config={hideScopeColumn(config, relation.scopeField)}
       rows={listQuery.data?.items ?? []}
       total={listQuery.data?.total ?? 0}

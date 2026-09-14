@@ -58,24 +58,43 @@
  * ADR-0070 fetch its own row rather than reuse the list's in-memory copy. An
  * unknown or absent `?tab=` falls back to Info rather than erroring.
  *
- * ## Markup
+ * ## Markup (ADR-0071's Amendment — Tabler's "tabs in the card header")
  *
- * Same shell every sibling admin page uses (`container-fluid px-4 py-4 h-100`)
- * plus the `Card` atom. **The card is no longer the container's sole child** —
- * the tab strip is a sibling above it — so per `frontend/CLAUDE.md`'s own rule
- * a bare `h-100` on the card would overflow the container by exactly the
- * strip's height. The container is `d-flex flex-column` and the panel below
- * the strip is `flex-grow-1`, which is that rule's own documented fix for
- * precisely this shape. The field list is a stock Bootstrap 5
- * `<dl className="row">` (`dt.col-sm-3` / `dd.col-sm-9`), not an invented
- * class — per ADR-0042's "use the library's own documented class names
- * verbatim" rule.
+ * One card spans every tab, laid out exactly as Tabler's own tab component
+ * documents it: the tab strip is the *only* child of `.card-header` (as
+ * `ul.nav.nav-tabs.card-header-tabs`), and each panel is a
+ * `.tab-pane.active.show` inside `.card-body > .tab-content`. Only one pane is
+ * ever rendered — React owns which, so the never-rendered siblings Bootstrap's
+ * own JS would hide don't exist here at all (see `Tabs`' no-`data-bs-toggle`
+ * note; that reasoning is unchanged by the relocation).
+ *
+ * The page heading and the Back/Edit actions sit **above** the card, not
+ * beside the strip. Read out of the shipped CSS rather than assumed:
+ * Tabler sets `.card-header{display:flex}` and `.card-header-tabs{flex:1;
+ * margin:calc(-1*cap-padding-y) calc(-1*cap-padding-x)}`, so the nav is built
+ * to consume the entire header and would paint over any sibling in it.
+ *
+ * That keeps the container `d-flex flex-column` with the card `flex-grow-1`
+ * (rather than `h-100`) — `frontend/CLAUDE.md`'s rule for a target that is not
+ * its container's sole child; only the sibling above the card changed
+ * identity, from the tab strip to the heading row. The field list is still a
+ * stock Bootstrap 5 `<dl className="row">` (`dt.col-sm-3` / `dd.col-sm-9`),
+ * per ADR-0042's "use the library's own documented class names verbatim" rule.
  */
 import { Fragment, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { usePermissions } from "../../../auth/usePermissions";
-import { Alert, Button, Card, EntityFieldValue, Spinner, Tabs, panelId } from "../../../components";
+import {
+  Alert,
+  Button,
+  Card,
+  EntityFieldValue,
+  Spinner,
+  Tabs,
+  panelId,
+  tabTriggerId,
+} from "../../../components";
 import { EntityRelation } from "../../../entityConfigs/types";
 import { EntityRow, getEntity } from "../../../lib/api/entityCrud";
 import { useAdminRouteContext } from "../../../pages/admin/useAdminRouteContext";
@@ -204,24 +223,35 @@ function EntityDetailPage({ entityKeyOverride }: { entityKeyOverride?: string } 
     setSearchParams(next, { replace: true });
   }
 
-  const infoPanel = (
-    <Card className="h-100">
-      <Card.Header className="d-flex flex-wrap align-items-center justify-content-between">
-        <Card.Title as="h1" className="fs-4 mb-0">
-          {pageTitle} details
-        </Card.Title>
-        <div className="card-tools d-flex flex-wrap align-items-center gap-2 ms-auto">
-          <Button outline color="secondary" data-testid="entity-detail-back" onClick={() => navigate(-1)}>
-            Back
+  /**
+   * ADR-0071 (Amendment): above the card, not inside its header — Tabler's
+   * `.card-header-tabs` is `flex:1` with negative margins on all four sides,
+   * so it consumes the whole header and would paint over a title or button
+   * sibling there.
+   */
+  const pageHeader = (
+    <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+      <h1 className="fs-4 mb-0">{pageTitle} details</h1>
+      <div className="d-flex flex-wrap align-items-center gap-2 ms-auto">
+        <Button outline color="secondary" data-testid="entity-detail-back" onClick={() => navigate(-1)}>
+          Back
+        </Button>
+        {canEdit && (
+          <Button color="primary" data-testid="entity-detail-edit" onClick={() => navigate("edit")}>
+            Edit
           </Button>
-          {canEdit && (
-            <Button color="primary" data-testid="entity-detail-edit" onClick={() => navigate("edit")}>
-              Edit
-            </Button>
-          )}
-        </div>
-      </Card.Header>
+        )}
+      </div>
+    </div>
+  );
 
+  /**
+   * The Info pane's own content — `.card-body` sections, no card of their own,
+   * because the page's single card wraps every tab. Same shape
+   * `EntityRelationTab` renders for a relationship pane.
+   */
+  const infoPanel = (
+    <>
       {!canGet ? (
         <Card.Body>
           <Alert color="info" data-testid="entity-detail-unsupported">
@@ -271,42 +301,62 @@ function EntityDetailPage({ entityKeyOverride }: { entityKeyOverride?: string } 
           </dl>
         </Card.Body>
       )}
-    </Card>
+    </>
   );
+
+  const hasTabs = relations.length > 0;
 
   return (
     <div className="container-fluid px-4 py-4 h-100 d-flex flex-column" data-testid="entity-detail-page">
-      {relations.length > 0 && (
-        <Tabs
-          testIdPrefix={TAB_TEST_ID_PREFIX}
-          activeId={activeTab}
-          onSelect={selectTab}
-          items={[
-            { id: INFO_TAB, label: "Info" },
-            ...relations.map((relation) => ({ id: relationTabId(relation), label: relation.label })),
-          ]}
-        />
-      )}
+      {pageHeader}
 
-      <div
-        className="flex-grow-1"
-        role={relations.length > 0 ? "tabpanel" : undefined}
-        id={relations.length > 0 ? panelId(TAB_TEST_ID_PREFIX, activeTab) : undefined}
-      >
-        {activeRelation ? (
-          <EntityRelationTab
-            relation={activeRelation}
-            parentId={String(id)}
-            routeParams={routeParams}
-            page={relationPage}
-            onPageChange={setRelationPage}
-            pageSize={relationPageSize}
-            onPageSizeChange={setRelationPageSize}
-          />
-        ) : (
-          infoPanel
+      <Card className="flex-grow-1">
+        {hasTabs && (
+          <Card.Header>
+            <Tabs
+              // Tabler's own class for a strip mounted as the card's header.
+              className="card-header-tabs"
+              testIdPrefix={TAB_TEST_ID_PREFIX}
+              activeId={activeTab}
+              onSelect={selectTab}
+              items={[
+                { id: INFO_TAB, label: "Info" },
+                ...relations.map((relation) => ({ id: relationTabId(relation), label: relation.label })),
+              ]}
+            />
+          </Card.Header>
         )}
-      </div>
+
+        {/*
+         * `p-0` because each pane supplies its own `.card-body` (padded, or
+         * `p-0` for a full-bleed table — `EntityTable`'s own existing rule).
+         * `.tab-content > .tab-pane` is `display:none` in both design
+         * systems' CSS, so the rendered pane must carry `active`; `show` is
+         * the reference markup's own companion class.
+         */}
+        <Card.Body className={`p-0${hasTabs ? " tab-content" : ""}`}>
+          <div
+            className={hasTabs ? "tab-pane active show" : undefined}
+            role={hasTabs ? "tabpanel" : undefined}
+            id={hasTabs ? panelId(TAB_TEST_ID_PREFIX, activeTab) : undefined}
+            aria-labelledby={hasTabs ? tabTriggerId(TAB_TEST_ID_PREFIX, activeTab) : undefined}
+          >
+            {activeRelation ? (
+              <EntityRelationTab
+                relation={activeRelation}
+                parentId={String(id)}
+                routeParams={routeParams}
+                page={relationPage}
+                onPageChange={setRelationPage}
+                pageSize={relationPageSize}
+                onPageSizeChange={setRelationPageSize}
+              />
+            ) : (
+              infoPanel
+            )}
+          </div>
+        </Card.Body>
+      </Card>
     </div>
   );
 }

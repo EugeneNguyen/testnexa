@@ -492,4 +492,68 @@ describe("EntityTable", () => {
       });
     });
   });
+
+  /**
+   * ADR-0071 (Amendment): `bare` drops the `.card`/`.card-header` wrapper for a
+   * caller that already owns a card — `EntityDetailPage`'s relationship tab
+   * pane, whose card header is the tab strip itself. The table and its
+   * `.card-body` sections are unchanged; only the wrapper goes.
+   */
+  describe("bare (ADR-0071)", () => {
+    it("renders the same table with no .card/.card-header wrapper", () => {
+      const { container } = render(
+        <EntityTable
+          bare
+          config={READ_ONLY_CONFIG}
+          rows={ROWS}
+          total={2}
+          page={1}
+          pageSize={25}
+          onPageChange={vi.fn()}
+        />,
+      );
+
+      expect(container.querySelector(".card")).toBeNull();
+      expect(container.querySelector(".card-header")).toBeNull();
+      // The body sections — and everything in them — are untouched.
+      expect(container.querySelector(".card-body")).not.toBeNull();
+      expect(screen.getByRole("columnheader", { name: "Title" })).toBeInTheDocument();
+      expect(screen.getByText("First widget")).toBeInTheDocument();
+    });
+
+    it("keeps the card wrapper by default, so every list screen is unaffected", () => {
+      const { container } = render(
+        <EntityTable
+          title="Widgets"
+          config={READ_ONLY_CONFIG}
+          rows={ROWS}
+          total={2}
+          page={1}
+          pageSize={25}
+          onPageChange={vi.fn()}
+        />,
+      );
+
+      expect(container.querySelector(".card")).not.toBeNull();
+      expect(container.querySelector(".card-header")).not.toBeNull();
+      expect(screen.getByText("Widgets")).toHaveClass("card-title");
+    });
+
+    it("still renders the load error in bare mode", () => {
+      render(
+        <EntityTable
+          bare
+          config={READ_ONLY_CONFIG}
+          rows={[]}
+          total={0}
+          page={1}
+          pageSize={25}
+          onPageChange={vi.fn()}
+          loadError="Something went wrong. Please try again."
+        />,
+      );
+
+      expect(screen.getByRole("alert")).toHaveTextContent("Something went wrong. Please try again.");
+    });
+  });
 });

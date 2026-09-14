@@ -1,2 +1,2 @@
-export { Tabs, panelId } from "./tabs";
+export { Tabs, panelId, tabTriggerId } from "./tabs";
 export type { TabsProps, TabItem } from "./tabs";
