@@ -85,12 +85,28 @@ def test_project_has_bespoke_get_update_create_alongside_generic_list_and_delete
     assert set(TOOL_REGISTRY["project"]) == {"list", "get", "create", "update", "delete", "describe"}
 
 
-def test_test_case_list_is_registered_as_a_bespoke_nested_list() -> None:
-    """MCP-1's hand-wired `list_test_cases` folds in here (ADR-0068) — the
-    generic factory registers no flat `list` for `TestCase`, so without this
-    bespoke row `tn_test_case_list` would not exist at all."""
+def test_test_case_list_is_a_bespoke_dispatcher_over_two_real_rest_list_routes() -> None:
+    """MCP-1's hand-wired `list_test_cases` folds in here (ADR-0068), and
+    REQ-5/ADR-0069 later gave `TestCase` a second, genuinely generic-factory
+    `list` (`scope_field="project_id"`, the standalone-authoring path) —
+    found merging the two branches. `tn_test_case_list` stays a single
+    bespoke row either way (`_BESPOKE_EXECUTORS["test_case"]["list"]`
+    overrides whatever the generic-registry builder would have registered),
+    dispatching on which key `scope` carries (`requirement_id` -> REQ-2's
+    nested list, `project_id` -> REQ-5's flat one) rather than exposing two
+    separate tools for one entity's one action — same "one tool per entity
+    per action" posture ADR-0068 established for `create`."""
     assert "list" in TOOL_REGISTRY["test_case"]
-    assert "list" not in ALL_ENTITY_CONFIGS["test-cases"].methods
+    assert "list" in ALL_ENTITY_CONFIGS["test-cases"].methods
+
+
+def test_test_case_link_requirement_is_a_fourth_configless_pseudo_resource() -> None:
+    """REQ-5/ADR-0069's retrofit route (`POST /test-cases/{id}/link-requirement`)
+    — same posture as `release`/`test_suite_test_case`/`test_plan_test_suite`
+    above: no `CrudEntityConfig` at all, one bespoke action, generating
+    `tn_test_case_link_requirement_create`."""
+    assert "test_case_link_requirement" not in ENTITY_CONFIGS_BY_RESOURCE
+    assert set(TOOL_REGISTRY["test_case_link_requirement"]) == {"create"}
 
 
 # --- TC-MCP-017: method-gating parity ---------------------------------------------------

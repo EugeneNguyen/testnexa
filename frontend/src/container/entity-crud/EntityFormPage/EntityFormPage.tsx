@@ -19,6 +19,16 @@
  * "test-cases"` (§4). Its badge uses `bg-*` per this repo's own AdminLTE
  * convention (not Bootstrap 5.3's `text-bg-*`).
  *
+ * **REQ-5 (ADR-0069)** adds a second `test-cases`-only section, "Link to
+ * Requirement" — a conditional action shown only when the loaded case has
+ * no existing Requirement traceability (`GET /test-cases/{id}/requirement-link`,
+ * same read-on-mount shape the Defects section above already established).
+ * Unlinked: a short note + button opening a small `Modal` with a
+ * project-scoped `FkAutocomplete` Requirement picker. Linked: a read-only
+ * `FkAutocomplete` (disabled) showing the linked Requirement's own title,
+ * reusing its built-in id->label lookup rather than a second fetch.
+ *
+
  * **ADR-0060:** optional `entityKeyOverride` prop, for a route with no
  * `:entity` segment at all (`/orgs/:orgId/projects/:id/edit`, `Project`'s
  * retired-`ProjectsPage` replacement) — passed straight through to
@@ -27,11 +37,12 @@
  */
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { Alert, Card, Spinner, EntityForm } from "../../../components";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Alert, Button, Card, FkAutocomplete, Modal, Spinner, EntityForm } from "../../../components";
 import { ApiError } from "../../../lib/api/client";
 import { EntityRow, getEntity, updateEntity } from "../../../lib/api/entityCrud";
 import { listDefectsForTestCase, type DefectSummary } from "../../../lib/api/defects";
+import { getTestCaseRequirementLink, linkTestCaseToRequirement } from "../../../lib/api/testCases";
 import { useAdminRouteContext } from "../../../pages/admin/useAdminRouteContext";
 
 /** UI Design Document §4 (EXEC-3, ADR-0044) — one color per `DefectSeverity`. */
@@ -98,6 +109,33 @@ function EntityFormPage({ entityKeyOverride }: { entityKeyOverride?: string } = 
     queryKey: ["test-case-defects", id],
     queryFn: () => listDefectsForTestCase(id as string),
     enabled: isTestCaseEntity && Boolean(id),
+  });
+
+  /**
+   * REQ-5 (ADR-0069): whether this case already has Requirement
+   * traceability — same read-on-mount shape as `defectsQuery` above.
+   */
+  const queryClient = useQueryClient();
+  const requirementLinkQuery = useQuery({
+    queryKey: ["test-case-requirement-link", id],
+    queryFn: () => getTestCaseRequirementLink(id as string),
+    enabled: isTestCaseEntity && Boolean(id),
+  });
+  const [showLinkModal, setShowLinkModal] = useState(false);
+  const [pendingRequirementId, setPendingRequirementId] = useState<string | undefined>(undefined);
+  const [linkError, setLinkError] = useState<string | null>(null);
+  const linkMutation = useMutation({
+    mutationFn: (requirementId: string) =>
+      linkTestCaseToRequirement(id as string, { requirement_id: requirementId }),
+    onSuccess: () => {
+      setShowLinkModal(false);
+      setPendingRequirementId(undefined);
+      setLinkError(null);
+      queryClient.invalidateQueries({ queryKey: ["test-case-requirement-link", id] });
+    },
+    onError: (error: unknown) => {
+      setLinkError(error instanceof ApiError ? error.message : "Something went wrong. Please try again.");
+    },
   });
 
   /**
@@ -214,7 +252,86 @@ function EntityFormPage({ entityKeyOverride }: { entityKeyOverride?: string } = 
             </div>
           </Card.Body>
         )}
+
+        {isTestCaseEntity && (
+          <Card.Body className="border-top">
+            <div data-testid="test-case-requirement-link-section">
+              <h2 className="fs-5 mb-3">Requirement</h2>
+
+              {requirementLinkQuery.isLoading ? (
+                <Spinner wrapperClassName="py-3" />
+              ) : requirementLinkQuery.isError ? (
+                <Alert color="danger" data-testid="test-case-requirement-link-error">
+                  Something went wrong loading this test case's Requirement link.
+                </Alert>
+              ) : requirementLinkQuery.data?.requirement_id ? (
+                <FkAutocomplete
+                  id="test-case-linked-requirement"
+                  label="Linked Requirement"
+                  refEntity="requirement"
+                  labelField="title"
+                  value={requirementLinkQuery.data.requirement_id}
+                  onChange={() => {}}
+                  disabled
+                />
+              ) : (
+                <>
+                  <p className="text-body-secondary" data-testid="test-case-requirement-link-empty">
+                    This test case has no Requirement.
+                  </p>
+                  <Button
+                    type="button"
+                    color="secondary"
+                    data-testid="test-case-link-requirement-button"
+                    onClick={() => setShowLinkModal(true)}
+                  >
+                    Link to Requirement
+                  </Button>
+                </>
+              )}
+            </div>
+          </Card.Body>
+        )}
       </Card>
+
+      {isTestCaseEntity && (
+        <Modal
+          visible={showLinkModal}
+          title="Link to Requirement"
+          onClose={() => {
+            setShowLinkModal(false);
+            setPendingRequirementId(undefined);
+            setLinkError(null);
+          }}
+        >
+          <Modal.Body>
+            <FkAutocomplete
+              id="test-case-link-requirement-picker"
+              label="Requirement"
+              refEntity="requirement"
+              labelField="title"
+              value={pendingRequirementId}
+              onChange={setPendingRequirementId}
+              extraParams={{ project_id: (itemQuery.data?.project_id as string | undefined) ?? undefined }}
+              error={linkError ?? undefined}
+            />
+          </Modal.Body>
+          <Modal.Footer>
+            <Button type="button" color="secondary" onClick={() => setShowLinkModal(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              color="primary"
+              data-testid="test-case-link-requirement-submit"
+              disabled={!pendingRequirementId || linkMutation.isPending}
+              onClick={() => pendingRequirementId && linkMutation.mutate(pendingRequirementId)}
+            >
+              Link
+            </Button>
+          </Modal.Footer>
+        </Modal>
+      )}
     </div>
   );
 }

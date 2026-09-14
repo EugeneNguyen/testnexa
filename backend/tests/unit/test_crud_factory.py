@@ -311,6 +311,70 @@ class TestResolveTestCaseOrgId:
         db = _FakeSession()  # condition lookup misses
         assert await resolve_test_case_org_id(db, row) is None
 
+    async def test_resolves_via_project_id_for_standalone_case(self) -> None:
+        """REQ-5's standalone path (ADR-0069) — 3rd branch, no Requirement/TestCondition link at all."""
+        project_id = uuid.uuid4()
+        org_id = uuid.uuid4()
+        project = _row(org_id=org_id)
+
+        row = _row(id=uuid.uuid4(), test_condition_id=None, project_id=project_id)
+        db = _FakeSession(
+            rows={(Project, project_id): project},
+            # Only one `.scalar()` call expected: the `RequirementTestCaseLink`
+            # lookup misses, `project_id` resolves directly — `TestSuiteTestCase`
+            # is never queried.
+            scalar_results=[None],
+        )
+        assert await resolve_test_case_org_id(db, row) == org_id
+
+    async def test_project_id_set_but_project_missing_resolves_to_none(self) -> None:
+        row = _row(id=uuid.uuid4(), test_condition_id=None, project_id=uuid.uuid4())
+        db = _FakeSession(scalar_results=[None])
+        assert await resolve_test_case_org_id(db, row) is None
+
+    async def test_requirement_link_takes_precedence_over_project_id(self) -> None:
+        """A since-linked standalone case (`project_id` never cleared, ADR-0069)
+        resolves via the more specific `RequirementTestCaseLink` branch."""
+        requirement_id = uuid.uuid4()
+        project_id = uuid.uuid4()
+        link_org_id = uuid.uuid4()
+        stale_project_org_id = uuid.uuid4()
+
+        link = _row(requirement_id=requirement_id)
+        requirement = _row(project_id=project_id)
+        # The linked Requirement's own Project resolves to `link_org_id`; the
+        # TestCase's own (deliberately unchanged) `project_id` column would
+        # resolve to a *different* org if it were ever consulted — proves the
+        # branch order, not just that some org is returned.
+        linked_project = _row(org_id=link_org_id)
+        stale_project = _row(org_id=stale_project_org_id)
+
+        row = _row(id=uuid.uuid4(), test_condition_id=None, project_id=project_id)
+        db = _FakeSession(
+            rows={
+                (Requirement, requirement_id): requirement,
+                (Project, project_id): linked_project,
+            },
+            scalar_results=[link],
+        )
+        assert await resolve_test_case_org_id(db, row) == link_org_id
+        assert stale_project.org_id == stale_project_org_id  # sanity: fixture never consulted
+
+    async def test_scope_resolution_stand_in_row_with_only_project_id(self) -> None:
+        """`_resolve_scope_for_write`'s own `types.SimpleNamespace(project_id=...)`
+        stand-in (no `.id` attribute at all) must resolve without erroring —
+        the two link-table branches need a real row id and must be skipped,
+        not short-circuit the whole resolution to `None` (ADR-0069)."""
+        import types
+
+        project_id = uuid.uuid4()
+        org_id = uuid.uuid4()
+        project = _row(org_id=org_id)
+
+        row = types.SimpleNamespace(project_id=project_id)
+        db = _FakeSession(rows={(Project, project_id): project})
+        assert await resolve_test_case_org_id(db, row) == org_id
+
 
 # --- resolve_via_test_case (TestStep/Attachment delegation) -------------------------------------
 

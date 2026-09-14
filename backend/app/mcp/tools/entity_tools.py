@@ -152,6 +152,7 @@ BESPOKE_CREATE_PARENT_FIELDS: dict[str, str | None] = {
     "test_cycle": '"test_plan_id"',
     "test_suite_test_case": '"test_suite_id" and "test_case_id"',
     "test_plan_test_suite": '"test_plan_id" and "test_suite_id"',
+    "test_case_link_requirement": '"test_case_id" and "requirement_id"',
 }
 
 #: Entities whose `list` is a bespoke nested route rather than the generic
@@ -181,7 +182,17 @@ def _singular(resource: str) -> str:
 def _scope_hint(resource: str) -> str:
     if resource in BESPOKE_LIST_SCOPE_FIELDS:
         field = BESPOKE_LIST_SCOPE_FIELDS[resource]
-        return f' `scope` is REQUIRED and must carry {{"{field}": "<uuid>"}} — this list is a nested REST route, not a flat one.'
+        text = f' `scope` is REQUIRED and must carry {{"{field}": "<uuid>"}} — this list is a nested REST route, not a flat one.'
+        # REQ-5/ADR-0069: `test_case` is the one entity with BOTH a bespoke
+        # nested list (above) and a real, now-enabled generic-factory list of
+        # its own (`scope_field` on its config) — the description must name
+        # both alternatives, or an MCP client reading it would never learn
+        # the second one exists, even though `_test_case_list` itself already
+        # dispatches on it correctly.
+        config = ENTITY_CONFIGS_BY_RESOURCE.get(resource)
+        if config is not None and config.scope_field is not None and config.scope_field != field:
+            text += f' Alternatively, `scope` may instead carry {{"{config.scope_field}": "<uuid>"}} — the flat, project-scoped list (mutually exclusive with `{{"{field}": ...}}`).'
+        return text
     config = ENTITY_CONFIGS_BY_RESOURCE.get(resource)
     if config is None or config.scope_field is None:
         return " This entity is unscoped (a global catalog or org-root list); `scope` may be omitted."

@@ -80,7 +80,12 @@ from fastapi.responses import JSONResponse
 
 from app.api.crud_factory import CrudEntityConfig, derive_entity_schema, get_crud_handlers
 from app.api.entity_registry import ALL_ENTITY_CONFIGS
-from app.api.routes.assets import create_test_case_for_requirement, list_test_cases_for_requirement
+from app.api.routes.assets import (
+    _TEST_CASE_CONFIG,
+    create_test_case_for_requirement,
+    link_test_case_to_requirement,
+    list_test_cases_for_requirement,
+)
 from app.api.routes.execution import add_test_execution_comment, raise_defect_for_execution
 from app.api.routes.execution_authoring import create_execution_for_cycle
 from app.api.routes.org_memberships import invite_member
@@ -97,9 +102,11 @@ from app.api.routes.test_plan_membership import include_suite_in_plan
 from app.api.routes.test_suite_membership import add_test_case_to_suite
 from app.models.actor import AIAgent, User
 from app.schemas.assets import (
+    CreateStandaloneTestCaseRequest,
     CreateTestCaseForTestConditionRequest,
     CreateTestCaseRequest,
     CreateTestConditionForRequirementRequest,
+    LinkTestCaseToRequirementRequest,
 )
 from app.schemas.execution import (
     AddTestLogCommentRequest,
@@ -271,10 +278,17 @@ def _build_generic_registry() -> dict[str, dict[str, Callable]]:
 
 
 async def _test_case_create(*, actor: Any, db: Any, fields: dict[str, Any] | None = None, **_ignored: Any) -> Any:
-    """`test_case`'s two create paths (direct-link / rigor-path), dispatched
-    on a non-null `test_condition_id` — the same branch ADR-0033/MCP-1's own
-    `create_test_case` tool used before ADR-0068 retired it in favour of
-    `tn_test_case_create`."""
+    """`test_case`'s three create paths (direct-link / rigor-path / standalone,
+    ADR-0069), the same dispatch shape ADR-0033/MCP-1's own `create_test_case`
+    tool established for the first two (that tool itself is retired by
+    ADR-0068/MCP-6 — folded into `tn_test_case_create`, this executor):
+    dispatched on a non-null `test_condition_id`, then `requirement_id`, then
+    falling back to the newly-enabled generic-factory create (REQ-5's standalone
+    path, `project_id` scoped) — introspected via `get_crud_handlers`
+    (`backend/CLAUDE.md`'s "handler produced inside a factory function has
+    no importable name" note), since this bespoke row's own override of
+    `test_case`'s `create` entry in `TOOL_REGISTRY` would otherwise shadow
+    the generic one the registry-build step already enabled."""
     data = dict(fields or {})
     requirement_id = data.pop("requirement_id", None)
     test_condition_id = data.pop("test_condition_id", None)
@@ -284,25 +298,69 @@ async def _test_case_create(*, actor: Any, db: Any, fields: dict[str, Any] | Non
     if requirement_id is not None:
         payload = CreateTestCaseRequest(**data)
         return await create_test_case_for_requirement(id=requirement_id, payload=payload, actor=actor, db=db)
+    if "project_id" in data:
+        handler = get_crud_handlers(_TEST_CASE_CONFIG)["create"]
+        payload = CreateStandaloneTestCaseRequest(**data)
+        return await handler(payload=payload, actor=actor, db=db)
     return _missing("requirement_id")
 
 
-async def _test_case_list(
-    *, actor: Any, db: Any, scope: dict[str, Any] | None = None, page: int = 1, page_size: int = 25, **_ignored: Any
-) -> Any:
-    """`test_case` has no flat generic `list` route at all — REST lists them
-    nested under their Requirement (`GET /requirements/{id}/test-cases`,
-    REQ-2). ADR-0033's MCP-1 exposed that as its own hand-wired
-    `list_test_cases(requirement_id=...)` tool; ADR-0068 folds it into the
-    uniform naming scheme as `tn_test_case_list`, taking the parent id
-    through the same `scope` dict every other `list` tool uses for its
-    entity's own scope field(s) — the exact mirror of how every bespoke
-    `create` executor here takes its parent id through `fields`."""
-    data = dict(scope or {})
+async def _test_case_link_requirement(*, actor: Any, db: Any, fields: dict[str, Any] | None = None, **_ignored: Any) -> Any:
+    """`POST /test-cases/{id}/link-requirement` (REQ-5, ADR-0069) — retrofit
+    an existing standalone `TestCase` onto a `Requirement`. Both ids travel
+    in `fields` (same shape `_test_suite_test_case_create` already
+    establishes for a junction/action resource, not a plain entity `create`)
+    — a 100%-bespoke pseudo-resource (no `CrudEntityConfig`), same posture
+    `test_suite_test_case`/`test_plan_test_suite` already have, generating
+    its own `tn_test_case_link_requirement_create` tool (MCP-6/ADR-0068's
+    per-entity-per-action naming, superseding this docstring's own earlier
+    "reachable via `create_entity`" framing from ADR-0065's single generic
+    dispatch tool)."""
+    data = dict(fields or {})
+    test_case_id = data.get("test_case_id")
     requirement_id = data.get("requirement_id")
+    if test_case_id is None:
+        return _missing("test_case_id")
     if requirement_id is None:
         return _missing("requirement_id")
-    return await list_test_cases_for_requirement(id=requirement_id, page=page, page_size=page_size, actor=actor, db=db)
+    payload = LinkTestCaseToRequirementRequest(requirement_id=requirement_id)
+    return await link_test_case_to_requirement(id=test_case_id, payload=payload, actor=actor, db=db)
+
+
+async def _test_case_list(
+    *,
+    actor: Any,
+    db: Any,
+    scope: dict[str, Any] | None = None,
+    page: int = 1,
+    page_size: int = 25,
+    **_ignored: Any,
+) -> Any:
+    """`test_case` has **two** independent list routes REST serves, and both
+    fold into this one `tn_test_case_list` slot the same way `_test_case_create`
+    already dispatches three create paths through one `tn_test_case_create`
+    slot — branching on which key `scope` carries, not on a `resource`
+    argument. `requirement_id` set -> REQ-2's bespoke nested list (`GET
+    /requirements/{id}/test-cases`), ADR-0033's MCP-1 hand-wired
+    `list_test_cases(requirement_id=...)` tool folded in here by ADR-0068.
+    `project_id` set -> REQ-5/ADR-0069's newly-enabled generic-factory list
+    (`GET /test-cases?project_id=...`, the standalone-authoring path) —
+    introspected via `get_crud_handlers` for the same reason
+    `_test_case_create`'s own standalone branch does (`backend/CLAUDE.md`'s
+    "handler produced inside a factory function has no importable name"
+    note), since `_BESPOKE_EXECUTORS["test_case"]["list"]` (this function)
+    overrides whatever `_build_generic_registry` would otherwise have
+    registered for `test_case`'s own now-enabled generic `list` — without
+    this branch, REQ-5's `project_id`-scoped list would be silently
+    unreachable over MCP even though REST serves it."""
+    data = dict(scope or {})
+    requirement_id = data.get("requirement_id")
+    if requirement_id is not None:
+        return await list_test_cases_for_requirement(id=requirement_id, page=page, page_size=page_size, actor=actor, db=db)
+    if "project_id" in data:
+        handler = get_crud_handlers(_TEST_CASE_CONFIG)["list"]
+        return await _generic_list(_TEST_CASE_CONFIG, {"list": handler}, actor=actor, db=db, scope=data, page=page, page_size=page_size)
+    return _missing("requirement_id")
 
 
 async def _test_condition_create(*, actor: Any, db: Any, fields: dict[str, Any] | None = None, **_ignored: Any) -> Any:
@@ -448,6 +506,10 @@ _BESPOKE_EXECUTORS: dict[str, dict[str, Callable]] = {
     "test_cycle": {"create": _test_cycle_create},
     "test_suite_test_case": {"create": _test_suite_test_case_create},
     "test_plan_test_suite": {"create": _test_plan_test_suite_create},
+    # REQ-5/ADR-0069: a 100%-bespoke pseudo-resource, same posture as
+    # `test_suite_test_case`/`test_plan_test_suite` above (no `CrudEntityConfig`,
+    # one action) — generates `tn_test_case_link_requirement_create`.
+    "test_case_link_requirement": {"create": _test_case_link_requirement},
 }
 
 #: Per entity, the actions this registry serves that are NOT already claimed by
@@ -462,8 +524,9 @@ _BESPOKE_EXECUTORS: dict[str, dict[str, Callable]] = {
 #: Everything else listed is a real bespoke route whose entity config
 #: deliberately does not register that method with the generic factory
 #: (`backend/CLAUDE.md`'s "audit for a matching bespoke route" convention).
-#: `release`/`test_suite_test_case`/`test_plan_test_suite` have no
-#: `CrudEntityConfig` at all, so 100% of their surface is an "extra".
+#: `release`/`test_suite_test_case`/`test_plan_test_suite`/
+#: `test_case_link_requirement` have no `CrudEntityConfig` at all, so 100% of
+#: their surface is an "extra".
 #:
 #: `tests/unit/test_mcp_tool_naming.py` asserts this dict exactly equals the
 #: registry's own surplus over `full_methods` — a bespoke executor added
@@ -481,6 +544,7 @@ BESPOKE_EXTRA_ACTIONS: dict[str, frozenset[str]] = {
     "release": frozenset({"create"}),
     "test_suite_test_case": frozenset({"create"}),
     "test_plan_test_suite": frozenset({"create"}),
+    "test_case_link_requirement": frozenset({"create"}),
 }
 
 

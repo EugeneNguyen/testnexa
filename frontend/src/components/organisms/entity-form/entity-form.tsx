@@ -12,10 +12,13 @@
  *
  * `string`/`date` fields reuse `FormField` (`components/molecules/form-field/`)
  * directly, per ADR-0023's still-binding error-display convention;
- * `enum`/`boolean` fields hand-roll the same label + input + invalid-feedback
- * shape inline (not a second convention — just not promoted to their own
- * molecule, since DS-1's own scope names `FormField` as the only inhabitant
- * there today).
+ * `enum`/`boolean`/`text` fields hand-roll the same label + input +
+ * invalid-feedback shape inline (not a second convention — just not
+ * promoted to their own molecule, since DS-1's own scope names `FormField`
+ * as the only inhabitant there today). `text` (2026-09-15, live-manual-test
+ * feedback — a nullable/unbounded `Text` column, as opposed to `string`'s
+ * length-limited `String`) renders `atoms/textarea`'s `Textarea` instead of
+ * a single-line input; Zod validation is identical to `string`.
  *
  * **ADR-0042 (CoreUI -> AdminLTE v4):** the markup is raw Bootstrap 5 now —
  * `CForm` -> `<form>`, `CFormLabel` -> `<label class="form-label">`,
@@ -64,10 +67,12 @@ import { z, ZodTypeAny } from "zod";
 import { Alert } from "../../atoms/alert";
 import { Button } from "../../atoms/button";
 import { Select } from "../../atoms/select";
+import { Textarea } from "../../atoms/textarea";
 import FormField from "../../molecules/form-field";
 import { LabeledCheckbox } from "../../molecules/labeled-checkbox";
 import { EntityConfig, FieldConfig } from "../../../entityConfigs/types";
 import FkAutocomplete from "../../molecules/fk-autocomplete";
+import FkSelect from "../../molecules/fk-select";
 
 export interface EntityFormProps {
   config: EntityConfig;
@@ -111,6 +116,7 @@ function buildFieldSchema(field: FieldConfig): ZodTypeAny {
     case "boolean":
       return z.boolean().optional();
     case "string":
+    case "text":
     default: {
       const required = z.string().trim().min(1, `${field.label} is required.`);
       return field.required ? required : z.string().optional();
@@ -181,6 +187,20 @@ function EntityForm({
     switch (field.type) {
       case "string":
         return <FormField key={field.name} id={field.name} label={field.label} error={error} {...register(field.name)} />;
+      case "text":
+        return (
+          <div className="mb-3" key={field.name}>
+            <label className="form-label" htmlFor={field.name}>
+              {field.label}
+            </label>
+            <Textarea id={field.name} invalid={Boolean(error)} {...register(field.name)} />
+            {error && (
+              <div className="invalid-feedback d-block" role="alert">
+                {error}
+              </div>
+            )}
+          </div>
+        );
       case "date":
         return (
           <FormField key={field.name} id={field.name} label={field.label} type="date" error={error} {...register(field.name)} />
@@ -218,9 +238,10 @@ function EntityForm({
             />
           </div>
         );
-      case "fk":
+      case "fk": {
+        const FkControl = field.select ? FkSelect : FkAutocomplete;
         return (
-          <FkAutocomplete
+          <FkControl
             key={field.name}
             id={field.name}
             label={field.label}
@@ -231,6 +252,7 @@ function EntityForm({
             error={error}
           />
         );
+      }
       default:
         return null;
     }
@@ -239,8 +261,9 @@ function EntityForm({
   function renderDisplayOnly(field: FieldConfig) {
     const value = lockedValues?.[field.name] ?? initialValues?.[field.name];
     if (field.type === "fk") {
+      const FkControl = field.select ? FkSelect : FkAutocomplete;
       return (
-        <FkAutocomplete
+        <FkControl
           key={field.name}
           id={field.name}
           label={field.label}

@@ -33,7 +33,14 @@
  *    `entityConfigs/release.ts`.
  */
 
-export type FieldType = "string" | "enum" | "fk" | "date" | "boolean";
+/**
+ * `"text"` (2026-09-15, live-manual-test feedback): a nullable, unbounded
+ * `Text` column (as opposed to `"string"`'s length-limited `String`) —
+ * server-derived from `crud_factory.FieldMeta.long_text`, since a Pydantic
+ * `str` annotation can't distinguish the two on its own. `EntityForm` renders
+ * it as a `<textarea>` (`atoms/textarea`) instead of a single-line input.
+ */
+export type FieldType = "string" | "text" | "enum" | "fk" | "date" | "boolean";
 
 export interface FieldConfig {
   /** Matches the API's JSON field name exactly. */
@@ -82,6 +89,15 @@ export interface FieldConfig {
    * payload, always rendered disabled by `EntityForm`.
    */
   readOnly?: boolean;
+  /**
+   * fk only (2026-09-15, live-manual-test feedback) — render as a plain
+   * native `<select>` (fetches the ref entity's full list once, no
+   * debounced search) instead of `FkAutocomplete`'s type-to-search widget.
+   * Server-derived from `crud_factory.FieldMeta.select`; only set `true` for
+   * a small, bounded catalog (`TestLevel`/`TestType`/per-project
+   * `TestCondition`) — leave unset/`false` for an unbounded ref entity.
+   */
+  select?: boolean;
 }
 
 /** One option for `EntityConfig.scopeSelector` (see module doc comment, point 2). */

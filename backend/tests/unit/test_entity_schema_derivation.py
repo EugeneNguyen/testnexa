@@ -388,6 +388,61 @@ class TestForeignKeyOverrides:
         assert _fields(schema)["name"]["type"] == "fk"
 
 
+class TestSelectOverride:
+    """`FieldMeta.select` (2026-09-15, live-manual-test feedback): fk fields
+    for a small, bounded catalog render a native `<select>` on the frontend
+    (`FkSelect`) instead of `FkAutocomplete`'s debounced search."""
+
+    def test_select_true_is_emitted_on_the_fk_entry(self) -> None:
+        schema = derive_entity_schema(
+            _widget_config(
+                field_meta={"project_id": FieldMeta(ref_entity="project", label_field="name", select=True)}
+            )
+        )
+        entry = _fields(schema)["project_id"]
+        assert entry["type"] == "fk"
+        assert entry["select"] is True
+
+    def test_select_defaults_to_false_and_is_omitted(self) -> None:
+        schema = derive_entity_schema(
+            _widget_config(field_meta={"project_id": FieldMeta(ref_entity="project", label_field="name")})
+        )
+        entry = _fields(schema)["project_id"]
+        assert "select" not in entry
+
+    def test_select_true_on_a_non_fk_field_is_inert(self) -> None:
+        # `select` only means something once `ref_entity` promotes a field to
+        # `fk` — mirrors `TestForeignKeyOverrides`'s own inert-metadata posture.
+        schema = derive_entity_schema(_widget_config(field_meta={"name": FieldMeta(select=True)}))
+        entry = _fields(schema)["name"]
+        assert entry["type"] == "string"
+        assert "select" not in entry
+
+
+class TestLongTextOverride:
+    """`FieldMeta.long_text` (2026-09-15, live-manual-test feedback):
+    promotes a bare `str` field to `type: "text"` — the frontend renders it
+    as a `<textarea>` instead of a single-line input."""
+
+    def test_long_text_true_promotes_type_to_text(self) -> None:
+        schema = derive_entity_schema(_widget_config(field_meta={"name": FieldMeta(long_text=True)}))
+        assert _fields(schema)["name"]["type"] == "text"
+
+    def test_long_text_defaults_to_false_and_stays_string(self) -> None:
+        schema = derive_entity_schema(_widget_config())
+        assert _fields(schema)["name"]["type"] == "string"
+
+    def test_long_text_and_ref_entity_together_prefers_text_last_write_wins(self) -> None:
+        # Not a real combination any config actually uses (a field is either
+        # an fk or free text, never both) — pins down the derivation's own
+        # literal order (`long_text` checked after `ref_entity`) rather than
+        # leaving it to guesswork if the two ever accidentally coexist.
+        schema = derive_entity_schema(
+            _widget_config(field_meta={"project_id": FieldMeta(ref_entity="project", long_text=True)})
+        )
+        assert _fields(schema)["project_id"]["type"] == "text"
+
+
 class TestLabelOverrides:
     def test_default_label_is_title_cased_from_the_field_name(self) -> None:
         fields = _fields(derive_entity_schema(_widget_config()))

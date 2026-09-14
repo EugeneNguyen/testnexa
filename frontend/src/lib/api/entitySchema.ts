@@ -28,6 +28,8 @@ export interface BackendFieldConfig {
   labelField?: string;
   badgeColors?: Record<string, string>;
   readOnly?: boolean;
+  /** fk only — see `entityConfigs/types.ts`'s `FieldConfig.select` doc comment. */
+  select?: boolean;
 }
 
 export interface EntitySchemaResponse {

@@ -70,6 +70,12 @@ class TestCase(Base):
     test_condition_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("test_condition.id", ondelete="RESTRICT"), nullable=True
     )
+    # Nullable per ADR-0069 (REQ-5 standalone authoring path) — set only by
+    # the generic factory's create; never cleared once a standalone case
+    # later gains a RequirementTestCaseLink via the retrofit route.
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("project.id", ondelete="RESTRICT"), nullable=True
+    )
     test_level_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("test_level.id", ondelete="RESTRICT"), nullable=False
     )
@@ -80,6 +86,10 @@ class TestCase(Base):
         Uuid(as_uuid=True), ForeignKey("actor.id", ondelete="RESTRICT"), nullable=False
     )
     title: Mapped[str] = mapped_column(String, nullable=False)
+    # Nullable — a short summary of what's under test, separate from
+    # `preconditions`/`expected_result`'s own narrower roles. Added post-hoc
+    # (2026-09-15), same optionality posture as its two siblings.
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     preconditions: Mapped[str | None] = mapped_column(Text, nullable=True)
     expected_result: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[TestCaseStatus] = mapped_column(

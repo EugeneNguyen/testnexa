@@ -164,6 +164,7 @@ def test_create_test_case_ignores_test_condition_id_status_and_actor_in_the_body
     dumped = request.model_dump()
     assert set(dumped.keys()) == {
         "title",
+        "description",
         "preconditions",
         "expected_result",
         "test_level_id",
