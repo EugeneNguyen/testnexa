@@ -1,5 +1,5 @@
 /**
- * REQ-5 (ADR-0068) API lib contracts: `linkTestCaseToRequirement`/
+ * REQ-5 (ADR-0069) API lib contracts: `linkTestCaseToRequirement`/
  * `getTestCaseRequirementLink`, the two new lib functions backing
  * `EntityFormPage`'s "Link to Requirement" section. Standalone create
  * itself goes through the existing generic `lib/api/entityCrud.ts`

@@ -1,6 +1,6 @@
 """Integration tests for REQ-5: standalone TestCase authoring (no
 Requirement, no TestCondition) + optional retrofit link to a Requirement,
-ADR-0068.
+ADR-0069.
 
 Covers TC-REQ-015..019 (`docs/test-cases/2026-09-03-test-cases.md`).
 Real HTTP requests via `httpx.AsyncClient` against a live server
@@ -585,7 +585,7 @@ async def test_link_requirement_cross_project_same_org_returns_422() -> None:  #
         await fx.cleanup()
 
 
-# --- GET /test-cases/{id}/requirement-link (implementation-time addition, ADR-0068) ---------------
+# --- GET /test-cases/{id}/requirement-link (implementation-time addition, ADR-0069) ---------------
 
 
 @pytest.mark.asyncio

@@ -115,7 +115,7 @@ class TestConditionListResponse(BaseModel):
 
 # --- TestCase ------------------------------------------------------------------------------------
 #
-# Revised 2026-09-15 (ADR-0068, REQ-5) — `list`/`create` are now factory-
+# Revised 2026-09-15 (ADR-0069, REQ-5) — `list`/`create` are now factory-
 # registered after all. ~~No factory-registered `Create*Request`/`list` —
 # `create` is reserved for two bespoke atomic-create routes... unlike every
 # other scoped entity, `TestCase` has no single non-nullable FK the
@@ -189,7 +189,7 @@ class CreateTestCaseForTestConditionRequest(BaseModel):
 
 
 class CreateStandaloneTestCaseRequest(BaseModel):
-    """Body of the generic-factory `POST /test-cases` (REQ-5, ADR-0068).
+    """Body of the generic-factory `POST /test-cases` (REQ-5, ADR-0069).
 
     `project_id` is the factory's own scope field (`scope_field="project_id"`
     on `_TEST_CASE_CONFIG`) — required in the body per `crud_factory.py`'s
@@ -214,7 +214,7 @@ class CreateStandaloneTestCaseRequest(BaseModel):
 
 
 class LinkTestCaseToRequirementRequest(BaseModel):
-    """Body of `POST /test-cases/{id}/link-requirement` (REQ-5, ADR-0068)."""
+    """Body of `POST /test-cases/{id}/link-requirement` (REQ-5, ADR-0069)."""
 
     requirement_id: UUID
 
@@ -247,7 +247,7 @@ class TestCaseSummary(BaseModel):
 
 
 class TestCaseRequirementLinkResponse(BaseModel):
-    """Body of `GET /test-cases/{id}/requirement-link` (REQ-5, ADR-0068) —
+    """Body of `GET /test-cases/{id}/requirement-link` (REQ-5, ADR-0069) —
     tells `EntityFormPage`'s "Link to Requirement" section whether the case
     already has any Requirement traceability, and the linked Requirement's
     id if so (via either the `test_condition_id` chain or a direct

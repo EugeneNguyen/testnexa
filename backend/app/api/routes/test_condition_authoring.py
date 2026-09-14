@@ -55,7 +55,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.crud_factory import _org_membership_exists, chain_resolver
+from app.api.crud_factory import _actor_membership_exists, chain_resolver
 from app.api.deps import get_current_actor, get_db
 from app.core.rbac import has_permission
 from app.models.actor import AIAgent, User
@@ -122,7 +122,7 @@ async def create_test_condition_for_requirement(
         return _error(404, "not_found", "Requirement not found.")
 
     org_id = await _resolve_requirement_org_id(db, requirement)
-    if org_id is None or not await _org_membership_exists(db, org_id, actor.actor_id):
+    if org_id is None or not await _actor_membership_exists(db, org_id, actor):
         return _error(404, "not_found", "Requirement not found.")
 
     if not await has_permission(str(actor.actor_id), str(org_id), "test_condition.create"):
@@ -190,7 +190,7 @@ async def create_test_case_for_test_condition(
         return _error(404, "not_found", "Test condition not found.")
 
     org_id = await _resolve_test_condition_org_id(db, test_condition)
-    if org_id is None or not await _org_membership_exists(db, org_id, actor.actor_id):
+    if org_id is None or not await _actor_membership_exists(db, org_id, actor):
         return _error(404, "not_found", "Test condition not found.")
 
     if not await has_permission(str(actor.actor_id), str(org_id), "test_case.create"):

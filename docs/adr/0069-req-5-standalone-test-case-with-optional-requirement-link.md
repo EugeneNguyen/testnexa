@@ -1,4 +1,6 @@
-# ADR-0068: REQ-5 — standalone `TestCase` authoring (no Requirement, no TestCondition) + optional retrofit link to a Requirement
+# ADR-0069: REQ-5 — standalone `TestCase` authoring (no Requirement, no TestCondition) + optional retrofit link to a Requirement
+
+**Renumbered from an initial `ADR-0068` draft (2026-09-15)** — `origin/main` had independently merged MCP-6's own unrelated `ADR-0068` while this branch was in flight, found via `git fetch` immediately before merging main into this branch.
 
 **Date:** 2026-09-14
 **Status:** Accepted

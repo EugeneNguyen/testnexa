@@ -415,13 +415,15 @@ async def test_mcp_create_and_list_test_case_with_attribution_and_schema_parity(
     - Seeds: User, Org+active membership, Project, Requirement,
       TestLevel, TestType, AIAgent with a role that holds
       `test_case.create`/`.read` only.
-    - Asserts `tools/list` advertises exactly `create_test_case` +
-      `list_test_cases` (no other tools leaked into the registry).
-    - Calls `create_test_case` via MCP — assert response shape equals
+    - Asserts `tools/list` advertises `tn_test_case_create` +
+      `tn_test_case_list` (ADR-0068's per-entity names; MCP-1's own
+      `create_test_case`/`list_test_cases` are retired, not renamed
+      alongside — the capability is identical, the tool name is not).
+    - Calls `tn_test_case_create` via MCP — assert response shape equals
       `TestCaseSummary` verbatim (TC-MCP-003).
     - Asserts `created_by_actor_id` is the AIAgent's `actor_id` (TC-MCP-002)
       and `acting_on_behalf_of_user_id` still points at the human user.
-    - Calls `list_test_cases` via MCP — assert the new case appears and
+    - Calls `tn_test_case_list` via MCP — assert the new case appears and
       the envelope matches `TestCaseListResponse` shape (TC-MCP-001).
     - Calls `GET /api/v1/requirements/{id}/test-cases` via REST — assert
       the same shape, same row (TC-MCP-003 schema parity cross-check).
@@ -496,25 +498,33 @@ async def test_mcp_create_and_list_test_case_with_attribution_and_schema_parity(
             await _mcp_initialize(client)
             tools = await _mcp_tools_list(client)
             tool_names = {tool["name"] for tool in tools["tools"]}
-            # MCP-1's own 2 tools stay advertised unchanged; MCP-5 (ADR-0065)
-            # adds 6 more alongside them — corrected in place (this claim's
-            # own literal wording, "no other tools leaked in," is no longer
-            # a meaningful negative once a whole second tool family is a
-            # deliberate, documented addition, not a leak).
-            assert {"create_test_case", "list_test_cases"} <= tool_names, tool_names
+            # ADR-0068: MCP-1's capabilities are still advertised, under their
+            # per-entity names. Corrected in place a second time — the original
+            # "exactly these 2, nothing leaked" claim first widened for MCP-5's
+            # tool family, and now the names themselves changed. The old names
+            # must be *absent*, not merely outnumbered: leaving either live
+            # would publish two tools for one capability.
+            assert {"tn_test_case_create", "tn_test_case_list"} <= tool_names, tool_names
+            assert {"create_test_case", "list_test_cases"}.isdisjoint(tool_names), tool_names
 
-            # --- TC-MCP-001 + AC2: create_test_case via MCP --------------------
+            # --- TC-MCP-001 + AC2: tn_test_case_create via MCP -----------------
             create_result = await _mcp_call_tool(
                 client,
                 raw_key,
-                "create_test_case",
+                "tn_test_case_create",
                 {
-                    "requirement_id": str(requirement_id),
-                    "title": "MCP-1 first test case",
-                    "test_level_id": str(test_level_id),
-                    "test_type_id": str(test_type_id),
-                    "preconditions": "Pre-state precondition text.",
-                    "expected_result": "Expected post-state result text.",
+                    # ADR-0068: the bespoke create's parent id (`requirement_id`)
+                    # now rides inside `fields` rather than as its own top-level
+                    # tool argument — same dispatch, same route handler, same
+                    # `TestCaseSummary` response.
+                    "fields": {
+                        "requirement_id": str(requirement_id),
+                        "title": "MCP-1 first test case",
+                        "test_level_id": str(test_level_id),
+                        "test_type_id": str(test_type_id),
+                        "preconditions": "Pre-state precondition text.",
+                        "expected_result": "Expected post-state result text.",
+                    }
                 },
             )
             created_payload = _extract_tool_payload(create_result)
@@ -550,12 +560,14 @@ async def test_mcp_create_and_list_test_case_with_attribution_and_schema_parity(
             assert created_payload["test_condition_id"] is None
             created_id = created_payload["id"]
 
-            # --- TC-MCP-001: list_test_cases via MCP returns the new row -----
+            # --- TC-MCP-001: tn_test_case_list via MCP returns the new row ---
             list_result = await _mcp_call_tool(
                 client,
                 raw_key,
-                "list_test_cases",
-                {"requirement_id": str(requirement_id)},
+                "tn_test_case_list",
+                # ADR-0068: the nested list's parent id rides in `scope`, the
+                # uniform dict every `tn_*_list` tool takes for its scope field.
+                {"scope": {"requirement_id": str(requirement_id)}},
             )
             list_payload = _extract_tool_payload(list_result)
             assert list_payload["total"] == 1
@@ -616,12 +628,14 @@ async def test_mcp_missing_authorization_header_returns_invalid_token() -> None:
         response = await client.post(
             MCP_PATH,
             json=_mcp_tool_call_request(
-                "create_test_case",
+                "tn_test_case_create",
                 {
-                    "requirement_id": bogus_uuid,
-                    "title": "Should never reach this path.",
-                    "test_level_id": bogus_uuid,
-                    "test_type_id": bogus_uuid,
+                    "fields": {
+                        "requirement_id": bogus_uuid,
+                        "title": "Should never reach this path.",
+                        "test_level_id": bogus_uuid,
+                        "test_type_id": bogus_uuid,
+                    }
                 },
             ),
             headers={"Accept": "application/json, text/event-stream", "Content-Type": "application/json"},
@@ -709,12 +723,14 @@ async def test_mcp_agent_without_test_case_create_permission_yields_permission_d
             result = await _mcp_call_tool(
                 client,
                 raw_key,
-                "create_test_case",
+                "tn_test_case_create",
                 {
-                    "requirement_id": str(requirement_id),
-                    "title": "Should be 403 — agent has only test_case.read.",
-                    "test_level_id": str(test_level_id),
-                    "test_type_id": str(test_type_id),
+                    "fields": {
+                        "requirement_id": str(requirement_id),
+                        "title": "Should be 403 — agent has only test_case.read.",
+                        "test_level_id": str(test_level_id),
+                        "test_type_id": str(test_type_id),
+                    }
                 },
             )
         error = _extract_tool_error(result)

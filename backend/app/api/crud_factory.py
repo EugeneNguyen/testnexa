@@ -458,7 +458,7 @@ async def resolve_test_case_org_id(db: AsyncSession, row: Any) -> uuid.UUID | No
     -> `Requirement.project_id` -> `Project.org_id` (REQ-2's direct-link
     path — the whole point of ADR-0006 is that this shape is first-class, not
     an edge case), then to `project_id` if set -> `Project.org_id` directly
-    (REQ-5's standalone path, ADR-0068 — checked after both link-table
+    (REQ-5's standalone path, ADR-0069 — checked after both link-table
     branches, so a since-linked standalone case resolves via the more
     specific branch instead), then to any linked `TestSuiteTestCase` ->
     `TestSuite.project_id` -> `Project.org_id`. A `TestCase` reachable by
@@ -482,7 +482,7 @@ async def resolve_test_case_org_id(db: AsyncSession, row: Any) -> uuid.UUID | No
 
     # `row_id` is `None` for the scope-resolution call `_resolve_scope_for_write`
     # makes for the new generic `create`/`list` (a `types.SimpleNamespace`
-    # carrying only `project_id`, ADR-0068) — the requirement-link and
+    # carrying only `project_id`, ADR-0069) — the requirement-link and
     # suite-link branches below both need a real row id, so they're skipped
     # for that call rather than short-circuiting to `None` outright; the
     # `project_id` branch (which needs no row id) still runs.
@@ -502,7 +502,7 @@ async def resolve_test_case_org_id(db: AsyncSession, row: Any) -> uuid.UUID | No
         # a standalone case that has since gained a `RequirementTestCaseLink`
         # via `link_test_case_to_requirement` resolves via that branch above,
         # not this one, even though `project_id` is deliberately never
-        # cleared on link (ADR-0068). This branch only actually fires for a
+        # cleared on link (ADR-0069). This branch only actually fires for a
         # case with no Requirement/TestCondition traceability yet.
         project = await db.get(Project, project_id)
         if project is None:
@@ -1226,7 +1226,7 @@ def get_crud_handlers(config: CrudEntityConfig) -> dict[str, Any]:
     `APIRoute.endpoint` object FastAPI would otherwise dispatch to. This is
     the *same* handler function the real REST route calls — not a second,
     reimplemented copy — so `app/mcp/tool_registry.py`'s generic tools
-    reuse it the same "direct-call dispatch" way `app/mcp/tools/test_cases.py`
+    reuse it the same "direct-call dispatch" way `app/mcp/tools/entity_tools.py`
     (MCP-1) already established for the bespoke routes: pass `actor=`/`db=`
     explicitly, bypassing the `Depends(get_current_actor)`/`Depends(get_db)`
     defaults without invoking their dependency bodies.

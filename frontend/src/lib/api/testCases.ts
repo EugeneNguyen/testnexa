@@ -33,7 +33,7 @@ export type TestCaseStatus = "draft" | "reviewed" | "approved" | "deprecated";
 export interface TestCaseSummary {
   id: string;
   test_condition_id: string | null;
-  /** REQ-5 (ADR-0068) — optional in the TS type so pre-existing test
+  /** REQ-5 (ADR-0069) — optional in the TS type so pre-existing test
    * fixtures that predate this field don't all need updating; the backend
    * always sends it (`null` for a REQ-2/REQ-3-created case). */
   project_id?: string | null;
@@ -153,7 +153,7 @@ export interface TestCaseRequirementLinkResponse {
 }
 
 /**
- * REQ-5 (ADR-0068) retrofit route: attach an existing standalone `TestCase`
+ * REQ-5 (ADR-0069) retrofit route: attach an existing standalone `TestCase`
  * (created via the generic factory's `POST /test-cases`, not through
  * `createTestCase`/`createTestCaseForTestCondition` above) to a Requirement
  * after the fact, inserting `RequirementTestCaseLink`.
@@ -176,7 +176,7 @@ export async function linkTestCaseToRequirement(
 
 /**
  * Whether TestCase `testCaseId` already has Requirement traceability
- * (REQ-5, ADR-0068) — backs `EntityFormPage`'s "Link to Requirement"
+ * (REQ-5, ADR-0069) — backs `EntityFormPage`'s "Link to Requirement"
  * section, same read-on-mount shape as `listDefectsForTestCase`.
  */
 export async function getTestCaseRequirementLink(testCaseId: string): Promise<TestCaseRequirementLinkResponse> {

@@ -1,6 +1,6 @@
 /**
  * REQ-5 (standalone TestCase authoring + Requirement retrofit link,
- * ADR-0068): `EntityFormPage`'s new "Link to Requirement" section, rendered
+ * ADR-0069): `EntityFormPage`'s new "Link to Requirement" section, rendered
  * only when `entityKey === "test-cases"` — mirrors
  * `EntityFormPage.Defects.test.tsx`'s own fixture-config-via-mocked-registry
  * convention, extended with a `requirement` fixture config so the section's

@@ -33,7 +33,7 @@ Surface contract:
   "REST path" — both surface the identical body for the same input.
 
 Tool implementations call this helper with the MCP `Context` argument
-they already receive (see `app/mcp/tools/test_cases.py`).
+they already receive (see `app/mcp/tools/entity_tools.py`).
 """
 
 import json

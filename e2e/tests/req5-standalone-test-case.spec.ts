@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { expect, test } from "@playwright/test";
 
 /**
- * REQ-5 E2E, browser UI (ADR-0068): the standalone TestCase authoring path
+ * REQ-5 E2E, browser UI (ADR-0069): the standalone TestCase authoring path
  * (no Requirement, no TestCondition) via the project-mode sidebar's
  * "Test cases" nav item — the generic admin surface at
  * `/projects/:projectId/admin/test-cases`, non-functional until this story

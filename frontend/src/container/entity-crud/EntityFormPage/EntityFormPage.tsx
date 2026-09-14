@@ -19,7 +19,7 @@
  * "test-cases"` (§4). Its badge uses `bg-*` per this repo's own AdminLTE
  * convention (not Bootstrap 5.3's `text-bg-*`).
  *
- * **REQ-5 (ADR-0068)** adds a second `test-cases`-only section, "Link to
+ * **REQ-5 (ADR-0069)** adds a second `test-cases`-only section, "Link to
  * Requirement" — a conditional action shown only when the loaded case has
  * no existing Requirement traceability (`GET /test-cases/{id}/requirement-link`,
  * same read-on-mount shape the Defects section above already established).
@@ -112,7 +112,7 @@ function EntityFormPage({ entityKeyOverride }: { entityKeyOverride?: string } = 
   });
 
   /**
-   * REQ-5 (ADR-0068): whether this case already has Requirement
+   * REQ-5 (ADR-0069): whether this case already has Requirement
    * traceability — same read-on-mount shape as `defectsQuery` above.
    */
   const queryClient = useQueryClient();

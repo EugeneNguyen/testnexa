@@ -23,8 +23,7 @@ import contextlib
 
 from mcp.server.fastmcp import FastMCP
 
-from app.mcp.tools import generic_crud as _generic_crud_tools
-from app.mcp.tools import test_cases as _test_cases_tools
+from app.mcp.tools import entity_tools as _entity_tools
 
 # Single shared instance; ADR-0033 deliberately rejects any per-route or
 # per-tool FastMCP instance — the same `name="TestNexa-MCP"` shows up in
@@ -58,12 +57,20 @@ mcp.settings.streamable_http_path = "/"
 mcp.settings.transport_security.enable_dns_rebinding_protection = False
 
 
-# Eagerly register every tool module on import. `register_tools()` decorators
-# fire on first invocation; calling it here means a passing import-time check
-# catches "imported the module but forgot to register" without a runtime
-# request — cheap, improves diagnostic surface.
-_test_cases_tools.register_tools(mcp)
-_generic_crud_tools.register_tools(mcp)
+# Eagerly register the tool surface on import. Calling it here means a passing
+# import-time check catches "imported the module but forgot to register"
+# without a runtime request — cheap, improves diagnostic surface.
+#
+# ADR-0068: one module, generating one tool per entity per supported action
+# (`tn_<resource>_<action>`). It replaces both prior tool modules — ADR-0033's
+# `tools/test_cases.py` (MCP-1's 2 hand-wired `create_test_case`/
+# `list_test_cases`) and ADR-0065's `tools/generic_crud.py` (MCP-5's 6
+# reflective `*_entity`/`*_entities` tools) — whose capabilities are now
+# `tn_test_case_create`/`tn_test_case_list` and the full generated set
+# respectively. Both files are deleted, not left dormant: leaving either
+# registered would publish two differently-named tools for the same
+# capability, exactly the duplicate surface ADR-0068 exists to remove.
+_entity_tools.register_tools(mcp)
 
 
 @contextlib.asynccontextmanager

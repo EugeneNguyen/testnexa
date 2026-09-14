@@ -1,4 +1,11 @@
-"""Unit tests for MCP tool error mapping."""
+"""Unit tests for MCP tool error mapping.
+
+`_raise_as_tool_error` moved from `app/mcp/tools/test_cases.py` (ADR-0033/
+MCP-1, retired by ADR-0068) to `app/mcp/tools/entity_tools.py` — the
+function body and the envelope contract it guarantees (ADR-0033 decision 4)
+are unchanged, so these two tests carry over verbatim against the new
+import path.
+"""
 
 from __future__ import annotations
 
@@ -8,7 +15,7 @@ import pytest
 from fastapi.responses import JSONResponse
 from mcp.server.fastmcp.exceptions import ToolError
 
-from app.mcp.tools.test_cases import _raise_as_tool_error
+from app.mcp.tools.entity_tools import _raise_as_tool_error
 
 
 def test_raise_as_tool_error_preserves_permission_denied_envelope() -> None:

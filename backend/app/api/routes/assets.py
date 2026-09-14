@@ -4,7 +4,7 @@ plus REQ-2's bespoke atomic-create/list routes.
 `Requirement`, `TestStep`, `TestSuite` get all 5 factory methods.
 
 `TestCase` gets `GET`/`PATCH`/`DELETE`/`list`/`create` via the factory as of
-REQ-5/ADR-0068 — `create`'s `scope_field="project_id"` is the new standalone
+REQ-5/ADR-0069 — `create`'s `scope_field="project_id"` is the new standalone
 authoring path (`CreateStandaloneTestCaseRequest`), the one creation shape
 with no atomic link-table write to protect. Two bespoke create routes still
 coexist alongside it, per-TestCase within a project (ADR-0006):
@@ -153,7 +153,7 @@ _REQUIREMENT_CONFIG = CrudEntityConfig(
 # No `create` — see module docstring (REQ-3/ADR-0028); `TestCondition`'s own
 # `create` would still need a `RequirementTestConditionLink` written
 # atomically, unlike `_TEST_CASE_CONFIG`'s new standalone `create` below
-# (ADR-0068), which needs no link write at all.
+# (ADR-0069), which needs no link write at all.
 _TEST_CONDITION_CONFIG = CrudEntityConfig(
     model=TestCondition,
     resource="test_condition",
@@ -177,7 +177,7 @@ _TEST_CONDITION_CONFIG = CrudEntityConfig(
     },
 )
 
-# `list`/`create` enabled as of REQ-5/ADR-0068 — see module docstring.
+# `list`/`create` enabled as of REQ-5/ADR-0069 — see module docstring.
 _TEST_CASE_CONFIG = CrudEntityConfig(
     model=TestCase,
     resource="test_case",
@@ -189,7 +189,7 @@ _TEST_CASE_CONFIG = CrudEntityConfig(
     filter_fields=("status", "test_level_id", "test_type_id"),
     search_fields=("title", "preconditions", "expected_result"),
     methods=frozenset({"get", "update", "delete", "list", "create"}),
-    # ADR-0068. `list`/`create` are scoped by `project_id` — only standalone
+    # ADR-0069. `list`/`create` are scoped by `project_id` — only standalone
     # cases (REQ-5's own new authoring path) are reachable this way; a
     # direct-link/rigor-path case (created via the two bespoke routes below,
     # `project_id` left `null`) is invisible to this generic list, same as
@@ -399,7 +399,7 @@ async def list_test_cases_for_requirement(
     )
 
 
-# --- REQ-5: retrofit link, standalone TestCase -> Requirement, ADR-0068 ---------------------------
+# --- REQ-5: retrofit link, standalone TestCase -> Requirement, ADR-0069 ---------------------------
 
 
 @router.post("/test-cases/{id}/link-requirement", response_model=TestCaseSummary, status_code=201)
@@ -409,7 +409,7 @@ async def link_test_case_to_requirement(
     actor: User | AIAgent = Depends(get_current_actor),
     db: AsyncSession = Depends(get_db),
 ) -> TestCaseSummary | JSONResponse:
-    """Attach an existing `TestCase` to a `Requirement` after creation (REQ-5, ADR-0068).
+    """Attach an existing `TestCase` to a `Requirement` after creation (REQ-5, ADR-0069).
 
     Inserts exactly one `RequirementTestCaseLink` row — the same table
     REQ-2's own `create_test_case_for_requirement` writes atomically at
@@ -466,7 +466,7 @@ async def link_test_case_to_requirement(
     # (NFR-38/NFR-41 precedent). Reachable here only via `test_case.project_id`
     # (the standalone-create column) — a case with neither `test_condition_id`
     # nor an existing link, per the 409 check above, was necessarily created
-    # via the generic standalone path (ADR-0068), so `project_id` is set.
+    # via the generic standalone path (ADR-0069), so `project_id` is set.
     if test_case.project_id is not None and requirement.project_id != test_case.project_id:
         return _error(422, "validation_error", "Requirement belongs to a different project.")
 
@@ -489,7 +489,7 @@ async def get_test_case_requirement_link(
     db: AsyncSession = Depends(get_db),
 ) -> TestCaseRequirementLinkResponse | JSONResponse:
     """Whether `TestCase` `id` already has Requirement traceability, and its
-    id if so (REQ-5, ADR-0068) — backs `EntityFormPage`'s "Link to
+    id if so (REQ-5, ADR-0069) — backs `EntityFormPage`'s "Link to
     Requirement" section, the same read-on-mount shape EXEC-3's own
     "Defects" section already established for this page. Gated
     `test_case.read`, same 404-vs-403 boundary as every other route here.

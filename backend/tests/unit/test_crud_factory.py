@@ -312,7 +312,7 @@ class TestResolveTestCaseOrgId:
         assert await resolve_test_case_org_id(db, row) is None
 
     async def test_resolves_via_project_id_for_standalone_case(self) -> None:
-        """REQ-5's standalone path (ADR-0068) — 3rd branch, no Requirement/TestCondition link at all."""
+        """REQ-5's standalone path (ADR-0069) — 3rd branch, no Requirement/TestCondition link at all."""
         project_id = uuid.uuid4()
         org_id = uuid.uuid4()
         project = _row(org_id=org_id)
@@ -333,7 +333,7 @@ class TestResolveTestCaseOrgId:
         assert await resolve_test_case_org_id(db, row) is None
 
     async def test_requirement_link_takes_precedence_over_project_id(self) -> None:
-        """A since-linked standalone case (`project_id` never cleared, ADR-0068)
+        """A since-linked standalone case (`project_id` never cleared, ADR-0069)
         resolves via the more specific `RequirementTestCaseLink` branch."""
         requirement_id = uuid.uuid4()
         project_id = uuid.uuid4()
@@ -364,7 +364,7 @@ class TestResolveTestCaseOrgId:
         """`_resolve_scope_for_write`'s own `types.SimpleNamespace(project_id=...)`
         stand-in (no `.id` attribute at all) must resolve without erroring —
         the two link-table branches need a real row id and must be skipped,
-        not short-circuit the whole resolution to `None` (ADR-0068)."""
+        not short-circuit the whole resolution to `None` (ADR-0069)."""
         import types
 
         project_id = uuid.uuid4()
