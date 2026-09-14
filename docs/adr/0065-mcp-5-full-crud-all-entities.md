@@ -1,7 +1,7 @@
 # ADR-0065: MCP-5 — full CRUD, all entities, registry-driven MCP tool surface
 
 **Date:** 2026-09-14
-**Status:** Partially superseded by [ADR-0067](0067-mcp-6-per-entity-mcp-tools.md)
+**Status:** Partially superseded by [ADR-0068](0068-mcp-6-per-entity-mcp-tools.md)
 **Deciders:** xuanbinh91@gmail.com (CTO)
 **Related:** [ADR-0033](0033-mcp-server-architecture.md) (MCP server architecture — direct-call dispatch, per-tool bearer resolution; this ADR generalizes its "one additional file pair per route" roadmap into a registry-driven surface instead), [ADR-0022](0022-generic-crud-router-factory.md) (the generic CRUD factory this ADR's reflective tools dispatch onto), [ADR-0055](0055-admin-3-backend-driven-entity-schema.md) (`entity_registry.py`/`ALL_ENTITY_CONFIGS`, `derive_entity_schema` — both reused verbatim, not re-derived), [User Stories: MCP-5](../user-stories/2026-09-03-ai-agent-mcp-stories.md), [API Document §6](../api/2026-09-03-api-design.md), [TC-MCP-016..023](../test-cases/2026-09-03-test-cases.md)
 
@@ -29,11 +29,11 @@ MCP-1..3 (ADR-0033) opened a narrow, hand-wired MCP tool surface — `create_tes
 
 **Drift note.** ADR-0033's own roadmap named MCP-2 ("update test case") and MCP-3 ("execution + requirement read") as the next two hand-wired tools. This ADR does not implement either of those specific tool names — it implements the general mechanism that makes their underlying REST calls reachable via `update_entity`/`create_entity`/`get_entity` instead. ADR-0033's Status line is updated to point here rather than to two now-superseded, never-built tool names.
 
-### Partially superseded by ADR-0067 (2026-09-13)
+### Partially superseded by ADR-0068 (2026-09-13)
 
-**[ADR-0067](0067-mcp-6-per-entity-mcp-tools.md) replaces Decision §1's reflective, `resource`-parameterised tool shape** with one generated tool per entity per action (`tn_<entity>_<action>`). **Decisions §2–§5 are untouched and are what ADR-0067 builds on** — the entity-action registry, the same-commit standing rule, the plain-arg `list` refactor, and the `_actor_membership_exists` fix all stay exactly as decided here; only the six tools that sat on top of the registry are replaced by ~146 generated ones dispatching onto the identical executors.
+**[ADR-0068](0068-mcp-6-per-entity-mcp-tools.md) replaces Decision §1's reflective, `resource`-parameterised tool shape** with one generated tool per entity per action (`tn_<entity>_<action>`). **Decisions §2–§5 are untouched and are what ADR-0068 builds on** — the entity-action registry, the same-commit standing rule, the plain-arg `list` refactor, and the `_actor_membership_exists` fix all stay exactly as decided here; only the six tools that sat on top of the registry are replaced by ~146 generated ones dispatching onto the identical executors.
 
-The prose above is left as written, per this repo's own "don't rewrite an ADR's history" convention — including this ADR's own third Alternative ("Per-entity typed tools generated at import time from each `CrudEntityConfig`... Rejected — reintroduces the ~100-tool-surface problem"), which ADR-0067 **deliberately reverses**. That rejection was an honest call on the evidence available at the time; ADR-0067's Context §1–§4 sets out what using the reflective surface subsequently showed (an unvalidatable `resource` string, capabilities invisible in `tools/list`, a necessarily-loose shared input schema, and collision-prone generic names) and argues the tool-count cost is the cheaper of the two. ADR-0067 does *not* reverse the second half of that alternative — its generated tools still take a `fields: dict`, not synthesized per-entity typed parameters, and `describe` still closes that gap.
+The prose above is left as written, per this repo's own "don't rewrite an ADR's history" convention — including this ADR's own third Alternative ("Per-entity typed tools generated at import time from each `CrudEntityConfig`... Rejected — reintroduces the ~100-tool-surface problem"), which ADR-0068 **deliberately reverses**. That rejection was an honest call on the evidence available at the time; ADR-0068's Context §1–§4 sets out what using the reflective surface subsequently showed (an unvalidatable `resource` string, capabilities invisible in `tools/list`, a necessarily-loose shared input schema, and collision-prone generic names) and argues the tool-count cost is the cheaper of the two. ADR-0068 does *not* reverse the second half of that alternative — its generated tools still take a `fields: dict`, not synthesized per-entity typed parameters, and `describe` still closes that gap.
 
 ## Alternatives considered
 

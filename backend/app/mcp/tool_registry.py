@@ -1,4 +1,4 @@
-"""MCP-6/ADR-0067: the single entity-action registry the MCP per-entity
+"""MCP-6/ADR-0068: the single entity-action registry the MCP per-entity
 tools (`app/mcp/tools/entity_tools.py`) and — indirectly, since it's built
 straight off `ALL_ENTITY_CONFIGS`/`CrudEntityConfig.methods` — the REST
 surface read as their shared source of truth for "which methods exist for
@@ -7,7 +7,7 @@ this entity."
 `TOOL_REGISTRY: dict[str, dict[str, Callable]]` is keyed by the **singular,
 snake_case** `CrudEntityConfig.resource` value — the literal `resource="..."`
 string each `app/api/routes/*.py` cluster module already declares
-(`"organization"`, `"project"`, `"test_case"`, ...). ADR-0067 changed this
+(`"organization"`, `"project"`, `"test_case"`, ...). ADR-0068 changed this
 from ADR-0065's original plural-hyphenated `_resource_path()` key: with one
 MCP tool generated *per entity per action* (`tn_<resource>_<action>` —
 `tn_project_create`, `tn_test_case_update`), the registry key is no longer a
@@ -131,7 +131,7 @@ def unsupported_method_response() -> JSONResponse:
     """Same body Starlette's own routing emits for a matched path with no
     handler registered for the requested HTTP method.
 
-    Under ADR-0067's per-entity tool surface this is now mostly a *defensive*
+    Under ADR-0068's per-entity tool surface this is now mostly a *defensive*
     response rather than a routinely-reachable one: an entity/action pair
     outside the registry no longer has a `tn_<resource>_<action>` tool to call
     at all, so the SDK rejects it as an unknown tool before any executor runs
@@ -146,7 +146,7 @@ def unknown_entity_response(resource: str) -> JSONResponse:
     """Same body `GET /entities/{resource}/schema` gives for an unregistered
     slug (`app/api/routes/entity_schema.py`) — one description of "this
     resource doesn't exist" shared by both routes. Same defensive-only status
-    as `unsupported_method_response` above since ADR-0067."""
+    as `unsupported_method_response` above since ADR-0068."""
     return _error(404, "not_found", f'Unknown entity "{resource}".')
 
 
@@ -273,7 +273,7 @@ def _build_generic_registry() -> dict[str, dict[str, Callable]]:
 async def _test_case_create(*, actor: Any, db: Any, fields: dict[str, Any] | None = None, **_ignored: Any) -> Any:
     """`test_case`'s two create paths (direct-link / rigor-path), dispatched
     on a non-null `test_condition_id` — the same branch ADR-0033/MCP-1's own
-    `create_test_case` tool used before ADR-0067 retired it in favour of
+    `create_test_case` tool used before ADR-0068 retired it in favour of
     `tn_test_case_create`."""
     data = dict(fields or {})
     requirement_id = data.pop("requirement_id", None)
@@ -293,7 +293,7 @@ async def _test_case_list(
     """`test_case` has no flat generic `list` route at all — REST lists them
     nested under their Requirement (`GET /requirements/{id}/test-cases`,
     REQ-2). ADR-0033's MCP-1 exposed that as its own hand-wired
-    `list_test_cases(requirement_id=...)` tool; ADR-0067 folds it into the
+    `list_test_cases(requirement_id=...)` tool; ADR-0068 folds it into the
     uniform naming scheme as `tn_test_case_list`, taking the parent id
     through the same `scope` dict every other `list` tool uses for its
     entity's own scope field(s) — the exact mirror of how every bespoke
@@ -506,7 +506,7 @@ ACTIONS: tuple[str, ...] = ("list", "get", "create", "update", "delete", "descri
 
 #: Every generated MCP tool name carries this prefix. It namespaces the 146
 #: tools this server publishes against whatever *other* MCP servers a client
-#: has mounted at the same time (ADR-0067 Decision §3) — an unprefixed
+#: has mounted at the same time (ADR-0068 Decision §3) — an unprefixed
 #: `project_create` would be an obvious collision candidate in any multi-server
 #: client session; `tn_` (TestNexa) is not.
 TOOL_NAME_PREFIX = "tn_"

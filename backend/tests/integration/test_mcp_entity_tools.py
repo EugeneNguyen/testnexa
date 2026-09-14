@@ -2,7 +2,7 @@
 
 Originally `test_mcp5_generic_crud.py` (MCP-5/ADR-0065, six reflective
 `resource`-parameterised tools); renamed and updated in place for MCP-6/
-ADR-0067's per-entity surface. Every test's *coverage claim* is unchanged —
+ADR-0068's per-entity surface. Every test's *coverage claim* is unchanged —
 these are still MCP-5's own TC-MCP-016..022 rows, and the dispatch path
 under test (registry executor → direct call into the REST route handler) is
 byte-for-byte the same. What changed is only how each call is addressed:
@@ -282,7 +282,7 @@ async def _mcp_initialize(client: httpx.AsyncClient) -> None:
 async def _mcp_tool_names(client: httpx.AsyncClient, raw_key: str, req_id: int = 2) -> set[str]:
     """The advertised tool surface, as a real MCP client sees it.
 
-    ADR-0067 makes this the primary way an unsupported entity/action pair is
+    ADR-0068 makes this the primary way an unsupported entity/action pair is
     asserted: the pair has no `tn_<resource>_<action>` tool at all, so there
     is no call to make and no error envelope to inspect — the absence *is* the
     contract (a strictly stronger form of MCP-5's "MCP never grants a
@@ -661,14 +661,14 @@ async def test_generic_dispatch_across_tenant_generic_and_global_catalog_classes
 
 @pytest.mark.asyncio
 async def test_describe_tool_parity_with_rest_schema_route_and_release_has_none() -> None:  # TC-MCP-022
-    """TC-MCP-022, corrected for ADR-0067: `tn_requirement_describe` returns the
+    """TC-MCP-022, corrected for ADR-0068: `tn_requirement_describe` returns the
     identical shape `GET /entities/requirements/schema` returns.
 
     The TC's second half needed a real correction, not just a rename. Its
     original wording — "`describe_entity` for `release` returns the same
     `404 not_found` the REST route gives" — described the reflective tool,
     where `resource` was a runtime argument that could name an entity with no
-    `CrudEntityConfig`. Under ADR-0067 `describe` is generated only for the 27
+    `CrudEntityConfig`. Under ADR-0068 `describe` is generated only for the 27
     entities that *have* a config, so `tn_release_describe` is never
     registered: the claim's intent (a client cannot obtain a schema for
     `release` over MCP, exactly as REST cannot) now holds by the tool's
@@ -727,17 +727,17 @@ async def test_describe_tool_parity_with_rest_schema_route_and_release_has_none(
 
 @pytest.mark.asyncio
 async def test_no_tool_is_advertised_for_a_method_the_entity_does_not_support() -> None:  # TC-MCP-017
-    """TC-MCP-017, corrected a second time for ADR-0067.
+    """TC-MCP-017, corrected a second time for ADR-0068.
 
     Two things changed, both real corrections rather than renames:
 
     1. The refusal *mechanism*. ADR-0065 refused an unsupported entity/action
        pair at dispatch time with `405`/`{"detail": "Method Not Allowed"}`.
-       ADR-0067 never advertises the pair, so the assertion is absence from
+       ADR-0068 never advertises the pair, so the assertion is absence from
        `tools/list` (plus the SDK's own unknown-tool rejection if called
        anyway) — the capability is not merely refused, it does not exist.
     2. One of the TC's three named examples stopped being true. `test_case`
-       *does* now have a `list` (`tn_test_case_list`), because ADR-0067 folded
+       *does* now have a `list` (`tn_test_case_list`), because ADR-0068 folded
        MCP-1's own nested `list_test_cases` into the naming scheme — REST has
        always had that route, it simply had no generic-factory `list` row.
        Replaced with `permission` (global catalog, genuinely read-only via the
@@ -1042,12 +1042,12 @@ async def test_bespoke_create_entity_test_execution_preserves_plan3_scope_check(
         )
 
 
-# --- ADR-0067 Decision §5: the rigor-path branch `tn_test_case_create` gained ---------------
+# --- ADR-0068 Decision §5: the rigor-path branch `tn_test_case_create` gained ---------------
 
 
 @pytest.mark.asyncio
 async def test_tn_test_case_create_dispatches_the_rigor_path_when_given_a_test_condition_id() -> None:
-    """ADR-0067 Decision §5 calls folding MCP-1's `create_test_case` into
+    """ADR-0068 Decision §5 calls folding MCP-1's `create_test_case` into
     `tn_test_case_create` "a strict capability gain, not a port," because the
     registry executor supports **both** REQ-2's direct-link path and REQ-3's
     rigor path, while the hand-wired tool only ever shipped the former (that
@@ -1084,10 +1084,10 @@ async def test_tn_test_case_create_dispatches_the_rigor_path_when_given_a_test_c
             org = await _create_org(session, "adr67-rigor")
             await _create_membership(session, user, org)
             project = await _create_project(session, org)
-            requirement = await _create_requirement(session, project, title="ADR-0067 rigor-path requirement")
+            requirement = await _create_requirement(session, project, title="ADR-0068 rigor-path requirement")
             condition = TestCondition(
                 requirement_id=requirement.id,
-                description="ADR-0067 rigor-path condition",
+                description="ADR-0068 rigor-path condition",
                 priority=TestConditionPriority.medium,
             )
             session.add(condition)
@@ -1099,7 +1099,7 @@ async def test_tn_test_case_create_dispatches_the_rigor_path_when_given_a_test_c
             role = await _create_role(session, org, "adr67_rigor_role")
             for code in ("test_case.create", "test_case.read"):
                 await _grant_permission(session, role, await _get_permission_by_code(session, code))
-            agent, raw_key = await _create_agent(session, acting_on_behalf_of_user_id=user.actor_id, agent_name="ADR-0067 Rigor Agent")
+            agent, raw_key = await _create_agent(session, acting_on_behalf_of_user_id=user.actor_id, agent_name="ADR-0068 Rigor Agent")
             await _assign_role(session, actor_id=agent.actor_id, org=org, role=role)
             await session.commit()
             user_ids, org_ids, project_ids = [user.actor_id], [org.id], [project.id]
@@ -1118,7 +1118,7 @@ async def test_tn_test_case_create_dispatches_the_rigor_path_when_given_a_test_c
                 {
                     "fields": {
                         "test_condition_id": str(condition_id),
-                        "title": "ADR-0067 rigor-path test case",
+                        "title": "ADR-0068 rigor-path test case",
                         "test_level_id": str(level_id),
                         "test_type_id": str(type_id),
                     }

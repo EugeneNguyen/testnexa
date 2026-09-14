@@ -1,7 +1,7 @@
 """Unit tests for the MCP registry/dispatch mechanism.
 
 Originally `test_mcp5_generic_crud.py` (ADR-0065's 6 reflective tools);
-renamed and rewritten in place for ADR-0067's per-entity tool surface. The
+renamed and rewritten in place for ADR-0068's per-entity tool surface. The
 error-shape and `_materialize` coverage is carried over verbatim — none of
 that changed, only which module exposes it (`app/mcp/tools/generic_crud.py`
 → `app/mcp/tools/entity_tools.py`) and how the registry is keyed (plural
@@ -10,7 +10,7 @@ hyphenated slug → singular `resource` slug).
 TC-MCP-017 (method-gating parity) is the one section that genuinely changed
 shape: under ADR-0065 an unsupported entity/action pair was *refused at call
 time* by `_lookup`, so the test asserted the refusal's error envelope. Under
-ADR-0067 there is no such call to make — the pair has no
+ADR-0068 there is no such call to make — the pair has no
 `tn_<resource>_<action>` tool at all, so the assertion is now "this tool is
 not registered," a strictly stronger claim (the capability is never
 advertised, not merely refused). The `405`/`404` response builders are kept
@@ -51,7 +51,7 @@ class _DummySummary(BaseModel):
     id: str
 
 
-# --- registry shape (the singular-slug re-keying, ADR-0067) ----------------------------
+# --- registry shape (the singular-slug re-keying, ADR-0068) ----------------------------
 
 
 def test_registry_is_keyed_by_the_singular_resource_slug_not_the_plural_route_slug() -> None:
@@ -86,7 +86,7 @@ def test_project_has_bespoke_get_update_create_alongside_generic_list_and_delete
 
 
 def test_test_case_list_is_registered_as_a_bespoke_nested_list() -> None:
-    """MCP-1's hand-wired `list_test_cases` folds in here (ADR-0067) — the
+    """MCP-1's hand-wired `list_test_cases` folds in here (ADR-0068) — the
     generic factory registers no flat `list` for `TestCase`, so without this
     bespoke row `tn_test_case_list` would not exist at all."""
     assert "list" in TOOL_REGISTRY["test_case"]
@@ -112,7 +112,7 @@ def test_unknown_entity_response_matches_entity_schema_route_404_shape() -> None
 
 def test_no_tool_exists_for_an_unknown_entity() -> None:
     """ADR-0065 answered an unknown `resource` argument with a `404` envelope.
-    ADR-0067 has no `resource` argument to get wrong — the surface simply
+    ADR-0068 has no `resource` argument to get wrong — the surface simply
     contains no tool for it."""
     registered = set(mcp._tool_manager._tools)
     for bogus in ("not_a_real_entity", "widget", "user"):
@@ -139,7 +139,7 @@ def test_no_tool_exists_for_an_unknown_entity() -> None:
     ],
 )
 def test_no_tool_is_generated_for_a_method_the_entity_does_not_support(resource: str, action: str) -> None:
-    """MCP never grants a capability REST doesn't have — ADR-0067 enforces it
+    """MCP never grants a capability REST doesn't have — ADR-0068 enforces it
     by *omission from the tool list*, the strongest available form: a client
     cannot call what was never advertised."""
     assert action not in TOOL_REGISTRY[resource]
@@ -191,7 +191,7 @@ def test_materialize_dumps_pydantic_model() -> None:
 
 
 def test_materialize_passes_a_plain_dict_through_untouched() -> None:
-    """The `describe` shape, new in ADR-0067 — `derive_entity_schema` already
+    """The `describe` shape, new in ADR-0068 — `derive_entity_schema` already
     returns the final wire dict, with no model to dump."""
     schema = {"resource": "requirements", "fields": [], "methods": ["list"]}
     assert _materialize(schema) is schema

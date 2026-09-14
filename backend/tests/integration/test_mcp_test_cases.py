@@ -416,7 +416,7 @@ async def test_mcp_create_and_list_test_case_with_attribution_and_schema_parity(
       TestLevel, TestType, AIAgent with a role that holds
       `test_case.create`/`.read` only.
     - Asserts `tools/list` advertises `tn_test_case_create` +
-      `tn_test_case_list` (ADR-0067's per-entity names; MCP-1's own
+      `tn_test_case_list` (ADR-0068's per-entity names; MCP-1's own
       `create_test_case`/`list_test_cases` are retired, not renamed
       alongside — the capability is identical, the tool name is not).
     - Calls `tn_test_case_create` via MCP — assert response shape equals
@@ -498,7 +498,7 @@ async def test_mcp_create_and_list_test_case_with_attribution_and_schema_parity(
             await _mcp_initialize(client)
             tools = await _mcp_tools_list(client)
             tool_names = {tool["name"] for tool in tools["tools"]}
-            # ADR-0067: MCP-1's capabilities are still advertised, under their
+            # ADR-0068: MCP-1's capabilities are still advertised, under their
             # per-entity names. Corrected in place a second time — the original
             # "exactly these 2, nothing leaked" claim first widened for MCP-5's
             # tool family, and now the names themselves changed. The old names
@@ -513,7 +513,7 @@ async def test_mcp_create_and_list_test_case_with_attribution_and_schema_parity(
                 raw_key,
                 "tn_test_case_create",
                 {
-                    # ADR-0067: the bespoke create's parent id (`requirement_id`)
+                    # ADR-0068: the bespoke create's parent id (`requirement_id`)
                     # now rides inside `fields` rather than as its own top-level
                     # tool argument — same dispatch, same route handler, same
                     # `TestCaseSummary` response.
@@ -565,7 +565,7 @@ async def test_mcp_create_and_list_test_case_with_attribution_and_schema_parity(
                 client,
                 raw_key,
                 "tn_test_case_list",
-                # ADR-0067: the nested list's parent id rides in `scope`, the
+                # ADR-0068: the nested list's parent id rides in `scope`, the
                 # uniform dict every `tn_*_list` tool takes for its scope field.
                 {"scope": {"requirement_id": str(requirement_id)}},
             )

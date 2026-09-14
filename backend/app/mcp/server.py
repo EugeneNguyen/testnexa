@@ -61,7 +61,7 @@ mcp.settings.transport_security.enable_dns_rebinding_protection = False
 # import-time check catches "imported the module but forgot to register"
 # without a runtime request — cheap, improves diagnostic surface.
 #
-# ADR-0067: one module, generating one tool per entity per supported action
+# ADR-0068: one module, generating one tool per entity per supported action
 # (`tn_<resource>_<action>`). It replaces both prior tool modules — ADR-0033's
 # `tools/test_cases.py` (MCP-1's 2 hand-wired `create_test_case`/
 # `list_test_cases`) and ADR-0065's `tools/generic_crud.py` (MCP-5's 6
@@ -69,7 +69,7 @@ mcp.settings.transport_security.enable_dns_rebinding_protection = False
 # `tn_test_case_create`/`tn_test_case_list` and the full generated set
 # respectively. Both files are deleted, not left dormant: leaving either
 # registered would publish two differently-named tools for the same
-# capability, exactly the duplicate surface ADR-0067 exists to remove.
+# capability, exactly the duplicate surface ADR-0068 exists to remove.
 _entity_tools.register_tools(mcp)
 
 

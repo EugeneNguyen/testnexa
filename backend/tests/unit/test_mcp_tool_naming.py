@@ -1,12 +1,12 @@
-"""MCP-6/ADR-0067 tool-surface completeness — the diff-based test
+"""MCP-6/ADR-0068 tool-surface completeness — the diff-based test
 `backend/CLAUDE.md`'s "hand-authored registry spanning many entities needs a
 diff-based completeness test, not spot-checks" note requires.
 
 TC-MCP-024 (naming scheme + per-entity/per-action completeness),
-TC-MCP-025 (nothing orphaned, no leftover pre-ADR-0067 tool name).
+TC-MCP-025 (nothing orphaned, no leftover pre-ADR-0068 tool name).
 
 **Also carries TC-MCP-023** (MCP-5's own registry-completeness row), which
-moved here from `test_mcp5_generic_crud.py` when ADR-0067 generalized that
+moved here from `test_mcp5_generic_crud.py` when ADR-0068 generalized that
 row's spot-checks into the full diff below — the marker is stated explicitly
 rather than left implicit in a sibling file's docstring, so a coverage audit
 grepping for `TC-MCP-023` finds it.
@@ -95,7 +95,7 @@ def test_registry_actions_equal_rest_surface_plus_declared_bespoke_extras() -> N
 
     Missing action → that capability is silently unreachable over MCP.
     Surplus action → MCP grants something REST doesn't (MCP-5's own AC,
-    carried forward by ADR-0067 Decision §2), or a bespoke executor was added
+    carried forward by ADR-0068 Decision §2), or a bespoke executor was added
     without declaring it, which is the same silent-widening risk.
     """
     for resource in sorted(ENTITY_CONFIGS_BY_RESOURCE):
@@ -165,7 +165,7 @@ def test_every_registered_tool_name_parses_back_to_its_entity_and_action() -> No
 
 
 def test_tool_names_use_the_verbatim_resource_slug_never_an_abbreviation() -> None:
-    """ADR-0067 Decision §3: the entity segment is each route module's own
+    """ADR-0068 Decision §3: the entity segment is each route module's own
     literal `resource="..."` string, not a shortened or pluralized variant."""
     for config in ALL_ENTITY_CONFIGS.values():
         assert tool_name(config.resource, "describe") in _registered(), config.resource
@@ -189,7 +189,7 @@ def test_no_tool_name_exceeds_a_conservative_client_length_limit() -> None:
 @pytest.mark.parametrize(
     "retired",
     [
-        # ADR-0065's 6 reflective tools (superseded by ADR-0067)
+        # ADR-0065's 6 reflective tools (superseded by ADR-0068)
         "list_entities",
         "get_entity",
         "create_entity",
@@ -204,7 +204,7 @@ def test_no_tool_name_exceeds_a_conservative_client_length_limit() -> None:
 def test_pre_adr_0067_tool_names_are_gone(retired: str) -> None:
     """Not merely "a replacement exists" — the old name must be *unregistered*.
     Leaving one live would publish two differently-named tools for the same
-    capability, which is precisely the duplicate surface ADR-0067 removes."""
+    capability, which is precisely the duplicate surface ADR-0068 removes."""
     assert retired not in _registered()
 
 
@@ -217,7 +217,7 @@ def test_every_registered_tool_carries_a_nonempty_description() -> None:
 
 
 def test_generated_descriptions_carry_the_facts_adr_0067_decision_7_promises() -> None:
-    """ADR-0067 Decision §7 says each description names the entity, the scope
+    """ADR-0068 Decision §7 says each description names the entity, the scope
     key or parent id where one exists, and points at that entity's own
     `describe` tool. Length alone (the test above) proves none of that — and
     `BESPOKE_CREATE_PARENT_FIELDS`/`BESPOKE_LIST_SCOPE_FIELDS` being *complete*
@@ -260,7 +260,7 @@ def test_generated_descriptions_carry_the_facts_adr_0067_decision_7_promises() -
 
 
 def test_generated_tool_count_is_the_number_adr_0067_states() -> None:
-    """ADR-0067 states 146 tools (119 CRUD actions across 30 resources + 27
+    """ADR-0068 states 146 tools (119 CRUD actions across 30 resources + 27
     `describe`). Every other assertion here is a *derived* diff on purpose
     (Decision §8 — a hardcoded name list would drift with the thing it
     polices), which means none of them would notice if the derivation itself
@@ -269,13 +269,13 @@ def test_generated_tool_count_is_the_number_adr_0067_states() -> None:
     — unlike a 146-name list, which would have to be re-typed."""
     describe_count = len(ENTITY_CONFIGS_BY_RESOURCE)
     crud_count = sum(len(set(entry) - {"describe"}) for entry in TOOL_REGISTRY.values())
-    assert len(TOOL_REGISTRY) == 30, "resource count changed — update ADR-0067 and this anchor together"
+    assert len(TOOL_REGISTRY) == 30, "resource count changed — update ADR-0068 and this anchor together"
     assert (crud_count, describe_count) == (119, 27), (crud_count, describe_count)
     assert len(_registered()) == crud_count + describe_count == 146
 
 
 def test_no_tool_takes_a_resource_argument() -> None:
-    """ADR-0067 Decision §1 — the entity is the tool's identity, never one of
+    """ADR-0068 Decision §1 — the entity is the tool's identity, never one of
     its arguments. A leftover `resource` param would mean a tool still
     dispatching reflectively."""
     for name, tool in _registered().items():
@@ -283,7 +283,7 @@ def test_no_tool_takes_a_resource_argument() -> None:
 
 
 def test_each_action_publishes_exactly_its_own_arguments() -> None:
-    """Per-action input-schema shape (ADR-0067 Decision §1's "each tool's input
+    """Per-action input-schema shape (ADR-0068 Decision §1's "each tool's input
     schema carries only the arguments that action genuinely takes")."""
     expected_props = {
         "list": {"scope", "filters", "search", "sort", "page", "page_size"},

@@ -329,10 +329,10 @@ Thin client over the **same service layer** as the REST routes above — no sepa
 
 | Tool | Backing route/permission | Maps to | Status |
 |---|---|---|---|
-| ~~`create_test_case`~~ | `POST /requirements/{id}/test-cases` or `/test-conditions/{id}/test-cases`, `test_case.create` | FR-MCP-1 | Retired by [ADR-0067](../adr/0067-mcp-6-per-entity-mcp-tools.md) → **`tn_test_case_create`** (same routes, both branches) |
-| ~~`list_test_cases`~~ | `GET /requirements/{id}/test-cases` (filtered list), `test_case.read` | FR-MCP-1 | Retired by [ADR-0067](../adr/0067-mcp-6-per-entity-mcp-tools.md) → **`tn_test_case_list`** (same route) |
+| ~~`create_test_case`~~ | `POST /requirements/{id}/test-cases` or `/test-conditions/{id}/test-cases`, `test_case.create` | FR-MCP-1 | Retired by [ADR-0068](../adr/0068-mcp-6-per-entity-mcp-tools.md) → **`tn_test_case_create`** (same routes, both branches) |
+| ~~`list_test_cases`~~ | `GET /requirements/{id}/test-cases` (filtered list), `test_case.read` | FR-MCP-1 | Retired by [ADR-0068](../adr/0068-mcp-6-per-entity-mcp-tools.md) → **`tn_test_case_list`** (same route) |
 
-**MCP-5 ([ADR-0065](../adr/0065-mcp-5-full-crud-all-entities.md)) generalized the surface above** — the 6 reflective tools below are themselves **retired by [ADR-0067](../adr/0067-mcp-6-per-entity-mcp-tools.md)/§6.1; the table is kept because it is still the accurate description of what each *capability* dispatches to**, which ADR-0067 did not change. ADR-0065's own framing: — rather than adding `update_test_case`/`create_test_execution`/`read_requirement` as three more hand-wired tools (ADR-0033's originally-planned MCP-2/MCP-3 shape), the underlying REST calls those would have wrapped are reachable via 6 reflective tools instead, dispatched from one registry (`app/mcp/tool_registry.py`) shared with the REST surface's own `ALL_ENTITY_CONFIGS` (ADR-0055):
+**MCP-5 ([ADR-0065](../adr/0065-mcp-5-full-crud-all-entities.md)) generalized the surface above** — the 6 reflective tools below are themselves **retired by [ADR-0068](../adr/0068-mcp-6-per-entity-mcp-tools.md)/§6.1; the table is kept because it is still the accurate description of what each *capability* dispatches to**, which ADR-0068 did not change. ADR-0065's own framing: — rather than adding `update_test_case`/`create_test_execution`/`read_requirement` as three more hand-wired tools (ADR-0033's originally-planned MCP-2/MCP-3 shape), the underlying REST calls those would have wrapped are reachable via 6 reflective tools instead, dispatched from one registry (`app/mcp/tool_registry.py`) shared with the REST surface's own `ALL_ENTITY_CONFIGS` (ADR-0055):
 
 | Tool | Args | Dispatches to | Maps to |
 |---|---|---|---|
@@ -343,7 +343,7 @@ Thin client over the **same service layer** as the REST routes above — no sepa
 | `delete_entity` | `resource`, `id` | The entity's own generic `delete` route (§3) | FR-MCP-5 |
 | `describe_entity` | `resource` | `GET /entities/{resource}/schema` (§3.1) — same `derive_entity_schema` output verbatim, no second description | FR-MCP-5 |
 
-### 6.1 Current tool surface — one tool per entity per action ([ADR-0067](../adr/0067-mcp-6-per-entity-mcp-tools.md))
+### 6.1 Current tool surface — one tool per entity per action ([ADR-0068](../adr/0068-mcp-6-per-entity-mcp-tools.md))
 
 **This section supersedes the two tables above as the description of what the server actually advertises.** Both tables remain accurate about *dispatch* — every capability still lands on the same route handler — but the tool *names and arguments* below are what a client sees in `tools/list` today.
 
@@ -364,7 +364,7 @@ The surface is **generated**, not listed anywhere by hand: `app/mcp/tools/entity
 
 **No tool takes a `resource` argument.** Calling a name the server never registered is rejected by the MCP SDK itself with its own plain-text `Unknown tool: <name>`, *not* this document's §1 `{code, message, field_errors}` envelope — the request never reaches application code. Every error that does reach application code still uses the §1 envelope, unchanged (ADR-0033 decision 4).
 
-A tool call for a method the target `resource`'s registry row doesn't include (e.g. a `create` against a read-only link table) **has no tool at all as of ADR-0067**; before that it returned the same error shape a REST client hitting the unregistered method would get — the registry is the single gate for "which methods exist for this entity," read identically by both surfaces, so a future new bespoke route or `CrudEntityConfig.methods` change needs one registry-row edit, not a second, independently-kept MCP-side tool definition.
+A tool call for a method the target `resource`'s registry row doesn't include (e.g. a `create` against a read-only link table) **has no tool at all as of ADR-0068**; before that it returned the same error shape a REST client hitting the unregistered method would get — the registry is the single gate for "which methods exist for this entity," read identically by both surfaces, so a future new bespoke route or `CrudEntityConfig.methods` change needs one registry-row edit, not a second, independently-kept MCP-side tool definition.
 
 **A pre-existing defect in the generic factory's own gates is fixed as part of MCP-5, not a REST-visible change.** `crud_factory.py`'s `_fetch_and_gate`/`_resolve_scope_for_write` — the shared gates every one of the 27 generic-factory entities' `list`/`get`/`create`/`update`/`delete` routes above funnel through — previously called the older `_org_membership_exists(org_id, actor.actor_id)` rather than the `_actor_membership_exists` helper the module already defined (added for EXEC-2's bespoke routes) but never used on its own generic routes. Since `OrgMembership.user_id` FKs `user.actor_id`, this meant every generic-factory route 404'd unconditionally for any `AIAgent` caller regardless of granted permissions — invisible until MCP-5's own generic tools tried to reach the generic factory for the first time (MCP-1..4's tools all dispatch onto the already-correct bespoke routes in §4). Fixed to use `_actor_membership_exists` uniformly; no change in behavior for a `User` actor, since a human's `actor_id` already IS the value that helper resolves to.
 

@@ -162,7 +162,7 @@ async def test_mcp_sdk_client_handshake_and_tools_list() -> None:
         await session.initialize()
         tools = await session.list_tools()
 
-    # ADR-0067: the surface is now one tool per entity per supported action
+    # ADR-0068: the surface is now one tool per entity per supported action
     # (`tn_<resource>_<action>`), generated from `TOOL_REGISTRY` — ADR-0033's
     # `create_test_case`/`list_test_cases` and ADR-0065's 6 reflective
     # `*_entity`/`*_entities` tools are all gone, folded into this scheme.
@@ -216,7 +216,7 @@ async def test_mcp_sdk_client_create_test_case_stamps_created_by_actor_id() -> N
                 "tn_test_case_create",
                 {
                     "fields": {
-                        # ADR-0067: the bespoke create's own parent id rides in
+                        # ADR-0068: the bespoke create's own parent id rides in
                         # `fields` alongside the payload, not as a top-level
                         # tool argument the way MCP-1's hand-wired tool took it.
                         "requirement_id": str(scope.requirement_id),
@@ -316,7 +316,7 @@ async def test_mcp_sdk_client_list_test_cases_returns_seeded_case() -> None:
             await session.initialize()
             result = await session.call_tool(
                 "tn_test_case_list",
-                # ADR-0067: the nested list's parent id rides in `scope`, the
+                # ADR-0068: the nested list's parent id rides in `scope`, the
                 # same dict every other `tn_*_list` tool uses for its own scope
                 # field — MCP-1's tool took it as a top-level `requirement_id`.
                 {"scope": {"requirement_id": str(scope.requirement_id)}},
@@ -343,7 +343,7 @@ async def test_mcp_sdk_client_list_test_cases_returns_seeded_case() -> None:
 
 @pytest.mark.asyncio
 async def test_per_entity_tools_full_crud_cycle_via_real_sdk_client() -> None:
-    """MCP-5's own end-to-end proof (ADR-0065), re-addressed for ADR-0067's
+    """MCP-5's own end-to-end proof (ADR-0065), re-addressed for ADR-0068's
     per-entity names — the full `tn_requirement_create` -> `tn_requirement_get`
     -> `tn_requirement_update` -> `tn_requirement_list` -> `tn_requirement_delete`
     cycle against `requirements`, driven by the real MCP SDK `ClientSession`
@@ -404,7 +404,7 @@ async def test_mcp_sdk_client_handshake_and_tools_list_over_lan_ip() -> None:
         await session.initialize()
         tools = await session.list_tools()
 
-    # ADR-0067 tool surface — see the localhost twin above. This test's own
+    # ADR-0068 tool surface — see the localhost twin above. This test's own
     # point is the LAN-IP transport path, not the tool set, so it asserts only
     # that the handshake returns the same generated surface.
     assert {tool.name for tool in tools.tools} == set(generated_tool_names())

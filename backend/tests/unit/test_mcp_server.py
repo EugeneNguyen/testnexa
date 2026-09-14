@@ -19,7 +19,7 @@ def test_mcp_dns_rebinding_protection_is_disabled() -> None:
 
 
 def test_mcp_registers_exactly_the_generated_per_entity_tool_surface() -> None:
-    """ADR-0067 replaces both prior tool sets — MCP-1's 2 hand-wired
+    """ADR-0068 replaces both prior tool sets — MCP-1's 2 hand-wired
     `create_test_case`/`list_test_cases` and MCP-5's 6 reflective
     `*_entity`/`*_entities` — with one generated tool per entity per
     supported action. Corrected in place a second time, same posture as the
@@ -28,7 +28,7 @@ def test_mcp_registers_exactly_the_generated_per_entity_tool_surface() -> None:
 
     Asserted against `generated_tool_names()` rather than a literal list: a
     literal would have to be re-typed on every entity/method change, which is
-    exactly the hand-kept second list ADR-0067 exists to avoid. The *content*
+    exactly the hand-kept second list ADR-0068 exists to avoid. The *content*
     of that generated set is proved independently — against
     `ALL_ENTITY_CONFIGS`/`full_methods`, not against the generator — in
     `tests/unit/test_mcp_tool_naming.py`.

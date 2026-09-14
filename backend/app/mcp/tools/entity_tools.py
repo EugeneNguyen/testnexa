@@ -1,4 +1,4 @@
-"""MCP-6/ADR-0067: one MCP tool **per entity per supported action**, named
+"""MCP-6/ADR-0068: one MCP tool **per entity per supported action**, named
 `tn_<resource>_<action>` — `tn_organization_get`, `tn_project_create`,
 `tn_requirement_list`, `tn_test_case_update`, ...
 
@@ -13,7 +13,7 @@ called, which in turn direct-calls the same REST route handler
 (`backend/CLAUDE.md`'s `Depends`-bypass pattern, ADR-0033 decision 2). The
 change is entirely in how the surface is *advertised*.
 
-Why per-entity tools at all (ADR-0067 Decision §1): a `resource: str`
+Why per-entity tools at all (ADR-0068 Decision §1): a `resource: str`
 parameter is a value the model has to get right from prose, with no schema
 to check it against — an invalid slug fails at call time, and nothing in
 `tools/list` tells a client which of the ~30 slugs actually support `create`.
@@ -24,7 +24,7 @@ tool's input schema carries only the arguments that action genuinely takes
 AC gets strictly stronger — an unsupported entity/action pair is not refused
 at call time, it is never advertised.
 
-The cost, stated plainly: 146 tools instead of 8. See ADR-0067's
+The cost, stated plainly: 146 tools instead of 8. See ADR-0068's
 Consequences for the trade-off discussion.
 
 **Generation is data-driven, never hand-listed.** The (entity, action) pairs
@@ -76,7 +76,7 @@ def _materialize(result: Any) -> dict[str, Any]:
     *and* some bespoke routes' own success body (`add_test_case_to_suite`/
     `include_suite_in_plan`'s `201` — no Pydantic model, per FR-REQ-4/PLAN-1),
     a plain no-content `Response` (`delete_item`'s `204`), and — since
-    ADR-0067 folded `describe` into the registry — a plain `dict` already in
+    ADR-0068 folded `describe` into the registry — a plain `dict` already in
     its final wire shape (`derive_entity_schema`'s return). Distinguish
     error-vs-success `JSONResponse` by status code, not type alone.
     """
@@ -114,7 +114,7 @@ async def _run(resource: str, action: str, **kwargs: Any) -> dict[str, Any]:
     (entity, action)'s registry executor, normalize the result.
 
     `resource`/`action` are closed over by the generator rather than passed by
-    the client — that is the whole point of ADR-0067 (the entity is the tool's
+    the client — that is the whole point of ADR-0068 (the entity is the tool's
     identity, not one of its arguments)."""
     executor = TOOL_REGISTRY[resource][action]
     async with AsyncSessionLocal() as db:
