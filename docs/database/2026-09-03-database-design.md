@@ -500,7 +500,7 @@ Each FK: not null, indexed, `on delete cascade`. Unique constraint on `(fk_1, fk
 | name | varchar | not null, unique |
 | created_at, updated_at | timestamptz | not null |
 
-**Seeded (ADMIN-5, [ADR-0066](../adr/0066-admin-5-seed-test-level-catalog.md)):** 5 rows, ISTQB CTFL v4.0.1 test levels — Component Testing, Component Integration Testing, System Testing, System Integration Testing, Acceptance Testing. Via a new Alembic data migration, same `sa.table()`-proxy shape as RBAC-4's own seed migrations (§ above, "Seeded catalog (RBAC-4, ~100 rows)"), existence-checked by `name` against this table's own unique constraint — idempotent, `downgrade()` deletes exactly these 5 rows. `TestType` (immediately below) remains unseeded — no canonical vocabulary decided for it yet, deliberately out of scope this pass.
+**Seeded (ADMIN-5, [ADR-0066](../adr/0066-admin-5-seed-test-level-catalog.md)):** 5 rows, ISTQB CTFL v4.0.1 test levels — Component Testing, Component Integration Testing, System Testing, System Integration Testing, Acceptance Testing. Via a new Alembic data migration, same `sa.table()`-proxy shape as RBAC-4's own seed migrations (§ above, "Seeded catalog (RBAC-4, ~100 rows)"), existence-checked by `name` against this table's own unique constraint — idempotent, `downgrade()` deletes exactly these 5 rows. `TestType` (immediately below) is also now seeded, independently, by [ADR-0067](../adr/0067-testtype-catalog-default-seed.md) — the two decisions landed on separate branches the same day and compose cleanly, not a dependency on each other.
 
 **TestType**
 | Column | Type | Constraints |
@@ -508,6 +508,8 @@ Each FK: not null, indexed, `on delete cascade`. Unique constraint on `(fk_1, fk
 | id | uuid | PK |
 | name | varchar | not null, unique |
 | created_at, updated_at | timestamptz | not null |
+
+**Seed data ([ADR-0067](../adr/0067-testtype-catalog-default-seed.md), drafted as `ADR-0066`, 2026-09-13):** `TestType` ships 5 permanent default rows via an idempotent Alembic data migration (`854917c76ac5`) — `Functional Testing`, `Non-functional Testing`, `Black-box Testing`, `White-box Testing`, `Confirmation Testing` (ISTQB CTFL v4.0.1-aligned, NFR-5). No schema change — pure data. `TestLevel` (above) is seeded independently by ADMIN-5/ADR-0066 — the two migrations chain in sequence (`63f8478c1c12` then `854917c76ac5`), no interference between the two catalogs. `TestDesignTechnique` remains the one unseeded catalog, a separate future decision.
 
 **TestCaseTestDesignTechnique** *(junction, many-to-many, ADMIN-1)*
 | Column | Type | Constraints |
