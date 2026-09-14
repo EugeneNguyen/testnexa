@@ -55,6 +55,38 @@ export function useFkLabels(
     .map((f) => `${f.name}:${refConfigs[resolveEntityKey(f.refEntity as string)]?.path ?? ""}`)
     .join("|");
 
+  /**
+   * [ADR-0071](../../../../docs/adr/0071-entity-detail-relationship-tabs.md)
+   * — the same primitive-fingerprint trick, now for `rows` too, and for the
+   * same reason applied one argument over. Keying the effect on the `rows`
+   * **array identity** made it re-run on every render for any caller that
+   * builds that array inline, and every run ends in `setFkLabels(next)` with
+   * a fresh object — a self-sustaining fetch loop.
+   *
+   * This is not hypothetical: `EntityDetailPage` passed `row ? [row] : []`,
+   * a new array on every render, and measured **2913 `getEntity` calls in
+   * 400ms** — an unbounded request storm against the backend, on a page that
+   * looked completely correct while doing it (see ADR-0070's own Amendment 1).
+   * The rendered output is identical whether the effect runs once or forever,
+   * which is exactly why neither that story's unit tests nor its live manual
+   * pass caught it.
+   *
+   * Fingerprinting the ids rather than the array also makes the effect skip
+   * re-fetching when a caller hands over a genuinely new array whose FK values
+   * happen to be unchanged — a real saving for `EntityTable`, which rebuilds
+   * `rows` on every list refetch.
+   */
+  const fkIdFingerprint = fkFields
+    .map(
+      (f) =>
+        `${f.name}:${Array.from(
+          new Set(rows.map((row) => row[f.name]).filter((v): v is string => typeof v === "string")),
+        )
+          .sort()
+          .join(",")}`,
+    )
+    .join("|");
+
   useEffect(() => {
     let cancelled = false;
 
@@ -93,7 +125,7 @@ export function useFkLabels(
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, refConfigFingerprint]);
+  }, [fkIdFingerprint, refConfigFingerprint]);
 
   return fkLabels;
 }

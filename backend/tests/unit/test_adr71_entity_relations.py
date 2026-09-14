@@ -1,0 +1,298 @@
+"""ADR-0071: `crud_factory.derive_entity_relations` — the inbound-relationship
+set behind `EntityDetailPage`'s tabs.
+
+**Why the completeness test in here matters more than the per-case ones.**
+`backend/CLAUDE.md`'s registry-completeness note (ADR-0068/MCP-6) is about a
+registry spanning many entities where a missing row is silently invisible
+rather than loudly broken. A missing relationship is exactly that shape: the
+tab simply never renders, nothing fails, and nobody notices. The derivation
+itself is the first line of defence — it is *computed* by walking
+`ALL_ENTITY_CONFIGS`, not hand-typed, so it cannot omit an entity the way a
+hand-authored map can.
+
+That leaves one real risk, which `TestInboundFkCompleteness` below exists for:
+a relationship that is genuinely *excluded* (because the generic list route
+cannot serve it) being confused with one that was accidentally dropped. So
+every inbound FK in the whole registry is partitioned — served, or excluded
+with a named, asserted reason — and the partition is asserted total. A new
+entity, or a new FK on an existing one, lands in neither bucket and fails
+loudly here rather than quietly not rendering a tab.
+"""
+
+import pytest
+
+from app.api.crud_factory import (
+    _scope_candidates,
+    derive_entity_relations,
+    derive_entity_schema,
+    derive_sortable_fields,
+    fk_fields_of,
+    is_link_entity,
+)
+from app.api.entity_registry import ALL_ENTITY_CONFIGS
+
+
+def _relations(entity_key: str) -> list[dict]:
+    return derive_entity_relations(ALL_ENTITY_CONFIGS[entity_key], ALL_ENTITY_CONFIGS)
+
+
+def _by_entity(entity_key: str) -> dict[str, dict]:
+    return {r["entity"]: r for r in _relations(entity_key)}
+
+
+class TestLinkEntityClassifier:
+    """**TC-ADMIN-056.** `is_link_entity` decides many-to-many-ness *structurally* (exactly two
+    FKs, no create/update) rather than by table name. These two tests pin that
+    rule against the `*_link` naming convention in BOTH directions, so a future
+    entity drifting into or out of the shape fails here rather than silently
+    gaining or losing a many-to-many tab."""
+
+    def test_structural_rule_selects_exactly_the_four_adr_0005_link_tables(self) -> None:
+        structural = {k for k, c in ALL_ENTITY_CONFIGS.items() if is_link_entity(c)}
+        by_table_name = {
+            k for k, c in ALL_ENTITY_CONFIGS.items() if c.model.__tablename__.endswith("_link")
+        }
+        assert structural == by_table_name
+        assert structural == {
+            "requirement-test-case-links",
+            "requirement-test-condition-links",
+            "test-condition-test-case-links",
+            "test-case-defect-links",
+        }
+
+    @pytest.mark.parametrize(
+        ("entity_key", "why_not"),
+        [
+            ("test-executions", "two FKs, but a real `update`"),
+            ("role-assignments", "two FKs, but a real `update` and no `list` at all"),
+            ("risk-items", "two FKs, but a real `create`"),
+        ],
+    )
+    def test_two_fk_near_misses_are_not_classified_as_link_tables(self, entity_key: str, why_not: str) -> None:
+        config = ALL_ENTITY_CONFIGS[entity_key]
+        assert len(fk_fields_of(config)) == 2, why_not
+        assert is_link_entity(config) is False, why_not
+
+
+class TestOneToManyRelations:
+    def test_project_lists_its_five_direct_children(self) -> None:
+        relations = _by_entity("projects")
+        assert set(relations) == {
+            "requirements",
+            "test-cases",
+            "test-suites",
+            "test-plans",
+            "environments",
+        }
+        assert all(r["kind"] == "one-to-many" for r in relations.values())
+        assert all(r["scopeField"] == "project_id" for r in relations.values())
+
+    def test_a_one_to_many_relation_targets_the_entity_it_lists(self) -> None:
+        relation = _by_entity("test-cases")["test-steps"]
+        assert relation["kind"] == "one-to-many"
+        assert relation["targetEntity"] == "test-steps"
+        # No indirection to follow: the listed row already *is* the record.
+        assert relation["targetField"] is None
+
+    def test_label_is_the_child_entitys_own_label(self) -> None:
+        assert _by_entity("test-plans")["entry-exit-criteria"]["label"] == "Entry/exit criteria"
+
+    def test_branching_scope_field_resolves_per_parent(self) -> None:
+        """`RiskItem`'s `scope_field` is the 2-tuple `(requirement_id,
+        test_plan_id)`. It is a child of *both* parents, each scoped by its own
+        arm of that tuple — not of one arbitrarily-picked arm."""
+        assert _by_entity("requirements")["risk-items"]["scopeField"] == "requirement_id"
+        assert _by_entity("test-plans")["risk-items"]["scopeField"] == "test_plan_id"
+
+
+class TestManyToManyRelations:
+    def test_requirement_reaches_test_cases_through_the_link_table(self) -> None:
+        relation = _by_entity("requirements")["requirement-test-case-links"]
+        assert relation["kind"] == "many-to-many"
+        # The link rows are what's listed...
+        assert relation["entity"] == "requirement-test-case-links"
+        assert relation["scopeField"] == "requirement_id"
+        # ...but the far side is what the tab is about, and where a row click goes.
+        assert relation["targetEntity"] == "test-cases"
+        assert relation["targetField"] == "test_case_id"
+
+    def test_label_is_the_far_entitys_label_with_the_linked_suffix(self) -> None:
+        assert _by_entity("test-cases")["test-case-defect-links"]["label"] == "Defects (linked)"
+
+    def test_the_linked_suffix_disambiguates_requirements_two_test_condition_tabs(self) -> None:
+        """**TC-ADMIN-057.** `Requirement` reaches `TestCondition` twice over — directly via
+        `TestCondition.requirement_id` (REQ-3's rigor path) and via
+        `RequirementTestConditionLink` (ADR-0005 traceability). Both are real,
+        separately-populated tabs, so their labels must not collide."""
+        relations = _relations("requirements")
+        pointing_at_test_conditions = [r for r in relations if r["targetEntity"] == "test-conditions"]
+        assert len(pointing_at_test_conditions) == 2
+        assert {r["kind"] for r in pointing_at_test_conditions} == {"one-to-many", "many-to-many"}
+        labels = [r["label"] for r in pointing_at_test_conditions]
+        assert sorted(labels) == ["Test conditions", "Test conditions (linked)"]
+        assert len(set(labels)) == len(labels)
+
+    def test_no_entity_has_two_tabs_with_the_same_label(self) -> None:
+        """**TC-ADMIN-057** (generalized half). Generalizes the case above across the whole registry — a duplicate
+        label is a tab strip the user cannot tell apart."""
+        for key in ALL_ENTITY_CONFIGS:
+            labels = [r["label"] for r in _relations(key)]
+            assert len(set(labels)) == len(labels), f"{key} has duplicate relationship tab labels: {labels}"
+
+
+class TestExclusions:
+    """Only relationships the *generic list route* can actually serve are
+    emitted. `extract_scope_value` 422s a list request that doesn't carry
+    exactly one scope value, so an FK that is merely a `filter_field` is not
+    enough — the caller would still owe the unrelated scope value, which a
+    detail page for a different entity has no way to know."""
+
+    def test_many_to_one_never_produces_a_tab(self) -> None:
+        """A `Requirement` has a `project_id`, but `Project` is its *parent* —
+        that renders as a field on the Info tab. `Requirement`'s own relations
+        must contain nothing pointing back up at `projects`."""
+        assert all(r["targetEntity"] != "projects" for r in _relations("requirements"))
+
+    def test_filter_field_only_fk_is_excluded(self) -> None:
+        """`TestExecution.test_case_id` is a real `filter_field`, but
+        `TestExecution`'s scope is `test_cycle_id` — unknowable from a
+        `TestCase` detail page."""
+        config = ALL_ENTITY_CONFIGS["test-executions"]
+        assert "test_case_id" in config.filter_fields
+        assert "test_case_id" not in _scope_candidates(config)
+        assert "test-executions" not in _by_entity("test-cases")
+
+    def test_link_table_is_only_listable_from_its_own_scope_side(self) -> None:
+        """`TestCaseDefectLink`'s scope is `test_case_id`, so the tab exists on
+        `TestCase` and cannot exist on `Defect` — the reverse direction has no
+        servable list route today."""
+        assert "test-case-defect-links" in _by_entity("test-cases")
+        assert _relations("defects") == []
+
+    def test_entity_whose_children_have_no_list_route_gets_no_tab(self) -> None:
+        """`RoleAssignment` has a `project_id` FK but registers no `list`."""
+        assert "list" not in (
+            ALL_ENTITY_CONFIGS["role-assignments"].full_methods
+            or ALL_ENTITY_CONFIGS["role-assignments"].methods
+        )
+        assert "role-assignments" not in _by_entity("projects")
+
+
+#: Every inbound FK the derivation deliberately does NOT serve, with the reason.
+#: Keyed `(child entity, fk field)` -> the parent entity it points at.
+#: `TestInboundFkCompleteness` asserts this is exactly the complement of the
+#: served set — so a new entity or FK cannot land in neither bucket.
+EXPECTED_EXCLUSIONS: dict[tuple[str, str], str] = {
+    # FK is a `filter_field`, but the child's own scope is a different column
+    # the parent's detail page cannot supply.
+    ("test-cases", "test_condition_id"): "test-cases scope is project_id",
+    ("test-executions", "test_case_id"): "test-executions scope is test_cycle_id",
+    ("test-cases", "test_level_id"): "test-cases scope is project_id",
+    ("test-cases", "test_type_id"): "test-cases scope is project_id",
+    ("test-cycles", "environment_id"): "test-cycles scope is test_plan_id",
+    ("test-cycles", "release_id"): "test-cycles scope is test_plan_id; Release is unregistered",
+    # A link table is listable only from whichever side is its scope field.
+    ("requirement-test-condition-links", "test_condition_id"): "link scope is requirement_id",
+    ("requirement-test-case-links", "test_case_id"): "link scope is requirement_id",
+    ("test-condition-test-case-links", "test_case_id"): "link scope is test_condition_id",
+    ("test-case-defect-links", "defect_id"): "link scope is test_case_id",
+    # Child registers no `list` route at all.
+    ("role-assignments", "project_id"): "role-assignments has no list route",
+    ("role-assignments", "role_id"): "role-assignments has no list route",
+}
+
+
+class TestInboundFkCompleteness:
+    """**TC-ADMIN-055.** The diff-based completeness test (`backend/CLAUDE.md`'s registry note).
+
+    Spot-checking a handful of entities would never notice one silently-missing
+    relationship. This walks every FK of every registered entity and asserts it
+    is either served as a relation or listed in `EXPECTED_EXCLUSIONS` — never
+    neither, and never both.
+    """
+
+    @staticmethod
+    def _all_inbound_fks() -> set[tuple[str, str]]:
+        return {
+            (child_key, field_name)
+            for child_key, child in ALL_ENTITY_CONFIGS.items()
+            for field_name in fk_fields_of(child)
+        }
+
+    @staticmethod
+    def _served_fks() -> set[tuple[str, str]]:
+        return {
+            (relation["entity"], relation["scopeField"])
+            for parent_key in ALL_ENTITY_CONFIGS
+            for relation in _relations(parent_key)
+        }
+
+    def test_every_inbound_fk_is_either_served_or_explicitly_excluded(self) -> None:
+        served = self._served_fks()
+        unclassified = self._all_inbound_fks() - served - set(EXPECTED_EXCLUSIONS)
+        assert unclassified == set(), (
+            "These FKs produce no relationship tab and are not in EXPECTED_EXCLUSIONS. "
+            "Either the generic list route can now serve them (and the derivation is "
+            "wrong), or they need an entry naming why it cannot: "
+            f"{sorted(unclassified)}"
+        )
+
+    def test_no_declared_exclusion_is_actually_being_served(self) -> None:
+        """The other direction — an exclusion that has quietly started working
+        is a stale comment claiming a capability gap that no longer exists."""
+        stale = set(EXPECTED_EXCLUSIONS) & self._served_fks()
+        assert stale == set(), f"EXPECTED_EXCLUSIONS lists FKs that ARE served: {sorted(stale)}"
+
+    def test_every_declared_exclusion_names_a_real_fk(self) -> None:
+        unknown = set(EXPECTED_EXCLUSIONS) - self._all_inbound_fks()
+        assert unknown == set(), f"EXPECTED_EXCLUSIONS names FKs that don't exist: {sorted(unknown)}"
+
+    def test_every_served_relation_points_at_a_registered_entity(self) -> None:
+        for parent_key in ALL_ENTITY_CONFIGS:
+            for relation in _relations(parent_key):
+                assert relation["entity"] in ALL_ENTITY_CONFIGS
+                assert relation["targetEntity"] in ALL_ENTITY_CONFIGS
+
+    def test_every_served_relation_is_actually_listable(self) -> None:
+        """The invariant the whole feature rests on: the tab's list request
+        (`GET /{entity}?{scopeField}=<id>`) must satisfy that entity's own
+        scope requirement, or it 422s instead of rendering."""
+        for parent_key in ALL_ENTITY_CONFIGS:
+            for relation in _relations(parent_key):
+                child = ALL_ENTITY_CONFIGS[relation["entity"]]
+                assert "list" in (child.full_methods or child.methods)
+                assert relation["scopeField"] in _scope_candidates(child)
+
+
+class TestDerivationIsStable:
+    def test_relations_are_deterministically_ordered_children_then_links(self) -> None:
+        """A stable order keeps the tab strip from reshuffling between deploys
+        and lets assertions about it be written positionally."""
+        labels = [r["label"] for r in _relations("requirements")]
+        assert labels == [
+            "Risk items",
+            "Test conditions",
+            "Test cases (linked)",
+            "Test conditions (linked)",
+        ]
+
+    def test_repeated_derivation_returns_the_same_result(self) -> None:
+        assert _relations("test-cases") == _relations("test-cases")
+
+    def test_schema_route_body_carries_relations_for_every_entity(self) -> None:
+        for key, config in ALL_ENTITY_CONFIGS.items():
+            schema = derive_entity_schema(config)
+            assert schema["relations"] == _relations(key), key
+
+
+class TestSortableFieldsAgreement:
+    """**TC-ADMIN-058.** `make_crud_router` reads `derive_sortable_fields` rather than
+    `derive_entity_schema(config)["fields"]`, because since ADR-0071 the full
+    schema needs the entity registry and that line runs while the registry is
+    still importing. The two must stay a second *derivation* of one fact, never
+    a second hand-kept list — this is what pins that."""
+
+    def test_the_two_derivations_agree_for_every_registered_entity(self) -> None:
+        for key, config in ALL_ENTITY_CONFIGS.items():
+            from_schema = frozenset(f["name"] for f in derive_entity_schema(config)["fields"] if f["sortable"])
+            assert derive_sortable_fields(config) == from_schema, key

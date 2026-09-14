@@ -53,6 +53,7 @@ export { default as ScopeSelector } from "./molecules/scope-selector";
 export type { ScopeSelectorProps } from "./molecules/scope-selector";
 export * from "./molecules/social-auth-button";
 export * from "./molecules/social-auth-panel";
+export * from "./molecules/tabs";
 
 // organisms
 export { default as AppBreadcrumb } from "./organisms/app-breadcrumb";

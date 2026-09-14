@@ -14,7 +14,7 @@
  * which is data shape, not route wiring.
  */
 import { apiFetch } from "./client";
-import { FieldType, ScopeResolution, ScopeSelectorOption } from "../../entityConfigs/types";
+import { EntityRelation, FieldType, ScopeResolution, ScopeSelectorOption } from "../../entityConfigs/types";
 
 export interface BackendFieldConfig {
   name: string;
@@ -43,6 +43,14 @@ export interface EntitySchemaResponse {
   searchFields: string[];
   filterFields: string[];
   fields: BackendFieldConfig[];
+  /**
+   * ADR-0071: this entity's *inbound* relationships — see
+   * `entityConfigs/types.ts`'s `EntityRelation`. Optional on this type
+   * (not on the wire) so a response captured before ADR-0071 — every
+   * hand-written Vitest fixture in this repo, of which there are many —
+   * still type-checks; `toEntityConfig` normalizes the absent case to `[]`.
+   */
+  relations?: EntityRelation[];
 }
 
 /** `entityKey` is the plural `:entity` route slug (`registry.ts`'s own keys). */

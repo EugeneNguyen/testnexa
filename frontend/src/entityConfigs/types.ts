@@ -131,6 +131,44 @@ export interface ScopeResolution {
   viaField: string;
 }
 
+/**
+ * [ADR-0071](../../../docs/adr/0071-entity-detail-relationship-tabs.md): one
+ * *inbound* relationship of an entity — some other entity pointing at it —
+ * rendered as one tab on `EntityDetailPage`. Derived entirely on the backend
+ * (`crud_factory.derive_entity_relations`) by walking every registered
+ * config, so there is no hand-authored map on either side to drift.
+ *
+ * Many-to-one is deliberately absent: a field of *this* entity pointing at a
+ * parent already renders as a labelled value on the Info tab.
+ */
+export interface EntityRelation {
+  /**
+   * `"one-to-many"` — `entity` is a child entity whose own rows carry
+   * `scopeField`. `"many-to-many"` — `entity` is one of ADR-0005's link
+   * tables; its rows are what's listed, but the tab is *about*
+   * `targetEntity`, the far side.
+   */
+  kind: "one-to-many" | "many-to-many";
+  /** Plural `:entity` slug whose rows this tab lists and fetches. */
+  entity: string;
+  /**
+   * The listed entity's own scope field, set to the parent row's id on the
+   * list request. Also hidden as a column: it is the same value on every row
+   * in the tab, so showing it is pure noise.
+   */
+  scopeField: string;
+  /** Tab label — the far entity's label for many-to-many, `entity`'s own otherwise. */
+  label: string;
+  /** What the tab is conceptually about; equals `entity` for one-to-many. */
+  targetEntity: string;
+  /**
+   * Many-to-many only: which FK on the *link* row names the far entity, so a
+   * row click can open the far record rather than the link record. `null`
+   * for one-to-many, where the listed row already is the record.
+   */
+  targetField: string | null;
+}
+
 export interface EntityConfig {
   /** snake_case, matches the API's permission-code resource segment. */
   resource: string;
@@ -172,4 +210,16 @@ export interface EntityConfig {
   fields: FieldConfig[];
   filterFields?: string[];
   searchFields?: string[];
+  /**
+   * ADR-0071: backend-derived inbound relationships, one tab each on
+   * `EntityDetailPage`.
+   *
+   * Optional for the same reason `filterFields`/`searchFields` are: a config
+   * assembled by `toEntityConfig` always carries it (normalized to `[]` when
+   * the wire omits it), but this repo has many hand-written `EntityConfig`
+   * literals in Vitest fixtures, and a *required* key would make every one of
+   * them a compile error for a field none of them care about. Read it as
+   * `config.relations ?? []`.
+   */
+  relations?: EntityRelation[];
 }

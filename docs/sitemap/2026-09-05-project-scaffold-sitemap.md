@@ -84,6 +84,8 @@ Two page components (`EntityListPage`, `EntityFormPage`), routed generically off
 
 **Read-only detail route added 2026-09-15 ([ADR-0070](../adr/0070-generic-entity-detail-page.md)):** both admin scopes gain `/admin/:entity/:id`, served by a new third page component `EntityDetailPage` — a read-only view of **every** field the entity's served schema declares, not just the list table's visible columns. It applies to all 28 entities in both tables below with no per-entity wiring (the routes are added inside ADR-0057's `entityCrudRoutes()`, so `App.tsx`'s two existing calls pick them up unchanged), and it is reached by clicking a row. The one exception is navigational, not structural: an entity declaring `EntityConfig.detailPath` ([ADR-0060](../adr/0060-projects-page-retired-generic-surface.md) — only `projects` does) sends its row click to that bespoke workspace instead, so `/orgs/:orgId/admin/projects/:id` exists but is reachable by URL only, the same posture the `projects` list row in the table below already notes for its own nav.
 
+**Relationship tabs on that route, 2026-09-15 ([ADR-0071](../adr/0071-entity-detail-relationship-tabs.md)):** `/admin/:entity/:id` gains a tab strip — an **Info** tab (the all-fields view above) plus one tab per *inbound* relationship, selected via a `?tab=<related entity slug>` query param. **No new route**: the tab is query state on the existing detail route, which is what makes it shareable and reload-survivable without adding a fourth page component or a nested route segment. The tab set is backend-derived per entity (`relations` on `GET /entities/{resource}/schema`), so it varies by entity with no per-entity wiring here: 9 of the 28 entities carry relationships today (22 in total — `projects`, `requirements`, `test-cases`, `test-plans`, `test-conditions`, `test-executions`, `test-cycles`, `organizations`), and the other 19 render no strip at all. A relationship tab's row click navigates to the related record's own `/admin/:entity/:id` under the **same** scope prefix the user is already in — org-scoped tabs stay under `/orgs/:orgId/admin`, project-scoped under `/projects/:projectId/admin` — so a tab never crosses scopes. Many-to-many tabs navigate to the *far* entity rather than the link row, so `.../admin/test-cases/{id}` is reachable from a `Requirement`'s "Test cases (linked)" tab even though the rows listed there are `requirement-test-case-links`.
+
 **Org/global-scoped** — `/orgs/:orgId/admin/:entity`. **Restructured 2026-09-08 ([ADR-0046](../adr/0046-shell-7-sidebar-mini-org-crud-restructure.md), SHELL-7):** the single flat "Admin" nav group is replaced by 3 named groups — routes/entities below are unchanged, only which sidebar group reaches each one changed.
 
 | `:entity` | Backs | Sidebar group (as of SHELL-7) |
@@ -148,11 +150,13 @@ Chrome rendered inside `AppHeader` on every `ProtectedRoute` screen, not tied to
 ├── /mcp                                 McpIntegration (ADR-0063 — docs + live key management)
 └── /admin/:entity                       EntityListPage — 9 org/global entities (table above; 8 nav-linked, `projects` reachable by URL only, ADR-0058)
     ├── /admin/:entity/:id               EntityDetailPage (ADR-0070 — read-only, every served field; row click opens it)
+    │      ?tab=<related entity>            ADR-0071 — Info tab + one tab per inbound relationship (1-n children, n-n links)
     └── /admin/:entity/:id/edit          EntityFormPage
 /projects/:projectId                     ProjectDetail
 ├── /test-plans/:testPlanId              TestPlanDetail (PLAN-1)
 ├── /mcp                                 McpIntegration (ADR-0063 — docs only, no key management; same component as the org row above)
 └── /admin/:entity                       EntityListPage — 20 project-scoped entities (table above)
     ├── /admin/:entity/:id               EntityDetailPage (ADR-0070 — read-only, every served field; row click opens it)
+    │      ?tab=<related entity>            ADR-0071 — Info tab + one tab per inbound relationship (1-n children, n-n links)
     └── /admin/:entity/:id/edit          EntityFormPage
 ```

@@ -1,6 +1,6 @@
 # ADR-0070: A generic, read-only entity detail page on the admin CRUD surface
 
-- **Status:** Accepted
+- **Status:** Partially superseded by [ADR-0071](0071-entity-detail-relationship-tabs.md) (the "related-record panels are out of scope" Consequences clause only — every other decision below stands unchanged)
 - **Date:** 2026-09-15
 - **Deciders:** xuanbinh91@gmail.com (CTO)
 - **Extends:** [ADR-0025](0025-requirement-title-field.md)-era generic admin CRUD surface as delivered by [ADR-0027](0027-generic-admin-crud-ui-and-backend-completion.md) / [ADR-0055](0055-admin-3-backend-driven-entity-schema.md) / [ADR-0057](0057-admin-crud-pages-relocated-to-container.md); interacts with [ADR-0060](0060-projects-page-retired-generic-surface.md)'s `detailPath`
@@ -165,6 +165,18 @@ existing `/edit` entries' shape exactly.
   panels, and per-entity sections are deliberately out of scope — `TestCase`'s
   own Defects/Requirement sections stay on `EntityFormPage` where ADR-0044/
   ADR-0069 put them, rather than being moved or mirrored here.
+
+  > **Partially superseded the same day, [ADR-0071](0071-entity-detail-relationship-tabs.md)
+  > — see that ADR.** The *related-record panels* half of this clause no longer
+  > holds: the page gained an Info tab plus one tab per inbound relationship,
+  > driven by a new backend-derived `relations` key on the entity schema. The
+  > rest of the clause stands exactly as written — the page is still read-only
+  > (the relationship tabs offer no create, link/unlink or inline edit), there
+  > are still no per-entity sections, and `TestCase`'s bespoke
+  > Defects/Requirement sections still live on `EntityFormPage`. The text above
+  > is left as-is: it is an accurate record of what this ADR decided and why,
+  > not a stale claim to strike out (`docs/CLAUDE.md`'s forward-pointing-
+  > addendum convention).
 - **Neutral / accepted.** The detail page issues its own `GET {path}/{id}`
   rather than reusing the row object the list already has in memory. That is
   one extra request per navigation, in exchange for a page that works on a
@@ -212,6 +224,51 @@ decision plus a coordinated assertion update, not a cleanup. Recorded in
 (a class selector on the element, as used for the `<pre>` case). Same posture
 ADR-0039 took toward the FK defect its own verification surfaced: name it,
 don't absorb it, don't retrofit the fix into the ADR that found it.
+
+### Amendment 1 (2026-09-15, same branch, pre-merge) — the shipped detail page issued unbounded FK-resolution requests
+
+Found during [ADR-0071](0071-entity-detail-relationship-tabs.md)'s own
+implementation, on this same unmerged branch, so it is recorded here as an
+in-place amendment rather than a new ADR (`docs/CLAUDE.md`'s pre-merge
+same-story-correction convention). The fix is one line in
+`pages/admin/useFkLabels.ts`, not a new architectural decision.
+
+**The defect.** `useFkLabels`' effect keyed on the `rows` **array identity**.
+This page passed `row ? [row] : EMPTY_ROWS` — a freshly allocated array on
+every render — so the effect re-ran on *every* render, and every run ends in
+`setFkLabels(next)` with a fresh object, which re-renders. A self-sustaining
+loop: **2913 `getEntity` calls in 400ms**, measured directly, for a record with
+a single FK field. Every detail page for an entity with any FK — which is most
+of them — hammered the backend for as long as it stayed open.
+
+**Why nothing caught it.** The rendered output is byte-for-byte identical
+whether the effect runs once or forever. Decision §5's claim that the value
+renders correctly was true; §2's field-completeness claim was true; every
+assertion in this ADR's own 17 unit tests and 5 e2e cases passed, because all of
+them ask *what does the page show*. The live manual pass could not see it
+either — the page looks and behaves correctly while doing it. This is the same
+class as the invisible-badge finding below: a defect a rendered-output assertion
+is structurally incapable of detecting, just reached by counting requests rather
+than by looking at a screenshot.
+
+It also did not reproduce as a *test* failure until ADR-0071's own new suite
+happened to hold the component mounted a little longer, at which point the loop
+starved the test runner and the file hung at 88% CPU — which is how it surfaced
+at all.
+
+**The fix.** `useFkLabels` already solved this exact problem one argument over:
+`refConfigFingerprint` exists specifically because keying the effect on
+`refConfigs`' object identity would loop. The same primitive-fingerprint
+treatment now applies to the FK ids (`fkIdFingerprint`), so the effect re-runs
+when the ids genuinely change and not when a caller merely rebuilt the array.
+This fixes it for every caller rather than asking each one to memoize, and it
+additionally stops `EntityTable` re-resolving labels on a list refetch that
+returned the same FK values.
+
+`pages/admin/useFkLabels.test.tsx` is new and exists solely to pin this: it
+counts requests rather than asserting rendered output, because — per the
+paragraph above — nothing about the rendered output can distinguish the fixed
+from the broken version.
 
 ## Alternatives considered
 

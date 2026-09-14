@@ -675,7 +675,8 @@ class TestNoSchema:
 
 
 class TestTopLevelShape:
-    def test_response_carries_exactly_the_nine_documented_keys(self) -> None:
+    def test_response_carries_exactly_the_ten_documented_keys(self) -> None:
+        """`relations` is the tenth, added by ADR-0071."""
         assert set(derive_entity_schema(_widget_config())) == {
             "resource",
             "label",
@@ -686,7 +687,14 @@ class TestTopLevelShape:
             "searchFields",
             "filterFields",
             "fields",
+            "relations",
         }
+
+    def test_relations_is_empty_for_an_entity_nothing_points_at(self) -> None:
+        """ADR-0071: the synthetic `_widget_config()` is not in the registry,
+        so nothing can declare an FK to it — the key is still present, as an
+        empty list, never omitted."""
+        assert derive_entity_schema(_widget_config(), all_configs={})["relations"] == []
 
     def test_resource_is_passed_through_verbatim(self) -> None:
         assert derive_entity_schema(_config(resource="test_condition"))["resource"] == "test_condition"
