@@ -162,6 +162,9 @@ _TEST_CONDITION_CONFIG = CrudEntityConfig(
     summary_schema=TestConditionSummary,
     scope_field="requirement_id",
     resolve_org_id=chain_resolver([(Requirement, "requirement_id")]),
+    # ADR-0070. `description` is this entity's entire free-text surface
+    # (`priority` is an enum, everything else is an FK/timestamp).
+    search_fields=("description",),
     methods=frozenset({"list", "get", "update", "delete"}),
     # ADR-0053. `requirement_id` derives as readOnly (and not required)
     # because REQ-3/ADR-0028 removed this entity's generic create — the
@@ -187,7 +190,9 @@ _TEST_CASE_CONFIG = CrudEntityConfig(
     scope_field="project_id",
     resolve_org_id=resolve_test_case_org_id,
     filter_fields=("status", "test_level_id", "test_type_id"),
-    search_fields=("title", "preconditions", "expected_result"),
+    # ADR-0070 adds `description` — REQ-5/ADR-0069 introduced the column after
+    # this tuple was first written, so it had never been searchable.
+    search_fields=("title", "description", "preconditions", "expected_result"),
     methods=frozenset({"get", "update", "delete", "list", "create"}),
     # ADR-0069. `list`/`create` are scoped by `project_id` — only standalone
     # cases (REQ-5's own new authoring path) are reachable this way; a
@@ -247,6 +252,13 @@ _TEST_STEP_CONFIG = CrudEntityConfig(
     summary_schema=TestStepSummary,
     scope_field="test_case_id",
     resolve_org_id=resolve_via_test_case,
+    # ADR-0070. `sequence` is an `Integer` column, and is the repo's first
+    # numeric `search_fields` entry — `_search_clause` CASTs it to text, which
+    # is what makes listing it here legal at all (a bare `ILIKE` against an
+    # integer column is a hard Postgres `ProgrammingError`, not an empty
+    # result). Searching a step by its own step number is the point: `?q=3`
+    # finds sequence 3 (and 13, 30 — substring semantics, see `_search_clause`).
+    search_fields=("action", "expected_result", "sequence"),
     # ADR-0053. `scope_field` is `test_case_id`, not `project_id` — the list
     # can't fetch until an admin picks which `TestCase` to scope by, hence the
     # selector. `sequence` is an `int` column that derives as `type: "string"`
@@ -267,6 +279,8 @@ _TEST_SUITE_CONFIG = CrudEntityConfig(
     summary_schema=TestSuiteSummary,
     scope_field="project_id",
     resolve_org_id=chain_resolver([]),
+    # ADR-0070
+    search_fields=("name", "purpose"),
     # ADR-0053. Direct project scope, so no `scope_selector` (`:projectId` is
     # already in the route) and no `field_order` (`project_id` is on
     # `CreateTestSuiteRequest`, so it already derives first).

@@ -68,7 +68,7 @@ from typing import Any, Literal, Union, get_args, get_origin
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, create_model
-from sqlalchemy import func, or_, select
+from sqlalchemy import Integer, Numeric, String, cast, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -639,6 +639,36 @@ def scope_validation_error(config: CrudEntityConfig, source: Mapping[str, Any]) 
 # --- list query-building (pure, no DB access — unit-testable) --------------------------------
 
 
+def _search_clause(model: type[Base], column_name: str, search_term: str) -> Any:
+    """Build one `?q=` `ILIKE` clause for a single `search_fields` column.
+
+    ADR-0070: a numeric column is `CAST`-to-text first, a string column is
+    matched directly. This is not a cosmetic nicety — Postgres has no
+    `integer ~~* unknown` operator at all, so an un-cast `ILIKE` against an
+    `Integer`/`BigInteger`/`Numeric` column is a hard `ProgrammingError` at
+    query time (`operator does not exist`), not a silently-empty result. That
+    made numeric columns structurally unlistable in `search_fields` before
+    this cast existed, which is why every pre-ADR-0070 `search_fields` tuple
+    in this repo happens to be string-only.
+
+    `SmallInteger`/`BigInteger` subclass `Integer` and `Float` subclasses
+    `Numeric`, so the two-entry isinstance check covers every numeric column
+    type SQLAlchemy ships — no per-subclass enumeration needed.
+
+    Cast-to-text gives *substring* semantics on the rendered digits, matching
+    what the one `?q=` box in the UI can express: `?q=1` matches sequence
+    `1`, `10` and `21` alike. That is the deliberate trade (ADR-0070
+    Alternatives considered exact-match-on-numeric and rejected it — one
+    query param cannot carry two different match semantics without the
+    caller knowing each column's type, and `filter_fields` already covers
+    exact match for anyone who needs it).
+    """
+    column = getattr(model, column_name)
+    if isinstance(column.type, (Integer, Numeric)):
+        return cast(column, String).ilike(f"%{search_term}%")
+    return column.ilike(f"%{search_term}%")
+
+
 def apply_filters_and_search(
     query: Any,
     model: type[Base],
@@ -650,7 +680,8 @@ def apply_filters_and_search(
 
     `filter_fields` are exact-match (`WHERE column = value` for each param
     actually present); `search_fields`, if configured, back a single `?q=`
-    param compiled to `OR`-joined `ILIKE '%term%'` across those columns. An
+    param compiled to `OR`-joined `ILIKE '%term%'` across those columns —
+    numeric columns cast to text first, see `_search_clause` (ADR-0070). An
     entity with no `search_fields` configured silently ignores `?q=` rather
     than erroring (ADR-0022) — `q` is only ever consulted when `search_fields`
     is non-empty. Pure query-building: never executes anything, so this is
@@ -662,7 +693,7 @@ def apply_filters_and_search(
 
     search_term = query_params.get("q")
     if search_term and search_fields:
-        query = query.where(or_(*[getattr(model, f).ilike(f"%{search_term}%") for f in search_fields]))
+        query = query.where(or_(*[_search_clause(model, f, search_term) for f in search_fields]))
 
     return query
 
