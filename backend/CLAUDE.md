@@ -199,3 +199,40 @@ The EXEC-2 note above is about a *new* side effect breaking *existing* delete-ba
 ## `docker compose build` piped through `tail` or backgrounded without `--progress=plain` can show completely empty output for the entire build, indistinguishable from a hang
 
 Confirmed EXEC-3 (2026-09-08): `docker compose -p <project> -f ... build backend 2>&1 | tail -40` run via the tool's own `run_in_background: true` sat with the process alive (confirmed via `ps`, ~0.3s total CPU time accumulated) but **zero bytes written to its output file** for 10+ minutes — indistinguishable, from the outside, between "still pulling/compiling" and "genuinely stuck," and `docker info`/`docker ps` both reported the daemon healthy the whole time, so there was no daemon-level signal to act on either. The eventual notification for that specific run was `stopped`/"no completion record" (the standard silent-death class this file's root sibling already documents for any backgrounded shell command) — genuinely ambiguous whether it died or was still building when the session ended. Re-run immediately after with `--progress=plain` appended to the same command: real, continuously-streaming layer-by-layer output from the first second, completing in ~100s total. **Always add `--progress=plain` to a `docker compose build` you intend to run backgrounded or piped** — BuildKit's default TTY-detection progress mode buffers/collapses its output when not attached to a real terminal (exactly the case for a backgrounded or piped tool call), producing the same "nothing observable happening" symptom as an actual hang, and there is no cheap way to tell the two apart from output alone without it.
+
+## `alembic upgrade head` (and `downgrade` to the current revision) is a pure no-op when the DB is already at the target revision — testing a migration's own idempotency needs direct function invocation, not a second CLI call
+
+ADMIN-5 (2026-09-13/14): `TC-ADMIN-041`'s first draft shelled out to `alembic upgrade head` a second time (mirroring `test_rbac_seed.py::test_migration_rerun_is_idempotent`'s own established pattern) to prove the seed migration's insert-existence-check logic doesn't duplicate rows on a re-run. It passed — but a coverage re-check (root `CLAUDE.md`'s own "re-read your own freshly-written tests" discipline) caught that the assertion was vacuous: confirmed live, a second `alembic upgrade head` call when the DB is already at that revision produces **no** `Running upgrade X -> Y` log line at all — Alembic's own revision-tracking bookkeeping computes an empty migration path and never re-enters the migration file's `upgrade()` function body a second time. The test's `before == after` row-count assertion therefore passed regardless of whether the migration's own logic is actually idempotent, since nothing executed on the second call to be idempotent *about*. **This is very likely also true of `test_rbac_seed.py::test_migration_rerun_is_idempotent` (TC-RBAC-016), the precedent this pattern was copied from** — flagged here, not fixed there (out of this story's scope, per root `CLAUDE.md`'s "flag drift, don't silently absorb into unrelated work" convention); worth a dedicated look before trusting that test's own claim either.
+
+**The fix: invoke the migration's `upgrade()`/`downgrade()` function directly, twice, through a real `alembic.operations.Operations` context bound to the app's own async engine** — bypasses Alembic's revision-tracking table entirely, so the function body genuinely executes both times:
+
+```python
+from alembic.operations import Operations
+from alembic.runtime.migration import MigrationContext
+from app.db.session import engine as app_engine
+
+def _run_upgrade_twice(sync_conn) -> None:
+    ctx = MigrationContext.configure(sync_conn)
+    with Operations.context(ctx):
+        my_migration.upgrade()
+        my_migration.upgrade()
+
+async with app_engine.connect() as conn:
+    await conn.run_sync(_run_upgrade_twice)
+    await conn.commit()
+```
+
+This mirrors `alembic/env.py`'s own technique (`async_engine_from_config` + `AsyncConnection.run_sync`) for running migrations against an async driver — no new sync DB driver dependency needed. The migration module itself is loaded via `importlib.util.spec_from_file_location` (its filename, a revision hash, isn't a valid Python module identifier for a normal `import`) — see `tests/unit/test_admin5_seed_test_level_catalog.py`/`tests/integration/test_admin5_seed_test_level.py` for the full working pattern, both loading and directly invoking `alembic/versions/63f8478c1c12_seed_test_level_catalog.py`. **A `downgrade` call to a genuinely *different* revision (not the one you're already at) does not have this problem** — TC-ADMIN-042's `_run_alembic("downgrade", <down_revision>)` call (the CLI, same shape as `test_rbac_seed.py`'s TC-RBAC-019) is a real revision transition and does execute the migration file's `downgrade()` body, confirmed via its own `Running downgrade X -> Y` log line — the no-op trap is specifically "CLI call whose target equals the current revision," not "CLI-shelled-out migration tests in general."
+
+## Exposing the backend service directly (a third override port) when an integration suite's own conftest needs bare `/health` reachable
+
+The existing "Testing an isolated stack's integration suite needs the Postgres port exposed too" note above covers the DB half of running `backend/tests/integration/` from the host against an isolated stack; this is the HTTP half. `e2e/CLAUDE.md`'s "known, harmless failures" section already documents that `tests/integration/conftest.py`'s live-server skip-guard (bare `f"{TEST_API_BASE_URL}/health"`, no `/api` prefix) fails when `TEST_API_BASE_URL` points at the stack's **nginx** port (nginx has no bare `/health` location) — and says the fix is pointing it at the backend directly. What that note doesn't spell out: `docker-compose.yml`'s `backend` service only `expose`s port 8000 (container-network-only) by default, so "point it at the backend directly" needs its own `!override` in that stack's `docker-compose.override.test.yml`, same shape as the `postgres` one:
+
+```yaml
+services:
+  backend:
+    ports: !override
+      - "<free-port>:8000"
+```
+
+Then `TEST_API_BASE_URL=http://localhost:<free-port>` for the pytest run — bare `/health` resolves directly against uvicorn, no nginx routing gap. Confirmed ADMIN-5 (2026-09-13): adding this port mapping to an *already-running* stack recreates only the `backend` container (same "single-service rebuild still needs both `-f` flags" discipline this file's DS-2 note already establishes) — expect the usual ~15-30s "Up but connection-refused" window immediately after (this file's own "third symptom" note above) before the exposed port actually answers.
