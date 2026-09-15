@@ -314,7 +314,23 @@ function EntityRelationTab({
    * one-to-many, so the one-to-many case resolves the cache entry the line
    * above already populated rather than firing a second request.
    */
-  const { config: farConfig } = useEntitySchema(relation.targetEntity);
+  const { config: farConfig, isLoading: farSchemaLoading } = useEntitySchema(relation.targetEntity);
+
+  /**
+   * CTO-reported bug, 2026-09-15: the action buttons "sometimes show,
+   * sometimes don't" on the identical tab/account — not a permission logic
+   * bug, a **race**. `canCreateChild`/`canLinkExisting`/`canCreateAndLink`
+   * below fail closed (return `false`) while `permissions.isLoading` is true
+   * (by `usePermissions`'s own documented design) or while `farConfig` for an
+   * n-n tab hasn't arrived yet — both are correct as a *default*, but nothing
+   * distinguished that transient "don't know yet" state from "permanently
+   * absent," so the whole actions strip silently omitted itself and only
+   * popped in once both queries resolved. Whether a user caught the gap
+   * depended entirely on React Query cache warmth (fast on a revisited org,
+   * slow on a cold one) — hence "sometimes." `actionsLoading` names the state
+   * explicitly so the render below can show a placeholder instead of nothing.
+   */
+  const actionsLoading = permissions.isLoading || farSchemaLoading;
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -554,7 +570,23 @@ function EntityRelationTab({
 
   return (
     <>
-      {(canCreateChild || canLinkExisting || canCreateAndLink) && (
+      {actionsLoading ? (
+        /**
+         * Same slot, same alignment, as the real actions strip below — a
+         * placeholder, not silence, while `permissions`/`farConfig` are still
+         * in flight (see `actionsLoading`'s own docstring above for why this
+         * exists at all). Kept deliberately minimal: no text, since this is
+         * gone within one query round trip on any reasonable connection and
+         * a label would only flash.
+         */
+        <Card.Body
+          className="pb-0 mb-3 d-flex justify-content-end"
+          data-testid="entity-relation-actions-loading"
+        >
+          <Spinner wrapperClassName="p-0" label="Loading available actions…" />
+        </Card.Body>
+      ) : (
+        (canCreateChild || canLinkExisting || canCreateAndLink) && (
         /**
          * `gap-2` (Amendment 1): an n-n tab can now render two buttons here,
          * and two `.btn`s are adjacent siblings with no margin of their own.
@@ -628,6 +660,7 @@ function EntityRelationTab({
             </Button>
           )}
         </Card.Body>
+        )
       )}
 
       {createdNotLinked && (

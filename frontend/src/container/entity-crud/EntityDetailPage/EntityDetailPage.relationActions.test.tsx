@@ -316,6 +316,36 @@ describe("EntityDetailPage relationship-tab write actions (ADR-0076)", () => {
     expect(screen.queryByTestId("entity-relation-link")).not.toBeInTheDocument();
   });
 
+  it("TC-ADMIN-097: while permissions are still loading, a placeholder renders instead of silently omitting the actions strip", async () => {
+    /**
+     * The bug this test pins (CTO-reported, 2026-09-15): `canCreateChild`
+     * correctly fails closed while `permissions.isLoading` is true — but
+     * nothing distinguished that from "permanently absent," so the whole
+     * strip vanished for exactly as long as `GET .../permissions/mine` took,
+     * then popped in. Whether a user noticed depended on React Query cache
+     * warmth, which is what made it look like "sometimes shows, sometimes
+     * doesn't" rather than a deterministic bug. A held (never-in-this-test
+     * resolved) `apiFetch` promise reproduces the loading window on demand.
+     */
+    let resolvePermissions!: (value: { codes: never[] }) => void;
+    mockApiFetch.mockReturnValue(new Promise((resolve) => (resolvePermissions = resolve)));
+    mockGetEntity.mockImplementation(async (config: EntityConfig, id: string) =>
+      config.path === "/projects" ? { id, org_id: "org-1", name: "Project one" } : WIDGET_ROW,
+    );
+    mockListEntities.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 25 });
+
+    renderPage(ONE_TO_MANY);
+
+    expect(await screen.findByTestId("entity-relation-actions-loading")).toBeInTheDocument();
+    expect(screen.queryByTestId("entity-relation-actions")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("entity-relation-create")).not.toBeInTheDocument();
+
+    // Resolving with a genuinely held permission flips the placeholder to the
+    // real strip — proving this is a loading state, not a second "hidden."
+    resolvePermissions({ codes: [] });
+    await waitFor(() => expect(screen.queryByTestId("entity-relation-actions-loading")).not.toBeInTheDocument());
+  });
+
   it("TC-ADMIN-090: the New button is ABSENT, not disabled, without the create code", async () => {
     /**
      * UI Design Document §5's hide-don't-disable posture. Asserted as absence
