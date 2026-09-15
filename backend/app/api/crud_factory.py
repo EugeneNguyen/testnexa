@@ -449,6 +449,44 @@ def chain_resolver(hops: Sequence[tuple[type, str]]) -> ResolveOrgId:
     return _resolve
 
 
+def branching_resolver(branches: Sequence[tuple[str, ResolveOrgId]]) -> ResolveOrgId:
+    """Build a `resolve_org_id(db, row)` that picks a branch by which FK is present.
+
+    ADR-0072 Amendment 1. The generalization of `resolve_risk_item_org_id`'s
+    hand-written shape, needed once a `scope_field` is a branching 2-tuple: the
+    factory's own `_resolve_scope_for_write` calls `resolve_org_id` with a
+    `types.SimpleNamespace` carrying **only the one scope attribute the request
+    actually supplied**, so a resolver hard-coded to walk the other arm reads
+    `None` off that stand-in and 404s a perfectly valid list request. A
+    bidirectional junction therefore needs one branch per arm, not one walk.
+
+    Branches are tried in declaration order and the first whose named attribute
+    is non-`None` wins. Order is load-bearing for the *other* call site, and in
+    the opposite way: `_fetch_and_gate` passes a **real row**, which carries
+    every FK at once, so the first branch always fires there. Declaring the arm
+    that was the config's sole `scope_field` before the widening first is what
+    makes the item-route (`get`) walk byte-identical to its pre-widening self —
+    the new arm only ever runs for a scope stand-alone that lacks the old one.
+
+    Both arms of a junction necessarily resolve to the same org (a link row
+    whose two ends sat in different tenants could not have been created — every
+    bespoke write route checks both sides against one `org_id` first), so
+    branch order is a *behaviour-preservation* choice, never a correctness one.
+
+    Returns `None` when no branch's attribute is set — an unresolvable chain,
+    which every caller turns into `404`, never a partial or guessed result,
+    exactly as `chain_resolver` does.
+    """
+
+    async def _resolve(db: AsyncSession, row: Any) -> uuid.UUID | None:
+        for field_name, resolver in branches:
+            if getattr(row, field_name, None) is not None:
+                return await resolver(db, row)
+        return None
+
+    return _resolve
+
+
 async def resolve_test_case_org_id(db: AsyncSession, row: Any) -> uuid.UUID | None:
     """Bespoke `TestCase` resolver (ADR-0022): nullable-hop with three fallbacks.
 
@@ -1467,6 +1505,7 @@ __all__ = [
     "NoSchema",
     "apply_filters_and_search",
     "apply_sort",
+    "branching_resolver",
     "chain_resolver",
     "clamp_pagination",
     "extract_scope_value",

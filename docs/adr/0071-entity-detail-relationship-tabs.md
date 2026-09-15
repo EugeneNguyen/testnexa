@@ -110,8 +110,10 @@ so the FK must be the child's own `scope_field` (or one arm of a branching
 **An FK that is only a `filter_field` is not enough** — the caller would still
 owe the child's unrelated scope value, which a detail page for a different
 entity cannot know. This is a real boundary, not a technicality, and it is why
-14 inbound FKs produce no tab today (12 as first written; ADR-0072's two newly
-registered junctions each contribute their own reverse side):
+**8** inbound FKs produce no tab today (12 as first written; 14 after ADR-0072
+registered two more junctions, each contributing its own reverse side; **8**
+since [ADR-0072 Amendment 1](0072-junction-table-registry-completeness.md#amendment-1-2026-09-15--every-junction-is-scoped-and-therefore-tabbed-from-both-ends)
+removed the entire link-table row below):
 
 | Excluded relationship | Why |
 |---|---|
@@ -119,8 +121,13 @@ registered junctions each contribute their own reverse side):
 | `TestCondition` → `TestCase`s | `test_condition_id` is neither scope nor filter on `TestCase` |
 | `TestLevel`/`TestType` → `TestCase`s | filter fields only; `TestCase`'s scope is `project_id` |
 | `Environment`/`Release` → `TestCycle`s | `TestCycle`'s scope is `test_plan_id` |
-| Reverse side of all 6 link tables | each link's scope is one of its two FKs, so it lists from that side only. 4 as first written; ADR-0072 registered `test_suite_test_case` (scope `test_suite_id`, so `TestCase` → suites is excluded) and `test_plan_test_suite` (scope `test_plan_id`, so `TestSuite` → plans is excluded), deliberately matching the existing four rather than widening two of six to a branching 2-tuple |
+| ~~Reverse side of all 6 link tables~~ | ~~each link's scope is one of its two FKs, so it lists from that side only~~ — **no longer excluded.** [ADR-0072 Amendment 1](0072-junction-table-registry-completeness.md#amendment-1-2026-09-15--every-junction-is-scoped-and-therefore-tabbed-from-both-ends) (2026-09-15) widened all six junctions' `scope_field` to the branching 2-tuple of both FK columns — the option ADR-0072 Decision §3 explicitly left open for "all six at once" — so every link table now lists, and tabs, from both ends. This clause was the *only* entry in the table that described a deliberate design limit rather than a genuine list-capability gap, and the remaining rows are unaffected |
 | `Project`/`Role` → `RoleAssignment`s | `RoleAssignment` registers no `list` route at all |
+
+Note what did **not** change to make that happen: this section's rule is still
+exactly "the FK must be the child's own `scope_field`, or one arm of a branching
+2-tuple one." The six junctions became servable by satisfying that rule, not by
+relaxing it — `derive_entity_relations` is byte-for-byte unchanged.
 
 **These are flagged, not worked around.** Serving them needs new backend list
 capability (a widened `scope_field`, a bespoke reverse-list route, or promoting
@@ -205,7 +212,10 @@ in a story that isn't fixing it.
 
 - **Positive.** Every record's related records are one click away, on all 28
   entities at once, with no per-entity code. 22 relationships across 9 entities
-  become reachable today.
+  became reachable when this shipped; **30 across 10** as of
+  [ADR-0072](0072-junction-table-registry-completeness.md) and its Amendment 1
+  (+2 from registering the two missing junctions, +6 from making all six
+  bidirectional — the tenth entity is `Defect`, which had no tab strip at all).
 - **Positive.** A new backend FK whose field is the child's scope field becomes
   a tab with **zero** frontend or backend work — the property ADR-0055 was
   written to buy, now extended from fields to relationships.
@@ -217,9 +227,13 @@ in a story that isn't fixing it.
   relationship graph it previously had to infer.
 - **Neutral / accepted.** 12 inbound FKs produce no tab (Decision §4) — 14 after
   [ADR-0072](0072-junction-table-registry-completeness.md) registered two more
-  link tables, each adding its own reverse side. This is a *backend
+  link tables, each adding its own reverse side, then **8** after that ADR's
+  Amendment 1 made all six junctions bidirectional. This is a *backend
   list-capability* gap surfaced by this story, not created by it, and it is
-  asserted rather than assumed.
+  asserted rather than assumed — the drop from 14 to 8 is the clearest evidence
+  the assertion was doing real work: six of the fourteen turned out to be a
+  design choice that could simply be reversed, and the exclusion table is what
+  made them visible as such rather than forgotten.
 - **Neutral / accepted.** Relationship tabs are read-only — no create, no
   link/unlink, no inline edit. Every related record is fully editable on its own
   screen, one click away. Creating a traceability link from here would be a
@@ -322,4 +336,10 @@ reach, since jsdom applies no CSS: a real engine confirming the pane is actually
 - **Serve the excluded relationships by relaxing the scope requirement.**
   Rejected as out of scope: each one is its own API decision about widening a
   list route's contract, and quietly dropping the 422 guard would break the
-  tenant-scoping posture ADR-0022 built it for.
+  tenant-scoping posture ADR-0022 built it for. **Six of them were subsequently
+  served — without relaxing anything** ([ADR-0072](0072-junction-table-registry-completeness.md)
+  Amendment 1, 2026-09-15): widening the six link tables' own `scope_field` to a
+  branching 2-tuple makes both directions satisfy the scope rule as written, so
+  the `422` guard is fully intact and each direction still carries exactly one
+  scope value. That is the "its own API decision" this line asks for, taken
+  deliberately and for all six at once.

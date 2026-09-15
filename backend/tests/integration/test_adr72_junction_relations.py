@@ -287,11 +287,20 @@ async def test_a_junction_list_without_its_scope_value_is_a_422_not_an_unscoped_
 
     `extract_scope_value` 422s a list request not carrying exactly one scope
     value. That is *why* ADR-0071 only emits a relation whose FK is the child's
-    own `scope_field` — and it is also what stops the new junction routes from
-    being an unscoped, cross-tenant dump of every membership row in the
-    database. Asserted both ways: no scope param, and the *other* FK supplied
-    instead of the scope one (the reverse-direction request an over-eager client
-    might try, which is exactly the excluded relationship ADR-0071 §4 enumerates).
+    own `scope_field` — and it is also what stops the junction routes from being
+    an unscoped, cross-tenant dump of every membership row in the database.
+
+    **Amended by ADR-0072 Amendment 1.** As first written this test also
+    asserted that supplying the *other* FK instead of the scope one 422s, on
+    the grounds that "the reverse direction is an enumerated exclusion, not a
+    servable relation." Amendment 1 made both FKs scope arms on all six
+    junctions, so that half is no longer true and has moved — inverted — to
+    `test_adr72_amendment1_bidirectional_junctions.py`. What survives here, and
+    is the part NFR-71 actually rests on, is the **zero-scope** case: a
+    branching scope still requires *exactly one* arm, so neither "no params at
+    all" nor "both arms at once" may ever return an unscoped dump. Both are
+    asserted below; the second is new, since it only became reachable once
+    there were two arms to supply.
     """
     user_ids: list = []
     org_ids: list = []
@@ -311,30 +320,35 @@ async def test_a_junction_list_without_its_scope_value_is_a_422_not_an_unscoped_
             assert unscoped.json()["code"] == "validation_error"
             assert "test_suite_id" in unscoped.json()["field_errors"]
 
-            # The reverse direction is not servable: `test_case_id` is not this
-            # entity's scope field, so it is ignored as a scope and the request
-            # still fails the "exactly one scope value" rule.
-            reverse = await client.get(
+            # ADR-0072 Amendment 1: supplying BOTH arms is the case that
+            # replaced the old "supply the non-scope FK" assertion. `RiskItem`'s
+            # long-standing XOR narrowing now applies here too — two arms is as
+            # invalid as zero, and neither may fall back to an unscoped list.
+            both_arms = await client.get(
                 f"{API_PREFIX}/test-suite-test-cases",
-                params={"test_case_id": "00000000-0000-0000-0000-000000000000"},
+                params={
+                    "test_suite_id": "00000000-0000-0000-0000-000000000000",
+                    "test_case_id": "00000000-0000-0000-0000-000000000001",
+                },
                 headers=auth,
             )
-            assert reverse.status_code == 422
+            assert both_arms.status_code == 422
+            assert "not both" in both_arms.json()["field_errors"]["test_suite_id"][0]
 
             plan_unscoped = await client.get(f"{API_PREFIX}/test-plan-test-suites", headers=auth)
             assert plan_unscoped.status_code == 422
             assert plan_unscoped.json()["code"] == "validation_error"
             assert "test_plan_id" in plan_unscoped.json()["field_errors"]
 
-            # Both halves for this junction too, not just the unscoped one —
-            # `test_suite_id` is its non-scope FK, so a `TestSuite` cannot list
-            # the plans including it from here either.
-            plan_reverse = await client.get(
+            plan_both_arms = await client.get(
                 f"{API_PREFIX}/test-plan-test-suites",
-                params={"test_suite_id": "00000000-0000-0000-0000-000000000000"},
+                params={
+                    "test_plan_id": "00000000-0000-0000-0000-000000000000",
+                    "test_suite_id": "00000000-0000-0000-0000-000000000001",
+                },
                 headers=auth,
             )
-            assert plan_reverse.status_code == 422
+            assert plan_both_arms.status_code == 422
     finally:
         await _crud_cleanup(user_ids=user_ids, org_ids=org_ids)
 

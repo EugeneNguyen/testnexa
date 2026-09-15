@@ -80,9 +80,11 @@ from app.api.crud_factory import (
     NoSchema,
     ScopeSelectorOption,
     _org_membership_exists,
+    branching_resolver,
     chain_resolver,
     make_crud_router,
     resolve_test_case_org_id,
+    resolve_via_test_case,
 )
 from app.api.deps import get_current_actor, get_db
 from app.core.rbac import has_permission
@@ -391,27 +393,49 @@ async def list_test_cases_in_suite(
 # half of what makes `is_link_entity` classify this structurally as a link
 # table (two FK fields, no `create`/`update`).
 #
-# `scope_field="test_suite_id"` — deliberately the suite side, matching the
-# direction REQ-4's own bespoke routes are nested under
-# (`/test-suites/{id}/test-cases`). A link table is listable only from
-# whichever side is its scope field, so this serves `TestSuite`'s tab and not
-# `TestCase`'s; that reverse direction stays in ADR-0071 §4's enumerated
-# exclusion set alongside the four traceability links', rather than being
-# quietly widened here (ADR-0072 Decision §3).
+# `scope_field` is the branching 2-tuple `("test_suite_id", "test_case_id")`
+# — **ADR-0072 Amendment 1**, which supersedes that ADR's own Decision §3.
+# As first shipped this was the single column `"test_suite_id"`, deliberately
+# the suite side (the direction REQ-4's bespoke routes are nested under,
+# `/test-suites/{id}/test-cases`), with the reverse direction parked in
+# ADR-0071 §4's exclusion set. §3's stated reason for parking it was
+# coherence, not capability: "doing it for two junctions and not the other
+# four would make the rule incoherent... widening all six later remains open."
+# All six are widened together in Amendment 1, so that objection no longer
+# applies and this lists from both ends — `TestSuite` keeps its "Test cases
+# (linked)" tab and `TestCase` gains the reverse "Test suites (linked)" one.
+#
+# The suite arm is declared FIRST in the resolver below, so the item route
+# (`GET /test-suite-test-cases/{id}`, where a real row carries both FKs) walks
+# byte-identically to its pre-widening self; the case arm only ever fires for
+# the scope stand-in a `?test_case_id=` list request builds.
 _TEST_SUITE_TEST_CASE_CONFIG = CrudEntityConfig(
     model=TestSuiteTestCase,
     resource="test_suite_test_case",
     create_schema=None,
     update_schema=NoSchema,
     summary_schema=TestSuiteTestCaseSummary,
-    scope_field="test_suite_id",
-    # One hop to `TestSuite`, whose own `project_id` the shared terminal step
-    # resolves to `Project.org_id` — the same walk `_resolve_test_suite_org_id`
-    # above performs for the bespoke routes, composed rather than re-derived.
-    resolve_org_id=chain_resolver([(TestSuite, "test_suite_id")]),
+    scope_field=("test_suite_id", "test_case_id"),
+    # Suite arm: one hop to `TestSuite`, whose own `project_id` the shared
+    # terminal step resolves to `Project.org_id` — the same walk
+    # `_resolve_test_suite_org_id` above performs for the bespoke routes,
+    # composed rather than re-derived. Case arm: `resolve_test_case_org_id`
+    # via `resolve_via_test_case`, which is the identical resolver
+    # `add_test_case_to_suite` above already uses for the case side of its own
+    # tenant check (ADR-0029's branching chain), so the two surfaces cannot
+    # drift on what org a `TestCase` belongs to.
+    resolve_org_id=branching_resolver(
+        [
+            ("test_suite_id", chain_resolver([(TestSuite, "test_suite_id")])),
+            ("test_case_id", resolve_via_test_case),
+        ]
+    ),
     methods=frozenset({"list", "get"}),
     label="Test suite -> test case links",
-    scope_selector=ScopeSelectorOption(ref_entity="test-suite", param_name="test_suite_id"),
+    scope_selector=(
+        ScopeSelectorOption(ref_entity="test-suite", param_name="test_suite_id", label="By test suite"),
+        ScopeSelectorOption(ref_entity="test-case", param_name="test_case_id", label="By test case"),
+    ),
     # Only the two FKs need a `FieldMeta`: their `ref_entity`/`label_field`
     # have no Python-type correlate, and `created_at`'s auto-derived "Created
     # at" label is already correct. Omitting `ref_entity` here would leave the

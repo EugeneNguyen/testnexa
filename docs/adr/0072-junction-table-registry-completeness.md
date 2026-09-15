@@ -155,6 +155,14 @@ else failing.
 
 ### 3. Each junction is scoped on its parent side; the reverse stays excluded
 
+> **Superseded by [Amendment 1](#amendment-1-2026-09-15--every-junction-is-scoped-and-therefore-tabbed-from-both-ends)
+> (2026-09-15, same branch, pre-merge).** All six junctions now carry a
+> branching 2-tuple `scope_field` and list from both ends. This section's text
+> is left untouched below because its *reasoning* is the reason the amendment
+> exists and is scoped the way it is — it named "widening all six later" as the
+> open option, and that is precisely what was done. Read it as the record of
+> what was decided first and why, not as the current contract.
+
 `test_suite_test_case` uses `scope_field="test_suite_id"` and
 `test_plan_test_suite` uses `scope_field="test_plan_id"` — in both cases the
 side the junction's own bespoke routes are already nested under. So `TestSuite`
@@ -280,6 +288,130 @@ seed migration builds the catalog from the current code.
   revision, **a data-seed migration can never self-heal a row deleted after it
   ran**. Needs its own fix; deliberately not smuggled in here.
 
+### Amendment 1 (2026-09-15) — every junction is scoped, and therefore tabbed, from BOTH ends
+
+A same-branch, pre-merge correction to this ADR's own **Decision §3**, on CTO
+instruction after a live look at the shipped result. Per `docs/CLAUDE.md`, an
+in-place `### Amendment` rather than a new ADR number: Decision §3 did not
+reject this change on its merits — it explicitly parked it, named the exact
+condition under which it should happen, and left the option open in the same
+sentence. Taking an option an ADR itself wrote down is a correction to that
+ADR, not a new architectural direction that outlives this story.
+
+**What Decision §3 said, and why the objection is spent.** It kept both
+newly-registered junctions to a single-column `scope_field`, and rejected
+widening:
+
+> Widening `scope_field` to a branching 2-tuple — which `RiskItem` already
+> precedents, and which would make both directions listable — was considered and
+> rejected. **Doing it for two junctions and not the other four would make the
+> rule incoherent** [...] Six tables now behave identically; that consistency is
+> worth more than two extra tabs, and **widening all six later remains open.**
+
+The stated objection was *coherence across the six*, never capability, never
+tenant safety, and never cost. All six are widened here, together, in one
+change — so the objection does not apply: the six still behave identically, just
+bidirectionally. ADR-0071's own Alternatives likewise rejected "relaxing the
+scope requirement" as "its own API decision about widening a list route's
+contract, rather than something to smuggle into an adjacent story"; this
+amendment *is* that decision, made deliberately and uniformly rather than
+smuggled.
+
+**The symptom that prompted it.** Confirmed live before any code changed:
+`GET /entities/test-cases/schema` carried no `test_suite` or `test_plan`
+relation at all, and `GET /entities/defects/schema` returned `"relations": []`.
+`TestCase` is the entity three separate junctions point at, and its detail page
+could show none of them; `Defect`'s page rendered no tab strip whatsoever —
+visually identical to `TestStep`, an entity that genuinely has no
+relationships. That is the exact symptom this ADR was written to fix for
+`TestSuite`, surviving in four other places because the fix registered the
+missing configs without revisiting which direction they scope.
+
+#### What changed
+
+**1. All six `scope_field`s are the branching 2-tuple of both FK columns.**
+
+| Junction | Was | Now |
+|---|---|---|
+| `requirement_test_case_link` | `requirement_id` | `("requirement_id", "test_case_id")` |
+| `requirement_test_condition_link` | `requirement_id` | `("requirement_id", "test_condition_id")` |
+| `test_condition_test_case_link` | `test_condition_id` | `("test_condition_id", "test_case_id")` |
+| `test_case_defect_link` | `test_case_id` | `("test_case_id", "defect_id")` |
+| `test_suite_test_case` | `test_suite_id` | `("test_suite_id", "test_case_id")` |
+| `test_plan_test_suite` | `test_plan_id` | `("test_plan_id", "test_suite_id")` |
+
+In each pair the arm that was the sole `scope_field` is declared **first**. That
+is load-bearing twice over: `scope_validation_error` keys its `422` on
+`candidates[0]`, so existing clients see the same field name; and the resolver's
+first branch is the one a real row takes, which keeps every item route's tenant
+walk byte-identical to its pre-amendment behaviour.
+
+**2. `derive_entity_relations` is unchanged — not one line.** It already
+iterated every FK and kept those in `_scope_candidates`, which explodes a
+tuple. A 2-tuple therefore emits one relation per arm for free, exactly the
+mechanism that has always made `RiskItem` a child of both `Requirement` and
+`TestPlan`. This is the property ADR-0071 Decision §1 was buying and the
+strongest evidence the derivation was designed correctly: a genuine capability
+widening across six entities cost zero changes to the derivation, the schema
+route, the MCP `describe` tool, or the frontend.
+
+**3. A branching `scope_field` requires a branching resolver — this is the
+whole risk of the change.** `crud_factory._resolve_scope_for_write` calls
+`resolve_org_id` with a `types.SimpleNamespace` carrying **only the one arm the
+caller actually supplied**, never a full row. A config widened to two arms but
+left with its original single-arm walk type-checks, derives a perfectly good
+relation, renders a tab — and 404s every request that tab fires, because the
+resolver reads `None` off the stand-in. New `crud_factory.branching_resolver`
+generalizes the shape `resolve_risk_item_org_id` has always hand-written; each
+of the six composes existing resolvers (`chain_resolver`,
+`resolve_via_test_case`) rather than adding a new walk. The reverse arms
+deliberately reuse the *same* resolver the junction's own bespoke route already
+uses for that side, so the two surfaces cannot drift on what org a row belongs
+to.
+
+**4. Each junction's `scope_selector` gains a second, labelled option**, mirroring
+`RiskItem`'s. Without it the generic admin list page could still only scope by
+the old arm — the route would serve a direction the UI had no way to ask for.
+
+**5. No new permission codes, no migration.** Permissions are per-*resource*,
+not per-direction; all six junctions already hold their `.read` code from
+Decision §5 and ADR-0027. Nothing in `rbac_seed_catalog.py` moves.
+
+#### Consequences of the amendment
+
+- **Positive.** Six new relationship tabs across four entities, with no
+  derivation, schema-route, MCP or frontend change. `TestCase` gains three at
+  once (Requirements / Test conditions / Test suites, all `(linked)`),
+  `TestSuite` gains "Test plans (linked)", `TestCondition` gains "Requirements
+  (linked)", and `Defect` gains a tab strip where it had none.
+- **Positive.** ADR-0071 §4's exclusion table loses its entire link-table block.
+  Six of the fourteen enumerated exclusions were reverse-side link directions;
+  eight remain, all of them genuine list-capability gaps of a different kind
+  (filter-field-only FKs, and `RoleAssignment`'s missing `list` route).
+- **Neutral / accepted — a small API contract change.** An unscoped list request
+  against these six now returns `"exactly one of X or Y must be set"` instead of
+  `"<X> is required."`. The `422`, the `validation_error` code and the keyed
+  field name are unchanged, and no client in this repo matches on the message
+  text. A request supplying *both* arms is newly reachable and is rejected with
+  `"...not both"` — `RiskItem`'s XOR narrowing, now applying here.
+- **Neutral / accepted.** `test_adr71_entity_relations.py`'s
+  `test_registering_the_junctions_did_not_change_test_cases_own_tabs` asserted
+  the *absence* of exactly these tabs, pinning Decision §3. It is inverted, not
+  deleted, and renamed to say what it now pins — as is the integration
+  assertion that the reverse direction `422`s. Both keep the record of what the
+  contract used to be.
+- **Watch — found, not fixed.** Two of the new `scope_selector` arms point at
+  ref entities that the shared `ScopeSelector` molecule cannot search today:
+  `test-condition` (its own list is scoped by `requirement_id`) and `defect`
+  (scoped by `test_execution_id`). `frontend/src/components/molecules/scope-selector/scope-selector.tsx`
+  already documents this limitation by name for exactly these entities — it
+  threads only `project_id` through to its `FkAutocomplete`, and anything needing
+  a different parent needs a cascading multi-step picker. This affects only the
+  **generic admin list page's** scope-gate picker, never the relationship tabs
+  (which pass the parent id directly and never render a picker), so it costs
+  this amendment nothing and is pre-existing rather than introduced here.
+  Fixing it is the larger `ScopeSelector` change that note already scopes.
+
 ## Alternatives considered
 
 - **Special-case the bespoke routes inside `derive_entity_relations`.** Rejected
@@ -294,7 +426,9 @@ seed migration builds the catalog from the current code.
   relationships as intentional exclusions, which would be false.
 - **Widen every link table's `scope_field` to a branching 2-tuple** so both
   directions list. Rejected for now — see Decision §3. It is a coherent future
-  change for all six at once, not a two-table exception.
+  change for all six at once, not a two-table exception. **Taken, same day —
+  see Amendment 1 above**, which does exactly the "all six at once" version this
+  line describes; the rejection was always conditional on scope, never on merit.
 - **Fix the `_ALL_CONFIGS` tuple by auto-discovering configs** (import every
   route module and collect every `CrudEntityConfig` instance). Rejected: it
   trades an explicit list for import-order magic, and would silently register an

@@ -25,6 +25,22 @@ import { expect, test } from "@playwright/test";
  * too, so the feature is proven against two independent entities rather than
  * one.
  *
+ * **ADR-0072 Amendment 1 (2026-09-15): junctions are tabbed from BOTH ends.**
+ * ADR-0072 registered the six n-n junction tables but left each one's
+ * `scope_field` a single column, so `derive_entity_relations` emitted a
+ * relation for the scope side only — `TestSuite` got "Test cases (linked)"
+ * while `TestCase` got nothing for the identical, genuinely bidirectional
+ * relationship, and `Defect`'s detail page rendered no tab strip at all.
+ * Amendment 1 widens all six to the branching 2-tuple naming both FK columns,
+ * so each junction now emits one relation per direction. Every exact tab-list
+ * assertion below is therefore a *positional* assertion against the post-
+ * Amendment derivation: `test-cases` went from three tabs to six, `test-suites`
+ * from one to two, and the previously-asserted absence of those reverse tabs
+ * (ADR-0072 Decision §3, superseded) is gone. Not one line of the derivation
+ * changed to get this — the widened `scope_field` alone does it — which is why
+ * the live proof that the reverse tab actually *fetches and renders* is worth
+ * its own test rather than being inferred from the forward one.
+ *
  * Target environment: whichever isolated Compose project `E2E_BASE_URL` points
  * at (never the main `testnexa` stack) — `E2E_BACKEND_CONTAINER` names its
  * backend container. Seed/cleanup follows `admin6-entity-detail-page.spec.ts`
@@ -33,6 +49,41 @@ import { expect, test } from "@playwright/test";
  */
 const BACKEND_CONTAINER = process.env.E2E_BACKEND_CONTAINER ?? "testnexa-deve77ffc-test-backend-1";
 const TEST_PASSWORD = "E2ETestPass123!";
+
+/**
+ * Each test here pays `seedFixture()` — a `docker exec ... python -` that
+ * imports the whole FastAPI app in a fresh interpreter inside the backend
+ * container — inside its own timed body, before the browser does anything.
+ * On a contended host that single import was measured between 17s and 98s
+ * (2026-09-15: ten sibling isolated stacks plus unrelated containers on the
+ * same Docker VM, `docker stats` showing one at 127% CPU), so the `90000` this
+ * file shipped with was structurally too small there — every run died on
+ * `page.goto("/login")` with the fixture having already eaten the budget,
+ * reading exactly like a broken login flow. The app itself was fine
+ * throughout: a warm raw navigation to the same URL returned in ~1s.
+ *
+ * `e2e/CLAUDE.md`'s own note on this ("each story adds one more round trip on
+ * top of the one before it... don't just keep copy-pasting the previous
+ * story's spec shape and assume its untouched defaults still have headroom")
+ * is the same reasoning; here the round trips are the fixture's, not the
+ * browser's. A generous ceiling costs nothing on an idle host — a passing test
+ * returns as fast as it ever did — and is the difference between a real result
+ * and an environmental false negative on a busy one.
+ */
+const PER_TEST_TIMEOUT_MS = 300000;
+
+/**
+ * `gotoDetail` below waits on the record's own `GET /{resource}/{id}` — but
+ * the tab strip is driven by a *separate* `GET /entities/{resource}/schema`
+ * request, and on a `test-cases` detail page four more ref-entity schema
+ * fetches ride alongside it. Measured live on the contended host described
+ * above: the schema responses landed ~9s after the navigation began, the
+ * record fetch ~10s. The 5s default is simply under that, so every assertion
+ * that is the first read of a freshly-loaded tab strip carries this
+ * explicitly, per `e2e/CLAUDE.md`'s own prescription for the same class of
+ * race.
+ */
+const TAB_STRIP_TIMEOUT_MS = 20000;
 
 interface SeededFixture {
   orgAdmin: { email: string; password: string; userId: string };
@@ -76,6 +127,19 @@ interface SeededFixture {
  * required FKs) to stand up. `test-cases`' own "Defects (linked)" tab is still
  * asserted to *exist* — tabs are derived from the schema, so that assertion
  * needs no Defect row behind it.
+ *
+ * The same reasoning now covers `test-cases`' three **reverse-direction** tabs,
+ * which ADR-0072 Amendment 1 added: "Requirements (linked)", "Test conditions
+ * (linked)" and "Test suites (linked)" are all derived from the widened
+ * `scope_field`, so all three are asserted to exist off this one fixture. Only
+ * one of them is also driven end to end with a real row behind it — the
+ * `TestSuiteTestCase` seeded below doubles as the `test-cases` -> `test-suites`
+ * fixture, so the reverse arm's real scoped request (`GET
+ * /test-suite-test-cases?test_case_id=`) and its rendered row are proven live,
+ * not inferred from the forward arm passing. The other two reverse arms go
+ * through the identical branching-resolver code path and are covered at the
+ * backend layer (`test_adr72_amendment1_bidirectional_junctions.py`, both the
+ * unit and integration halves).
  *
  * `TestCase.test_level_id`/`test_type_id` are NOT NULL, so a TestLevel and a
  * TestType are seeded alongside (checked against the real model columns, not
@@ -306,10 +370,25 @@ async function login(page: import("@playwright/test").Page, email: string, passw
   await page.getByLabel(/email/i).fill(email);
   await page.getByLabel(/password/i).fill(password);
   await page.getByRole("button", { name: /log in|sign in/i }).click();
-  await page.waitForURL(new RegExp(`/orgs/${orgId}`));
+  // Login lands on `/dashboard`, which resolves `getMyOrgs()` over the network
+  // and only then replaces the history entry with `/orgs/{id}` — so this waits
+  // on two client-side hops plus a real round trip, not just a form submit.
+  // Measured past 20s on the contended host described above, with `/dashboard`
+  // reached and the org fetch still outstanding.
+  await page.waitForURL(new RegExp(`/orgs/${orgId}`), { timeout: 60000 });
 }
 
-/** Open a detail page and wait for its own record fetch before asserting. */
+/**
+ * Open a detail page and wait for its own record fetch before asserting.
+ *
+ * The trailing container assertion earns its place: a tab-strip assertion made
+ * against the *wrong page* fails as `Received: Array []` — indistinguishable,
+ * from the failure output alone, from a derivation that genuinely stopped
+ * emitting relations. Hit live 2026-09-15 (an edit that dropped one of these
+ * calls entirely cost several full-suite runs before the page snapshot, not
+ * the assertion message, gave it away). Asserting the page is actually on
+ * screen fails at the navigation instead, where the cause is obvious.
+ */
 async function gotoDetail(
   page: import("@playwright/test").Page,
   url: string,
@@ -322,6 +401,9 @@ async function gotoDetail(
     page.goto(url),
   ]);
   expect(response.ok()).toBeTruthy();
+  await expect(page.getByTestId("entity-detail-page")).toBeVisible({
+    timeout: TAB_STRIP_TIMEOUT_MS,
+  });
 }
 
 test.describe("ADR-0071: entity detail relationship tabs", () => {
@@ -343,7 +425,7 @@ test.describe("ADR-0071: entity detail relationship tabs", () => {
   test("TC-ADMIN-050/051/057: a Requirement's detail page shows Info plus its real 1-n and n-n tabs, with linked tabs disambiguated", async ({
     page,
   }) => {
-    test.setTimeout(90000);
+    test.setTimeout(PER_TEST_TIMEOUT_MS);
     const fixture = seedFixture();
     try {
       await login(page, fixture.orgAdmin.email, fixture.orgAdmin.password, fixture.orgId);
@@ -355,19 +437,22 @@ test.describe("ADR-0071: entity detail relationship tabs", () => {
 
       // Info is first and selected on arrival, with ADR-0070's field list under it.
       const tabs = page.getByRole("tab");
-      await expect(tabs.first()).toHaveText("Info");
+      await expect(tabs.first()).toHaveText("Info", { timeout: TAB_STRIP_TIMEOUT_MS });
       await expect(tabs.first()).toHaveAttribute("aria-selected", "true");
       await expect(page.getByTestId("entity-detail-fields")).toBeVisible();
 
       // The real derived tab set for `requirements`, in the derivation's own
       // deterministic order (children first, then links, each alphabetical).
-      await expect(tabs).toHaveText([
-        "Info",
-        "Risk items",
-        "Test conditions",
-        "Test cases (linked)",
-        "Test conditions (linked)",
-      ]);
+      await expect(tabs).toHaveText(
+        [
+          "Info",
+          "Risk items",
+          "Test conditions",
+          "Test cases (linked)",
+          "Test conditions (linked)",
+        ],
+        { timeout: TAB_STRIP_TIMEOUT_MS },
+      );
 
       // TC-ADMIN-051's exclusion half: `Requirement.project_id` is a
       // many-to-one pointing at its parent Project. It renders as a field...
@@ -423,7 +508,7 @@ test.describe("ADR-0071: entity detail relationship tabs", () => {
   test("TC-ADMIN-052/054: a one-to-many tab lists the real child rows scoped to this record and appears in the URL", async ({
     page,
   }) => {
-    test.setTimeout(90000);
+    test.setTimeout(PER_TEST_TIMEOUT_MS);
     const fixture = seedFixture();
     try {
       await login(page, fixture.orgAdmin.email, fixture.orgAdmin.password, fixture.orgId);
@@ -486,24 +571,38 @@ test.describe("ADR-0071: entity detail relationship tabs", () => {
   test("TC-ADMIN-053: a many-to-many tab lists link rows but a row click opens the far entity's detail page", async ({
     page,
   }) => {
-    test.setTimeout(90000);
+    test.setTimeout(PER_TEST_TIMEOUT_MS);
     const fixture = seedFixture();
     try {
       await login(page, fixture.orgAdmin.email, fixture.orgAdmin.password, fixture.orgId);
 
       // First, the tab set of the *other* both-kinds entity. Tabs are derived
       // from the schema, not from data, so this needs no Defect row behind it.
+      //
+      // ADR-0072 Amendment 1: this was `["Info", "Attachments", "Test steps",
+      // "Defects (linked)"]` while all six junctions scoped from one end only.
+      // `TestCase` is the entity three separate junctions point at, and it
+      // could show none of them; widening every `scope_field` to the branching
+      // 2-tuple emits the reverse arm of each, so three more `" (linked)"` tabs
+      // appear. Still an exact, positional list — children alphabetical first,
+      // then links alphabetical (`derive_entity_relations`' own sort key).
       await gotoDetail(
         page,
         `/projects/${fixture.projectId}/admin/test-cases/${fixture.testCaseId}`,
         "test-cases",
       );
-      await expect(page.getByRole("tab")).toHaveText([
-        "Info",
-        "Attachments",
-        "Test steps",
-        "Defects (linked)",
-      ]);
+      await expect(page.getByRole("tab")).toHaveText(
+        [
+          "Info",
+          "Attachments",
+          "Test steps",
+          "Defects (linked)",
+          "Requirements (linked)",
+          "Test conditions (linked)",
+          "Test suites (linked)",
+        ],
+        { timeout: TAB_STRIP_TIMEOUT_MS },
+      );
 
       // Now the row-click case, on the Requirement -> TestCase link (same
       // `targetField` code path, no TestExecution/Defect chain to seed).
@@ -554,7 +653,7 @@ test.describe("ADR-0071: entity detail relationship tabs", () => {
    * claim that makes a relationship tab genuinely shareable.
    */
   test("TC-ADMIN-054: a ?tab= deep link opens that relationship tab directly on load", async ({ page }) => {
-    test.setTimeout(90000);
+    test.setTimeout(PER_TEST_TIMEOUT_MS);
     const fixture = seedFixture();
     try {
       await login(page, fixture.orgAdmin.email, fixture.orgAdmin.password, fixture.orgId);
@@ -582,7 +681,7 @@ test.describe("ADR-0071: entity detail relationship tabs", () => {
    * declares an FK to it.
    */
   test("TC-ADMIN-050: an entity with no derived relationships renders no tab strip", async ({ page }) => {
-    test.setTimeout(90000);
+    test.setTimeout(PER_TEST_TIMEOUT_MS);
     const fixture = seedFixture();
     try {
       await login(page, fixture.orgAdmin.email, fixture.orgAdmin.password, fixture.orgId);
@@ -629,22 +728,38 @@ test.describe("ADR-0071: entity detail relationship tabs", () => {
    * follows `targetField` through to the far `TestCase` — plus `TestPlan`,
    * whose gap was the more dangerous shape (a tab strip that already looked
    * complete with three tabs, silently missing a fourth).
+   *
+   * **ADR-0072 Amendment 1 moved one of the two lists asserted here.**
+   * `test-suites` was `["Info", "Test cases (linked)"]` under Decision §3's
+   * single-column `scope_field`; widening `test_plan_test_suite` to the
+   * branching 2-tuple emits its reverse arm too, so `TestSuite` also gains
+   * "Test plans (linked)". `test-plans` is unchanged — it was already the
+   * junction's scope side, which is exactly the asymmetry the amendment
+   * removes. The forward direction proven below is now half the story; the
+   * reverse direction from `TestCase`'s own page gets its own test, since a
+   * derived tab existing and a derived tab actually serving rows are separate
+   * claims (the branching resolver is the half that can 404 a perfectly
+   * well-derived tab).
    */
   test("TC-ADMIN-060: the junction tables registered by ADR-0072 render real relationship tabs", async ({
     page,
   }) => {
-    test.setTimeout(90000);
+    test.setTimeout(PER_TEST_TIMEOUT_MS);
     const fixture = seedFixture();
     try {
       await login(page, fixture.orgAdmin.email, fixture.orgAdmin.password, fixture.orgId);
 
-      // --- TestSuite: an empty strip before ADR-0072, one tab after ----------
+      // --- TestSuite: an empty strip before ADR-0072, two tabs after --------
+      // Amendment 1 adds the second: `test_plan_test_suite`'s reverse arm.
       await gotoDetail(
         page,
         `/projects/${fixture.projectId}/admin/test-suites/${fixture.testSuiteId}`,
         "test-suites",
       );
-      await expect(page.getByRole("tab")).toHaveText(["Info", "Test cases (linked)"]);
+      await expect(page.getByRole("tab")).toHaveText(
+        ["Info", "Test cases (linked)", "Test plans (linked)"],
+        { timeout: TAB_STRIP_TIMEOUT_MS },
+      );
       // The strip is a real card header, same Amendment-1 markup every other
       // tabbed detail page uses — not a special case bolted on.
       await expect(page.getByTestId("entity-detail-tablist")).toHaveClass(/\bcard-header-tabs\b/);
@@ -667,7 +782,7 @@ test.describe("ADR-0071: entity detail relationship tabs", () => {
       // through `EntityTable`'s own fk-label lookup, which is only possible
       // because `test_case_id` carries a `ref_entity` in the new config.
       const suitePanel = page.getByRole("tabpanel");
-      await expect(suitePanel.getByText(fixture.testCaseTitle)).toBeVisible();
+      await expect(suitePanel.getByText(fixture.testCaseTitle)).toBeVisible({ timeout: 15000 });
       // ADR-0071 Decision §6: the scoping column is suppressed, so the suite's
       // own id — identical on every row here by construction — is not a column.
       await expect(suitePanel.getByText(fixture.testSuiteId)).toHaveCount(0);
@@ -686,13 +801,10 @@ test.describe("ADR-0071: entity detail relationship tabs", () => {
         `/projects/${fixture.projectId}/admin/test-plans/${fixture.testPlanId}`,
         "test-plans",
       );
-      await expect(page.getByRole("tab")).toHaveText([
-        "Info",
-        "Entry/exit criteria",
-        "Risk items",
-        "Test cycles",
-        "Test suites (linked)",
-      ]);
+      await expect(page.getByRole("tab")).toHaveText(
+        ["Info", "Entry/exit criteria", "Risk items", "Test cycles", "Test suites (linked)"],
+        { timeout: TAB_STRIP_TIMEOUT_MS },
+      );
 
       const [planListResponse] = await Promise.all([
         page.waitForResponse(
@@ -705,7 +817,103 @@ test.describe("ADR-0071: entity detail relationship tabs", () => {
       expect(new URL(planListResponse.url()).searchParams.get("test_plan_id")).toBe(
         fixture.testPlanId,
       );
-      await expect(page.getByRole("tabpanel").getByText(fixture.testSuiteName)).toBeVisible();
+      await expect(page.getByRole("tabpanel").getByText(fixture.testSuiteName)).toBeVisible({
+        timeout: 15000,
+      });
+    } finally {
+      cleanup(fixture);
+    }
+  });
+
+  /**
+   * ADR-0072 **Amendment 1** — the reverse direction, end to end, in a real
+   * browser. This is the case that started the amendment: `GET
+   * /entities/test-cases/schema` carried no `test_suite` relation at all, so a
+   * TestCase's detail page could not show the suites it belongs to even though
+   * the join rows were right there.
+   *
+   * **Why this needs its own live test rather than following from the test
+   * above.** The forward direction (`TestSuite` -> its TestCases) already
+   * passed before the amendment, and the amendment changed *no line* of
+   * `derive_entity_relations` — widening `scope_field` to the branching
+   * 2-tuple emits the reverse relation for free. What it does NOT get for free
+   * is the **resolver**: `crud_factory._resolve_scope_for_write` hands
+   * `resolve_org_id` a `types.SimpleNamespace` carrying only the one arm the
+   * caller actually supplied, so a config widened to two arms but left with a
+   * single-arm walk derives a perfectly good relation, renders a perfectly
+   * good tab, and then 404s every request that tab fires. A tab-strip
+   * assertion alone cannot tell those two states apart — only firing the real
+   * request and reading real rows out of the response can, which is exactly
+   * the division of labour this file's own header docstring claims as its job.
+   *
+   * The backend layer proves the same round trip without a browser
+   * (`test_adr72_amendment1_bidirectional_junctions.py`, unit + integration);
+   * neither substitutes for the other, per that file's own note.
+   */
+  test("ADR-0072 Amendment 1: a TestCase's reverse-direction 'Test suites (linked)' tab fetches and lists its real link rows", async ({
+    page,
+  }) => {
+    test.setTimeout(PER_TEST_TIMEOUT_MS);
+    const fixture = seedFixture();
+    try {
+      await login(page, fixture.orgAdmin.email, fixture.orgAdmin.password, fixture.orgId);
+      await gotoDetail(
+        page,
+        `/projects/${fixture.projectId}/admin/test-cases/${fixture.testCaseId}`,
+        "test-cases",
+      );
+
+      // The tab exists at all — the half that was missing entirely before the
+      // amendment, and the same junction entity the TestSuite page tabs to
+      // from its other end.
+      const suitesTab = page.getByTestId("entity-detail-tab-test-suite-test-cases");
+      await expect(suitesTab).toBeVisible({ timeout: TAB_STRIP_TIMEOUT_MS });
+      await expect(suitesTab).toHaveText("Test suites (linked)");
+
+      // Clicking it fires the REVERSE arm's scoped list request. Asserted on
+      // the real network request, not inferred from what rendered: an unscoped
+      // `GET /test-suite-test-cases` is a 422 by design (NFR-71), and a
+      // single-arm resolver would 404 this exact call while the tab above
+      // still looked perfectly correct.
+      const [reverseListResponse] = await Promise.all([
+        page.waitForResponse(
+          (res) =>
+            res.url().includes("/api/v1/test-suite-test-cases?") && res.request().method() === "GET",
+        ),
+        suitesTab.click(),
+      ]);
+      expect(reverseListResponse.ok()).toBeTruthy();
+      expect(new URL(reverseListResponse.url()).searchParams.get("test_case_id")).toBe(
+        fixture.testCaseId,
+      );
+      // Scoped by the new arm, and *only* by it — not the pre-amendment one.
+      expect(new URL(reverseListResponse.url()).searchParams.get("test_suite_id")).toBeNull();
+
+      // The seeded `TestSuiteTestCase` really lists, with the far TestSuite's
+      // name resolved through `EntityTable`'s fk-label lookup — possible only
+      // because `test_suite_id` carries its own `ref_entity`/`label_field`.
+      const panel = page.getByRole("tabpanel");
+      await expect(panel.getByText(fixture.testSuiteName)).toBeVisible({ timeout: 15000 });
+
+      // ADR-0071 Decision §6, now applying to the reverse arm: the scoping
+      // column is what gets suppressed, so it is `Test case` that is absent
+      // here and `Test suite` that remains — the mirror image of the forward
+      // tab asserted above, which is what proves the suppression follows the
+      // relation's own `scopeField` rather than a hardcoded side.
+      const headers = await page.getByRole("columnheader").allTextContents();
+      expect(headers).toContain("Test suite");
+      expect(headers).not.toContain("Test case");
+
+      // TC-ADMIN-054's URL half holds for a reverse tab too.
+      await expect(page).toHaveURL(/\?tab=test-suite-test-cases/);
+
+      // And the row click follows `targetField` the other way — to the far
+      // TestSuite, not to the link row's own detail page.
+      await panel.getByText(fixture.testSuiteName).click();
+      await page.waitForURL(
+        `**/projects/${fixture.projectId}/admin/test-suites/${fixture.testSuiteId}`,
+      );
+      await expect(page.getByTestId("entity-detail-fields")).toBeVisible();
     } finally {
       cleanup(fixture);
     }
