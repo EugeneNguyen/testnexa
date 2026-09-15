@@ -54,12 +54,20 @@ from app.mcp.tools.entity_tools import (
     generated_tool_names,
 )
 
-#: The four resources with no `CrudEntityConfig` at all — 100% bespoke REST
-#: surfaces (`Release`'s own ADR-0027 note; the two join-table "add" routes;
-#: REQ-5/ADR-0069's `link-requirement` retrofit route, added same posture as
-#: the two join-table pseudo-resources). They therefore get no `describe`
-#: tool, and their whole registry row is a `BESPOKE_EXTRA_ACTIONS` entry.
-_EXPECTED_CONFIGLESS = {"release", "test_suite_test_case", "test_plan_test_suite", "test_case_link_requirement"}
+#: The two resources with no `CrudEntityConfig` at all — 100% bespoke REST
+#: surfaces (`Release`'s own ADR-0027 note; REQ-5/ADR-0069's `link-requirement`
+#: retrofit route). They therefore get no `describe` tool, and their whole
+#: registry row is a `BESPOKE_EXTRA_ACTIONS` entry.
+#:
+#: ADR-0072 removed `test_suite_test_case` and `test_plan_test_suite` from this
+#: set. Their bespoke `create` executors are untouched and still come from
+#: `BESPOKE_EXTRA_ACTIONS` — what changed is that the junction tables now *also*
+#: have a read-only `CrudEntityConfig` (so `list`/`get`/`describe` are generic),
+#: which is what makes their many-to-many relationships derivable at all
+#: (ADR-0071's `derive_entity_relations` walks `ALL_ENTITY_CONFIGS`). Being in
+#: this set was the symptom, not the cause: a config-less resource is invisible
+#: to every registry-derived surface, the relationship graph included.
+_EXPECTED_CONFIGLESS = {"release", "test_case_link_requirement"}
 
 
 def _registered() -> dict[str, object]:
@@ -263,19 +271,30 @@ def test_generated_descriptions_carry_the_facts_adr_0067_decision_7_promises() -
 def test_generated_tool_count_is_the_number_adr_0067_states() -> None:
     """ADR-0068 stated 146 tools (119 CRUD actions across 30 resources + 27
     `describe`); REQ-5/ADR-0069's `test_case_link_requirement` pseudo-resource
-    (found merging the two branches) adds one more resource and one more CRUD
-    action, making it 147 (120 + 27) across 31 resources. Every other
-    assertion here is a *derived* diff on purpose (Decision §8 — a hardcoded
-    name list would drift with the thing it polices), which means none of
-    them would notice if the derivation itself and the ADR's published number
+    (found merging the two branches) added one more resource and one more CRUD
+    action, making it 147 (120 + 27) across 31 resources.
+
+    **ADR-0072** then gave `test_suite_test_case`/`test_plan_test_suite` a
+    read-only `CrudEntityConfig` each. The *resource* count is unchanged at 31 —
+    both were already registry rows, as config-less bespoke `create`-only
+    pseudo-resources — but each gains a generic `list` + `get` (+2 CRUD actions
+    each, 120 -> 124) and a `describe` (27 -> 29), for 153 total. Worth noting
+    the resource count staying put is exactly why this story's gap was easy to
+    miss from the MCP side: both junctions were *already advertised* as MCP
+    tools, so nothing here looked incomplete, while the REST/relationship
+    surface had no config to derive from.
+
+    Every other assertion here is a *derived* diff on purpose (Decision §8 — a
+    hardcoded name list would drift with the thing it polices), which means none
+    of them would notice if the derivation itself and the ADR's published number
     silently diverged. This one literal anchor catches that, and is cheap to
-    update deliberately when an entity is added — unlike a 147-name list,
-    which would have to be re-typed."""
+    update deliberately when an entity is added — unlike a 153-name list, which
+    would have to be re-typed."""
     describe_count = len(ENTITY_CONFIGS_BY_RESOURCE)
     crud_count = sum(len(set(entry) - {"describe"}) for entry in TOOL_REGISTRY.values())
-    assert len(TOOL_REGISTRY) == 31, "resource count changed — update ADR-0068/ADR-0069 and this anchor together"
-    assert (crud_count, describe_count) == (120, 27), (crud_count, describe_count)
-    assert len(_registered()) == crud_count + describe_count == 147
+    assert len(TOOL_REGISTRY) == 31, "resource count changed — update ADR-0068/ADR-0069/ADR-0072 and this anchor together"
+    assert (crud_count, describe_count) == (124, 29), (crud_count, describe_count)
+    assert len(_registered()) == crud_count + describe_count == 153
 
 
 def test_no_tool_takes_a_resource_argument() -> None:

@@ -4,6 +4,7 @@
 - **Date:** 2026-09-15
 - **Deciders:** xuanbinh91@gmail.com (CTO)
 - **Extends:** [ADR-0053](0053-tabler-install-phase-1-cdn.md)-era backend-driven entity schema as delivered by [ADR-0055](0055-admin-3-backend-driven-entity-schema.md); builds on [ADR-0005](0005-traceability-link-dedicated-join-tables.md)'s dedicated link tables and [ADR-0022](0022-generic-crud-router-factory.md)'s scoped list routes
+- **Completed by:** [ADR-0072](0072-junction-table-registry-completeness.md) (2026-09-15) — this ADR's derivation was correct but incomplete in one specific way, found the same day: it enumerates `ALL_ENTITY_CONFIGS`, and two real junction tables had no entry there, so two genuine many-to-many relationships produced no tab (`TestSuite`'s strip was empty entirely). Decision §1's "a derivation cannot omit what it enumerates" and Decision §4's excluded-set-is-exhaustive claim are both corrected in place below. **Nothing in this ADR's Decision is reversed** — the derivation rule, the exclusion rules, the `?tab=` posture, the hidden scoping column and the read-only stance all stand; ADR-0072 registers the missing entities and moves the completeness assertion down to the model layer.
 - **Partially supersedes:** [ADR-0070](0070-generic-entity-detail-page.md) — its Consequences clause "related-record panels ... are deliberately out of scope". Every other part of ADR-0070 (the page itself, the unfiltered field list, row-click entry, `detailPath` precedence, the shared value renderer) stands unchanged.
 
 ## Context
@@ -61,6 +62,18 @@ This is the direct answer to `backend/CLAUDE.md`'s registry-completeness rule
 relationship map is exactly the shape that silently omits one entity and simply
 never renders its tab. A derivation cannot omit what it enumerates.
 
+> **Corrected by [ADR-0072](0072-junction-table-registry-completeness.md)
+> (2026-09-15).** That last sentence is true and was load-bearing for the wrong
+> thing. A derivation cannot omit what it enumerates — but this paragraph never
+> examined **the set being enumerated**, and `entity_registry._ALL_CONFIGS` is
+> itself a hand-typed tuple, i.e. exactly the artifact the rule it cites is
+> about. Two junction tables (`test_suite_test_case`, `test_plan_test_suite`)
+> had bespoke membership routes and no `CrudEntityConfig`, so their
+> relationships were invisible here and `TestSuite` rendered no tab strip at
+> all. ADR-0072 registers both and moves the completeness assertion to the
+> model layer (`Base.metadata`), which a model joins by declaration and so
+> cannot be forgotten the way a registry row can.
+
 `all_configs` defaults to the real registry, imported lazily inside the function
 — `entity_registry` imports `crud_factory` at load time, so the dependency must
 stay one-way. The parameter exists for test injection.
@@ -97,7 +110,8 @@ so the FK must be the child's own `scope_field` (or one arm of a branching
 **An FK that is only a `filter_field` is not enough** — the caller would still
 owe the child's unrelated scope value, which a detail page for a different
 entity cannot know. This is a real boundary, not a technicality, and it is why
-12 inbound FKs produce no tab today:
+14 inbound FKs produce no tab today (12 as first written; ADR-0072's two newly
+registered junctions each contribute their own reverse side):
 
 | Excluded relationship | Why |
 |---|---|
@@ -105,7 +119,7 @@ entity cannot know. This is a real boundary, not a technicality, and it is why
 | `TestCondition` → `TestCase`s | `test_condition_id` is neither scope nor filter on `TestCase` |
 | `TestLevel`/`TestType` → `TestCase`s | filter fields only; `TestCase`'s scope is `project_id` |
 | `Environment`/`Release` → `TestCycle`s | `TestCycle`'s scope is `test_plan_id` |
-| Reverse side of all 4 link tables | each link's scope is one of its two FKs, so it lists from that side only |
+| Reverse side of all 6 link tables | each link's scope is one of its two FKs, so it lists from that side only. 4 as first written; ADR-0072 registered `test_suite_test_case` (scope `test_suite_id`, so `TestCase` → suites is excluded) and `test_plan_test_suite` (scope `test_plan_id`, so `TestSuite` → plans is excluded), deliberately matching the existing four rather than widening two of six to a branching 2-tuple |
 | `Project`/`Role` → `RoleAssignment`s | `RoleAssignment` registers no `list` route at all |
 
 **These are flagged, not worked around.** Serving them needs new backend list
@@ -114,6 +128,14 @@ a filter field to a scope) — a per-relationship API decision, not something to
 smuggle into a frontend story. `tests/unit/test_adr71_entity_relations.py`
 asserts this excluded set is the exact complement of the served one, so a future
 entity or FK cannot land in neither bucket.
+
+> **Scope of that guarantee, per [ADR-0072](0072-junction-table-registry-completeness.md):**
+> "a future entity or FK" means one *registered in `ALL_ENTITY_CONFIGS`*. The
+> partition enumerates the same registry the derivation does, so a model with no
+> config contributes to neither side and the assertion holds vacuously — which
+> is precisely how the two missing junctions went unnoticed. The model-layer
+> partition in `tests/unit/test_adr72_registry_completeness.py` is what closes
+> that outer ring.
 
 ### 5. Many-to-many tabs list the link rows but are labelled and navigated by the far entity
 
@@ -193,9 +215,11 @@ in a story that isn't fixing it.
 - **Positive (side effect).** The MCP `describe` tool serves `relations` too,
   since it shares `derive_entity_schema` — an agent can now discover the
   relationship graph it previously had to infer.
-- **Neutral / accepted.** 12 inbound FKs produce no tab (Decision §4). This is a
-  *backend list-capability* gap surfaced by this story, not created by it, and
-  it is asserted rather than assumed.
+- **Neutral / accepted.** 12 inbound FKs produce no tab (Decision §4) — 14 after
+  [ADR-0072](0072-junction-table-registry-completeness.md) registered two more
+  link tables, each adding its own reverse side. This is a *backend
+  list-capability* gap surfaced by this story, not created by it, and it is
+  asserted rather than assumed.
 - **Neutral / accepted.** Relationship tabs are read-only — no create, no
   link/unlink, no inline edit. Every related record is fully editable on its own
   screen, one click away. Creating a traceability link from here would be a

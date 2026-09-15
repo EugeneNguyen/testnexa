@@ -17,6 +17,22 @@ every inbound FK in the whole registry is partitioned — served, or excluded
 with a named, asserted reason — and the partition is asserted total. A new
 entity, or a new FK on an existing one, lands in neither bucket and fails
 loudly here rather than quietly not rendering a tab.
+
+**The gap that partition could not see, and where it is now closed
+([ADR-0072](../../../docs/adr/0072-junction-table-registry-completeness.md)).**
+"every inbound FK in the whole registry" is exactly as complete as the registry
+is. `_all_inbound_fks()` below walks `ALL_ENTITY_CONFIGS`, and so does the
+derivation it is checking — so an entity with **no config at all** contributes
+no FKs to either side, and the partition holds *vacuously* while that entity's
+relationships silently render no tab. That is not hypothetical: it was true of
+`TestSuiteTestCase` and `TestPlanTestSuite` for this whole file's first
+revision. ADR-0071 Decision §1's claim that "a derivation cannot omit what it
+enumerates" is sound; what it does not cover is the set being enumerated, and
+`entity_registry._ALL_CONFIGS` is hand-authored — the one hand-typed list in the
+chain, and therefore the one `backend/CLAUDE.md`'s registry-completeness note
+actually applies to. The guard for *that* is one level down and lives in
+`test_adr72_registry_completeness.py`, which partitions the **model** layer
+(`Base.metadata`) instead of the config layer.
 """
 
 import pytest
@@ -40,25 +56,57 @@ def _by_entity(entity_key: str) -> dict[str, dict]:
     return {r["entity"]: r for r in _relations(entity_key)}
 
 
+#: Every registered entity `is_link_entity` classifies as a many-to-many join
+#: table. Six since [ADR-0072](../../../docs/adr/0072-junction-table-registry-completeness.md)
+#: registered `TestSuiteTestCase`/`TestPlanTestSuite`; the first four are
+#: ADR-0005's traceability links.
+EXPECTED_LINK_ENTITIES = {
+    "requirement-test-case-links",
+    "requirement-test-condition-links",
+    "test-condition-test-case-links",
+    "test-case-defect-links",
+    # ADR-0072. Neither table name ends in `_link` — see
+    # `test_structural_rule_is_not_the_table_naming_convention` below.
+    "test-suite-test-cases",
+    "test-plan-test-suites",
+}
+
+
 class TestLinkEntityClassifier:
     """**TC-ADMIN-056.** `is_link_entity` decides many-to-many-ness *structurally* (exactly two
-    FKs, no create/update) rather than by table name. These two tests pin that
+    FKs, no create/update) rather than by table name. These tests pin that
     rule against the `*_link` naming convention in BOTH directions, so a future
     entity drifting into or out of the shape fails here rather than silently
     gaining or losing a many-to-many tab."""
 
-    def test_structural_rule_selects_exactly_the_four_adr_0005_link_tables(self) -> None:
+    def test_structural_rule_selects_exactly_the_expected_link_entities(self) -> None:
         structural = {k for k, c in ALL_ENTITY_CONFIGS.items() if is_link_entity(c)}
+        assert structural == EXPECTED_LINK_ENTITIES
+
+    def test_structural_rule_is_not_the_table_naming_convention(self) -> None:
+        """**TC-ADMIN-059.** ADR-0071 Decision §3 chose a structural classifier over a `_link`
+        suffix because "matching on a `_link` suffix would be a naming
+        convention masquerading as a contract." Until ADR-0072 the two sets
+        happened to be identical, so nothing demonstrated the choice mattered —
+        this test is the demonstration: `test_suite_test_case` and
+        `test_plan_test_suite` are genuine ADR-0005-shaped join tables (exactly
+        two FK fields, no `create`/`update` in their REST surface) whose names
+        carry no `_link` suffix at all, and they are classified correctly
+        *because* the rule is structural. A name-based rule would have silently
+        given them no many-to-many tab."""
         by_table_name = {
             k for k, c in ALL_ENTITY_CONFIGS.items() if c.model.__tablename__.endswith("_link")
         }
-        assert structural == by_table_name
-        assert structural == {
-            "requirement-test-case-links",
-            "requirement-test-condition-links",
-            "test-condition-test-case-links",
-            "test-case-defect-links",
+        assert by_table_name < EXPECTED_LINK_ENTITIES, "naming convention is no longer a subset"
+        assert EXPECTED_LINK_ENTITIES - by_table_name == {
+            "test-suite-test-cases",
+            "test-plan-test-suites",
         }
+        for key in EXPECTED_LINK_ENTITIES - by_table_name:
+            config = ALL_ENTITY_CONFIGS[key]
+            assert not config.model.__tablename__.endswith("_link")
+            assert len(fk_fields_of(config)) == 2
+            assert not ({"create", "update"} & (config.full_methods or config.methods))
 
     @pytest.mark.parametrize(
         ("entity_key", "why_not"),
@@ -132,6 +180,43 @@ class TestManyToManyRelations:
         assert sorted(labels) == ["Test conditions", "Test conditions (linked)"]
         assert len(set(labels)) == len(labels)
 
+    def test_test_suite_reaches_test_cases_through_its_membership_junction(self) -> None:
+        """**TC-ADMIN-060.** ADR-0072's headline fix. `TestSuite`'s relation set was literally
+        empty before its junction table was registered, even though REQ-4's
+        bespoke routes populate that table — the derivation walks
+        `ALL_ENTITY_CONFIGS`, and `test_suite_test_case` had no entry in it."""
+        relations = _relations("test-suites")
+        assert relations != [], "TestSuite must no longer have an empty relation set"
+        relation = _by_entity("test-suites")["test-suite-test-cases"]
+        assert relation["kind"] == "many-to-many"
+        assert relation["scopeField"] == "test_suite_id"
+        assert relation["label"] == "Test cases (linked)"
+        assert relation["targetEntity"] == "test-cases"
+        assert relation["targetField"] == "test_case_id"
+
+    def test_test_plan_reaches_test_suites_through_its_scope_junction(self) -> None:
+        """**TC-ADMIN-060** (second half). `TestPlan` already had three one-to-many tabs, so unlike
+        `TestSuite` its gap was invisible as a *missing* tab rather than an empty
+        strip — the more dangerous shape of the same bug."""
+        relation = _by_entity("test-plans")["test-plan-test-suites"]
+        assert relation["kind"] == "many-to-many"
+        assert relation["scopeField"] == "test_plan_id"
+        assert relation["label"] == "Test suites (linked)"
+        assert relation["targetEntity"] == "test-suites"
+        assert relation["targetField"] == "test_suite_id"
+
+    def test_registering_the_junctions_did_not_change_test_cases_own_tabs(self) -> None:
+        """**TC-ADMIN-061.** Both junctions are scoped on the *parent* side, so neither adds a tab
+        to `TestCase` or to any other entity. Pinned because `e2e/tests/
+        admin7-entity-relation-tabs.spec.ts` asserts `test-cases`' exact tab
+        list, and a junction scoped the other way would have silently broken it
+        — the scope-side choice is load-bearing, not cosmetic."""
+        assert [r["label"] for r in _relations("test-cases")] == [
+            "Attachments",
+            "Test steps",
+            "Defects (linked)",
+        ]
+
     def test_no_entity_has_two_tabs_with_the_same_label(self) -> None:
         """**TC-ADMIN-057** (generalized half). Generalizes the case above across the whole registry — a duplicate
         label is a tab strip the user cannot tell apart."""
@@ -196,6 +281,18 @@ EXPECTED_EXCLUSIONS: dict[tuple[str, str], str] = {
     ("requirement-test-case-links", "test_case_id"): "link scope is requirement_id",
     ("test-condition-test-case-links", "test_case_id"): "link scope is test_condition_id",
     ("test-case-defect-links", "defect_id"): "link scope is test_case_id",
+    # ADR-0072's two newly-registered junctions, same rule. Each is scoped on
+    # the side its own bespoke membership routes are nested under
+    # (`/test-suites/{id}/test-cases`, `/test-plans/{id}/test-suites`), so the
+    # reverse direction — a `TestCase` listing the suites containing it, a
+    # `TestSuite` listing the plans including it — is excluded exactly as the
+    # four traceability links' reverse sides are. ADR-0072 Decision §3
+    # deliberately did NOT widen these to a branching 2-tuple scope: doing it
+    # for two tables and not the other four would make the rule incoherent, and
+    # ADR-0071's own Alternatives already rejected relaxing the scope
+    # requirement as a per-relationship API decision of its own.
+    ("test-suite-test-cases", "test_case_id"): "link scope is test_suite_id",
+    ("test-plan-test-suites", "test_suite_id"): "link scope is test_plan_id",
     # Child registers no `list` route at all.
     ("role-assignments", "project_id"): "role-assignments has no list route",
     ("role-assignments", "role_id"): "role-assignments has no list route",

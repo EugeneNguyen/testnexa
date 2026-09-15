@@ -52,6 +52,15 @@ interface SeededFixture {
   /** `TestCase` requires both catalogs; seeded and cleaned up with the rest. */
   testLevelId: string;
   testTypeId: string;
+  /**
+   * ADR-0072. Linked to the TestCase via `TestSuiteTestCase` — the junction
+   * that had no `CrudEntityConfig`, so `TestSuite` derived *zero* tabs.
+   */
+  testSuiteId: string;
+  testSuiteName: string;
+  /** Includes the TestSuite via `TestPlanTestSuite` — the second such junction. */
+  testPlanId: string;
+  testPlanIdentifier: string;
 }
 
 /**
@@ -82,8 +91,11 @@ from sqlalchemy import select
 from app.core.security import hash_password
 from app.db.session import AsyncSessionLocal
 from app.models.actor import User
-from app.models.assets import Requirement, TestCase, TestCondition, TestConditionPriority, TestStep
+from app.models.assets import (
+    Requirement, TestCase, TestCondition, TestConditionPriority, TestStep, TestSuite, TestSuiteTestCase,
+)
 from app.models.auth import AuthIdentity, AuthProvider
+from app.models.planning import TestPlan, TestPlanTestSuite
 from app.models.project import Project
 from app.models.rbac import Role, RoleAssignment
 from app.models.taxonomy import TestLevel, TestType
@@ -162,6 +174,29 @@ async def main():
         session.add(step)
         await session.flush()
 
+        # ADR-0072: the two junction tables that had no CrudEntityConfig. Rows
+        # are inserted directly here rather than through REQ-4's/PLAN-1's
+        # bespoke routes on purpose -- this spec's subject is what the detail
+        # page renders, and the backend integration suite
+        # (test_adr72_junction_relations.py) already covers the real-write-path
+        # round trip. A direct insert keeps the fixture one transaction.
+        suite_name = f"ADMIN-7 Suite {suffix}"
+        suite = TestSuite(project_id=project.id, name=suite_name, purpose="ADR-0072 relation tab fixture")
+        session.add(suite)
+        await session.flush()
+        session.add(TestSuiteTestCase(test_suite_id=suite.id, test_case_id=test_case.id))
+
+        plan_identifier = f"ADMIN-7 Plan {suffix}"
+        plan = TestPlan(
+            project_id=project.id,
+            created_by_actor_id=org_admin.actor_id,
+            identifier=plan_identifier,
+        )
+        session.add(plan)
+        await session.flush()
+        session.add(TestPlanTestSuite(test_plan_id=plan.id, test_suite_id=suite.id))
+        await session.flush()
+
         await session.commit()
         print(json.dumps({
             "orgAdmin": {"email": email, "password": PASSWORD, "userId": str(org_admin.actor_id)},
@@ -177,6 +212,10 @@ async def main():
             "testStepAction": step_action,
             "testLevelId": str(level.id),
             "testTypeId": str(test_type.id),
+            "testSuiteId": str(suite.id),
+            "testSuiteName": suite_name,
+            "testPlanId": str(plan.id),
+            "testPlanIdentifier": plan_identifier,
         }))
 
 asyncio.run(main())
@@ -189,8 +228,9 @@ from sqlalchemy import delete
 
 from app.db.session import AsyncSessionLocal
 from app.models.actor import Actor, User
-from app.models.assets import Requirement, TestCase, TestCondition, TestStep
+from app.models.assets import Requirement, TestCase, TestCondition, TestStep, TestSuite, TestSuiteTestCase
 from app.models.auth import AuthIdentity, RefreshToken
+from app.models.planning import TestPlan, TestPlanTestSuite
 from app.models.project import Project
 from app.models.rbac import RoleAssignment
 from app.models.taxonomy import TestLevel, TestType
@@ -198,11 +238,16 @@ from app.models.tenancy import Organization, OrgMembership
 from app.models.trace import RequirementTestCaseLink
 
 (org_admin_id, org_id, project_id, requirement_id, condition_id, test_case_id,
- step_id, level_id, type_id) = sys.argv[1:10]
+ step_id, level_id, type_id, suite_id, plan_id) = sys.argv[1:12]
 
 async def main():
     async with AsyncSessionLocal() as session:
         await session.execute(delete(RequirementTestCaseLink).where(RequirementTestCaseLink.requirement_id == requirement_id))
+        # ADR-0072's two junctions, before the rows on either side of them.
+        await session.execute(delete(TestPlanTestSuite).where(TestPlanTestSuite.test_plan_id == plan_id))
+        await session.execute(delete(TestSuiteTestCase).where(TestSuiteTestCase.test_suite_id == suite_id))
+        await session.execute(delete(TestPlan).where(TestPlan.id == plan_id))
+        await session.execute(delete(TestSuite).where(TestSuite.id == suite_id))
         await session.execute(delete(TestStep).where(TestStep.id == step_id))
         await session.execute(delete(TestCase).where(TestCase.id == test_case_id))
         await session.execute(delete(TestCondition).where(TestCondition.id == condition_id))
@@ -249,6 +294,8 @@ function cleanup(fixture: SeededFixture): void {
       fixture.testStepId,
       fixture.testLevelId,
       fixture.testTypeId,
+      fixture.testSuiteId,
+      fixture.testPlanId,
     ],
     { input: CLEANUP_SCRIPT, encoding: "utf-8" },
   );
@@ -557,6 +604,108 @@ test.describe("ADR-0071: entity detail relationship tabs", () => {
       await expect(detailPage.locator(".tab-content")).toHaveCount(0);
       await expect(detailPage.locator(".tab-pane")).toHaveCount(0);
       await expect(page.getByRole("tabpanel")).toHaveCount(0);
+    } finally {
+      cleanup(fixture);
+    }
+  });
+
+  /**
+   * TC-ADMIN-060 — ADR-0072, the gap ADR-0071's own completeness test could not
+   * see.
+   *
+   * `TestSuite` is the sharpest case in the whole feature, and the reason it is
+   * worth a live assertion rather than only a backend one: before ADR-0072 this
+   * page rendered **no tab strip at all** — `getByRole("tab")` returned 0, the
+   * card had no header, and the page was indistinguishable from `TestStep`'s
+   * genuinely-relationless one asserted directly above. Nothing was broken;
+   * `test_suite_test_case` simply had no `CrudEntityConfig`, so the derivation
+   * had nothing to walk. A relationship that renders nothing and a relationship
+   * that does not exist look identical from the browser, which is exactly why
+   * the model-layer guard (`test_adr72_registry_completeness.py`) had to be
+   * added alongside the fix.
+   *
+   * Asserts the full chain a user experiences: the strip now exists, its tab
+   * fires the real scoped list request, real rows render, and a row click
+   * follows `targetField` through to the far `TestCase` — plus `TestPlan`,
+   * whose gap was the more dangerous shape (a tab strip that already looked
+   * complete with three tabs, silently missing a fourth).
+   */
+  test("TC-ADMIN-060: the junction tables registered by ADR-0072 render real relationship tabs", async ({
+    page,
+  }) => {
+    test.setTimeout(90000);
+    const fixture = seedFixture();
+    try {
+      await login(page, fixture.orgAdmin.email, fixture.orgAdmin.password, fixture.orgId);
+
+      // --- TestSuite: an empty strip before ADR-0072, one tab after ----------
+      await gotoDetail(
+        page,
+        `/projects/${fixture.projectId}/admin/test-suites/${fixture.testSuiteId}`,
+        "test-suites",
+      );
+      await expect(page.getByRole("tab")).toHaveText(["Info", "Test cases (linked)"]);
+      // The strip is a real card header, same Amendment-1 markup every other
+      // tabbed detail page uses — not a special case bolted on.
+      await expect(page.getByTestId("entity-detail-tablist")).toHaveClass(/\bcard-header-tabs\b/);
+
+      const [suiteListResponse] = await Promise.all([
+        page.waitForResponse(
+          (res) =>
+            res.url().includes("/api/v1/test-suite-test-cases?") && res.request().method() === "GET",
+        ),
+        page.getByTestId("entity-detail-tab-test-suite-test-cases").click(),
+      ]);
+      expect(suiteListResponse.ok()).toBeTruthy();
+      // The scoped request is the one the relation describes — a plain
+      // unscoped `GET /test-suite-test-cases` is a 422 by design (NFR-71).
+      expect(new URL(suiteListResponse.url()).searchParams.get("test_suite_id")).toBe(
+        fixture.testSuiteId,
+      );
+
+      // A real row, not an empty table: the far TestCase's title resolves
+      // through `EntityTable`'s own fk-label lookup, which is only possible
+      // because `test_case_id` carries a `ref_entity` in the new config.
+      const suitePanel = page.getByRole("tabpanel");
+      await expect(suitePanel.getByText(fixture.testCaseTitle)).toBeVisible();
+      // ADR-0071 Decision §6: the scoping column is suppressed, so the suite's
+      // own id — identical on every row here by construction — is not a column.
+      await expect(suitePanel.getByText(fixture.testSuiteId)).toHaveCount(0);
+
+      // ADR-0071 Decision §5: the listed row is a link row, but the click
+      // follows `targetField` to the far record's own detail page.
+      await suitePanel.getByText(fixture.testCaseTitle).click();
+      await page.waitForURL(
+        `**/projects/${fixture.projectId}/admin/test-cases/${fixture.testCaseId}`,
+      );
+      await expect(page.getByTestId("entity-detail-fields")).toBeVisible();
+
+      // --- TestPlan: a fourth tab appended to three that already worked ------
+      await gotoDetail(
+        page,
+        `/projects/${fixture.projectId}/admin/test-plans/${fixture.testPlanId}`,
+        "test-plans",
+      );
+      await expect(page.getByRole("tab")).toHaveText([
+        "Info",
+        "Entry/exit criteria",
+        "Risk items",
+        "Test cycles",
+        "Test suites (linked)",
+      ]);
+
+      const [planListResponse] = await Promise.all([
+        page.waitForResponse(
+          (res) =>
+            res.url().includes("/api/v1/test-plan-test-suites?") && res.request().method() === "GET",
+        ),
+        page.getByTestId("entity-detail-tab-test-plan-test-suites").click(),
+      ]);
+      expect(planListResponse.ok()).toBeTruthy();
+      expect(new URL(planListResponse.url()).searchParams.get("test_plan_id")).toBe(
+        fixture.testPlanId,
+      );
+      await expect(page.getByRole("tabpanel").getByText(fixture.testSuiteName)).toBeVisible();
     } finally {
       cleanup(fixture);
     }

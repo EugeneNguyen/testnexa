@@ -45,7 +45,17 @@ CRUD_RESOURCES: tuple[str, ...] = (
     "approval",
 )
 
-# 6 resources that are read-only (system-appended / no direct write API).
+# 8 resources that are read-only (system-appended / no direct write API).
+#
+# ADR-0072 added the last two. `test_suite_test_case`/`test_plan_test_suite`
+# are REQ-4's/PLAN-1's junction tables: their rows are written only by the
+# bespoke membership routes (`app/api/routes/test_suite_membership.py`,
+# `test_plan_membership.py`), gated on `test_suite.update`/`test_plan.update`,
+# so like the four traceability links above they have a `.read` code and
+# nothing else. The new codes are backfilled onto already-seeded databases by
+# `alembic/versions/7d2c91af4e68_seed_junction_link_read_permissions.py` —
+# editing this catalog alone only affects a fresh DB's initial seed
+# (`backend/CLAUDE.md`'s standing rule).
 READ_ONLY_RESOURCES: tuple[str, ...] = (
     "permission",
     "test_log",
@@ -53,9 +63,11 @@ READ_ONLY_RESOURCES: tuple[str, ...] = (
     "requirement_test_condition_link",
     "test_condition_test_case_link",
     "test_case_defect_link",
+    "test_suite_test_case",
+    "test_plan_test_suite",
 )
 
-# 29 resources total (23 CRUD + 6 read-only), per the plan/Database Document.
+# 31 resources total (23 CRUD + 8 read-only), per the plan/Database Document.
 ALL_RESOURCES: tuple[str, ...] = CRUD_RESOURCES + READ_ONLY_RESOURCES
 
 # 2 special verbs beyond CRUD.
@@ -79,10 +91,10 @@ def _code(resource: str, action: str) -> str:
 
 
 def build_permission_catalog() -> list[tuple[str, str, str]]:
-    """Return the full `(code, resource, action)` catalog — ~100 rows.
+    """Return the full `(code, resource, action)` catalog — ~102 rows.
 
-    23 CRUD resources x 4 actions (92) + 6 read-only resources x 1 action (6)
-    + 2 special verbs (2) = 100 total.
+    23 CRUD resources x 4 actions (92) + 8 read-only resources x 1 action (8)
+    + 2 special verbs (2) = 102 total (ADR-0072 took this from 100 to 102).
     """
     catalog: list[tuple[str, str, str]] = []
 
@@ -167,6 +179,19 @@ def build_role_bundles(all_permission_codes: set[str]) -> dict[str, set[str]]:
         # ADR-0033 already took for `test_execution.*` above. Fifth such ad hoc
         # extension for this role.
         | {_code("defect", "create"), _code("test_case_defect_link", "read")}
+        # ADR-0072: `test_suite_test_case.read` + `test_plan_test_suite.read`.
+        # This role already held full `test_suite` and `test_plan` CRUD (RBAC-4
+        # / ADR-0018), so it could already manage suite membership and plan
+        # scope through REQ-4's/PLAN-1's bespoke routes — but those are gated on
+        # `test_suite.update`/`test_plan.update`, while the junction tables'
+        # new generic `list`/`get` gate on their own `.read` codes, which no
+        # bundle held because the resources did not exist until this ADR.
+        # Without these two the ADR-0071 relationship tabs on `TestSuite`/
+        # `TestPlan` would render a `403` for the very role that owns those
+        # screens. Sixth such ad hoc extension for this role — exactly the
+        # pattern `backend/CLAUDE.md` flags as eventually deserving a dedicated
+        # bundle audit rather than a seventh silent patch.
+        | {_code("test_suite_test_case", "read"), _code("test_plan_test_suite", "read")}
         # RBAC-3/ADR-0021: a project's own creator is auto-granted this Role,
         # project-scoped, unconditionally (PROJ-1/ADR-0017's `create_project`)
         # specifically so they can subsequently GET/PATCH the project they
@@ -194,6 +219,12 @@ def build_role_bundles(all_permission_codes: set[str]) -> dict[str, set[str]]:
         | {_code("test_case_defect_link", "read")}
         | {_code("test_plan", "read")}
         | {_code("test_suite", "read")}
+        # ADR-0072: `tester` already held `test_suite.read`/`test_plan.read`,
+        # so it can open both detail pages; these two codes are what let the
+        # relationship tabs on them actually list rather than `403`. Same
+        # reasoning, and same pairing with an existing `.read`, as ADR-0044's
+        # own `test_case_defect_link.read` grant just above.
+        | {_code("test_suite_test_case", "read"), _code("test_plan_test_suite", "read")}
         | {_code("requirement", "read")}
     )
 

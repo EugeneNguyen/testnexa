@@ -74,7 +74,15 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.crud_factory import _org_membership_exists, chain_resolver
+from app.api.crud_factory import (
+    CrudEntityConfig,
+    FieldMeta,
+    NoSchema,
+    ScopeSelectorOption,
+    _org_membership_exists,
+    chain_resolver,
+    make_crud_router,
+)
 from app.api.deps import get_current_actor, get_db
 from app.core.rbac import has_permission
 from app.models.actor import AIAgent, User
@@ -86,6 +94,7 @@ from app.schemas.assets import (
     TestSuiteListResponse,
     TestSuiteSummary,
 )
+from app.schemas.planning import TestPlanTestSuiteSummary
 
 router = APIRouter()
 
@@ -394,5 +403,43 @@ async def list_covered_test_cases(
         page_size=page_size,
     )
 
+
+# --- ADR-0072: the junction table's own read-only generic-CRUD surface -------------------------
+#
+# Same addition, same reasoning, as `test_suite_membership.py`'s own config
+# block (read that one for the full rationale — it is the direct template here,
+# exactly as ADR-0030's routes were the template for ADR-0031's above). The
+# four bespoke routes above remain PLAN-1's membership-management and coverage
+# surface; this config adds only the junction table's plain read side, so
+# `derive_entity_relations` (ADR-0071) can see a relationship that was
+# previously invisible to it for the sole reason that the table had no entry in
+# `ALL_ENTITY_CONFIGS`.
+#
+# `scope_field="test_plan_id"` — the plan side, matching the direction PLAN-1's
+# own routes are nested under (`/test-plans/{id}/test-suites`). That serves
+# `TestPlan`'s "Test suites (linked)" tab; the reverse direction (a
+# `TestSuite` listing the plans that include it) stays an enumerated exclusion,
+# per ADR-0071 §4's "a link table lists from its scope side only" rule.
+_TEST_PLAN_TEST_SUITE_CONFIG = CrudEntityConfig(
+    model=TestPlanTestSuite,
+    resource="test_plan_test_suite",
+    create_schema=None,
+    update_schema=NoSchema,
+    summary_schema=TestPlanTestSuiteSummary,
+    scope_field="test_plan_id",
+    # One hop to `TestPlan`, whose own `project_id` the shared terminal step
+    # resolves to `Project.org_id` — the same walk `_resolve_test_plan_org_id`
+    # above performs for the bespoke routes.
+    resolve_org_id=chain_resolver([(TestPlan, "test_plan_id")]),
+    methods=frozenset({"list", "get"}),
+    label="Test plan -> test suite links",
+    scope_selector=ScopeSelectorOption(ref_entity="test-plan", param_name="test_plan_id"),
+    field_meta={
+        "test_plan_id": FieldMeta(ref_entity="test-plan", label_field="identifier", label="Test plan"),
+        "test_suite_id": FieldMeta(ref_entity="test-suite", label_field="name", label="Test suite"),
+    },
+)
+
+router.include_router(make_crud_router(_TEST_PLAN_TEST_SUITE_CONFIG))
 
 __all__ = ["router"]
