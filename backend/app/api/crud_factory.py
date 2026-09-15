@@ -250,6 +250,48 @@ class ScopeSelectorOption:
 
 
 @dataclass
+class LinkCreateAction:
+    """[ADR-0073](../../../docs/adr/0073-relationship-tab-write-actions.md): how
+    to create **one row** of a junction/link entity, described declaratively so
+    a generic caller can invoke a bespoke route it knows nothing else about.
+
+    Every one of ADR-0005's link tables (and REQ-4's/PLAN-1's two junctions)
+    is `list`/`get` only through the factory — a row is written exclusively by
+    a bespoke route (`test_suite_membership.py`, `test_plan_membership.py`,
+    `trace.py`'s own four). ADR-0071's relationship tabs list those rows
+    generically; ADR-0073 lets them *create* one, which needs two facts the
+    generic surface cannot derive:
+
+    - **`path_template`** — the bespoke route's own URL, with one `{...}`
+      placeholder **named after this entity's own FK column** per path
+      segment that carries an id (e.g.
+      `"/test-suites/{test_suite_id}/test-cases/{test_case_id}"`). A caller
+      that holds both FK values — which a relationship tab always does: one
+      is the record being viewed, the other is what the user just picked —
+      can build the URL with zero per-entity knowledge. Deliberately *not*
+      the route's positional shape: naming the placeholders after the link
+      row's own columns is what makes the substitution generic, and what lets
+      the same declaration serve a tab mounted from **either** end of the
+      junction (ADR-0072 Amendment 1 made all six bidirectional).
+    - **`permission`** — the exact code the bespoke route gates on, so
+      `usePermissions` can hide the affordance before an attempt rather than
+      surfacing a `403` after it (ADR-0025's own pre-emptive posture, UI
+      Design Document §5). It is **not** always `<resource>.create`: REQ-4's
+      and PLAN-1's routes predate this ADR and gate on the *parent* entity's
+      `test_suite.update`/`test_plan.update`, which ADR-0073 deliberately
+      leaves alone rather than re-gating a shipped route. Declaring the code
+      rather than deriving it is what accommodates both.
+
+    A completeness test (`tests/unit/test_adr73_link_create_actions.py`) pins
+    every `is_link_entity` config in the registry to declaring one of these,
+    so a future junction cannot silently ship a read-only tab.
+    """
+
+    path_template: str
+    permission: str
+
+
+@dataclass
 class ScopeResolution:
     """ADR-0053 (moved from the frontend, same posture as `ScopeSelectorOption`
     above). Derives a scope value automatically, no picker, by resolving
@@ -324,6 +366,12 @@ class CrudEntityConfig:
     # every other scope-selector entity sets exactly one.
     scope_selector: ScopeSelectorOption | tuple[ScopeSelectorOption, ...] | None = None
     scope_resolution: ScopeResolution | None = None
+    # ADR-0073: set on link/junction entities only (`is_link_entity`) — the
+    # declarative handle on the bespoke route that writes one of this entity's
+    # rows. See `LinkCreateAction`'s own docstring. `None` everywhere else: an
+    # entity whose rows the generic factory itself creates needs no such
+    # declaration, its `create` method already says so.
+    link_create: LinkCreateAction | None = None
     # ADR-0053: overrides `methods` for the derived schema's own `methods`
     # array only — never affects which routes `make_crud_router` registers.
     # `Project` is the one user today: its real REST surface is `list`/
@@ -557,6 +605,72 @@ async def resolve_test_case_org_id(db: AsyncSession, row: Any) -> uuid.UUID | No
     if suite is None:
         return None
     return await resolve_terminal_org_id(db, suite)
+
+
+async def resolve_test_case_project_id(db: AsyncSession, row: Any) -> uuid.UUID | None:
+    """The `project_id` sibling of `resolve_test_case_org_id`, same four branches, same order.
+
+    Needed by every bespoke route that has to answer "are these two rows in
+    the same **project**?" — a business-rule question ADR-0030/ADR-0031 answer
+    with `422`, distinct from the tenant question `resolve_test_case_org_id`
+    answers with `404`. The org resolver's terminal step
+    (`resolve_terminal_org_id`) converts `project_id` -> `Project.org_id` and
+    discards the `project_id` on the way, so there is no seam in it to reuse.
+
+    **ADR-0073 — found and fixed.** `test_suite_membership.py` had carried a
+    private three-branch copy of this since REQ-4 (`_resolve_test_case_project_id`),
+    written before `TestCase` had a `project_id` column at all. REQ-5/ADR-0069
+    added that column and a matching fourth branch to the *org* resolver above
+    — but nothing pointed at the private project-side copy, so it kept
+    returning `None` for a standalone `TestCase`, and
+    `add_test_case_to_suite` rejected **every** standalone case with
+    `422 "This test case belongs to a different project."` even when the suite
+    and the case sat in the same project. Exactly the duplicated-walk drift
+    that copy's own docstring predicted ("if these two ever drift, the failure
+    mode is a wrong `422`") — it drifted, silently, because the duplication
+    made the REQ-5 change look complete. Promoted here so the two walks are
+    one function and cannot drift again; `test_suite_membership.py` now
+    delegates.
+
+    Branch order mirrors `resolve_test_case_org_id` exactly, which matters for
+    the same reason it does there: a standalone case that has *since* gained a
+    `RequirementTestCaseLink` resolves through that link (its `project_id` is
+    deliberately never cleared on link, ADR-0069), so both resolvers agree on
+    which parent a case belongs to.
+
+    Returns `None` for a `TestCase` reachable by none of the four — genuinely
+    orphaned, no create path in this codebase produces one. Callers treat that
+    as "cannot prove same-project", i.e. reject.
+    """
+    test_condition_id = getattr(row, "test_condition_id", None)
+    if test_condition_id is not None:
+        condition = await db.get(TestCondition, test_condition_id)
+        if condition is None:
+            return None
+        requirement = await db.get(Requirement, condition.requirement_id)
+        return requirement.project_id if requirement is not None else None
+
+    row_id = getattr(row, "id", None)
+    if row_id is not None:
+        requirement_link = await db.scalar(
+            select(RequirementTestCaseLink).where(RequirementTestCaseLink.test_case_id == row_id).limit(1)
+        )
+        if requirement_link is not None:
+            requirement = await db.get(Requirement, requirement_link.requirement_id)
+            return requirement.project_id if requirement is not None else None
+
+    project_id = getattr(row, "project_id", None)
+    if project_id is not None:
+        return project_id
+
+    if row_id is None:
+        return None
+
+    suite_link = await db.scalar(select(TestSuiteTestCase).where(TestSuiteTestCase.test_case_id == row_id).limit(1))
+    if suite_link is None:
+        return None
+    suite = await db.get(TestSuite, suite_link.test_suite_id)
+    return suite.project_id if suite is not None else None
 
 
 async def resolve_via_test_case(db: AsyncSession, row: Any) -> uuid.UUID | None:
@@ -996,6 +1110,15 @@ def derive_entity_schema(
     elif config.scope_selector is not None:
         scope_selector = _serialize_scope_selector_option(config.scope_selector)
 
+    # ADR-0073 — see `LinkCreateAction`. Serialized camelCase like every other
+    # key here; `None` for the 23 non-link entities.
+    link_create: dict[str, Any] | None = None
+    if config.link_create is not None:
+        link_create = {
+            "pathTemplate": config.link_create.path_template,
+            "permission": config.link_create.permission,
+        }
+
     scope_resolution: dict[str, Any] | None = None
     if config.scope_resolution is not None:
         scope_resolution = {
@@ -1015,6 +1138,12 @@ def derive_entity_schema(
         "filterFields": list(config.filter_fields),
         "fields": fields_out,
         "relations": derive_entity_relations(config, all_configs),
+        # ADR-0073: an eleventh key, `null` for every entity that isn't a link
+        # table. Rides the same schema request ADR-0071's `relations` already
+        # does — a relationship tab has this entity's schema in hand before it
+        # can render a row, so a "Link existing ..." action costs no extra
+        # round trip, and the MCP `describe` tool gets it for free.
+        "linkCreate": link_create,
     }
 
 

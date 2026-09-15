@@ -284,17 +284,22 @@ def test_generated_tool_count_is_the_number_adr_0067_states() -> None:
     tools, so nothing here looked incomplete, while the REST/relationship
     surface had no config to derive from.
 
+    **ADR-0073** then gave each of the four ADR-0005 traceability links a
+    bespoke `create` route, so each gains one CRUD action (124 -> 128) for 157
+    total. The resource count is again unchanged at 31 — all four were already
+    registry rows from their read-only configs.
+
     Every other assertion here is a *derived* diff on purpose (Decision §8 — a
     hardcoded name list would drift with the thing it polices), which means none
     of them would notice if the derivation itself and the ADR's published number
     silently diverged. This one literal anchor catches that, and is cheap to
-    update deliberately when an entity is added — unlike a 153-name list, which
+    update deliberately when an entity is added — unlike a 157-name list, which
     would have to be re-typed."""
     describe_count = len(ENTITY_CONFIGS_BY_RESOURCE)
     crud_count = sum(len(set(entry) - {"describe"}) for entry in TOOL_REGISTRY.values())
-    assert len(TOOL_REGISTRY) == 31, "resource count changed — update ADR-0068/ADR-0069/ADR-0072 and this anchor together"
-    assert (crud_count, describe_count) == (124, 29), (crud_count, describe_count)
-    assert len(_registered()) == crud_count + describe_count == 153
+    assert len(TOOL_REGISTRY) == 31, "resource count changed — update ADR-0068/ADR-0069/ADR-0072/ADR-0073 and this anchor together"
+    assert (crud_count, describe_count) == (128, 29), (crud_count, describe_count)
+    assert len(_registered()) == crud_count + describe_count == 157
 
 
 def test_no_tool_takes_a_resource_argument() -> None:

@@ -351,8 +351,24 @@ class TestTheNumbersTheDocsQuote:
         seeded. Asserted rather than asserted-in-prose, because "no migration
         needed" is exactly the kind of claim that is expensive to be wrong
         about — a missing code would 403 the new tab for every role that can
-        open the page."""
-        from app.db.rbac_seed_catalog import READ_ONLY_RESOURCES, build_permission_catalog
+        open the page.
+
+        **ADR-0073 amends the final assertion, not the claim.** Amendment 1
+        still introduces no permission code of its own — the per-*direction*
+        assertions below are what actually test that, and they are untouched.
+        What changed underneath is that ADR-0073 later gave the four ADR-0005
+        traceability links a `.create` code each (for its own new bespoke
+        link-create routes), so "exactly one code per junction resource" is no
+        longer the right exact set. The assertion is narrowed rather than
+        loosened to a subset check: each junction's code set must be exactly
+        `.read`, plus `.create` for precisely the four ADR-0073 names, so a
+        *fifth* code on any of the six still fails here.
+        """
+        from app.db.rbac_seed_catalog import (
+            LINK_CREATE_RESOURCES,
+            READ_ONLY_RESOURCES,
+            build_permission_catalog,
+        )
 
         codes = {code for code, _, _ in build_permission_catalog()}
         for key, original, reverse in JUNCTIONS:
@@ -361,11 +377,13 @@ class TestTheNumbersTheDocsQuote:
             # Nothing per-direction may have crept in.
             assert f"{resource}.read_{original}" not in codes
             assert f"{resource}.read_{reverse}" not in codes
-        # All six are read-only resources, so exactly one code each.
         for key, _, _ in JUNCTIONS:
             resource = ALL_ENTITY_CONFIGS[key].resource
             assert resource in READ_ONLY_RESOURCES
-            assert {c for c in codes if c.startswith(f"{resource}.")} == {f"{resource}.read"}
+            expected = {f"{resource}.read"}
+            if resource in LINK_CREATE_RESOURCES:
+                expected.add(f"{resource}.create")
+            assert {c for c in codes if c.startswith(f"{resource}.")} == expected, resource
 
 
 def EXPECTED_LINK_ENTITIES_FOR_ASSERTION() -> set[str]:

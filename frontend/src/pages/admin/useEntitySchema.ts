@@ -63,6 +63,14 @@ export function toEntityConfig(key: string, schema: EntitySchemaResponse): Entit
     // has to distinguish "no relationships" from "an older backend that
     // doesn't serve the key yet".
     relations: schema.relations ?? [],
+    // ADR-0073. Spread-omitted rather than normalized to a sentinel: unlike
+    // `relations` (where "no relationships" and "empty list" mean the same
+    // thing), `linkCreate` is a presence flag — `EntityRelationTab` renders
+    // the "Link existing ..." action if and only if the key is there — so the
+    // `null` the wire sends for a non-link entity must become *absent*, not a
+    // falsy object, matching `scopeField`/`scopeSelector`'s own treatment two
+    // lines up.
+    ...(schema.linkCreate ? { linkCreate: schema.linkCreate } : {}),
   };
 }
 

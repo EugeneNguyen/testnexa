@@ -70,6 +70,31 @@ READ_ONLY_RESOURCES: tuple[str, ...] = (
 # 31 resources total (23 CRUD + 8 read-only), per the plan/Database Document.
 ALL_RESOURCES: tuple[str, ...] = CRUD_RESOURCES + READ_ONLY_RESOURCES
 
+# ADR-0073: the 4 ADR-0005 traceability link tables gain a **`create` action
+# only** — they stay in `READ_ONLY_RESOURCES` above because that tuple's real
+# meaning is "no generic CRUD surface, no `update`, no `delete`", which is
+# still exactly true: a link row remains immutable and un-deletable through the
+# API, and the new `create` is one bespoke route each
+# (`app/api/routes/trace.py`).
+#
+# Modelled as its own tuple rather than by promoting the four into
+# `CRUD_RESOURCES`, which would silently mint `.update`/`.delete` codes for
+# routes that do not exist and never will — the same "don't advertise a
+# capability the API doesn't have" posture ADR-0065's `full_methods` takes for
+# the MCP surface.
+#
+# The two junction resources (`test_suite_test_case`/`test_plan_test_suite`)
+# are deliberately **absent**: their link-create routes shipped under
+# ADR-0030/ADR-0031 gated on `test_suite.update`/`test_plan.update`, and
+# ADR-0073 re-gates no already-shipped route — see each config's own
+# `link_create` comment.
+LINK_CREATE_RESOURCES: tuple[str, ...] = (
+    "requirement_test_case_link",
+    "requirement_test_condition_link",
+    "test_condition_test_case_link",
+    "test_case_defect_link",
+)
+
 # 2 special verbs beyond CRUD.
 SPECIAL_PERMISSIONS: tuple[tuple[str, str], ...] = (
     ("test_plan", "approve"),
@@ -91,10 +116,11 @@ def _code(resource: str, action: str) -> str:
 
 
 def build_permission_catalog() -> list[tuple[str, str, str]]:
-    """Return the full `(code, resource, action)` catalog — ~102 rows.
+    """Return the full `(code, resource, action)` catalog — 106 rows.
 
     23 CRUD resources x 4 actions (92) + 8 read-only resources x 1 action (8)
-    + 2 special verbs (2) = 102 total (ADR-0072 took this from 100 to 102).
+    + 4 link-create resources x 1 action (4) + 2 special verbs (2) = 106 total
+    (ADR-0072 took this from 100 to 102; ADR-0073 from 102 to 106).
     """
     catalog: list[tuple[str, str, str]] = []
 
@@ -104,6 +130,12 @@ def build_permission_catalog() -> list[tuple[str, str, str]]:
 
     for resource in READ_ONLY_RESOURCES:
         catalog.append((_code(resource, "read"), resource, "read"))
+
+    # ADR-0073 — see `LINK_CREATE_RESOURCES`. Appended after the read block so
+    # each link table's `.read`/`.create` pair still reads together in the
+    # catalog's natural order by resource.
+    for resource in LINK_CREATE_RESOURCES:
+        catalog.append((_code(resource, "create"), resource, "create"))
 
     for resource, action in SPECIAL_PERMISSIONS:
         catalog.append((_code(resource, action), resource, action))
@@ -192,6 +224,24 @@ def build_role_bundles(all_permission_codes: set[str]) -> dict[str, set[str]]:
         # pattern `backend/CLAUDE.md` flags as eventually deserving a dedicated
         # bundle audit rather than a seventh silent patch.
         | {_code("test_suite_test_case", "read"), _code("test_plan_test_suite", "read")}
+        # ADR-0073: `create` on all four ADR-0005 traceability links, plus the
+        # three `.read` codes this role still lacked (it already held
+        # `test_case_defect_link.read` from ADR-0044). Read and write are
+        # granted together deliberately: without the read, the ADR-0071
+        # relationship tab the write action lives on would `403` before the
+        # button could render, so granting one without the other would ship a
+        # capability nobody can reach — the same read+write pairing ADR-0072
+        # established for the two junctions above.
+        #
+        # This is the traceability-owning role: it is the only bundle holding
+        # `requirement.export_rtm` (the RTM these links populate), and it
+        # already has full `test_condition`/`test_case` CRUD (ADR-0028) and
+        # `defect.create` (ADR-0044) — every entity on both ends of all four
+        # links. Seventh ad hoc extension for this role; `backend/CLAUDE.md`
+        # flags the pattern as overdue a dedicated bundle audit, which ADR-0073
+        # deliberately does not attempt.
+        | _read_codes(LINK_CREATE_RESOURCES)
+        | {_code(resource, "create") for resource in LINK_CREATE_RESOURCES}
         # RBAC-3/ADR-0021: a project's own creator is auto-granted this Role,
         # project-scoped, unconditionally (PROJ-1/ADR-0017's `create_project`)
         # specifically so they can subsequently GET/PATCH the project they
@@ -225,6 +275,20 @@ def build_role_bundles(all_permission_codes: set[str]) -> dict[str, set[str]]:
         # reasoning, and same pairing with an existing `.read`, as ADR-0044's
         # own `test_case_defect_link.read` grant just above.
         | {_code("test_suite_test_case", "read"), _code("test_plan_test_suite", "read")}
+        # ADR-0073: exactly one of the four new codes. `tester` already holds
+        # `test_case_defect_link.read` (ADR-0044) and `defect.create`/`.read`/
+        # `.update`, so "this failure is the defect I already raised" is a
+        # workflow this role genuinely performs — the read it needs to see the
+        # tab is already there and only the write was missing.
+        #
+        # The other three are deliberately withheld: `tester` holds only
+        # `requirement.read`, and requirement-level traceability (which cases
+        # and conditions satisfy which requirement) is the `test_manager`
+        # persona's own activity per FR-REQ-3/the RTM export — no acceptance
+        # criterion asks a tester to author it, and granting it now would be a
+        # silent scope expansion, the same restraint ADR-0033 took for
+        # `test_execution.update`/`.delete` and ADR-0044 for `defect.delete`.
+        | {_code("test_case_defect_link", "create")}
         | {_code("requirement", "read")}
     )
 

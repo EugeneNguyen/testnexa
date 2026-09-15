@@ -15,7 +15,7 @@
  * a fixed `Record<string, unknown>` row type is used throughout by the
  * `crud/` components, sufficient for that.
  */
-import { EntityConfig } from "../../entityConfigs/types";
+import { EntityConfig, LinkCreateAction } from "../../entityConfigs/types";
 import { apiFetch } from "./client";
 
 export type EntityRow = Record<string, unknown>;
@@ -121,6 +121,52 @@ export async function updateEntity<T = EntityRow>(
   body: Record<string, unknown>,
 ): Promise<T> {
   return apiFetch<T>(`/api/v1${config.path}/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+}
+
+/**
+ * ADR-0073: substitute a `LinkCreateAction.pathTemplate`'s `{field}`
+ * placeholders from a map of the link row's own FK values.
+ *
+ * Deliberately a **second** interpolator rather than a widened `interpolate`
+ * above: that one fills `:param` route placeholders from the current URL's
+ * params, and silently leaves an unmatched placeholder in the path (correct
+ * there — a template with no placeholders is the common case and a missing
+ * route param is a caller bug that shows up as a 404). This one fills `{field}`
+ * placeholders from values the caller just collected, and a missing one is a
+ * programming error worth failing loudly on rather than POSTing a URL with a
+ * literal brace in it. Different brace style, different source, different
+ * failure posture — merging them would need a mode flag that no call site
+ * would ever pass dynamically.
+ */
+export function interpolateLinkPath(template: string, values: Record<string, string>): string {
+  return template.replace(/\{([a-zA-Z_]+)\}/g, (_match, key: string) => {
+    const value = values[key];
+    if (!value) {
+      throw new Error(`Missing "${key}" for link path ${template}`);
+    }
+    return value;
+  });
+}
+
+/**
+ * ADR-0073: create one junction/link row through the entity's own bespoke
+ * route, declared by its schema's `linkCreate` (`LinkCreateAction`).
+ *
+ * `values` is keyed by the link row's own FK column names — exactly the shape
+ * `relation.scopeField` (the parent) and `relation.targetField` (the picked
+ * far row) already give a relationship tab. The route takes no request body:
+ * both ids travel in the path, which is why this is not `createEntity` with a
+ * different path.
+ *
+ * Rejects with an `ApiError` carrying the API Document §1 envelope, same as
+ * every other write call here — `409` for an already-existing pair, `422` for
+ * a cross-project pair, `404` for a cross-tenant one.
+ */
+export async function createLinkRow(
+  action: LinkCreateAction,
+  values: Record<string, string>,
+): Promise<unknown> {
+  return apiFetch<unknown>(`/api/v1${interpolateLinkPath(action.pathTemplate, values)}`, { method: "POST" });
 }
 
 /** `DELETE {config.path}/{id}` — `204 No Content`, `apiFetch<void>` resolves `undefined`. */

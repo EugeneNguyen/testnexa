@@ -169,6 +169,29 @@ export interface EntityRelation {
   targetField: string | null;
 }
 
+/**
+ * [ADR-0073](../../../docs/adr/0073-relationship-tab-write-actions.md): how to
+ * create **one row** of a junction/link entity, served on that entity's own
+ * schema (`crud_factory.LinkCreateAction`). Present only for the six link
+ * tables; `undefined` for every other entity.
+ *
+ * `pathTemplate` carries one `{...}` placeholder per id-bearing path segment,
+ * each named after the **link row's own FK column** — so a caller holding both
+ * ids (which a relationship tab always does: one is the record being viewed,
+ * the other is what the user just picked) substitutes by field name with no
+ * per-entity knowledge, and the same declaration works from either end of the
+ * junction.
+ *
+ * `permission` is the exact code the bespoke route gates on, for
+ * `usePermissions`. It is **not** always `<resource>.create`: REQ-4's and
+ * PLAN-1's two junction routes predate ADR-0073 and gate on the parent's
+ * `test_suite.update`/`test_plan.update`.
+ */
+export interface LinkCreateAction {
+  pathTemplate: string;
+  permission: string;
+}
+
 export interface EntityConfig {
   /** snake_case, matches the API's permission-code resource segment. */
   resource: string;
@@ -222,4 +245,12 @@ export interface EntityConfig {
    * `config.relations ?? []`.
    */
   relations?: EntityRelation[];
+  /**
+   * ADR-0073: backend-declared handle on this entity's bespoke link-create
+   * route. Optional for the same reason `relations` is — every hand-written
+   * `EntityConfig` literal in the Vitest fixtures would otherwise become a
+   * compile error for a key none of them care about. Absent for the 25
+   * non-link entities.
+   */
+  linkCreate?: LinkCreateAction;
 }

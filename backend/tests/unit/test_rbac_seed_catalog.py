@@ -10,6 +10,7 @@ Does NOT touch the migration or a live DB; that's covered by
 from app.db.rbac_seed_catalog import (
     ALL_RESOURCES,
     CRUD_RESOURCES,
+    LINK_CREATE_RESOURCES,
     READ_ONLY_RESOURCES,
     SPECIAL_PERMISSIONS,
     SYSTEM_ROLE_NAMES,
@@ -30,12 +31,14 @@ def test_resource_counts_match_the_plan() -> None:
     assert len(set(ALL_RESOURCES)) == len(ALL_RESOURCES)
 
 
-def test_permission_catalog_has_one_hundred_and_two_rows() -> None:
+def test_permission_catalog_has_one_hundred_and_six_rows() -> None:
     catalog = build_permission_catalog()
-    # 23 CRUD resources x 4 actions + 8 read-only resources x 1 action + 2 special verbs
-    assert len(catalog) == 23 * 4 + 8 * 1 + 2
-    # 100 before ADR-0072's two new read-only resources.
-    assert len(catalog) == 102
+    # 23 CRUD resources x 4 actions + 8 read-only resources x 1 action
+    # + 4 link-create resources x 1 action + 2 special verbs
+    assert len(catalog) == 23 * 4 + 8 * 1 + 4 * 1 + 2
+    # 100 before ADR-0072's two new read-only resources; 102 before ADR-0073's
+    # four `<link>.create` codes.
+    assert len(catalog) == 106
     codes = [code for code, _resource, _action in catalog]
     assert len(codes) == len(set(codes)), "duplicate permission codes in the catalog"
 
@@ -49,10 +52,48 @@ def test_permission_catalog_contains_special_verbs() -> None:
 
 
 def test_permission_catalog_read_only_resources_have_only_read_action() -> None:
+    """ADR-0073 narrows this claim rather than retiring it.
+
+    `READ_ONLY_RESOURCES` still means "no `update`, no `delete`, no generic
+    CRUD surface" — the thing the original test was actually protecting. What
+    changed is that four of the eight (the ADR-0005 traceability links) gained
+    a `create`, served by one bespoke route each (`app/api/routes/trace.py`),
+    so the resource's action set is `{"read", "create"}` for exactly those four
+    and still `{"read"}` for the other four.
+
+    Asserted as an exact set on **both** sides rather than a subset check, so a
+    fifth resource silently gaining a write still fails here.
+    """
     catalog = build_permission_catalog()
     for resource in READ_ONLY_RESOURCES:
         actions_for_resource = {action for _code, res, action in catalog if res == resource}
-        assert actions_for_resource == {"read"}
+        expected = {"read", "create"} if resource in LINK_CREATE_RESOURCES else {"read"}
+        assert actions_for_resource == expected, resource
+
+    # And nothing outside that tuple was quietly promoted.
+    assert set(LINK_CREATE_RESOURCES) < set(READ_ONLY_RESOURCES)
+    assert len(LINK_CREATE_RESOURCES) == 4
+
+
+def test_link_create_resources_are_exactly_the_four_traceability_links() -> None:
+    """ADR-0073: the two REQ-4/PLAN-1 junctions are deliberately absent.
+
+    Their link-create routes shipped under ADR-0030/ADR-0031 gated on the
+    *parent's* `test_suite.update`/`test_plan.update`, and ADR-0073 re-gates no
+    already-shipped route — so they get no `.create` code of their own. Pinned
+    here because "all six junctions behave alike" is the obvious-looking
+    assumption a future reader would otherwise make from
+    `CrudEntityConfig.link_create` being declared on all six.
+    """
+    assert LINK_CREATE_RESOURCES == (
+        "requirement_test_case_link",
+        "requirement_test_condition_link",
+        "test_condition_test_case_link",
+        "test_case_defect_link",
+    )
+    codes = {code for code, _resource, _action in build_permission_catalog()}
+    assert "test_suite_test_case.create" not in codes
+    assert "test_plan_test_suite.create" not in codes
 
 
 def test_permission_catalog_crud_resources_have_all_four_actions() -> None:
@@ -75,7 +116,7 @@ def test_org_admin_bundle_is_the_entire_catalog() -> None:
     bundles = build_role_bundles(all_codes)
 
     assert bundles["org_admin"] == all_codes
-    assert len(bundles["org_admin"]) == 102
+    assert len(bundles["org_admin"]) == 106
 
 
 def test_ai_agent_scoped_bundle_never_contains_test_plan_approve() -> None:

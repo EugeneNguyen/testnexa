@@ -77,6 +77,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.crud_factory import (
     CrudEntityConfig,
     FieldMeta,
+    LinkCreateAction,
     NoSchema,
     ScopeSelectorOption,
     _org_membership_exists,
@@ -446,6 +447,14 @@ _TEST_PLAN_TEST_SUITE_CONFIG = CrudEntityConfig(
         ]
     ),
     methods=frozenset({"list", "get"}),
+    # ADR-0073: the declarative handle on `include_suite_in_plan` above. As
+    # with REQ-4's sibling junction, the permission stays PLAN-1's own
+    # `test_plan.update` — the route shipped with that gate under ADR-0031 and
+    # ADR-0073 re-gates no already-shipped route.
+    link_create=LinkCreateAction(
+        path_template="/test-plans/{test_plan_id}/test-suites/{test_suite_id}",
+        permission="test_plan.update",
+    ),
     label="Test plan -> test suite links",
     scope_selector=(
         ScopeSelectorOption(ref_entity="test-plan", param_name="test_plan_id", label="By test plan"),

@@ -675,8 +675,8 @@ class TestNoSchema:
 
 
 class TestTopLevelShape:
-    def test_response_carries_exactly_the_ten_documented_keys(self) -> None:
-        """`relations` is the tenth, added by ADR-0071."""
+    def test_response_carries_exactly_the_eleven_documented_keys(self) -> None:
+        """`relations` is the tenth (ADR-0071), `linkCreate` the eleventh (ADR-0073)."""
         assert set(derive_entity_schema(_widget_config())) == {
             "resource",
             "label",
@@ -688,7 +688,17 @@ class TestTopLevelShape:
             "filterFields",
             "fields",
             "relations",
+            "linkCreate",
         }
+
+    def test_link_create_is_null_for_an_entity_that_is_not_a_link_table(self) -> None:
+        """ADR-0073: the key is always present, `None` for the 23 non-link
+        entities — never omitted, same posture `relations` takes for an entity
+        nothing points at. A frontend reading `config.linkCreate` must be able
+        to distinguish "no link action" from "older backend", and an always-
+        present key is what makes that distinction meaningless rather than
+        ambiguous."""
+        assert derive_entity_schema(_widget_config())["linkCreate"] is None
 
     def test_relations_is_empty_for_an_entity_nothing_points_at(self) -> None:
         """ADR-0071: the synthetic `_widget_config()` is not in the registry,

@@ -346,6 +346,16 @@ function EntityDetailPage({ entityKeyOverride }: { entityKeyOverride?: string } 
                 relation={activeRelation}
                 parentId={String(id)}
                 routeParams={routeParams}
+                /**
+                 * ADR-0073: the tab's write actions are permission-gated, and
+                 * `usePermissions` needs the *resolved* org — which this page
+                 * already has from `useAdminRouteContext` (on a project-scoped
+                 * route the URL carries no `:orgId` at all, so it costs a
+                 * `GET /projects/{id}`). Passed down rather than re-resolved
+                 * per tab.
+                 */
+                orgId={orgId}
+                projectId={projectId}
                 page={relationPage}
                 onPageChange={setRelationPage}
                 pageSize={relationPageSize}

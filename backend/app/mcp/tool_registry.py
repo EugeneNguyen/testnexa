@@ -100,6 +100,12 @@ from app.api.routes.test_condition_authoring import (
 from app.api.routes.test_cycle_creation import create_test_cycle_for_plan
 from app.api.routes.test_plan_membership import include_suite_in_plan
 from app.api.routes.test_suite_membership import add_test_case_to_suite
+from app.api.routes.trace import (
+    link_defect_to_test_case,
+    link_test_case_to_requirement_trace,
+    link_test_case_to_test_condition,
+    link_test_condition_to_requirement,
+)
 from app.models.actor import AIAgent, User
 from app.schemas.assets import (
     CreateStandaloneTestCaseRequest,
@@ -492,6 +498,50 @@ async def _test_plan_test_suite_create(*, actor: Any, db: Any, fields: dict[str,
     return await include_suite_in_plan(id=plan_id, suite_id=suite_id, actor=actor, db=db)
 
 
+def _link_create_executor(handler: Callable, first_field: str, second_field: str) -> Callable:
+    """Build the `create` executor for one of ADR-0073's four traceability-link routes.
+
+    All four `POST`s take exactly two path ids and no body, so all four
+    executors are the same three lines with different field names — the shape
+    `_test_suite_test_case_create`/`_test_plan_test_suite_create` above each
+    hand-write. Built from a factory here rather than written out four more
+    times, because four independently-typed copies of "read two keys off
+    `fields`, `_missing()` whichever is absent" is exactly how one of them ends
+    up reporting the wrong field name.
+
+    `first_field`/`second_field` are the link row's own FK column names, in the
+    same order the route's path segments carry them — which is also the order
+    `CrudEntityConfig.link_create.path_template` names them, so the MCP tool
+    and the REST URL cannot disagree about which id is which.
+    """
+
+    async def _execute(*, actor: Any, db: Any, fields: dict[str, Any] | None = None, **_ignored: Any) -> Any:
+        data = dict(fields or {})
+        first = data.get(first_field)
+        second = data.get(second_field)
+        if first is None:
+            return _missing(first_field)
+        if second is None:
+            return _missing(second_field)
+        return await handler(id=first, **{second_field: second}, actor=actor, db=db)
+
+    return _execute
+
+
+_requirement_test_case_link_create = _link_create_executor(
+    link_test_case_to_requirement_trace, "requirement_id", "test_case_id"
+)
+_requirement_test_condition_link_create = _link_create_executor(
+    link_test_condition_to_requirement, "requirement_id", "test_condition_id"
+)
+_test_condition_test_case_link_create = _link_create_executor(
+    link_test_case_to_test_condition, "test_condition_id", "test_case_id"
+)
+_test_case_defect_link_create = _link_create_executor(
+    link_defect_to_test_case, "test_case_id", "defect_id"
+)
+
+
 _BESPOKE_EXECUTORS: dict[str, dict[str, Callable]] = {
     "test_case": {"create": _test_case_create, "list": _test_case_list},
     "test_condition": {"create": _test_condition_create},
@@ -510,6 +560,14 @@ _BESPOKE_EXECUTORS: dict[str, dict[str, Callable]] = {
     # `test_suite_test_case`/`test_plan_test_suite` above (no `CrudEntityConfig`,
     # one action) — generates `tn_test_case_link_requirement_create`.
     "test_case_link_requirement": {"create": _test_case_link_requirement},
+    # ADR-0073: the four traceability links gain a real `create` over MCP too,
+    # same one-action shape as the two junctions above. Each entity's own
+    # `CrudEntityConfig` stays `{"list","get"}`, so `create` is an "extra" and
+    # is declared in `BESPOKE_EXTRA_ACTIONS` below.
+    "requirement_test_case_link": {"create": _requirement_test_case_link_create},
+    "requirement_test_condition_link": {"create": _requirement_test_condition_link_create},
+    "test_condition_test_case_link": {"create": _test_condition_test_case_link_create},
+    "test_case_defect_link": {"create": _test_case_defect_link_create},
 }
 
 #: Per entity, the actions this registry serves that are NOT already claimed by
@@ -545,6 +603,14 @@ BESPOKE_EXTRA_ACTIONS: dict[str, frozenset[str]] = {
     "test_suite_test_case": frozenset({"create"}),
     "test_plan_test_suite": frozenset({"create"}),
     "test_case_link_requirement": frozenset({"create"}),
+    # ADR-0073 — `create` on each of the four traceability links. Unlike the
+    # config-less rows above, these four DO have a `CrudEntityConfig`, whose
+    # `methods` stays `{"list","get"}` because the generic factory still
+    # registers no create for them; the create is one bespoke route each.
+    "requirement_test_case_link": frozenset({"create"}),
+    "requirement_test_condition_link": frozenset({"create"}),
+    "test_condition_test_case_link": frozenset({"create"}),
+    "test_case_defect_link": frozenset({"create"}),
 }
 
 

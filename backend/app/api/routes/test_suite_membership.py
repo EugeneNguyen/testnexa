@@ -77,6 +77,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.crud_factory import (
     CrudEntityConfig,
     FieldMeta,
+    LinkCreateAction,
     NoSchema,
     ScopeSelectorOption,
     _org_membership_exists,
@@ -84,13 +85,13 @@ from app.api.crud_factory import (
     chain_resolver,
     make_crud_router,
     resolve_test_case_org_id,
+    resolve_test_case_project_id,
     resolve_via_test_case,
 )
 from app.api.deps import get_current_actor, get_db
 from app.core.rbac import has_permission
 from app.models.actor import AIAgent, User
-from app.models.assets import Requirement, TestCase, TestCondition, TestSuite, TestSuiteTestCase
-from app.models.trace import RequirementTestCaseLink
+from app.models.assets import TestCase, TestSuite, TestSuiteTestCase
 from app.schemas.assets import TestCaseListResponse, TestCaseSummary, TestSuiteTestCaseSummary
 
 router = APIRouter()
@@ -129,53 +130,15 @@ def _error(
     )
 
 
-async def _resolve_test_case_project_id(db: AsyncSession, test_case: TestCase) -> UUID | None:
-    """Resolve a `TestCase`'s own project, walking ADR-0029's three branches.
-
-    Deliberately a separate function from `resolve_test_case_org_id` rather
-    than a refactor of it, even though the two walk the identical branch order
-    (`test_condition_id` -> `Requirement.project_id`; else any
-    `RequirementTestCaseLink` -> `Requirement.project_id`; else any
-    `TestSuiteTestCase` -> `TestSuite.project_id`). The org resolver's terminal
-    step (`resolve_terminal_org_id`) converts `project_id` -> `Project.org_id`
-    and discards the `project_id` on the way, so there is no existing seam to
-    reuse without reworking a resolver the whole generic-CRUD surface depends
-    on — out of proportion to this one business-rule check.
-
-    The duplication is safe in a way a duplicated *org* walk would not be: this
-    result never gates tenant isolation. The `404` boundary above every caller
-    of this function is still decided solely by `resolve_test_case_org_id`, so
-    if these two ever drift, the failure mode is a wrong `422`, never a crossed
-    tenant boundary (NFR-1).
-
-    Returns `None` for a `TestCase` reachable by none of the three branches —
-    genuinely orphaned, no create path in this codebase produces one. Callers
-    treat that as "cannot prove same-project", i.e. reject.
-    """
-    test_condition_id = getattr(test_case, "test_condition_id", None)
-    if test_condition_id is not None:
-        condition = await db.get(TestCondition, test_condition_id)
-        if condition is None:
-            return None
-        requirement = await db.get(Requirement, condition.requirement_id)
-        return requirement.project_id if requirement is not None else None
-
-    requirement_link = await db.scalar(
-        select(RequirementTestCaseLink)
-        .where(RequirementTestCaseLink.test_case_id == test_case.id)
-        .limit(1)
-    )
-    if requirement_link is not None:
-        requirement = await db.get(Requirement, requirement_link.requirement_id)
-        return requirement.project_id if requirement is not None else None
-
-    suite_link = await db.scalar(
-        select(TestSuiteTestCase).where(TestSuiteTestCase.test_case_id == test_case.id).limit(1)
-    )
-    if suite_link is None:
-        return None
-    suite = await db.get(TestSuite, suite_link.test_suite_id)
-    return suite.project_id if suite is not None else None
+# ADR-0073 — this module's own three-branch `_resolve_test_case_project_id`
+# copy is retired. It predated `TestCase.project_id` (REQ-5/ADR-0069), which
+# added a fourth branch to `resolve_test_case_org_id` and nothing to the
+# private copy here, so `add_test_case_to_suite` rejected every *standalone*
+# `TestCase` with a cross-project `422` even inside its own project. The walk
+# now lives beside its org-side sibling in `crud_factory`
+# (`resolve_test_case_project_id`), so the two cannot drift again — see that
+# function's own docstring for the full write-up.
+_resolve_test_case_project_id = resolve_test_case_project_id
 
 
 async def _load_suite_for_actor(
@@ -431,6 +394,18 @@ _TEST_SUITE_TEST_CASE_CONFIG = CrudEntityConfig(
         ]
     ),
     methods=frozenset({"list", "get"}),
+    # ADR-0073: the declarative handle on `add_test_case_to_suite` above, so
+    # ADR-0071's relationship tab can offer "Link existing test case" from
+    # either end of this junction without knowing this route exists. The
+    # permission is REQ-4's own `test_suite.update`, **not** a new
+    # `test_suite_test_case.create` — that route shipped under ADR-0030 with
+    # that gate and re-gating it would be a breaking change to a live contract
+    # for no benefit; `LinkCreateAction` declares the code rather than deriving
+    # it for exactly this reason.
+    link_create=LinkCreateAction(
+        path_template="/test-suites/{test_suite_id}/test-cases/{test_case_id}",
+        permission="test_suite.update",
+    ),
     label="Test suite -> test case links",
     scope_selector=(
         ScopeSelectorOption(ref_entity="test-suite", param_name="test_suite_id", label="By test suite"),

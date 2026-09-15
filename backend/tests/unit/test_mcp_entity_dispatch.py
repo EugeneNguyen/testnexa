@@ -140,7 +140,14 @@ def test_no_tool_exists_for_an_unknown_entity() -> None:
     [
         ("test_log", "update"),  # TestLog is get/list/create(comment) only — immutable otherwise
         ("test_log", "delete"),
-        ("requirement_test_case_link", "create"),  # link tables are read-only
+        # ADR-0073 removed `("requirement_test_case_link", "create")` from this
+        # list: `POST /requirements/{id}/test-case-links/{test_case_id}` is a
+        # real REST capability now, so the row asserted a claim that had stopped
+        # being true — the same correction ADR-0072 made one entry below for
+        # `test_suite_test_case.list`. `update`/`delete` stay: a link row is
+        # still immutable and un-deletable through the API
+        # (`app/models/trace.py`), which is the part of "link tables are
+        # read-only" that survives.
         ("requirement_test_case_link", "update"),
         ("requirement_test_case_link", "delete"),
         ("permission", "create"),  # global catalog, read-only via the factory
