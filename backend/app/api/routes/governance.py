@@ -42,7 +42,6 @@ _RISK_ITEM_CONFIG = CrudEntityConfig(
     summary_schema=RiskItemSummary,
     scope_field=("requirement_id", "test_plan_id"),
     resolve_org_id=resolve_risk_item_org_id,
-    filter_fields=("likelihood", "impact"),
     # ADR-0053
     label="Risk items",
     scope_selector=(

@@ -206,7 +206,6 @@ _DEFECT_CONFIG = CrudEntityConfig(
             (TestPlan, "test_plan_id"),
         ]
     ),
-    filter_fields=("severity", "status"),
     search_fields=("external_ref",),
     methods=frozenset({"list", "get", "update", "delete"}),
     # ADR-0053. `test_execution_id`/`severity`/`status` derive as not-required
@@ -242,7 +241,6 @@ _TEST_EXECUTION_CONFIG = CrudEntityConfig(
     summary_schema=TestExecutionSummary,
     scope_field="test_cycle_id",
     resolve_org_id=_resolve_test_execution_org_id,
-    filter_fields=("test_case_id", "result"),
     methods=frozenset({"list", "get", "update", "delete"}),
     # EXEC-2 AC1: append a `TestLog` row whenever `PATCH` actually changes
     # `result` (e.g. corrected pass -> fail) — see `_test_execution_post_update_hook`.
@@ -278,7 +276,6 @@ _TEST_LOG_CONFIG = CrudEntityConfig(
     summary_schema=TestLogSummary,
     scope_field="test_execution_id",
     resolve_org_id=_resolve_test_log_org_id,
-    filter_fields=("event_type",),
     methods=frozenset({"list", "get"}),
     # ADR-0053. Every field derives `readOnly: true` on its own — `create_schema`
     # is `None` and `update_schema` is `NoSchema`, so there are no writable

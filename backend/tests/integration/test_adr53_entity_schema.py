@@ -117,7 +117,14 @@ async def test_requirements_serves_the_full_envelope_shape(client: httpx.AsyncCl
     assert body["scopeSelector"] is None
     assert body["scopeResolution"] is None
     assert body["searchFields"] == ["title", "description", "external_ref", "source"]
-    assert body["filterFields"] == ["external_ref"]
+    # ADR-0072 (ENTITY-FILTER-1): `filterFields` is DERIVED from the per-field
+    # `filterable` flags, not echoed from a hand-kept `config.filter_fields`
+    # tuple (`Requirement`'s own `("external_ref",)` was one of the 7 deleted
+    # by that ADR). `description` is absent because it is a `mapped_column(
+    # Text, ...)` — an unbounded free-text column, which `?q=` covers (note it
+    # IS in `searchFields` above) and exact equality does not;
+    # `title`/`external_ref`/`source` are bounded `String` columns and stay.
+    assert body["filterFields"] == ["project_id", "title", "external_ref", "source"]
     assert isinstance(body["fields"], list) and body["fields"]
 
 
@@ -136,6 +143,8 @@ async def test_requirements_project_id_is_a_fk_field(client: httpx.AsyncClient) 
         "required": True,
         "showInTable": True,
         "sortable": True,
+        # ADR-0072: joined the base key set alongside `sortable`.
+        "filterable": True,
         "refEntity": "project",
         "labelField": "name",
     }

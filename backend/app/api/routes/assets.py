@@ -143,7 +143,6 @@ _REQUIREMENT_CONFIG = CrudEntityConfig(
     summary_schema=RequirementSummary,
     scope_field="project_id",
     resolve_org_id=chain_resolver([]),
-    filter_fields=("external_ref",),
     search_fields=("title", "description", "external_ref", "source"),
     # ADR-0053
     label="Requirements",
@@ -186,7 +185,6 @@ _TEST_CASE_CONFIG = CrudEntityConfig(
     summary_schema=TestCaseSummary,
     scope_field="project_id",
     resolve_org_id=resolve_test_case_org_id,
-    filter_fields=("status", "test_level_id", "test_type_id"),
     search_fields=("title", "preconditions", "expected_result"),
     methods=frozenset({"get", "update", "delete", "list", "create"}),
     # ADR-0069. `list`/`create` are scoped by `project_id` — only standalone
