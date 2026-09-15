@@ -19,6 +19,14 @@
  * `useAdminRouteContext`. Every other mount omits it and behaves exactly as
  * before.
  *
+ * **[ADR-0070](../../../../../docs/adr/0070-generic-entity-detail-page.md):**
+ * each table row is now a navigation affordance — `EntityTable`'s new
+ * `onRowClick` opens `EntityDetailPage` (`./:id`), the read-only view of
+ * *every* field rather than only the table's visible columns. This page owns
+ * the destination; `EntityTable` owns the affordance and the "Edit/Delete
+ * don't count as a row click" rule. See the `onRowClick` prop below for why
+ * `config.detailPath` takes precedence when an entity declares one.
+ *
  * **ADR-0042 (CoreUI -> AdminLTE v4):** raw Bootstrap 5 markup now.
  * `CContainer fluid` -> `<div class="container-fluid">`, `CCard`/`CCardBody`
  * -> the `Card` atom (`Card`/`Card.Header`/`Card.Body` — was raw
@@ -256,6 +264,25 @@ function EntityListPage({ entityKeyOverride }: { entityKeyOverride?: string } = 
             setDeleteError(null);
             setRowPendingDelete(row);
           }}
+          /**
+           * ADR-0070: clicking a row opens the read-only detail view showing
+           * *every* field, not just the table's visible columns.
+           *
+           * `config.detailPath` wins when set: `Project` is the one entity
+           * with a real bespoke workspace of its own (`ProjectDetail`,
+           * ADR-0060), already reachable by clicking its name cell — sending
+           * a row click somewhere *different* from that same row's own link
+           * would be two destinations from one row. So the row click follows
+           * the config's declared detail path, and only falls back to the
+           * generic `./:id` route for the 27 entities that declare none.
+           * Still fully generic — the branch is on config data, not on an
+           * entity name.
+           */
+          onRowClick={(row) =>
+            navigate(
+              config.detailPath ? config.detailPath.replace(":id", String(row.id)) : `${row.id}`,
+            )
+          }
         />
       )}
 

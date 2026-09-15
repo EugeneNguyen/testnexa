@@ -387,4 +387,173 @@ describe("EntityTable", () => {
       expect(screen.queryByRole("link")).not.toBeInTheDocument();
     });
   });
+
+  /**
+   * ADR-0070: the row-click affordance half of the generic detail view.
+   * `EntityTable` owns the affordance (pointer cursor, keyboard reachability,
+   * and the Actions cell's propagation stop); *where* the click goes is the
+   * caller's — hence `onRowClick` receiving the row and nothing more.
+   */
+  describe("onRowClick (ADR-0070)", () => {
+    it("TC-ADMIN-044: fires onRowClick with the clicked row's own object", () => {
+      const onRowClick = vi.fn();
+      render(
+        <EntityTable
+          config={READ_ONLY_CONFIG}
+          rows={ROWS}
+          total={2}
+          page={1}
+          pageSize={25}
+          onPageChange={vi.fn()}
+          onRowClick={onRowClick}
+        />,
+      );
+
+      fireEvent.click(screen.getByTestId("entity-table-row-2"));
+
+      expect(onRowClick).toHaveBeenCalledTimes(1);
+      expect(onRowClick).toHaveBeenCalledWith(ROWS[1]);
+    });
+
+    it("TC-ADMIN-047: fires onRowClick on Enter and on Space when a row has keyboard focus", () => {
+      const onRowClick = vi.fn();
+      render(
+        <EntityTable
+          config={READ_ONLY_CONFIG}
+          rows={ROWS}
+          total={2}
+          page={1}
+          pageSize={25}
+          onPageChange={vi.fn()}
+          onRowClick={onRowClick}
+        />,
+      );
+
+      const row = screen.getByTestId("entity-table-row-1");
+      // Keyboard-reachable at all: a bare onClick on a <tr> would not be.
+      expect(row).toHaveAttribute("tabindex", "0");
+
+      fireEvent.keyDown(row, { key: "Enter" });
+      expect(onRowClick).toHaveBeenCalledTimes(1);
+
+      fireEvent.keyDown(row, { key: " " });
+      expect(onRowClick).toHaveBeenCalledTimes(2);
+
+      // An unrelated key is not a navigation.
+      fireEvent.keyDown(row, { key: "a" });
+      expect(onRowClick).toHaveBeenCalledTimes(2);
+      expect(onRowClick).toHaveBeenNthCalledWith(1, ROWS[0]);
+      expect(onRowClick).toHaveBeenNthCalledWith(2, ROWS[0]);
+    });
+
+    it("TC-ADMIN-046: clicking Edit or Delete in a row fires only that action, never onRowClick", () => {
+      const onRowClick = vi.fn();
+      const onEdit = vi.fn();
+      const onDelete = vi.fn();
+      render(
+        <EntityTable
+          config={FULL_CRUD_CONFIG}
+          rows={ROWS}
+          total={2}
+          page={1}
+          pageSize={25}
+          onPageChange={vi.fn()}
+          onEdit={onEdit}
+          onDelete={onDelete}
+          onRowClick={onRowClick}
+        />,
+      );
+
+      fireEvent.click(screen.getAllByRole("button", { name: "Edit" })[0]);
+      expect(onEdit).toHaveBeenCalledTimes(1);
+      expect(onEdit).toHaveBeenCalledWith(ROWS[0]);
+      expect(onRowClick).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getAllByRole("button", { name: "Delete" })[1]);
+      expect(onDelete).toHaveBeenCalledTimes(1);
+      expect(onDelete).toHaveBeenCalledWith(ROWS[1]);
+      expect(onRowClick).not.toHaveBeenCalled();
+
+      // ...while a click on the row itself still navigates, proving the
+      // suppression above is scoped to the actions cell and hasn't simply
+      // disabled row clicks for this config.
+      fireEvent.click(screen.getByTestId("entity-table-row-1"));
+      expect(onRowClick).toHaveBeenCalledTimes(1);
+    });
+
+    it("leaves rows non-interactive (no handler, no tabindex, no testid) when onRowClick is omitted", () => {
+      const { container } = render(
+        <EntityTable config={READ_ONLY_CONFIG} rows={ROWS} total={2} page={1} pageSize={25} onPageChange={vi.fn()} />,
+      );
+
+      expect(screen.queryByTestId("entity-table-row-1")).not.toBeInTheDocument();
+      container.querySelectorAll("tbody tr").forEach((row) => {
+        expect(row).not.toHaveAttribute("tabindex");
+      });
+    });
+  });
+
+  /**
+   * ADR-0071 (Amendment): `bare` drops the `.card`/`.card-header` wrapper for a
+   * caller that already owns a card — `EntityDetailPage`'s relationship tab
+   * pane, whose card header is the tab strip itself. The table and its
+   * `.card-body` sections are unchanged; only the wrapper goes.
+   */
+  describe("bare (ADR-0071)", () => {
+    it("renders the same table with no .card/.card-header wrapper", () => {
+      const { container } = render(
+        <EntityTable
+          bare
+          config={READ_ONLY_CONFIG}
+          rows={ROWS}
+          total={2}
+          page={1}
+          pageSize={25}
+          onPageChange={vi.fn()}
+        />,
+      );
+
+      expect(container.querySelector(".card")).toBeNull();
+      expect(container.querySelector(".card-header")).toBeNull();
+      // The body sections — and everything in them — are untouched.
+      expect(container.querySelector(".card-body")).not.toBeNull();
+      expect(screen.getByRole("columnheader", { name: "Title" })).toBeInTheDocument();
+      expect(screen.getByText("First widget")).toBeInTheDocument();
+    });
+
+    it("keeps the card wrapper by default, so every list screen is unaffected", () => {
+      const { container } = render(
+        <EntityTable
+          title="Widgets"
+          config={READ_ONLY_CONFIG}
+          rows={ROWS}
+          total={2}
+          page={1}
+          pageSize={25}
+          onPageChange={vi.fn()}
+        />,
+      );
+
+      expect(container.querySelector(".card")).not.toBeNull();
+      expect(container.querySelector(".card-header")).not.toBeNull();
+      expect(screen.getByText("Widgets")).toHaveClass("card-title");
+    });
+
+    it("still renders the load error in bare mode", () => {
+      render(
+        <EntityTable
+          bare
+          config={READ_ONLY_CONFIG}
+          rows={[]}
+          total={0}
+          page={1}
+          pageSize={25}
+          onPageChange={vi.fn()}
+          loadError="Something went wrong. Please try again."
+        />,
+      );
+
+      expect(screen.getByRole("alert")).toHaveTextContent("Something went wrong. Please try again.");
+    });
+  });
 });

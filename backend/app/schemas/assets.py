@@ -16,6 +16,7 @@ which deliberately omit the parent FK the factory would have required in the
 body.
 """
 
+from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
@@ -333,6 +334,27 @@ class TestSuiteListResponse(BaseModel):
     page_size: int
 
 
+class TestSuiteTestCaseSummary(BaseModel):
+    """ADR-0072: the read-only summary for `TestSuiteTestCase`, REQ-4's
+    suite-membership junction table.
+
+    Shaped verbatim like `app/schemas/trace.py`'s four `*LinkSummary` classes
+    — `id`, the two FKs, `created_at` — because the table has exactly that
+    shape (`app/models/assets.py`: two FK columns, a unique constraint on the
+    pair, `created_at` and no `updated_at`). There is deliberately no
+    `Create*`/`Update*` request schema: rows are written only by REQ-4's
+    bespoke `POST`/`DELETE /test-suites/{id}/test-cases/{case_id}` routes
+    (ADR-0030), never through the generic factory, so the config pairs this
+    with `create_schema=None` + `update_schema=NoSchema` exactly as the
+    traceability links do.
+    """
+
+    id: UUID
+    test_suite_id: UUID
+    test_case_id: UUID
+    created_at: datetime
+
+
 __all__ = [
     "CreateRequirementRequest",
     "CreateTestCaseForTestConditionRequest",
@@ -355,6 +377,7 @@ __all__ = [
     "TestStepSummary",
     "TestSuiteListResponse",
     "TestSuiteSummary",
+    "TestSuiteTestCaseSummary",
     "UpdateRequirementRequest",
     "UpdateTestCaseRequest",
     "UpdateTestConditionRequest",

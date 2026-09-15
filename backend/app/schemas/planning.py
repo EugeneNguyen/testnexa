@@ -14,7 +14,7 @@ factory auto-stamps it from the authenticated actor
 (`app/api/crud_factory.py`'s `_ACTOR_STAMPED_FIELDS`).
 """
 
-from datetime import date
+from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
@@ -194,6 +194,23 @@ class TestCycleListResponse(BaseModel):
     page_size: int
 
 
+class TestPlanTestSuiteSummary(BaseModel):
+    """ADR-0072: the read-only summary for `TestPlanTestSuite`, PLAN-1's
+    plan-scope junction table.
+
+    Same four-column shape as `app/schemas/trace.py`'s `*LinkSummary` classes
+    and as `TestSuiteTestCaseSummary` — `id`, the two FKs, `created_at`. No
+    `Create*`/`Update*` request schema: rows are written only by PLAN-1's
+    bespoke `POST`/`DELETE /test-plans/{id}/test-suites/{suite_id}` routes,
+    never through the generic factory.
+    """
+
+    id: UUID
+    test_plan_id: UUID
+    test_suite_id: UUID
+    created_at: datetime
+
+
 __all__ = [
     "CreateEntryExitCriteriaRequest",
     "CreateEnvironmentRequest",
@@ -209,6 +226,7 @@ __all__ = [
     "TestPlanListResponse",
     "TestPlanStatus",
     "TestPlanSummary",
+    "TestPlanTestSuiteSummary",
     "UpdateEntryExitCriteriaRequest",
     "UpdateEnvironmentRequest",
     "UpdateTestCycleRequest",

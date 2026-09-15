@@ -72,6 +72,7 @@ function renderBreadcrumb(initialEntry: string) {
           <Route path="/orgs/:orgId/members" element={<AppBreadcrumb />} />
           <Route path="/orgs/:orgId/ui-elements/colors" element={<AppBreadcrumb />} />
           <Route path="/orgs/:orgId/admin/:entity" element={<AppBreadcrumb />} />
+          <Route path="/orgs/:orgId/admin/:entity/:id" element={<AppBreadcrumb />} />
           <Route path="/orgs/:orgId/admin/:entity/:id/edit" element={<AppBreadcrumb />} />
           <Route path="/projects/:projectId" element={<AppBreadcrumb />} />
           <Route path="/projects/:projectId/test-plans/:testPlanId" element={<AppBreadcrumb />} />
@@ -80,6 +81,7 @@ function renderBreadcrumb(initialEntry: string) {
             element={<AppBreadcrumb />}
           />
           <Route path="/projects/:projectId/admin/:entity" element={<AppBreadcrumb />} />
+          <Route path="/projects/:projectId/admin/:entity/:id" element={<AppBreadcrumb />} />
           <Route path="/projects/:projectId/admin/:entity/:id/edit" element={<AppBreadcrumb />} />
         </Routes>
       </MemoryRouter>
@@ -152,6 +154,37 @@ describe("AppBreadcrumb", () => {
     expect(allEntities.find((e) => e.key === "roles")?.label).toBe("Roles");
     expect(screen.getByText("Roles")).toBeInTheDocument();
     expect(screen.getByText("Roles").closest("a")).toBeNull();
+  });
+
+  /**
+   * ADR-0070 / TC-ADMIN-045: the new read-only detail route gets its own
+   * trail in both scopes, entity segment linked back to that entity's list,
+   * `Details` as the active (unlinked) final segment — the same shape the
+   * pre-existing `/edit` entries already use.
+   */
+  it("TC-ADMIN-045: an org-scoped admin detail route resolves Dashboard -> {entity label} -> Details", () => {
+    const { container } = renderBreadcrumb("/orgs/org-1/admin/roles/role-1");
+
+    const rolesLabel = allEntities.find((e) => e.key === "roles")!.label;
+    expect(crumbTexts(container)).toEqual(["Dashboard", rolesLabel, "Details"]);
+    expect(screen.getByText(rolesLabel).closest("a")).toHaveAttribute("href", "/orgs/org-1/admin/roles");
+    expect(screen.getByText("Details").closest("a")).toBeNull();
+  });
+
+  it("TC-ADMIN-045: a project-scoped admin detail route resolves Projects -> {name} -> {entity label} -> Details", async () => {
+    mockGetProject.mockResolvedValue(PROJECT_FIXTURE);
+
+    const { container } = renderBreadcrumb(`/projects/${PROJECT_ID}/admin/test-cases/tc-1`);
+
+    const testCasesLabel = allEntities.find((e) => e.key === "test-cases")!.label;
+    await waitFor(() => {
+      expect(crumbTexts(container)).toEqual(["Projects", PROJECT_NAME, testCasesLabel, "Details"]);
+    });
+    expect(screen.getByText(testCasesLabel).closest("a")).toHaveAttribute(
+      "href",
+      `/projects/${PROJECT_ID}/admin/test-cases`,
+    );
+    expect(screen.getByText("Details").closest("a")).toBeNull();
   });
 
   // ------------------------------------------------------------------

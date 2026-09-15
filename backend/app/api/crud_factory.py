@@ -449,6 +449,44 @@ def chain_resolver(hops: Sequence[tuple[type, str]]) -> ResolveOrgId:
     return _resolve
 
 
+def branching_resolver(branches: Sequence[tuple[str, ResolveOrgId]]) -> ResolveOrgId:
+    """Build a `resolve_org_id(db, row)` that picks a branch by which FK is present.
+
+    ADR-0072 Amendment 1. The generalization of `resolve_risk_item_org_id`'s
+    hand-written shape, needed once a `scope_field` is a branching 2-tuple: the
+    factory's own `_resolve_scope_for_write` calls `resolve_org_id` with a
+    `types.SimpleNamespace` carrying **only the one scope attribute the request
+    actually supplied**, so a resolver hard-coded to walk the other arm reads
+    `None` off that stand-in and 404s a perfectly valid list request. A
+    bidirectional junction therefore needs one branch per arm, not one walk.
+
+    Branches are tried in declaration order and the first whose named attribute
+    is non-`None` wins. Order is load-bearing for the *other* call site, and in
+    the opposite way: `_fetch_and_gate` passes a **real row**, which carries
+    every FK at once, so the first branch always fires there. Declaring the arm
+    that was the config's sole `scope_field` before the widening first is what
+    makes the item-route (`get`) walk byte-identical to its pre-widening self —
+    the new arm only ever runs for a scope stand-alone that lacks the old one.
+
+    Both arms of a junction necessarily resolve to the same org (a link row
+    whose two ends sat in different tenants could not have been created — every
+    bespoke write route checks both sides against one `org_id` first), so
+    branch order is a *behaviour-preservation* choice, never a correctness one.
+
+    Returns `None` when no branch's attribute is set — an unresolvable chain,
+    which every caller turns into `404`, never a partial or guessed result,
+    exactly as `chain_resolver` does.
+    """
+
+    async def _resolve(db: AsyncSession, row: Any) -> uuid.UUID | None:
+        for field_name, resolver in branches:
+            if getattr(row, field_name, None) is not None:
+                return await resolver(db, row)
+        return None
+
+    return _resolve
+
+
 async def resolve_test_case_org_id(db: AsyncSession, row: Any) -> uuid.UUID | None:
     """Bespoke `TestCase` resolver (ADR-0022): nullable-hop with three fallbacks.
 
@@ -813,22 +851,16 @@ def _label_for(field_name: str) -> str:
     return field_name.replace("_", " ").capitalize()
 
 
-def derive_entity_schema(config: CrudEntityConfig) -> dict[str, Any]:
-    """ADR-0053: the `GET /entities/{resource}/schema` response body for one
-    entity — the single source of truth `EntityListPage`/`EntityFormPage`/
-    `EntityTable`/`EntityForm` fetch instead of importing a static
-    `frontend/src/entityConfigs/<entity>.ts`.
+def _derived_fields(config: CrudEntityConfig) -> tuple[dict[str, Any], dict[str, Any], set[str]]:
+    """The `(all_fields, writable_fields, required_fields)` triple every
+    schema-derived view of an entity starts from.
 
-    Field-shape source: the **union** of `create_schema` (if any),
-    `update_schema` (if not `NoSchema`), and `summary_schema` (always
-    present, minus `id`) — matching declaration order, writable schemas
-    first. A field present only in `summary_schema` (e.g. `created_at`) is
-    marked `readOnly: true`, mirroring `FieldConfig.readOnly`'s existing
-    frontend contract (table/display only, never part of a submitted
-    payload). `required` is `True` only for a field required by
-    `create_schema` specifically — the same "only ever supplied via
-    `Update*Request` isn't marked required" posture `FieldConfig.required`'s
-    own frontend doc comment already establishes.
+    Factored out of `derive_entity_schema` so `derive_entity_relations`
+    (ADR-0071) can ask "which fields does this entity's schema actually
+    serve?" without either re-deriving the whole schema (O(n^2) across the
+    registry) or reading `config.field_meta` directly — the latter would be
+    wrong, because a `FieldMeta` entry naming a field that no schema actually
+    carries is silently ignored here and must stay ignored there too.
     """
     writable_schemas = [s for s in (config.create_schema, config.update_schema) if s is not None and s is not NoSchema]
     writable_fields: dict[str, Any] = {}
@@ -853,6 +885,62 @@ def derive_entity_schema(config: CrudEntityConfig) -> dict[str, Any]:
         for name, info in all_fields.items():
             ordered.setdefault(name, info)
         all_fields = ordered
+
+    return all_fields, writable_fields, required_fields
+
+
+def derive_sortable_fields(config: CrudEntityConfig) -> frozenset[str]:
+    """Which of this entity's fields `?sort=` may target — the same answer
+    `derive_entity_schema`'s own `sortable` flags give, derived without
+    building the whole schema.
+
+    Exists because `make_crud_router` needs this at *module import* time,
+    where `derive_entity_schema` is unreachable: since ADR-0071 that function
+    resolves `relations` from the entity registry, and the registry is itself
+    mid-import at that moment (it imports the route modules that call this
+    factory). `tests/unit/test_adr71_entity_relations.py` asserts the two stay
+    in agreement for every registered entity, so this is a second *derivation*
+    of one fact, never a second hand-kept list.
+    """
+    all_fields, _, _ = _derived_fields(config)
+    return frozenset(name for name in all_fields if config.field_meta.get(name, FieldMeta()).sortable)
+
+
+def derive_entity_schema(
+    config: CrudEntityConfig,
+    all_configs: Mapping[str, CrudEntityConfig] | None = None,
+) -> dict[str, Any]:
+    """ADR-0053: the `GET /entities/{resource}/schema` response body for one
+    entity — the single source of truth `EntityListPage`/`EntityFormPage`/
+    `EntityTable`/`EntityForm` fetch instead of importing a static
+    `frontend/src/entityConfigs/<entity>.ts`.
+
+    Field-shape source: the **union** of `create_schema` (if any),
+    `update_schema` (if not `NoSchema`), and `summary_schema` (always
+    present, minus `id`) — matching declaration order, writable schemas
+    first. A field present only in `summary_schema` (e.g. `created_at`) is
+    marked `readOnly: true`, mirroring `FieldConfig.readOnly`'s existing
+    frontend contract (table/display only, never part of a submitted
+    payload). `required` is `True` only for a field required by
+    `create_schema` specifically — the same "only ever supplied via
+    `Update*Request` isn't marked required" posture `FieldConfig.required`'s
+    own frontend doc comment already establishes.
+
+    **ADR-0071** adds a tenth key, `relations` — see
+    `derive_entity_relations`. `all_configs` defaults to the real registry,
+    imported lazily because `entity_registry` imports *this* module at load
+    time; deferring it to call time (long after both modules are loaded)
+    keeps that one-way. The parameter exists so a unit test can inject a
+    synthetic registry, and so both callers of this function — the REST route
+    and the MCP `describe` tool — keep serving byte-identical bodies without
+    either having to remember to pass anything.
+    """
+    if all_configs is None:
+        from app.api.entity_registry import ALL_ENTITY_CONFIGS
+
+        all_configs = ALL_ENTITY_CONFIGS
+
+    all_fields, writable_fields, required_fields = _derived_fields(config)
 
     fields_out: list[dict[str, Any]] = []
     for name, info in all_fields.items():
@@ -926,7 +1014,152 @@ def derive_entity_schema(config: CrudEntityConfig) -> dict[str, Any]:
         "searchFields": list(config.search_fields),
         "filterFields": list(config.filter_fields),
         "fields": fields_out,
+        "relations": derive_entity_relations(config, all_configs),
     }
+
+
+# --- relationship derivation (ADR-0071) ----------------------------------------------------------
+
+
+def fk_fields_of(config: CrudEntityConfig) -> dict[str, str]:
+    """`{field_name: ref_entity}` for every FK the entity's schema serves.
+
+    Keyed off `_derived_fields` rather than `config.field_meta` for the reason
+    that helper's own docstring gives — a `FieldMeta(ref_entity=...)` entry
+    naming a field no schema carries is inert in `derive_entity_schema`, and
+    must be equally inert here.
+    """
+    all_fields, _, _ = _derived_fields(config)
+    return {
+        name: meta.ref_entity
+        for name, meta in config.field_meta.items()
+        if meta.ref_entity and name in all_fields
+    }
+
+
+def is_link_entity(config: CrudEntityConfig) -> bool:
+    """Is this config one of ADR-0005's dedicated join tables?
+
+    Decided **structurally**, never by table name: exactly two FK fields, and
+    no `create`/`update` in its REST surface. That is the literal shape
+    `app/models/trace.py`'s own docstring describes ("two FK columns... links
+    are immutable — delete-and-recreate, never edited"), so an entity that
+    genuinely has it *is* a link table whatever it is called.
+
+    It also excludes the near-misses deliberately: `TestExecution` has two FKs
+    but a real `update`; `RoleAssignment` has two FKs but a real `update` and
+    no `list` at all; `RiskItem` has two FKs but a real `create`.
+    `tests/unit/test_adr71_entity_relations.py` pins this classifier against
+    the `*_link` naming convention in both directions, so a future entity that
+    drifts into (or out of) this shape fails loudly rather than silently
+    gaining or losing a many-to-many tab.
+    """
+    methods = config.full_methods or config.methods
+    return len(fk_fields_of(config)) == 2 and not ({"create", "update"} & methods)
+
+
+def derive_entity_relations(
+    config: CrudEntityConfig,
+    all_configs: Mapping[str, CrudEntityConfig],
+) -> list[dict[str, Any]]:
+    """ADR-0071: the *inbound* relationships of `config` — every place some
+    **other** entity points at this one — as the detail page's relationship
+    tabs.
+
+    Deliberately inbound-only. A field of this entity that points at a parent
+    (`Requirement.project_id`) is a many-to-**one**; it already renders as a
+    labelled value on the Info tab and would be a tab listing exactly one row.
+
+    Two kinds, both discovered by walking `all_configs` — there is no
+    hand-authored per-entity map anywhere, which is what keeps this complete
+    by construction (`backend/CLAUDE.md`'s registry-completeness note: the
+    only registry that cannot silently omit a row is one nobody types):
+
+    - **one-to-many** — another entity `C` has an FK field pointing here.
+    - **many-to-many** — a link entity (`is_link_entity`) has one FK pointing
+      here; its *other* FK names the far entity the tab is really about.
+
+    A candidate is only emitted when the generic list route can actually
+    serve it: `C` must register `list`, and the FK must be `C`'s own
+    `scope_field` (or one arm of a branching 2-tuple one), because
+    `extract_scope_value` 422s a list request that doesn't carry exactly one
+    scope value. An FK that is merely a `filter_field` is *not* enough — the
+    caller would still owe the unrelated scope value, which a detail page for
+    a different entity has no way to know. Every relationship excluded this
+    way is enumerated, with its reason, in
+    `tests/unit/test_adr71_entity_relations.py`, so the excluded set is an
+    asserted partition rather than an accident.
+    """
+    # `ref_entity` is singular and hyphenated ("test-case"); registry keys are
+    # plural ("test-cases"). Build the map from the configs themselves rather
+    # than re-deriving it by string surgery, so `entry-exit-criteria` and any
+    # future irregular plural come out right for free.
+    plural_by_singular = {c.resource.replace("_", "-"): key for key, c in all_configs.items()}
+    target = config.resource.replace("_", "-")
+
+    def label_of(c: CrudEntityConfig) -> str:
+        return c.label or _display_name(c.resource)
+
+    relations: list[dict[str, Any]] = []
+    for key, candidate in all_configs.items():
+        if candidate is config:
+            continue
+        methods = candidate.full_methods or candidate.methods
+        if "list" not in methods:
+            continue
+        scopes = _scope_candidates(candidate)
+        fks = fk_fields_of(candidate)
+        link = is_link_entity(candidate)
+        for field_name, ref_entity in fks.items():
+            if ref_entity != target or field_name not in scopes:
+                continue
+            if link:
+                far_field, far_ref = next((n, r) for n, r in fks.items() if n != field_name)
+                far_key = plural_by_singular.get(far_ref)
+                if far_key is None:
+                    # The far side isn't a registered entity (no config to
+                    # label or link to). Skip rather than emit a tab that
+                    # cannot resolve — `Release` is the only entity this can
+                    # be today, and no link table points at it.
+                    continue
+                # `" (linked)"` is not decoration — it disambiguates a real
+                # collision. `Requirement` reaches `TestCondition` **both**
+                # ways: directly (`TestCondition.requirement_id`, REQ-3's
+                # rigor path) and through `RequirementTestConditionLink`
+                # (ADR-0005 traceability). Both are genuine, separately
+                # listable relationships, and without the suffix the detail
+                # page would show two differently-populated tabs with the
+                # identical label "Test conditions". Applied to every
+                # many-to-many rather than only the colliding one, so the
+                # rule stays generic and the suffix reliably means "reached
+                # via a traceability link" wherever it appears.
+                relations.append(
+                    {
+                        "kind": "many-to-many",
+                        "entity": key,
+                        "scopeField": field_name,
+                        "label": f"{label_of(all_configs[far_key])} (linked)",
+                        "targetEntity": far_key,
+                        "targetField": far_field,
+                    }
+                )
+            else:
+                relations.append(
+                    {
+                        "kind": "one-to-many",
+                        "entity": key,
+                        "scopeField": field_name,
+                        "label": label_of(candidate),
+                        "targetEntity": key,
+                        "targetField": None,
+                    }
+                )
+
+    # Direct children first, then the traceability links, each alphabetical —
+    # a stable order so the tab strip doesn't reshuffle between deploys and so
+    # every assertion about it can be written positionally.
+    relations.sort(key=lambda r: (r["kind"] != "one-to-many", r["label"], r["entity"]))
+    return relations
 
 
 # --- the factory itself -----------------------------------------------------------------------
@@ -1002,11 +1235,20 @@ def make_crud_router(config: CrudEntityConfig) -> APIRouter:
     if "list" in config.methods:
         assert list_response_schema is not None
         # ADR-0053 (sort): computed once at router-build time from this
-        # config's own derived schema — the single source of truth for which
-        # columns are sortable is the same `derive_entity_schema` the `GET
+        # config's own derived field set — the single source of truth for
+        # which columns are sortable is the same derivation the `GET
         # /entities/{resource}/schema` route serves, not a second hand-kept
         # list (the exact drift ADR-0053 already exists to close).
-        sortable_fields = frozenset(f["name"] for f in derive_entity_schema(config)["fields"] if f["sortable"])
+        #
+        # ADR-0071: this reads `derive_sortable_fields` rather than
+        # `derive_entity_schema(config)["fields"]` — the two agree by
+        # construction (there is a test pinning that), but the full schema now
+        # also derives `relations`, which needs the whole registry, and this
+        # line runs at *module import* time, from inside the very route
+        # modules `entity_registry` is in the middle of importing. Asking for
+        # the registry there is a genuine circular import, not a lazy-import
+        # ordering nit.
+        sortable_fields = derive_sortable_fields(config)
 
         async def list_items(
             request: Request,
@@ -1263,6 +1505,7 @@ __all__ = [
     "NoSchema",
     "apply_filters_and_search",
     "apply_sort",
+    "branching_resolver",
     "chain_resolver",
     "clamp_pagination",
     "extract_scope_value",

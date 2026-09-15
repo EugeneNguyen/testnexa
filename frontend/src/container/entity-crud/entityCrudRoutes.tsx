@@ -1,9 +1,10 @@
 /**
  * ADR-0057 addendum: one call site per scope wires up the whole ADR-0025
  * generic admin CRUD surface (List/Add/Edit/Delete) instead of hand-writing
- * 2 `<Route>` elements per scope. `App.tsx` calls this once per scope
- * (`/orgs/:orgId/admin`, `/projects/:projectId/admin`) — 4 hand-written
- * `<Route>`s collapse to 2 one-line calls.
+ * a `<Route>` element per screen per scope. `App.tsx` calls this once per
+ * scope (`/orgs/:orgId/admin`, `/projects/:projectId/admin`) — 6 hand-written
+ * `<Route>`s (3 screens x 2 scopes, since ADR-0070 added the detail view)
+ * collapse to 2 one-line calls.
  *
  * Returns a `<React.Fragment>` of `<Route>` elements, the officially
  * supported react-router v6 pattern for grouping routes under one call
@@ -20,6 +21,7 @@
 import { Fragment } from "react";
 import { Route } from "react-router-dom";
 import ProtectedRoute from "../../auth/ProtectedRoute";
+import EntityDetailPage from "./EntityDetailPage";
 import EntityFormPage from "./EntityFormPage";
 import EntityListPage from "./EntityListPage";
 
@@ -43,6 +45,20 @@ export function entityCrudRoutes(basePath: string) {
         element={
           <ProtectedRoute>
             <EntityFormPage />
+          </ProtectedRoute>
+        }
+      />
+      {/*
+        ADR-0070: the read-only detail view. Declared after `:id/edit` purely
+        for readability — react-router v6 ranks by segment specificity, not
+        declaration order, and `/:entity/:id` has one fewer segment than
+        `/:entity/:id/edit` so the two can never be ambiguous.
+      */}
+      <Route
+        path={`${basePath}/:entity/:id`}
+        element={
+          <ProtectedRoute>
+            <EntityDetailPage />
           </ProtectedRoute>
         }
       />

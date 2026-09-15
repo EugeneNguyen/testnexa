@@ -20,18 +20,22 @@ from app.db.rbac_seed_catalog import (
 
 def test_resource_counts_match_the_plan() -> None:
     assert len(CRUD_RESOURCES) == 23
-    assert len(READ_ONLY_RESOURCES) == 6
-    assert len(ALL_RESOURCES) == 29
+    # 6 until ADR-0072 added `test_suite_test_case`/`test_plan_test_suite` —
+    # REQ-4's/PLAN-1's junction tables, registered as read-only generic-CRUD
+    # entities so ADR-0071's relationship derivation can see them.
+    assert len(READ_ONLY_RESOURCES) == 8
+    assert len(ALL_RESOURCES) == 31
     # no accidental overlap/duplication between the two resource lists
     assert set(CRUD_RESOURCES).isdisjoint(READ_ONLY_RESOURCES)
     assert len(set(ALL_RESOURCES)) == len(ALL_RESOURCES)
 
 
-def test_permission_catalog_has_one_hundred_rows() -> None:
+def test_permission_catalog_has_one_hundred_and_two_rows() -> None:
     catalog = build_permission_catalog()
-    # 23 CRUD resources x 4 actions + 6 read-only resources x 1 action + 2 special verbs
-    assert len(catalog) == 23 * 4 + 6 * 1 + 2
-    assert len(catalog) == 100
+    # 23 CRUD resources x 4 actions + 8 read-only resources x 1 action + 2 special verbs
+    assert len(catalog) == 23 * 4 + 8 * 1 + 2
+    # 100 before ADR-0072's two new read-only resources.
+    assert len(catalog) == 102
     codes = [code for code, _resource, _action in catalog]
     assert len(codes) == len(set(codes)), "duplicate permission codes in the catalog"
 
@@ -71,7 +75,7 @@ def test_org_admin_bundle_is_the_entire_catalog() -> None:
     bundles = build_role_bundles(all_codes)
 
     assert bundles["org_admin"] == all_codes
-    assert len(bundles["org_admin"]) == 100
+    assert len(bundles["org_admin"]) == 102
 
 
 def test_ai_agent_scoped_bundle_never_contains_test_plan_approve() -> None:
@@ -309,6 +313,57 @@ def test_exec3_migration_code_sets_match_the_catalog_delta() -> None:
     # migration's own "len mismatch -> skip" guard can never silently no-op.
     assert set(module._ALL_NEW_CODES) <= all_codes
     assert module.down_revision == "6a11a6a1d803"
+
+
+def test_adr72_migration_code_set_matches_the_catalog_delta() -> None:
+    """**TC-ADMIN-062.** ADR-0072's migration is the first RBAC extension here that inserts the
+    `Permission` rows themselves, not just `role_permission` grants — the two
+    resources are new, so their codes exist in no already-seeded database. Both
+    halves therefore need pinning against the catalog, not just the grant half
+    the five prior extension migrations needed.
+    """
+    import importlib.util
+    from pathlib import Path
+
+    migration_path = (
+        Path(__file__).resolve().parents[2]
+        / "alembic"
+        / "versions"
+        / "7d2c91af4e68_seed_junction_link_read_permissions.py"
+    )
+    assert migration_path.exists(), migration_path
+    spec = importlib.util.spec_from_file_location("_adr72_migration", migration_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    catalog = build_permission_catalog()
+    all_codes = {code for code, _resource, _action in catalog}
+    bundles = build_role_bundles(all_codes)
+
+    # The migration's own `(code, resource, action)` triples must be exactly
+    # the rows `build_permission_catalog()` emits for the two new resources —
+    # so a future rename/removal in `READ_ONLY_RESOURCES` cannot leave the
+    # migration seeding a code the catalog no longer knows about.
+    expected_rows = {
+        row for row in catalog if row[1] in {"test_suite_test_case", "test_plan_test_suite"}
+    }
+    assert set(module._NEW_PERMISSIONS) == expected_rows
+    assert set(module._NEW_CODES) == {"test_suite_test_case.read", "test_plan_test_suite.read"}
+    assert set(module._NEW_CODES) <= all_codes
+
+    # Every role the migration backfills must be one the *static* bundle
+    # definitions already grant both codes to — the migration exists only to
+    # bring an already-seeded DB up to what a fresh one would get.
+    assert set(module._ROLES_TO_GRANT) == {"org_admin", "auditor", "test_manager", "tester"}
+    for role_name in module._ROLES_TO_GRANT:
+        assert set(module._NEW_CODES) <= bundles[role_name], role_name
+
+    # ...and `ai_agent_scoped` is the one system role deliberately left out, so
+    # dropping it from `_ROLES_TO_GRANT` was a decision, not an omission.
+    assert not (set(module._NEW_CODES) & bundles["ai_agent_scoped"])
+
+    assert module.down_revision == "9a2f7c4d8b1e"
 
 
 def test_all_bundle_codes_are_a_subset_of_the_full_catalog() -> None:

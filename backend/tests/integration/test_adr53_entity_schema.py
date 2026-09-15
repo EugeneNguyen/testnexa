@@ -52,6 +52,9 @@ ENVELOPE_KEYS = {
     "searchFields",
     "filterFields",
     "fields",
+    # ADR-0071: the tenth key — this entity's inbound relationships, backing
+    # `EntityDetailPage`'s tabs. Additive; every key above is unchanged.
+    "relations",
 }
 
 

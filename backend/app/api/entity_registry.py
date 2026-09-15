@@ -11,6 +11,20 @@ Backs `GET /entities/{resource}/schema` (`app/api/routes/entity_schema.py`).
 `CrudEntityConfig` at all, ADR-0027's own "Release... 100% bespoke" note),
 so there is nothing here for this registry to collect. Its frontend
 `entityConfigs/release.ts` stays static, outside this ADR's scope.
+
+**This tuple is the one hand-authored list the ADR-0071 relationship
+derivation cannot see past** ([ADR-0072](../../../docs/adr/0072-junction-table-registry-completeness.md)).
+`derive_entity_relations` is *computed* by walking `ALL_ENTITY_CONFIGS`, so it
+cannot omit an entity that is in here — but an entity omitted from `_ALL_CONFIGS`
+itself is invisible to the derivation **and** to the completeness test that
+partitions it, because both enumerate the same registry. That is how
+`TestSuiteTestCase`/`TestPlanTestSuite` sat unregistered (bespoke routes only)
+and silently produced no relationship tabs. The guard lives one level down, at
+the model layer: `tests/unit/test_adr72_registry_completeness.py` walks
+`Base.metadata` and fails on any model with an FK into a registered entity that
+has neither a config here nor a declared, reasoned exclusion. **Adding a model
+with a foreign key means either adding its config here or adding it to that
+test's exclusion table — never silently neither.**
 """
 
 from app.api.crud_factory import CrudEntityConfig, _resource_path
@@ -34,6 +48,8 @@ from app.api.routes.planning import (
 from app.api.routes.projects import _PROJECT_FACTORY_CONFIG
 from app.api.routes.rbac_routes import _PERMISSION_CONFIG, _ROLE_ASSIGNMENT_CONFIG, _ROLE_CONFIG
 from app.api.routes.taxonomy import _TEST_DESIGN_TECHNIQUE_CONFIG, _TEST_LEVEL_CONFIG, _TEST_TYPE_CONFIG
+from app.api.routes.test_plan_membership import _TEST_PLAN_TEST_SUITE_CONFIG
+from app.api.routes.test_suite_membership import _TEST_SUITE_TEST_CASE_CONFIG
 from app.api.routes.trace import (
     _REQUIREMENT_TEST_CASE_LINK_CONFIG,
     _REQUIREMENT_TEST_CONDITION_LINK_CONFIG,
@@ -69,6 +85,10 @@ _ALL_CONFIGS: tuple[CrudEntityConfig, ...] = (
     _REQUIREMENT_TEST_CONDITION_LINK_CONFIG,
     _TEST_CONDITION_TEST_CASE_LINK_CONFIG,
     _TEST_CASE_DEFECT_LINK_CONFIG,
+    # ADR-0072: the two junction tables whose only HTTP surface used to be a
+    # bespoke membership route, so `derive_entity_relations` could not see them.
+    _TEST_SUITE_TEST_CASE_CONFIG,
+    _TEST_PLAN_TEST_SUITE_CONFIG,
 )
 
 ALL_ENTITY_CONFIGS: dict[str, CrudEntityConfig] = {_resource_path(config.resource): config for config in _ALL_CONFIGS}

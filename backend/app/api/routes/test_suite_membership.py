@@ -75,16 +75,23 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.crud_factory import (
+    CrudEntityConfig,
+    FieldMeta,
+    NoSchema,
+    ScopeSelectorOption,
     _org_membership_exists,
+    branching_resolver,
     chain_resolver,
+    make_crud_router,
     resolve_test_case_org_id,
+    resolve_via_test_case,
 )
 from app.api.deps import get_current_actor, get_db
 from app.core.rbac import has_permission
 from app.models.actor import AIAgent, User
 from app.models.assets import Requirement, TestCase, TestCondition, TestSuite, TestSuiteTestCase
 from app.models.trace import RequirementTestCaseLink
-from app.schemas.assets import TestCaseListResponse, TestCaseSummary
+from app.schemas.assets import TestCaseListResponse, TestCaseSummary, TestSuiteTestCaseSummary
 
 router = APIRouter()
 
@@ -355,5 +362,92 @@ async def list_test_cases_in_suite(
         page_size=page_size,
     )
 
+
+# --- ADR-0072: the junction table's own read-only generic-CRUD surface -------------------------
+#
+# The three bespoke routes above are REQ-4's *membership management* surface:
+# they write the join row under ADR-0030's cross-project `422` /
+# duplicate-add `409` / asymmetric-`DELETE`-`404` contract, and the `GET`
+# returns the far side's `TestCase` rows, not join rows. None of that is a
+# reason the junction table cannot *also* be a plain read-only generic-CRUD
+# entity, and until ADR-0072 it wasn't one — which is exactly why
+# `TestSuite`'s ADR-0071 detail page showed zero relationship tabs despite the
+# table being populated by the routes above.
+#
+# `derive_entity_relations` discovers many-to-many relationships by walking
+# `ALL_ENTITY_CONFIGS`; a junction table with no config in that registry is
+# invisible to it, and (because the registry is the same set the completeness
+# test partitions) invisible to the test meant to catch exactly this. Giving
+# the table a config is what makes the relationship derivable — the
+# alternative, special-casing this bespoke route inside the derivation, would
+# hand-author the per-entity relationship map ADR-0071 Decision §1 exists to
+# forbid, and still leave the tab with no servable `GET /{entity}?{scope}=`
+# list route to call.
+#
+# Shaped verbatim on `app/api/routes/trace.py`'s four link-table configs, which
+# already established this exact split for ADR-0005's traceability tables:
+# rows written only as a side effect of a bespoke route, read through the
+# factory. `create_schema=None` + `update_schema=NoSchema` means every field
+# derives `readOnly` and none derives `required`; `methods={"list","get"}`
+# keeps the write surface exclusively on the bespoke routes above and is also
+# half of what makes `is_link_entity` classify this structurally as a link
+# table (two FK fields, no `create`/`update`).
+#
+# `scope_field` is the branching 2-tuple `("test_suite_id", "test_case_id")`
+# — **ADR-0072 Amendment 1**, which supersedes that ADR's own Decision §3.
+# As first shipped this was the single column `"test_suite_id"`, deliberately
+# the suite side (the direction REQ-4's bespoke routes are nested under,
+# `/test-suites/{id}/test-cases`), with the reverse direction parked in
+# ADR-0071 §4's exclusion set. §3's stated reason for parking it was
+# coherence, not capability: "doing it for two junctions and not the other
+# four would make the rule incoherent... widening all six later remains open."
+# All six are widened together in Amendment 1, so that objection no longer
+# applies and this lists from both ends — `TestSuite` keeps its "Test cases
+# (linked)" tab and `TestCase` gains the reverse "Test suites (linked)" one.
+#
+# The suite arm is declared FIRST in the resolver below, so the item route
+# (`GET /test-suite-test-cases/{id}`, where a real row carries both FKs) walks
+# byte-identically to its pre-widening self; the case arm only ever fires for
+# the scope stand-in a `?test_case_id=` list request builds.
+_TEST_SUITE_TEST_CASE_CONFIG = CrudEntityConfig(
+    model=TestSuiteTestCase,
+    resource="test_suite_test_case",
+    create_schema=None,
+    update_schema=NoSchema,
+    summary_schema=TestSuiteTestCaseSummary,
+    scope_field=("test_suite_id", "test_case_id"),
+    # Suite arm: one hop to `TestSuite`, whose own `project_id` the shared
+    # terminal step resolves to `Project.org_id` — the same walk
+    # `_resolve_test_suite_org_id` above performs for the bespoke routes,
+    # composed rather than re-derived. Case arm: `resolve_test_case_org_id`
+    # via `resolve_via_test_case`, which is the identical resolver
+    # `add_test_case_to_suite` above already uses for the case side of its own
+    # tenant check (ADR-0029's branching chain), so the two surfaces cannot
+    # drift on what org a `TestCase` belongs to.
+    resolve_org_id=branching_resolver(
+        [
+            ("test_suite_id", chain_resolver([(TestSuite, "test_suite_id")])),
+            ("test_case_id", resolve_via_test_case),
+        ]
+    ),
+    methods=frozenset({"list", "get"}),
+    label="Test suite -> test case links",
+    scope_selector=(
+        ScopeSelectorOption(ref_entity="test-suite", param_name="test_suite_id", label="By test suite"),
+        ScopeSelectorOption(ref_entity="test-case", param_name="test_case_id", label="By test case"),
+    ),
+    # Only the two FKs need a `FieldMeta`: their `ref_entity`/`label_field`
+    # have no Python-type correlate, and `created_at`'s auto-derived "Created
+    # at" label is already correct. Omitting `ref_entity` here would leave the
+    # entity with zero FK fields, so it would not classify as a link table and
+    # would silently produce no tab at all — the degrades-silently failure
+    # mode ADR-0072's model-layer completeness test now guards.
+    field_meta={
+        "test_suite_id": FieldMeta(ref_entity="test-suite", label_field="name", label="Test suite"),
+        "test_case_id": FieldMeta(ref_entity="test-case", label_field="title", label="Test case"),
+    },
+)
+
+router.include_router(make_crud_router(_TEST_SUITE_TEST_CASE_CONFIG))
 
 __all__ = ["router"]

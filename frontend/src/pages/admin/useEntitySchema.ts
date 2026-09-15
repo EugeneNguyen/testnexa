@@ -58,6 +58,11 @@ export function toEntityConfig(key: string, schema: EntitySchemaResponse): Entit
     ...(schema.scopeResolution !== null ? { scopeResolution: schema.scopeResolution } : {}),
     searchFields: schema.searchFields,
     filterFields: schema.filterFields,
+    // ADR-0071. Normalized to `[]` rather than passed through: a config
+    // assembled here always carries a real array, so `EntityDetailPage` never
+    // has to distinguish "no relationships" from "an older backend that
+    // doesn't serve the key yet".
+    relations: schema.relations ?? [],
   };
 }
 

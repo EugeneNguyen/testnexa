@@ -63,50 +63,36 @@
  * (`fa-sort`/`fa-sort-up`/`fa-sort-down`); the sort *state* (which field, which
  * direction) and the resulting `?sort=` query param are `EntityListPage`'s,
  * same split as `page`/`pageSize`.
+ *
+ * **[ADR-0070](../../../../../docs/adr/0070-generic-entity-detail-page.md):**
+ * two changes, both additive.
+ *
+ * 1. **`onRowClick`** — an optional callback making each `<tr>` a clickable,
+ *    keyboard-reachable navigation affordance. Same split as sort/pagination:
+ *    this component owns the affordance (cursor, `tabIndex`, Enter/Space
+ *    parity, and the Actions cell's `stopPropagation` so Edit/Delete stay
+ *    independent), `EntityListPage` owns *where* the click goes. Omitting the
+ *    prop reproduces the pre-ADR-0070 `<tr>` byte-for-byte.
+ * 2. **Cell rendering and fk-label resolution moved out**, to
+ *    `components/molecules/entity-field-value` and
+ *    `pages/admin/useFkLabels` respectively, so `EntityDetailPage` renders
+ *    the identical value formatting without a second copy. A pure reuse
+ *    extraction — no rendered-output change, no new decision of its own (see
+ *    `frontend/CLAUDE.md`'s "this is a reuse check, not a new ADR" rule; the
+ *    ADR exists for the detail *page*, not for this move).
  */
-import { ReactNode, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { KeyboardEvent, ReactNode } from "react";
 import Table from "../../../container/Table";
 import { EntityConfig, FieldConfig } from "../../../entityConfigs/types";
-import { EntityRow, getEntity } from "../../../lib/api/entityCrud";
-import { resolveEntityKey, useEntitySchemas } from "../../../pages/admin/useEntitySchema";
+import { EntityRow } from "../../../lib/api/entityCrud";
+import { useFkLabels } from "../../../pages/admin/useFkLabels";
 import { Alert } from "../../atoms/alert/alert";
 import { Button } from "../../atoms/button/button";
 import { Card } from "../../atoms/card/card";
 import { Icon } from "../../atoms/icon/icon";
 import { Spinner } from "../../atoms/spinner/spinner";
 import { TextInput } from "../../atoms/text-input/text-input";
-
-/**
- * ADR-0060: `config.detailPath`'s own `:id` placeholder, filled from the
- * row's own id — deliberately narrower than `lib/api/entityCrud.ts`'s
- * `interpolate()` (route-context params like `:orgId`), since a detail link
- * only ever needs the row's own id, never ambient route context.
- */
-function interpolateDetailPath(template: string, id: unknown): string {
-  return template.replace(":id", String(id));
-}
-
-function formatDate(value: unknown): string {
-  if (!value) {
-    return "—";
-  }
-  const date = new Date(String(value));
-  if (Number.isNaN(date.getTime())) {
-    return String(value);
-  }
-  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(date);
-}
-
-function displayValue(value: unknown): string {
-  if (value === null || value === undefined || value === "") {
-    return "—";
-  }
-  if (typeof value === "object") {
-    return JSON.stringify(value);
-  }
-  return String(value);
-}
+import { renderEntityFieldValue } from "../../molecules/entity-field-value";
 
 export interface EntityTableProps {
   /**
@@ -157,6 +143,34 @@ export interface EntityTableProps {
   canDeleteRow?: (row: EntityRow) => boolean;
   onEdit?: (row: EntityRow) => void;
   onDelete?: (row: EntityRow) => void;
+  /**
+   * ADR-0070: clicking anywhere on a row that isn't an action control fires
+   * this. Optional — omit it and every `<tr>` renders exactly as it did
+   * before (no `cursor: pointer`, no `tabIndex`, no handlers), so the 9
+   * pre-existing `entity-table.test.tsx` fixtures and every non-admin caller
+   * are unaffected. `EntityListPage` is the one caller that passes it.
+   *
+   * The trailing Actions cell stops propagation, so Edit/Delete keep working
+   * as their own independent affordances (TC-ADMIN-046) — that is the one
+   * piece of "don't navigate" knowledge this component owns; everything
+   * about *where* a row click goes is the caller's.
+   */
+  onRowClick?: (row: EntityRow) => void;
+  /**
+   * ADR-0071 (Amendment): render the `.card-body` sections **without** the
+   * surrounding `.card`/`.card-header`, for a caller that already owns a card
+   * — `EntityDetailPage`'s relationship tab pane, which lives inside one card
+   * whose header is the tab strip itself (Tabler's documented "tabs in the
+   * card header" pattern). Nesting this component's own card inside that
+   * card's body would paint a second border/shadow around the table and
+   * repeat the tab's label as a card title.
+   *
+   * Opt-in and default-off, so all 24 list screens and every existing
+   * `entity-table.test.tsx` fixture render byte-for-byte as before. `title`
+   * and the search box live in the header and are therefore not rendered in
+   * this mode; the relationship tab passes neither.
+   */
+  bare?: boolean;
 }
 
 function EntityTable({
@@ -180,114 +194,46 @@ function EntityTable({
   canDeleteRow = () => true,
   onEdit,
   onDelete,
+  onRowClick,
+  bare = false,
 }: EntityTableProps) {
   const tableFields = config.fields.filter((f) => f.showInTable !== false);
-  const fkFields = tableFields.filter((f) => f.type === "fk" && f.refEntity);
-  const [fkLabels, setFkLabels] = useState<Record<string, Record<string, string>>>({});
 
   const showActionsColumn = (config.methods.includes("update") || config.methods.includes("delete")) && (onEdit || onDelete);
 
-  // ADR-0053: every distinct ref-entity schema this config's FK columns need,
-  // fetched once here rather than per-field (the Rules of Hooks make a
-  // per-column `useEntitySchema` illegal). Keyed by the *resolved* (plural)
-  // entity key, so look results up through `resolveEntityKey` — `refEntity`
-  // values are singular.
-  const refEntityKeys = useMemo(
-    () => config.fields.filter((f) => f.refEntity).map((f) => f.refEntity as string),
-    [config.fields],
-  );
-  const refConfigs = useEntitySchemas(refEntityKeys);
-
-  // A *primitive* fingerprint of which ref schemas have actually landed. The
-  // effect below has to re-run when one arrives (they resolve after first
-  // render now, where the old registry lookup was synchronous) — but keying it
-  // on `refConfigs`' object identity would make it re-run on every render for
-  // any caller that passes a fresh `config` object, and each run calls
-  // `setFkLabels`, i.e. a render loop. A joined string can't do that.
-  const refConfigFingerprint = fkFields
-    .map((f) => `${f.name}:${refConfigs[resolveEntityKey(f.refEntity as string)]?.path ?? ""}`)
-    .join("|");
-
-  // Batched, deduped FK label resolution — one `getEntity` per distinct id
-  // per FK field across the current page, not one per row (§3).
-  useEffect(() => {
-    let cancelled = false;
-
-    async function resolve() {
-      const next: Record<string, Record<string, string>> = {};
-      for (const field of fkFields) {
-        const refConfig = field.refEntity ? refConfigs[resolveEntityKey(field.refEntity)] : undefined;
-        if (!refConfig) {
-          continue;
-        }
-        const ids = Array.from(
-          new Set(rows.map((row) => row[field.name]).filter((v): v is string => typeof v === "string")),
-        );
-        const entries = await Promise.all(
-          ids.map(async (id) => {
-            try {
-              const row = await getEntity<EntityRow>(refConfig, id);
-              const label = field.labelField ? row[field.labelField] : row.id;
-              return [id, label === null || label === undefined ? id : String(label)] as const;
-            } catch {
-              return [id, id] as const;
-            }
-          }),
-        );
-        next[field.name] = Object.fromEntries(entries);
-      }
-      if (!cancelled) {
-        setFkLabels(next);
-      }
-    }
-
-    if (fkFields.length > 0) {
-      void resolve();
-    }
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, refConfigFingerprint]);
+  // ADR-0053 (batching) / ADR-0070 (extracted to a shared hook so
+  // `EntityDetailPage` reuses it): one `getEntity` per *distinct* fk id per fk
+  // column across the current page, not one per row (§3). `config.fields` (not
+  // `tableFields`) is the schema-fetch list, preserving this component's
+  // pre-extraction behavior exactly — see `useFkLabels`' own doc comment.
+  const fkLabels = useFkLabels(tableFields, rows, config.fields);
 
   function renderCell(field: FieldConfig, row: EntityRow) {
-    const raw = row[field.name];
-    switch (field.type) {
-      case "fk": {
-        const id = typeof raw === "string" ? raw : undefined;
-        if (!id) {
-          return "—";
-        }
-        return fkLabels[field.name]?.[id] ?? id;
-      }
-      case "boolean":
-        return <span className={`badge bg-${raw ? "success" : "secondary"}`}>{raw ? "Yes" : "No"}</span>;
-      case "date":
-        return formatDate(raw);
-      case "enum": {
-        if (raw === null || raw === undefined || raw === "") {
-          return "—";
-        }
-        // ADR-0053: backend-served, per-field. Anything the backend didn't
-        // colour — including every value of an enum served with no
-        // `badgeColors` at all — stays a plain grey badge, exactly as the old
-        // module-level constant's own default did.
-        const color = field.badgeColors?.[String(raw)] ?? "secondary";
-        return <span className={`badge bg-${color}`}>{String(raw)}</span>;
-      }
-      default: {
-        const text = displayValue(raw);
-        // ADR-0060: restores ProjectsPage's "click a project's name to open
-        // it" navigation, generically — see EntityConfig.detailPath's own
-        // doc comment. Only fires for the one designated field, and only
-        // when the row actually has an id to link to (never on "—").
-        if (config.detailPath && config.detailLinkField === field.name && row.id !== undefined && text !== "—") {
-          return <Link to={interpolateDetailPath(config.detailPath, row.id)}>{text}</Link>;
-        }
-        return text;
-      }
-    }
+    return renderEntityFieldValue({ field, row, fkLabels, config });
   }
+
+  /**
+   * ADR-0070: a row is only interactive when the caller actually wired
+   * `onRowClick`. Keyboard parity matters — a bare `onClick` on a `<tr>` is
+   * mouse-only, so Enter/Space on a focused row fire the same navigation
+   * (`role`/accessible-name computation is untouched: `tabIndex` changes
+   * neither, so every existing `getByRole("row", {name})` lookup still
+   * resolves the same way — `frontend/CLAUDE.md`'s nested-table note).
+   */
+  const rowInteractionProps = onRowClick
+    ? (row: EntityRow) => ({
+        onClick: () => onRowClick(row),
+        onKeyDown: (event: KeyboardEvent<HTMLTableRowElement>) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onRowClick(row);
+          }
+        },
+        tabIndex: 0,
+        style: { cursor: "pointer" },
+        "data-testid": `entity-table-row-${String(row.id)}`,
+      })
+    : () => ({});
 
   const showSearch = Boolean(onSearchChange && config.searchFields && config.searchFields.length > 0);
   // AdminLTE "full-width table" card pattern: the table's own card-body is
@@ -296,25 +242,8 @@ function EntityTable({
   // Loading/empty states fall back to a normally-padded body.
   const showTable = !loading && rows.length > 0;
 
-  return (
-    <Card className="h-100">
-      <Card.Header className="d-flex flex-wrap align-items-center justify-content-between">
-        <Card.Title>{title}</Card.Title>
-        <div className="card-tools d-flex flex-wrap align-items-center gap-2 ms-auto">
-          {showSearch && (
-            <TextInput
-              type="text"
-              style={{ width: 200, maxWidth: "100%" }}
-              placeholder="Search..."
-              value={search ?? ""}
-              onChange={(event) => onSearchChange!(event.target.value)}
-              data-testid="entity-table-search"
-            />
-          )}
-          {headerActions}
-        </div>
-      </Card.Header>
-
+  const sections = (
+    <>
       {loadError && (
         <Card.Body className="border-bottom">
           <Alert color="danger" className="mb-0">
@@ -374,12 +303,21 @@ function EntityTable({
             </tr>
           }
           renderRow={(row) => (
-            <tr>
+            <tr {...rowInteractionProps(row)}>
               {tableFields.map((field) => (
                 <td key={field.name}>{renderCell(field, row)}</td>
               ))}
               {showActionsColumn && (
-                <td>
+                <td
+                  /**
+                   * ADR-0070: the row's own click handler must not fire when
+                   * the user meant "Edit"/"Delete". One `stopPropagation` on
+                   * the containing cell covers every current and future
+                   * action control in it, rather than one per button.
+                   */
+                  onClick={(event) => event.stopPropagation()}
+                  onKeyDown={(event) => event.stopPropagation()}
+                >
                   <div className="d-flex gap-2">
                     {config.methods.includes("update") && onEdit && canEditRow(row) && (
                       <Button
@@ -411,6 +349,34 @@ function EntityTable({
         />
       )}
       </Card.Body>
+    </>
+  );
+
+  // ADR-0071 (Amendment): the caller already owns the card — see `bare`.
+  if (bare) {
+    return sections;
+  }
+
+  return (
+    <Card className="h-100">
+      <Card.Header className="d-flex flex-wrap align-items-center justify-content-between">
+        <Card.Title>{title}</Card.Title>
+        <div className="card-tools d-flex flex-wrap align-items-center gap-2 ms-auto">
+          {showSearch && (
+            <TextInput
+              type="text"
+              style={{ width: 200, maxWidth: "100%" }}
+              placeholder="Search..."
+              value={search ?? ""}
+              onChange={(event) => onSearchChange!(event.target.value)}
+              data-testid="entity-table-search"
+            />
+          )}
+          {headerActions}
+        </div>
+      </Card.Header>
+
+      {sections}
     </Card>
   );
 }
