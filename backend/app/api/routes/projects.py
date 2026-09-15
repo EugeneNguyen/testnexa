@@ -238,7 +238,9 @@ _PROJECT_FACTORY_CONFIG = CrudEntityConfig(
     full_methods=frozenset({"list", "get", "create", "update", "delete"}),
     # ADR-0060: `?q=` name search, closing the last gap between this surface
     # and `ProjectsPage`'s own (now-retired) client-side name filter.
-    search_fields=("name",),
+    # ADR-0070 adds `standards_profile` — a free-text column (no enum
+    # constraint) that was simply never listed.
+    search_fields=("name", "standards_profile"),
     label="Projects",
     scope_resolution=ScopeResolution(from_route_param="projectId", via_entity="project", via_field="org_id"),
     # `org_id` is summary-only (its real create is bespoke), so it derives last

@@ -243,6 +243,9 @@ _TEST_EXECUTION_CONFIG = CrudEntityConfig(
     scope_field="test_cycle_id",
     resolve_org_id=_resolve_test_execution_org_id,
     filter_fields=("test_case_id", "result"),
+    # ADR-0070. `actual_result` is the only free-text column; `result` itself
+    # is an enum and stays exact-match via `filter_fields` above.
+    search_fields=("actual_result",),
     methods=frozenset({"list", "get", "update", "delete"}),
     # EXEC-2 AC1: append a `TestLog` row whenever `PATCH` actually changes
     # `result` (e.g. corrected pass -> fail) — see `_test_execution_post_update_hook`.

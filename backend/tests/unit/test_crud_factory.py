@@ -39,6 +39,7 @@ from app.api.crud_factory import (
     CrudEntityConfig,
     _display_name,
     _resource_path,
+    _search_clause,
     apply_filters_and_search,
     apply_sort,
     chain_resolver,
@@ -52,8 +53,8 @@ from app.api.crud_factory import (
     resolve_via_test_case,
     scope_validation_error,
 )
-from app.models.assets import Requirement, TestCase, TestCondition, TestSuite
-from app.models.governance import RiskItem
+from app.models.assets import Requirement, TestCase, TestCondition, TestStep, TestSuite
+from app.models.governance import Attachment, RiskItem
 from app.models.planning import TestCycle, TestPlan
 from app.models.project import Project
 from app.models.tenancy import Organization
@@ -536,6 +537,79 @@ class TestApplyFiltersAndSearch:
         compiled = str(result)
         assert "requirement.external_ref = " in compiled
         assert "LIKE" in compiled
+
+
+# --- ADR-0070: numeric columns in `search_fields` are CAST to text ---------------------------------
+
+
+class TestSearchClauseNumericCast:
+    """ADR-0070/NFR-70. Postgres has no `integer ~~* unknown` operator, so a
+    bare `.ilike()` against an `Integer`/`BigInteger`/`Numeric` column is a
+    hard `ProgrammingError` at query time — not an empty result. `_search_clause`
+    therefore casts numeric columns to text first, which is what makes a numeric
+    column listable in `search_fields` at all.
+
+    These assert on the *compiled SQL shape*, which is the whole contract here:
+    the cast either appears in the generated statement or the query cannot run
+    against Postgres. The end-to-end proof that it genuinely matches rows lives
+    in `tests/integration/test_search1_search_fields.py`.
+    """
+
+    def test_string_column_is_not_cast(self) -> None:
+        compiled = str(_search_clause(TestStep, "action", "login"))
+        assert "lower(test_step.action)" in compiled
+        assert "CAST" not in compiled.upper()
+
+    def test_integer_column_is_cast_to_text(self) -> None:
+        compiled = str(_search_clause(TestStep, "sequence", "3"))
+        assert "CAST(test_step.sequence AS VARCHAR)" in compiled
+        assert "LIKE" in compiled
+
+    def test_bigint_column_is_cast_to_text(self) -> None:
+        """`BigInteger` subclasses `Integer`, so the two-entry isinstance check
+        covers it without naming it — proven, not assumed."""
+        compiled = str(_search_clause(Attachment, "size_bytes", "1024"))
+        assert "CAST(attachment.size_bytes AS VARCHAR)" in compiled
+
+    def test_mixed_text_and_numeric_search_fields_compile_together(self) -> None:
+        """`TestStep`'s real shipped tuple: two text columns + one numeric."""
+        result = apply_filters_and_search(
+            select(TestStep), TestStep, (), ("action", "expected_result", "sequence"), {"q": "3"}
+        )
+        compiled = str(result)
+        assert "lower(test_step.action)" in compiled
+        assert "lower(test_step.expected_result)" in compiled
+        assert "CAST(test_step.sequence AS VARCHAR)" in compiled
+        assert compiled.count(" OR ") >= 2
+
+    def test_numeric_search_still_ignored_when_q_absent(self) -> None:
+        result = apply_filters_and_search(select(TestStep), TestStep, (), ("sequence",), {})
+        assert "WHERE" not in str(result)
+
+    def test_every_shipped_search_field_resolves_to_a_real_column(self) -> None:
+        """ADR-0070's audit touched 17 of 27 configs by hand. A typo'd column
+        name would not fail at import — only at the first `?q=` request, as a
+        500. This walks the real registry and resolves every name."""
+        from app.api.entity_registry import ALL_ENTITY_CONFIGS
+
+        for config in ALL_ENTITY_CONFIGS.values():
+            for field_name in config.search_fields:
+                column = getattr(config.model, field_name, None)
+                assert column is not None, f"{config.resource}.{field_name} is not a column"
+                # Must be a real mapped column, not a relationship/hybrid.
+                assert hasattr(column, "type"), f"{config.resource}.{field_name} has no column type"
+
+    def test_no_entity_without_a_list_route_declares_search_fields(self) -> None:
+        """`?q=` is only ever read by the list route, so `search_fields` on an
+        entity with no `list` in `methods` is dead config. ADR-0070 deliberately
+        left `organization`/`role_assignment` empty for exactly this reason."""
+        from app.api.entity_registry import ALL_ENTITY_CONFIGS
+
+        for config in ALL_ENTITY_CONFIGS.values():
+            if config.search_fields:
+                assert "list" in config.methods, (
+                    f"{config.resource} declares search_fields but registers no list route"
+                )
 
 
 class TestApplySort:

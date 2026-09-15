@@ -124,6 +124,13 @@ _TEST_PLAN_CONFIG = CrudEntityConfig(
     summary_schema=TestPlanSummary,
     scope_field="project_id",
     resolve_org_id=chain_resolver([]),
+    # ADR-0070. This entity's whole free-text surface; `identifier` is the one
+    # an admin actually searches by, the other four are long-form narrative
+    # fields. Its absence was the original reported bug — no `search_fields`
+    # meant `GET /entities/test-plans/schema` reported `searchFields: []`,
+    # which is exactly what `EntityTable.tsx`'s `showSearch` gate keys off, so
+    # the generic admin TestPlan list rendered no search box at all.
+    search_fields=("identifier", "scope", "approach", "staffing_and_training", "schedule"),
     # PLAN-1/ADR-0031 — the only entity in this codebase with an update guard.
     update_guard=_test_plan_status_guard,
     # ADR-0053. `status` is `TestPlanStatus | None` on the create schema (an
@@ -158,6 +165,8 @@ _ENTRY_EXIT_CRITERIA_CONFIG = CrudEntityConfig(
     summary_schema=EntryExitCriteriaSummary,
     scope_field="test_plan_id",
     resolve_org_id=chain_resolver([(TestPlan, "test_plan_id")]),
+    # ADR-0070. `type` is an enum; `condition_text` is the only free text.
+    search_fields=("condition_text",),
     # ADR-0053. `scope_field` is `test_plan_id`, not `project_id` — there is
     # no route listing `EntryExitCriteria` by project — so the list can't
     # fetch until the admin picks a `TestPlan` (the same scope-selector shape
@@ -179,6 +188,8 @@ _ENVIRONMENT_CONFIG = CrudEntityConfig(
     summary_schema=EnvironmentSummary,
     scope_field="project_id",
     resolve_org_id=chain_resolver([]),
+    # ADR-0070
+    search_fields=("name", "config_notes"),
     # ADR-0053. Direct project scope, so no scope-selector: the list fires
     # immediately with the route's own `:projectId`.
     label="Environments",
@@ -194,6 +205,8 @@ _TEST_CYCLE_CONFIG = CrudEntityConfig(
     summary_schema=TestCycleSummary,
     scope_field="test_plan_id",
     resolve_org_id=chain_resolver([(TestPlan, "test_plan_id")]),
+    # ADR-0070. `name` is the only non-FK, non-date column on this entity.
+    search_fields=("name",),
     methods=frozenset({"list", "get", "update", "delete"}),
     # ADR-0053. Same `test_plan_id`-not-`project_id` scope-selector shape as
     # `_ENTRY_EXIT_CRITERIA_CONFIG` above. `test_plan_id`/`release_id` derive
