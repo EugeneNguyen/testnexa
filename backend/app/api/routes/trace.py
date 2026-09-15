@@ -499,7 +499,7 @@ async def link_test_case_to_requirement_trace(
     actor: User | AIAgent = Depends(get_current_actor),
     db: AsyncSession = Depends(get_db),
 ) -> JSONResponse:
-    """Link an existing `TestCase` to `Requirement` `id` (ADR-0076, FR-ADMIN-6).
+    """Link an existing `TestCase` to `Requirement` `id` (ADR-0076, FR-ADMIN-8).
 
     The `TestCase` side is resolved with `resolve_test_case_org_id` /
     `resolve_test_case_project_id` verbatim (ADR-0029's branching chain plus
@@ -542,7 +542,7 @@ async def link_test_condition_to_requirement(
     actor: User | AIAgent = Depends(get_current_actor),
     db: AsyncSession = Depends(get_db),
 ) -> JSONResponse:
-    """Link an existing `TestCondition` to `Requirement` `id` (ADR-0076, FR-ADMIN-6).
+    """Link an existing `TestCondition` to `Requirement` `id` (ADR-0076, FR-ADMIN-8).
 
     A `TestCondition` already has one *owning* `Requirement`
     (`TestCondition.requirement_id`, REQ-3's rigor path). This link table is the
@@ -592,7 +592,7 @@ async def link_test_case_to_test_condition(
     actor: User | AIAgent = Depends(get_current_actor),
     db: AsyncSession = Depends(get_db),
 ) -> JSONResponse:
-    """Link an existing `TestCase` to `TestCondition` `id` (ADR-0076, FR-ADMIN-6).
+    """Link an existing `TestCase` to `TestCondition` `id` (ADR-0076, FR-ADMIN-8).
 
     Same "traceability link on top of an owning FK" relationship as the route
     above: `TestCase.test_condition_id` is REQ-3's rigor-path owner, this table
@@ -636,7 +636,7 @@ async def link_defect_to_test_case(
     actor: User | AIAgent = Depends(get_current_actor),
     db: AsyncSession = Depends(get_db),
 ) -> JSONResponse:
-    """Link an existing `Defect` to `TestCase` `id` (ADR-0076, FR-ADMIN-6).
+    """Link an existing `Defect` to `TestCase` `id` (ADR-0076, FR-ADMIN-8).
 
     EXEC-3's `POST /executions/{id}/defects` already writes this row as a side
     effect of *raising* a defect against an execution. This route links a

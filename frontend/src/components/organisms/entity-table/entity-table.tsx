@@ -80,11 +80,38 @@
  *    extraction — no rendered-output change, no new decision of its own (see
  *    `frontend/CLAUDE.md`'s "this is a reuse check, not a new ADR" rule; the
  *    ADR exists for the detail *page*, not for this move).
+ *
+ * **ADR-0071 (COLPREF-1, column visibility + order):** the rendered column
+ * list is no longer `config.fields.filter(showInTable !== false)` directly —
+ * it is that set merged with a per-entity `localStorage` preference
+ * (`lib/columnPreferences.ts`), editable through the new "Columns" header
+ * button + `ColumnPreferencesModal`.
+ *
+ * Unlike sort/page/pageSize/filters/search above, this state is **owned here,
+ * not by `EntityListPage`** — and that asymmetry is deliberate. Each of those
+ * five maps to a backend query parameter, so it belongs to whoever owns the
+ * list query. Column visibility and order map to nothing server-side: they
+ * change only what this component paints. Keeping the state here means every
+ * `EntityTable` caller, present and future, gets the capability with zero
+ * prop plumbing (`EntityListPage` needed no change at all for this story).
+ * In-repo precedent for a component owning its own persisted presentation
+ * state: `AppHeader`'s colour-mode toggle.
  */
-import { KeyboardEvent, ReactNode } from "react";
+import { KeyboardEvent, ReactNode, useMemo, useState } from "react";
 import Table from "../../../container/Table";
 import { EntityConfig, FieldConfig } from "../../../entityConfigs/types";
 import { EntityRow } from "../../../lib/api/entityCrud";
+import {
+  applyColumnPreferences,
+  clearColumnPreferences,
+  ColumnPreferences,
+  defaultTableFields,
+  loadColumnPreferences,
+  lockedFieldNames,
+  saveColumnPreferences,
+  toPreferenceRows,
+} from "../../../lib/columnPreferences";
+import { activeFilterCount, filterableFields } from "../../../lib/entityFilters";
 import { useFkLabels } from "../../../pages/admin/useFkLabels";
 import { Alert } from "../../atoms/alert/alert";
 import { Button } from "../../atoms/button/button";
@@ -93,6 +120,8 @@ import { Icon } from "../../atoms/icon/icon";
 import { Spinner } from "../../atoms/spinner/spinner";
 import { TextInput } from "../../atoms/text-input/text-input";
 import { renderEntityFieldValue } from "../../molecules/entity-field-value";
+import { ColumnPreferencesModal } from "../column-preferences-modal";
+import { FilterModal } from "../filter-modal";
 
 export interface EntityTableProps {
   /**
@@ -135,8 +164,26 @@ export interface EntityTableProps {
   onSortChange?: (field: string) => void;
   loading?: boolean;
   loadError?: string | null;
+  /**
+   * ADR-0072 (filters). The list's currently-applied exact-match filters —
+   * owned by `EntityListPage`, same posture as `page`/`pageSize`/`sort`/
+   * `search`, and for the same reason: each of these maps to a backend query
+   * parameter, so it belongs to whoever owns the list query. (Contrast column
+   * visibility/order, which maps to nothing server-side.)
+   *
+   * `onFiltersChange`, if given, renders the "Filter" header button and its
+   * `FilterModal`. Optional so the existing `entity-table.test.tsx` fixtures
+   * keep compiling unchanged.
+   *
+   * This replaces a `onFilterChange?: (field, value) => void` prop that was
+   * declared here but never destructured or rendered — dead since an earlier
+   * refactor dropped the per-column filter row. `EntityListPage`'s `filters`
+   * state and its `params: {...filters}` list-query wiring were live the
+   * whole time; only the UI was missing. The signature changes to a whole-map
+   * setter because Apply commits several conditions at once.
+   */
   filters?: Record<string, string>;
-  onFilterChange?: (field: string, value: string) => void;
+  onFiltersChange?: (filters: Record<string, string>) => void;
   search?: string;
   onSearchChange?: (value: string) => void;
   canEditRow?: (row: EntityRow) => boolean;
@@ -188,6 +235,8 @@ function EntityTable({
   onSortChange,
   loading,
   loadError,
+  filters,
+  onFiltersChange,
   search,
   onSearchChange,
   canEditRow = () => true,
@@ -197,7 +246,50 @@ function EntityTable({
   onRowClick,
   bare = false,
 }: EntityTableProps) {
-  const tableFields = config.fields.filter((f) => f.showInTable !== false);
+  // ADR-0071. `preferencesResource` tracks which entity `preferences` was
+  // loaded for: this component is remounted-or-not across admin routes at
+  // React's discretion, so a `config.resource` change has to re-read storage.
+  // Adjusting state during render (rather than in an effect) is React's own
+  // documented pattern for deriving state from changed props — it re-runs the
+  // component immediately, before committing, so there is no frame where the
+  // previous entity's columns are painted for this one's rows.
+  const [preferencesResource, setPreferencesResource] = useState(config.resource);
+  const [preferences, setPreferences] = useState<ColumnPreferences | null>(() =>
+    loadColumnPreferences(config.resource),
+  );
+  const [showColumnPreferences, setShowColumnPreferences] = useState(false);
+  if (preferencesResource !== config.resource) {
+    setPreferencesResource(config.resource);
+    setPreferences(loadColumnPreferences(config.resource));
+    setShowColumnPreferences(false);
+  }
+
+  const defaultFields = useMemo(() => defaultTableFields(config), [config]);
+  const lockedFields = useMemo(() => lockedFieldNames(config), [config]);
+  const tableFields = useMemo(
+    () => applyColumnPreferences(defaultFields, preferences, lockedFields),
+    [defaultFields, preferences, lockedFields],
+  );
+  const preferenceRows = useMemo(
+    () => toPreferenceRows(defaultFields, preferences, lockedFields),
+    [defaultFields, preferences, lockedFields],
+  );
+
+  // ADR-0072: only the modal's *open/closed* flag lives here. The filters
+  // themselves are `EntityListPage`'s — see the `filters` prop's own comment.
+  const [showFilterModal, setShowFilterModal] = useState(false);
+
+  function handleApplyColumnPreferences(next: ColumnPreferences) {
+    saveColumnPreferences(config.resource, next);
+    setPreferences(next);
+    setShowColumnPreferences(false);
+  }
+
+  function handleResetColumnPreferences() {
+    clearColumnPreferences(config.resource);
+    setPreferences(null);
+    setShowColumnPreferences(false);
+  }
 
   const showActionsColumn = (config.methods.includes("update") || config.methods.includes("delete")) && (onEdit || onDelete);
 
@@ -236,6 +328,13 @@ function EntityTable({
     : () => ({});
 
   const showSearch = Boolean(onSearchChange && config.searchFields && config.searchFields.length > 0);
+  // ADR-0072. Suppressed for an entity whose served schema exposes no
+  // filterable field at all — exactly the same posture `showSearch` above
+  // already takes for an entity with no `searchFields`: don't render an
+  // affordance the backend will silently ignore.
+  const appliedFilters = filters ?? {};
+  const showFilter = Boolean(onFiltersChange) && filterableFields(config).length > 0;
+  const filterCount = activeFilterCount(appliedFilters);
   // AdminLTE "full-width table" card pattern: the table's own card-body is
   // `p-0` (cells carry their own padding) so it spans the card edge-to-edge —
   // but that only looks right once there's an actual table to fill it.
@@ -353,6 +452,9 @@ function EntityTable({
   );
 
   // ADR-0074 (Amendment): the caller already owns the card — see `bare`.
+  // The header's Columns/Filter affordances (and therefore their modals) live
+  // on the card, so a bare mount renders neither — correct, since a
+  // relationship tab passes neither `onFiltersChange` nor a `title`.
   if (bare) {
     return sections;
   }
@@ -372,11 +474,69 @@ function EntityTable({
               data-testid="entity-table-search"
             />
           )}
+          <Button
+            outline
+            color="secondary"
+            size="sm"
+            aria-label="Columns"
+            title="Columns"
+            onClick={() => setShowColumnPreferences(true)}
+            data-testid="entity-table-columns"
+          >
+            <Icon name="table-columns" />
+          </Button>
+          {showFilter && (
+            <Button
+              outline
+              color={filterCount > 0 ? "primary" : "secondary"}
+              size="sm"
+              aria-label="Filter"
+              title={filterCount > 0 ? `Filter (${filterCount} active)` : "Filter"}
+              onClick={() => setShowFilterModal(true)}
+              data-testid="entity-table-filter"
+            >
+              <Icon name="filter" />
+              {/*
+                ADR-0072: the active-filter count is load-bearing, not
+                decoration. Filters are deliberately NOT persisted, and this
+                badge is the mitigation for the reason why — an active filter
+                is invisible in a way a hidden column is not, so without a
+                visible count a narrowed list reads as missing data.
+              */}
+              {filterCount > 0 && (
+                <span className="badge bg-primary ms-1" data-testid="entity-table-filter-count">
+                  {filterCount}
+                </span>
+              )}
+            </Button>
+          )}
           {headerActions}
         </div>
       </Card.Header>
 
       {sections}
+
+      <ColumnPreferencesModal
+        visible={showColumnPreferences}
+        entityLabel={typeof title === "string" ? title : undefined}
+        rows={preferenceRows}
+        onClose={() => setShowColumnPreferences(false)}
+        onApply={handleApplyColumnPreferences}
+        onReset={handleResetColumnPreferences}
+      />
+      {showFilter && (
+        <FilterModal
+          visible={showFilterModal}
+          entityLabel={typeof title === "string" ? title : undefined}
+          config={config}
+          filters={appliedFilters}
+          onClose={() => setShowFilterModal(false)}
+          onApply={(next) => {
+            onFiltersChange!(next);
+            setShowFilterModal(false);
+          }}
+        />
+      )}
     </Card>
   );
 }

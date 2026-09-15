@@ -126,6 +126,8 @@ _ROLE_CONFIG = CrudEntityConfig(
     scope_field="org_id",
     resolve_org_id=chain_resolver([]),
     global_read_fallback=True,
+    # ADR-0070. `name` is the only free-text column (`is_system_role` is bool).
+    search_fields=("name",),
     # ADR-0053. `org_id` is a real FK the admin surface autocompletes against
     # (`Organization.name`) even though this entity's scope value normally
     # comes straight from the `:orgId` route param; `is_system_role` is
@@ -148,6 +150,10 @@ _PERMISSION_CONFIG = CrudEntityConfig(
     resolve_org_id=chain_resolver([]),  # never called — is_global_catalog handles get/list gating
     is_global_catalog=True,
     methods=frozenset({"list", "get"}),
+    # ADR-0070. All three columns are free-text (`code` is the dotted
+    # `resource.action` string, not an enum) and all three are what an admin
+    # scanning the permission catalog actually searches by.
+    search_fields=("code", "resource", "action"),
     # ADR-0053
     label="Permissions",
 )

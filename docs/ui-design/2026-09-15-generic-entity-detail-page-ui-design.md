@@ -1,6 +1,6 @@
 # UI Design Document — generic entity detail page
 
-- **Story:** ADR-0073 / FR-ADMIN-4 / NFR-73; extended 2026-09-15 by ADR-0076 / FR-ADMIN-6 / NFR-78 (§6), corrected the same day by ADR-0076 Amendment 1 / NFR-79 (§6.1, §6.2, §6.3, §6.7a)
+- **Story:** ADR-0073 / FR-ADMIN-6 / NFR-73; extended 2026-09-15 by ADR-0076 / FR-ADMIN-8 / NFR-78 (§6), corrected the same day by ADR-0076 Amendment 1 / NFR-79 (§6.1, §6.2, §6.3, §6.7a)
 - **Date:** 2026-09-15
 - **ADR:** [ADR-0073](../adr/0073-generic-entity-detail-page.md); §6 is [ADR-0076](../adr/0076-relationship-tab-write-actions.md), building on [ADR-0074](../adr/0074-entity-detail-relationship-tabs.md) + [ADR-0075](../adr/0075-junction-table-registry-completeness.md) and its Amendment 1
 - **Screens touched:** the generic admin CRUD surface only (`EntityListPage`'s table, plus one new page). No bespoke screen changes. **No new screen and no new route is added by §6 either** — its two actions open modals on this same page.
@@ -109,7 +109,7 @@ The entity segment links back to that entity's list; `Details` is the active, un
 3. **Should a row click be suppressed while a delete modal is open?** Not needed — the modal's own backdrop already intercepts clicks.
 4. **Should `readOnly` fields be visually distinguished?** Not this pass. Every field on this page is read-only, so a per-field marker would mark almost everything and mean nothing.
 
-## 6. Write actions on the relationship tabs ([ADR-0076](../adr/0076-relationship-tab-write-actions.md), FR-ADMIN-6 / NFR-78)
+## 6. Write actions on the relationship tabs ([ADR-0076](../adr/0076-relationship-tab-write-actions.md), FR-ADMIN-8 / NFR-78)
 
 ADR-0074 and ADR-0075 left **all 30 relationship tabs read-only**. For the four [ADR-0005](../adr/0005-traceability-link-dedicated-join-tables.md) traceability link tables that was a capability gap, not a styling one: the tab is the only place in the app where the relationship is visible at all, and a link row could only ever be written as a *side effect* of authoring one of its two ends. "Link a test case that already exists", "this failure is the defect we already have" — neither was reachable from anywhere. This section adds the affordance. It adds **no new screen, no new route and no new query param**: both actions are modals on the page §3 describes.
 

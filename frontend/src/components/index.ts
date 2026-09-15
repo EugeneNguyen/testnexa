@@ -56,10 +56,12 @@ export * from "./molecules/social-auth-panel";
 export * from "./molecules/tabs";
 
 // organisms
+export * from "./organisms/filter-modal";
 export { default as AppBreadcrumb } from "./organisms/app-breadcrumb";
 export { default as AppFooter } from "./organisms/app-footer";
 export { default as AppHeader } from "./organisms/app-header";
 export { default as AppSidebar } from "./organisms/app-sidebar";
+export * from "./organisms/column-preferences-modal";
 export { default as EntityForm } from "./organisms/entity-form";
 export type { EntityFormProps } from "./organisms/entity-form";
 export { default as EntityTable } from "./organisms/entity-table";

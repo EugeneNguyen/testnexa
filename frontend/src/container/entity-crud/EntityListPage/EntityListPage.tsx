@@ -48,7 +48,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { usePermissions } from "../../../auth/usePermissions";
-import { Alert, Button, Card, Spinner, Modal, EntityForm, EntityTable, ScopeSelector } from "../../../components";
+import { Alert, Button, Card, Icon, Spinner, Modal, EntityForm, EntityTable, ScopeSelector } from "../../../components";
 import { ApiError } from "../../../lib/api/client";
 import { createEntity, deleteEntity, EntityRow, listEntities } from "../../../lib/api/entityCrud";
 import { useAdminRouteContext } from "../../../pages/admin/useAdminRouteContext";
@@ -230,8 +230,14 @@ function EntityListPage({ entityKeyOverride }: { entityKeyOverride?: string } = 
           title={pageTitle}
           headerActions={
             canCreate && (
-              <Button color="primary" size="sm" onClick={() => setShowCreateModal(true)}>
-                New
+              <Button
+                color="primary"
+                size="sm"
+                aria-label="New"
+                title="New"
+                onClick={() => setShowCreateModal(true)}
+              >
+                <Icon name="plus" />
               </Button>
             )
           }
@@ -248,9 +254,14 @@ function EntityListPage({ entityKeyOverride }: { entityKeyOverride?: string } = 
           loading={listQuery.isLoading}
           loadError={listQuery.isError ? "Something went wrong. Please try again." : null}
           filters={filters}
-          onFilterChange={(field, value) => {
+          onFiltersChange={(next) => {
+            // ADR-0072: Apply replaces the whole map (the modal's draft is the
+            // complete set of conditions, so a removed one must actually
+            // disappear rather than survive a per-key merge). Resets to page 1,
+            // same as changing sort/search — a new filter set is a new result
+            // set, not a new page of the old one.
             setPage(1);
-            setFilters((prev) => ({ ...prev, [field]: value }));
+            setFilters(next);
           }}
           search={search}
           onSearchChange={(value) => {

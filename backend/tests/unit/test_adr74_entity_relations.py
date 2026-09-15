@@ -41,6 +41,7 @@ from app.api.crud_factory import (
     _scope_candidates,
     derive_entity_relations,
     derive_entity_schema,
+    derive_filter_fields,
     derive_sortable_fields,
     fk_fields_of,
     is_link_entity,
@@ -266,11 +267,19 @@ class TestExclusions:
         assert all(r["targetEntity"] != "projects" for r in _relations("requirements"))
 
     def test_filter_field_only_fk_is_excluded(self) -> None:
-        """`TestExecution.test_case_id` is a real `filter_field`, but
+        """`TestExecution.test_case_id` is a real filterable column, but
         `TestExecution`'s scope is `test_cycle_id` — unknowable from a
-        `TestCase` detail page."""
+        `TestCase` detail page.
+
+        Reads `derive_filter_fields(config)`, not `config.filter_fields`:
+        ADR-0072 (merged 2026-09-15) turned the filter allow-list from a
+        hand-declared per-entity tuple into a derivation, leaving
+        `config.filter_fields` as a *narrowing* override that is empty on
+        every config in this repo. The claim under test is unchanged — this
+        FK really is filterable — only where the answer now lives is.
+        """
         config = ALL_ENTITY_CONFIGS["test-executions"]
-        assert "test_case_id" in config.filter_fields
+        assert "test_case_id" in derive_filter_fields(config)
         assert "test_case_id" not in _scope_candidates(config)
         assert "test-executions" not in _by_entity("test-cases")
 
@@ -339,8 +348,8 @@ class TestExclusions:
 #: `TestInboundFkCompleteness` asserts this is exactly the complement of the
 #: served set — so a new entity or FK cannot land in neither bucket.
 EXPECTED_EXCLUSIONS: dict[tuple[str, str], str] = {
-    # FK is a `filter_field`, but the child's own scope is a different column
-    # the parent's detail page cannot supply.
+    # FK is filterable (ADR-0072's derivation), but the child's own scope is a
+    # different column the parent's detail page cannot supply.
     ("test-cases", "test_condition_id"): "test-cases scope is project_id",
     ("test-executions", "test_case_id"): "test-executions scope is test_cycle_id",
     ("test-cases", "test_level_id"): "test-cases scope is project_id",
@@ -465,3 +474,35 @@ class TestSortableFieldsAgreement:
         for key, config in ALL_ENTITY_CONFIGS.items():
             from_schema = frozenset(f["name"] for f in derive_entity_schema(config)["fields"] if f["sortable"])
             assert derive_sortable_fields(config) == from_schema, key
+
+
+class TestFilterFieldsAgreement:
+    """**TC-ADMIN-073.** The exact same pin, for the exact same reason, on
+    ADR-0072's filter allow-list.
+
+    ADR-0072 (merged 2026-09-15) derived `?<field>=`'s allow-list from the
+    served schema and had `make_crud_router` read it off
+    `derive_entity_schema(config)["filterFields"]` — a call this branch's
+    ADR-0074 makes unreachable at *module import* time, since the full schema
+    now resolves `relations` from the registry that is mid-import at that
+    moment. Resolving the merge therefore gave `filter_fields` the same
+    standalone `derive_filter_fields` treatment `sortable_fields` already had,
+    sharing `_derived_fields`/`_is_filterable` with the schema rather than
+    re-deriving the clauses — and this is what pins the two together, so the
+    columns the list route accepts and the ones its own schema advertises
+    cannot drift apart.
+    """
+
+    def test_the_two_derivations_agree_for_every_registered_entity(self) -> None:
+        for key, config in ALL_ENTITY_CONFIGS.items():
+            schema = derive_entity_schema(config)
+            assert derive_filter_fields(config) == tuple(schema["filterFields"]), key
+            # …and `filterFields` is itself the per-field flags' complement, so
+            # agreeing with it is agreeing with `fields[].filterable` too.
+            assert tuple(f["name"] for f in schema["fields"] if f["filterable"]) == tuple(schema["filterFields"]), key
+
+    def test_at_least_one_entity_actually_has_filterable_columns(self) -> None:
+        """Positive control: the agreement above would hold vacuously if the
+        derivation returned nothing for everything (`e2e/CLAUDE.md`'s own
+        "prove X was live before trusting 'nothing changed'" rule)."""
+        assert any(derive_filter_fields(config) for config in ALL_ENTITY_CONFIGS.values())
