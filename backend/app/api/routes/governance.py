@@ -42,7 +42,10 @@ _RISK_ITEM_CONFIG = CrudEntityConfig(
     summary_schema=RiskItemSummary,
     scope_field=("requirement_id", "test_plan_id"),
     resolve_org_id=resolve_risk_item_org_id,
-    filter_fields=("likelihood", "impact"),
+    # ADR-0070. `likelihood`/`impact` are enums, exact-matchable via
+    # ADR-0072's derived filter set (the explicit `filter_fields` tuple that
+    # used to sit here is gone).
+    search_fields=("description", "mitigation"),
     # ADR-0053
     label="Risk items",
     scope_selector=(
@@ -64,6 +67,12 @@ _ATTACHMENT_CONFIG = CrudEntityConfig(
     summary_schema=AttachmentSummary,
     scope_field="test_case_id",
     resolve_org_id=resolve_via_test_case,
+    # ADR-0070. `size_bytes` is deliberately NOT listed even though it is a
+    # numeric column `_search_clause` could now handle: a byte count is a
+    # measurement, not an identifier, and substring-matching its digits
+    # ("1024" matching 10240) answers no question a user actually asks.
+    # `TestStep.sequence` is the numeric case that IS meaningful.
+    search_fields=("url_or_path", "mime_type"),
     # ADR-0053
     label="Attachments",
     scope_selector=ScopeSelectorOption(ref_entity="test-case", param_name="test_case_id"),

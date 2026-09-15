@@ -63,12 +63,29 @@ import types
 import uuid
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from decimal import Decimal
 from typing import Any, Literal, Union, get_args, get_origin
 
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, create_model
-from sqlalchemy import func, or_, select
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Date,
+    DateTime,
+    Float,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    Uuid,
+    cast,
+    func,
+    or_,
+    select,
+)
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -215,6 +232,20 @@ class FieldMeta:
     # them is always valid SQL; this exists purely for a field where sorting
     # would be misleading rather than for correctness (none needed yet).
     sortable: bool = True
+    # ADR-0072 (ENTITY-FILTER-1): whether `?<name>=<value>` exact-match
+    # filtering may target this column on the generic `list` route. Default
+    # `True`, same auto-derive-unless-overridden posture as `sortable` above —
+    # and, like it, the *derived* value is what
+    # `derive_entity_schema`/`make_crud_router` actually use: a column holding
+    # a value nobody can meaningfully type an exact match for is never
+    # filterable regardless of what this flag says. That means `long_text`
+    # below (the `<textarea>` presentation opt-in), OR a `Text` model column,
+    # OR a `JSON`/`JSONB` one — see `_is_unfilterable_column`, and note how
+    # little `long_text` covers on its own: it is declared on exactly one
+    # field in this repo, against 16 `Text` columns and one `JSONB`. Set this
+    # `False` by hand only for a column where exact matching would be
+    # actively misleading for some *other* reason (none needed yet).
+    filterable: bool = True
     # fk only — render as a plain native `<select>` (fetches the ref
     # entity's full list once, no search) instead of `FkAutocomplete`'s
     # debounced type-to-search widget. For a small, bounded catalog
@@ -283,6 +314,18 @@ class CrudEntityConfig:
     scope_field: ScopeField
     resolve_org_id: ResolveOrgId
     search_fields: tuple[str, ...] = ()
+    # ADR-0072 (ENTITY-FILTER-1): **optional narrowing override only.** Leave
+    # unset (the default, and what every config in this repo does) and the
+    # filterable column set is DERIVED — every field `derive_entity_schema`
+    # serves with `filterable: true`, exactly as `sortable_fields` is derived
+    # from `sortable` (ADR-0053's "one source of truth, not a second
+    # hand-kept list"). Naming fields here narrows that derived set to the
+    # intersection; it can never widen it, and a name that isn't a derived
+    # field of this entity is simply absent from the result rather than
+    # reaching `getattr(model, ...)`. Unlike `search_fields` above — which
+    # stays a genuine per-entity opt-in (ADR-0070), because "is this column
+    # worth substring-scanning" is a product judgment — "can this column be
+    # matched exactly" is answerable mechanically, so the default is yes.
     filter_fields: tuple[str, ...] = ()
     methods: frozenset[str] = field(default_factory=lambda: frozenset({"list", "get", "create", "update", "delete"}))
     # True for entities with no tenant at all (TestDesignTechnique/TestLevel/
@@ -639,6 +682,118 @@ def scope_validation_error(config: CrudEntityConfig, source: Mapping[str, Any]) 
 # --- list query-building (pure, no DB access — unit-testable) --------------------------------
 
 
+def _search_clause(model: type[Base], column_name: str, search_term: str) -> Any:
+    """Build one `?q=` `ILIKE` clause for a single `search_fields` column.
+
+    ADR-0070: a numeric column is `CAST`-to-text first, a string column is
+    matched directly. This is not a cosmetic nicety — Postgres has no
+    `integer ~~* unknown` operator at all, so an un-cast `ILIKE` against an
+    `Integer`/`BigInteger`/`Numeric` column is a hard `ProgrammingError` at
+    query time (`operator does not exist`), not a silently-empty result. That
+    made numeric columns structurally unlistable in `search_fields` before
+    this cast existed, which is why every pre-ADR-0070 `search_fields` tuple
+    in this repo happens to be string-only.
+
+    `SmallInteger`/`BigInteger` subclass `Integer` and `Float` subclasses
+    `Numeric`, so the two-entry isinstance check covers every numeric column
+    type SQLAlchemy ships — no per-subclass enumeration needed.
+
+    Cast-to-text gives *substring* semantics on the rendered digits, matching
+    what the one `?q=` box in the UI can express: `?q=1` matches sequence
+    `1`, `10` and `21` alike. That is the deliberate trade (ADR-0070
+    Alternatives considered exact-match-on-numeric and rejected it — one
+    query param cannot carry two different match semantics without the
+    caller knowing each column's type, and `filter_fields` already covers
+    exact match for anyone who needs it).
+    """
+    column = getattr(model, column_name)
+    if isinstance(column.type, (Integer, Numeric)):
+        return cast(column, String).ilike(f"%{search_term}%")
+    return column.ilike(f"%{search_term}%")
+
+
+# Accepted spellings for a `Boolean` filter value (ADR-0072). Case-folded
+# before lookup. Deliberately NOT "yes"/"on"/"y" — the frontend's own filter
+# control emits exactly `true`/`false`, and `1`/`0` is here only because a
+# hand-written `curl`/MCP caller reaches for it first.
+_TRUE_FILTER_VALUES = frozenset({"true", "1"})
+_FALSE_FILTER_VALUES = frozenset({"false", "0"})
+
+
+def coerce_filter_value(column: Any, column_name: str, value: Any) -> Any:
+    """Parse one raw `?<column_name>=<value>` query-string value into whatever
+    Python type `column`'s own SQLAlchemy type expects (ADR-0072).
+
+    Every query param arrives as a `str`. Comparing that string against a
+    `uuid`/`timestamptz`/`date`/`integer`/`boolean`/enum column is not a
+    silently-empty result — Postgres raises, and the request surfaces as a
+    **500**. Before ADR-0072 only 7 entities declared `filter_fields` (all of
+    them `String`/enum columns, where the raw string happened to be correct),
+    so the gap never bit; with the set derived across all 27 it would bite
+    immediately. Branching on `column.type` is the same `isinstance`-on-the-
+    column's-own-type technique ADR-0070 §1 used for its `?q=` numeric cast.
+
+    | column type | parse rule |
+    |---|---|
+    | `Uuid` (incl. `postgresql.UUID`) | `uuid.UUID(value)` |
+    | `Boolean` | `true`/`false`/`1`/`0`, case-insensitive |
+    | `Enum` | must be one of `column.type.enums`, passed through as `str` |
+    | `Integer` (incl. `SmallInteger`/`BigInteger`) | `int(value)` |
+    | `Float` | `float(value)` |
+    | `Numeric` | `Decimal(value)` |
+    | `DateTime` | `datetime.datetime.fromisoformat(value)` |
+    | `Date` | `datetime.date.fromisoformat(value)` |
+    | anything else (`String`/`Text`/JSON/...) | passed through unchanged |
+
+    Order is load-bearing in two places: SQLAlchemy's `Enum` **subclasses
+    `String`**, so it must be tested before the string fallthrough; and
+    `Float` subclasses `Numeric`, so it must be tested before it. `Integer`
+    covers `SmallInteger`/`BigInteger` by subclassing rather than by
+    enumeration, same completeness argument ADR-0070 §1 makes for its own
+    two-entry check.
+
+    Raises `ValueError(column_name)` for anything unparseable — the field name
+    is the payload, mirroring `apply_sort`'s own contract exactly, so the
+    caller can build the API Document §1 `field_errors` body without a second
+    lookup. Pure: no DB access, no I/O.
+    """
+    column_type = getattr(column, "type", None)
+    try:
+        if isinstance(column_type, Uuid):
+            return uuid.UUID(str(value))
+        if isinstance(column_type, Boolean):
+            lowered = str(value).strip().lower()
+            if lowered in _TRUE_FILTER_VALUES:
+                return True
+            if lowered in _FALSE_FILTER_VALUES:
+                return False
+            raise ValueError(column_name)
+        if isinstance(column_type, SAEnum):
+            # Before the `String` fallthrough (see docstring). `.enums` is the
+            # declared value list (`values_callable` already applied), so this
+            # rejects an unknown member with a 422 instead of letting Postgres
+            # raise `invalid input value for enum ...` as a 500.
+            if str(value) not in (column_type.enums or ()):
+                raise ValueError(column_name)
+            return str(value)
+        if isinstance(column_type, Integer):
+            return int(str(value))
+        if isinstance(column_type, Float):
+            return float(str(value))
+        if isinstance(column_type, Numeric):
+            return Decimal(str(value))
+        if isinstance(column_type, DateTime):
+            return datetime.datetime.fromisoformat(str(value))
+        if isinstance(column_type, Date):
+            return datetime.date.fromisoformat(str(value))
+    except (TypeError, ValueError, ArithmeticError) as exc:
+        # `Decimal("nope")` raises `decimal.InvalidOperation`, an
+        # `ArithmeticError` and NOT a `ValueError` — normalising here is what
+        # lets every caller catch one exception type.
+        raise ValueError(column_name) from exc
+    return value
+
+
 def apply_filters_and_search(
     query: Any,
     model: type[Base],
@@ -649,20 +804,31 @@ def apply_filters_and_search(
     """Translate `filter_fields`/`?q=` query params into `WHERE` clauses on `query`.
 
     `filter_fields` are exact-match (`WHERE column = value` for each param
-    actually present); `search_fields`, if configured, back a single `?q=`
-    param compiled to `OR`-joined `ILIKE '%term%'` across those columns. An
-    entity with no `search_fields` configured silently ignores `?q=` rather
+    actually present, the value first parsed to the column's own type by
+    `coerce_filter_value`, ADR-0072); `search_fields`, if configured, back a
+    single `?q=` param compiled to `OR`-joined `ILIKE '%term%'` across those
+    columns — numeric columns cast to text first, see `_search_clause`
+    (ADR-0070). An entity with no `search_fields` configured silently ignores `?q=` rather
     than erroring (ADR-0022) — `q` is only ever consulted when `search_fields`
-    is non-empty. Pure query-building: never executes anything, so this is
-    testable without a DB (`tests/unit/test_crud_factory.py`).
+    is non-empty. A filter param that is absent or an empty string is likewise
+    a no-op, unchanged from ADR-0022. Pure query-building: never executes
+    anything, so this is testable without a DB
+    (`tests/unit/test_crud_factory.py`).
+
+    Raises `ValueError(column_name)` when a present filter value can't be
+    parsed for its column (ADR-0072) — the caller maps that to a `422`, the
+    same shape `apply_sort`'s own `ValueError` already gets.
     """
     for column_name in filter_fields:
-        if query_params.get(column_name) not in (None, ""):
-            query = query.where(getattr(model, column_name) == query_params[column_name])
+        raw_value = query_params.get(column_name)
+        if raw_value in (None, ""):
+            continue
+        column = getattr(model, column_name)
+        query = query.where(column == coerce_filter_value(column, column_name, raw_value))
 
     search_term = query_params.get("q")
     if search_term and search_fields:
-        query = query.where(or_(*[getattr(model, f).ilike(f"%{search_term}%") for f in search_fields]))
+        query = query.where(or_(*[_search_clause(model, f, search_term) for f in search_fields]))
 
     return query
 
@@ -805,6 +971,54 @@ def _field_type_and_values(annotation: Any) -> tuple[str, list[str] | None]:
     return "string", None
 
 
+def _is_unfilterable_column(model: type[Base], field_name: str) -> bool:
+    """Is `field_name` backed by a column no user can meaningfully exact-match?
+
+    ADR-0072 offers every served field as an exact-match filter except the ones
+    holding **a value a user cannot meaningfully type an exact match for**. Two
+    column categories qualify, for the one shared reason:
+
+    - **`Text`** — unbounded free text. A person filtering on a paragraph
+      column types a fragment, gets zero rows, and reads that as "no such
+      record" rather than "this filter is exact-match". `?q=` (ADR-0070) is
+      what covers these columns properly.
+    - **`JSON`/`JSONB`** — a structured blob. Equality compares the *whole
+      document*, so the only input that ever matches is a byte-exact
+      re-serialization of it. Worse than the text case rather than better:
+      it does not error (SQLAlchemy serializes the raw string to valid jsonb
+      and Postgres has a `jsonb = jsonb` operator), it just silently always
+      returns nothing. `TestLog.payload` is the schema's only such column.
+
+    Deriving both from the column's own type — rather than from
+    `FieldMeta.long_text`, a *presentation* opt-in (render a `<textarea>`)
+    that exactly one field in this repo sets (`TestCase.description`) against
+    `mapped_column(Text, ...)`'s 16 — makes the exclusion mechanical and
+    complete: a new `Text`/`JSON` column is non-filterable the moment it is
+    mapped, with nothing to remember.
+
+    **`Text`, never `String`.** `Text` subclasses `String`, so an
+    `isinstance(..., String)` check would exclude every string column in the
+    schema, including the short, bounded, genuinely-exact-matchable ones
+    (`Requirement.title`, `Project.name`) this rule is meant to keep. `Enum`
+    also subclasses `String` and is likewise unaffected — a closed vocabulary
+    is precisely what exact-match filtering is for (ADR-0070 §4).
+
+    **Generic `JSON`, not `postgresql.JSONB`.** `JSONB` subclasses the
+    dialect-agnostic `sqlalchemy.JSON`, so the generic check catches both and
+    will not miss a future plain-`JSON` column the way a dialect-specific one
+    would. (`JSON` subclasses neither `String` nor `Text`, so it genuinely
+    needs its own clause rather than riding along with the text one.)
+
+    A served field with no matching mapped column (a computed/derived Pydantic
+    field, or one whose attribute isn't a column at all) has no type to judge
+    and is left filterable — the same permissive default the rest of this
+    derivation takes.
+    """
+    attribute = getattr(model, field_name, None)
+    column_type = getattr(attribute, "type", None)
+    return isinstance(column_type, Text | JSON)
+
+
 def _label_for(field_name: str) -> str:
     """`"external_ref"` -> `"External ref"` — the auto-title-cased fallback
     label, overridden per-field by `FieldMeta.label` where a hand-picked
@@ -854,6 +1068,11 @@ def derive_entity_schema(config: CrudEntityConfig) -> dict[str, Any]:
             ordered.setdefault(name, info)
         all_fields = ordered
 
+    # ADR-0072: an explicit `filter_fields` tuple NARROWS the derived set (see
+    # `CrudEntityConfig.filter_fields`'s own docstring). Empty (every config in
+    # this repo) leaves the derivation alone.
+    explicit_filter_fields = set(config.filter_fields)
+
     fields_out: list[dict[str, Any]] = []
     for name, info in all_fields.items():
         meta = config.field_meta.get(name, FieldMeta())
@@ -863,6 +1082,20 @@ def derive_entity_schema(config: CrudEntityConfig) -> dict[str, Any]:
         if meta.long_text:
             field_type = "text"
 
+        # ADR-0072. ANDed clauses, in decreasing generality: the structural
+        # rule (a column whose value nobody can type an exact match for is
+        # never filterable — because `long_text` promoted its derived type, or
+        # because the model column is `Text`/`JSON`, see
+        # `_is_unfilterable_column`), the per-field override, and the
+        # per-entity narrowing tuple. Computing it here — rather than as 27
+        # hand-written `filterable=False` entries — is what makes "which
+        # columns can be filtered" a derivation instead of a second list to
+        # keep in sync (ADR-0053's posture, applied to filters).
+        unfilterable = field_type == "text" or _is_unfilterable_column(config.model, name)
+        filterable = meta.filterable and not unfilterable
+        if explicit_filter_fields:
+            filterable = filterable and name in explicit_filter_fields
+
         entry: dict[str, Any] = {
             "name": name,
             "label": meta.label or _label_for(name),
@@ -870,6 +1103,7 @@ def derive_entity_schema(config: CrudEntityConfig) -> dict[str, Any]:
             "required": meta.required if meta.required is not None else name in required_fields,
             "showInTable": meta.show_in_table,
             "sortable": meta.sortable,
+            "filterable": filterable,
         }
         if field_type == "enum" and enum_values:
             entry["values"] = enum_values
@@ -924,7 +1158,10 @@ def derive_entity_schema(config: CrudEntityConfig) -> dict[str, Any]:
         "scopeSelector": scope_selector,
         "scopeResolution": scope_resolution,
         "searchFields": list(config.search_fields),
-        "filterFields": list(config.filter_fields),
+        # ADR-0072: DERIVED, never `list(config.filter_fields)` — the one
+        # source of truth is the per-field `filterable` flag computed just
+        # above, so this list and `fields[].filterable` can never disagree.
+        "filterFields": [entry["name"] for entry in fields_out if entry["filterable"]],
         "fields": fields_out,
     }
 
@@ -1006,7 +1243,13 @@ def make_crud_router(config: CrudEntityConfig) -> APIRouter:
         # columns are sortable is the same `derive_entity_schema` the `GET
         # /entities/{resource}/schema` route serves, not a second hand-kept
         # list (the exact drift ADR-0053 already exists to close).
-        sortable_fields = frozenset(f["name"] for f in derive_entity_schema(config)["fields"] if f["sortable"])
+        #
+        # ADR-0072 (filter): `filter_fields` is derived off the *same* call,
+        # for the same reason — the columns this route accepts as `?<name>=`
+        # are exactly the ones its own schema advertises in `filterFields`.
+        _derived_schema = derive_entity_schema(config)
+        sortable_fields = frozenset(f["name"] for f in _derived_schema["fields"] if f["sortable"])
+        filter_fields: tuple[str, ...] = tuple(_derived_schema["filterFields"])
 
         async def list_items(
             request: Request,
@@ -1040,7 +1283,22 @@ def make_crud_router(config: CrudEntityConfig) -> APIRouter:
                     return error
                 query = query.where(getattr(model, field_name) == scope_uuid)
 
-            query = apply_filters_and_search(query, model, config.filter_fields, config.search_fields, query_params)
+            try:
+                query = apply_filters_and_search(query, model, filter_fields, config.search_fields, query_params)
+            except ValueError as exc:
+                # ADR-0072. Same envelope as the `?sort=` rejection below —
+                # `422 validation_error` + a `field_errors` entry keyed by the
+                # offending query param (here the column name itself, since a
+                # filter param IS its column's name).
+                bad_field = exc.args[0] if exc.args else ""
+                return _error(
+                    422,
+                    "validation_error",
+                    "Request failed validation.",
+                    field_errors={
+                        bad_field: [f"'{query_params.get(bad_field)}' is not a valid value for '{bad_field}'"]
+                    },
+                )
 
             sort_param = query_params.get("sort")
             if sort_param:
@@ -1265,6 +1523,7 @@ __all__ = [
     "apply_sort",
     "chain_resolver",
     "clamp_pagination",
+    "coerce_filter_value",
     "extract_scope_value",
     "get_crud_handlers",
     "make_crud_router",

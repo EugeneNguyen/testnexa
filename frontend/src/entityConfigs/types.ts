@@ -83,6 +83,20 @@ export interface FieldConfig {
    */
   sortable?: boolean;
   /**
+   * default true (ADR-0072, filters) — whether this field may be used as an
+   * exact-match `?<field>=<value>` condition in `EntityTable`'s Filter modal.
+   * Served by `GET /entities/{resource}/schema`, derived from the entity's own
+   * schema rather than a hand-kept per-entity tuple (the same posture
+   * `sortable` already takes, ADR-0053). `false` for `type: "text"` fields —
+   * exact equality against an unbounded free-text column answers no question
+   * a user has; `?q=` (ADR-0070) is what covers those.
+   *
+   * `EntityConfig.filterFields` below carries the same information as a flat
+   * list and is what `lib/entityFilters.ts` actually reads; this per-field
+   * flag exists so the served schema is self-describing field-by-field.
+   */
+  filterable?: boolean;
+  /**
    * Extension (see module doc comment, point 1): true for fields present in
    * a `*Summary` schema but absent from both `Create*Request` and
    * `Update*Request` — table/display only, never part of a submitted

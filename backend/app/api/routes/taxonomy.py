@@ -41,6 +41,8 @@ _TEST_DESIGN_TECHNIQUE_CONFIG = CrudEntityConfig(
     scope_field=None,
     resolve_org_id=resolve_global_org_id,
     is_global_catalog=True,
+    # ADR-0070
+    search_fields=("name", "istqb_chapter_ref"),
     # ADR-0053. Global catalog, no scope at all — nothing to declare beyond
     # the nav label and the one field whose hand-picked label doesn't
     # survive auto-title-casing ("istqb_chapter_ref" -> "Istqb chapter ref").
@@ -57,6 +59,8 @@ _TEST_LEVEL_CONFIG = CrudEntityConfig(
     scope_field=None,
     resolve_org_id=resolve_global_org_id,
     is_global_catalog=True,
+    # ADR-0070
+    search_fields=("name",),
     # ADR-0053: single `name` field, fully auto-derived — label only.
     label="Test levels",
 )
@@ -70,6 +74,8 @@ _TEST_TYPE_CONFIG = CrudEntityConfig(
     scope_field=None,
     resolve_org_id=resolve_global_org_id,
     is_global_catalog=True,
+    # ADR-0070
+    search_fields=("name",),
     # ADR-0053: single `name` field, fully auto-derived — label only.
     label="Test types",
 )
