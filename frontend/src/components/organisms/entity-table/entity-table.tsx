@@ -63,12 +63,38 @@
  * (`fa-sort`/`fa-sort-up`/`fa-sort-down`); the sort *state* (which field, which
  * direction) and the resulting `?sort=` query param are `EntityListPage`'s,
  * same split as `page`/`pageSize`.
+ *
+ * **ADR-0071 (COLPREF-1, column visibility + order):** the rendered column
+ * list is no longer `config.fields.filter(showInTable !== false)` directly —
+ * it is that set merged with a per-entity `localStorage` preference
+ * (`lib/columnPreferences.ts`), editable through the new "Columns" header
+ * button + `ColumnPreferencesModal`.
+ *
+ * Unlike sort/page/pageSize/filters/search above, this state is **owned here,
+ * not by `EntityListPage`** — and that asymmetry is deliberate. Each of those
+ * five maps to a backend query parameter, so it belongs to whoever owns the
+ * list query. Column visibility and order map to nothing server-side: they
+ * change only what this component paints. Keeping the state here means every
+ * `EntityTable` caller, present and future, gets the capability with zero
+ * prop plumbing (`EntityListPage` needed no change at all for this story).
+ * In-repo precedent for a component owning its own persisted presentation
+ * state: `AppHeader`'s colour-mode toggle.
  */
 import { ReactNode, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import Table from "../../../container/Table";
 import { EntityConfig, FieldConfig } from "../../../entityConfigs/types";
 import { EntityRow, getEntity } from "../../../lib/api/entityCrud";
+import {
+  applyColumnPreferences,
+  clearColumnPreferences,
+  ColumnPreferences,
+  defaultTableFields,
+  loadColumnPreferences,
+  lockedFieldNames,
+  saveColumnPreferences,
+  toPreferenceRows,
+} from "../../../lib/columnPreferences";
 import { resolveEntityKey, useEntitySchemas } from "../../../pages/admin/useEntitySchema";
 import { Alert } from "../../atoms/alert/alert";
 import { Button } from "../../atoms/button/button";
@@ -76,6 +102,7 @@ import { Card } from "../../atoms/card/card";
 import { Icon } from "../../atoms/icon/icon";
 import { Spinner } from "../../atoms/spinner/spinner";
 import { TextInput } from "../../atoms/text-input/text-input";
+import { ColumnPreferencesModal } from "../column-preferences-modal";
 
 /**
  * ADR-0060: `config.detailPath`'s own `:id` placeholder, filled from the
@@ -181,9 +208,49 @@ function EntityTable({
   onEdit,
   onDelete,
 }: EntityTableProps) {
-  const tableFields = config.fields.filter((f) => f.showInTable !== false);
+  // ADR-0071. `preferencesResource` tracks which entity `preferences` was
+  // loaded for: this component is remounted-or-not across admin routes at
+  // React's discretion, so a `config.resource` change has to re-read storage.
+  // Adjusting state during render (rather than in an effect) is React's own
+  // documented pattern for deriving state from changed props — it re-runs the
+  // component immediately, before committing, so there is no frame where the
+  // previous entity's columns are painted for this one's rows.
+  const [preferencesResource, setPreferencesResource] = useState(config.resource);
+  const [preferences, setPreferences] = useState<ColumnPreferences | null>(() =>
+    loadColumnPreferences(config.resource),
+  );
+  const [showColumnPreferences, setShowColumnPreferences] = useState(false);
+  if (preferencesResource !== config.resource) {
+    setPreferencesResource(config.resource);
+    setPreferences(loadColumnPreferences(config.resource));
+    setShowColumnPreferences(false);
+  }
+
+  const defaultFields = useMemo(() => defaultTableFields(config), [config]);
+  const lockedFields = useMemo(() => lockedFieldNames(config), [config]);
+  const tableFields = useMemo(
+    () => applyColumnPreferences(defaultFields, preferences, lockedFields),
+    [defaultFields, preferences, lockedFields],
+  );
+  const preferenceRows = useMemo(
+    () => toPreferenceRows(defaultFields, preferences, lockedFields),
+    [defaultFields, preferences, lockedFields],
+  );
+
   const fkFields = tableFields.filter((f) => f.type === "fk" && f.refEntity);
   const [fkLabels, setFkLabels] = useState<Record<string, Record<string, string>>>({});
+
+  function handleApplyColumnPreferences(next: ColumnPreferences) {
+    saveColumnPreferences(config.resource, next);
+    setPreferences(next);
+    setShowColumnPreferences(false);
+  }
+
+  function handleResetColumnPreferences() {
+    clearColumnPreferences(config.resource);
+    setPreferences(null);
+    setShowColumnPreferences(false);
+  }
 
   const showActionsColumn = (config.methods.includes("update") || config.methods.includes("delete")) && (onEdit || onDelete);
 
@@ -311,6 +378,17 @@ function EntityTable({
               data-testid="entity-table-search"
             />
           )}
+          <Button
+            outline
+            color="secondary"
+            size="sm"
+            aria-label="Columns"
+            title="Columns"
+            onClick={() => setShowColumnPreferences(true)}
+            data-testid="entity-table-columns"
+          >
+            <Icon name="table-columns" />
+          </Button>
           {headerActions}
         </div>
       </Card.Header>
@@ -411,6 +489,15 @@ function EntityTable({
         />
       )}
       </Card.Body>
+
+      <ColumnPreferencesModal
+        visible={showColumnPreferences}
+        entityLabel={typeof title === "string" ? title : undefined}
+        rows={preferenceRows}
+        onClose={() => setShowColumnPreferences(false)}
+        onApply={handleApplyColumnPreferences}
+        onReset={handleResetColumnPreferences}
+      />
     </Card>
   );
 }

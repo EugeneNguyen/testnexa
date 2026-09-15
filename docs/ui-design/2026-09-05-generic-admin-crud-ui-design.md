@@ -111,4 +111,46 @@ Shape-A entities (global/org-scoped) get a new "Admin" `CNavGroup` in `AppSideba
 
 No bulk-edit, no CSV import, no per-column sort UI beyond what `filter_fields` already exposes as exact-match filters, no drag-reorder — none of FR-ADMIN-2's ACs ask for any of these, and adding them would be scope creep into what's deliberately a plain, generic list/form surface.
 
+**Correction in place (2026-09-15): two of the four non-goals above have since been deliberately lifted by their own ADRs, and the sentence as written no longer describes this surface.** The original text is kept rather than rewritten (it is an accurate record of FR-ADMIN-2's own scope boundary at the time), with the two changes named here: **(a) per-column sort UI now exists** — ADMIN-4 ([ADR-0056](../adr/0056-admin-4-generic-admin-crud-column-sort.md), FR-ADMIN-3) added a click-to-toggle sort header on `EntityTable`, backed by a real `?sort=` query parameter, which is a strictly larger thing than the exact-match filters this line contemplated; **(b) column *reordering* now exists, but still not by dragging** — COLPREF-1 ([ADR-0071](../adr/0071-entity-table-column-preferences.md), FR-ADMIN-4, §9 below) adds per-viewer column visibility and ordering via Up/Down buttons in a modal, and explicitly keeps "no drag-reorder" as a live constraint, for the dependency reason ADR-0071 Decision §2 states. Bulk-edit and CSV import remain non-goals, unchanged.
+
 **ADMIN-5 ([ADR-0066](../adr/0066-admin-5-seed-test-level-catalog.md), 2026-09-13) — reviewed, no UI impact.** This screen and every consumer of `TestLevel` (the `TestCase` create-form dropdown, `TestLevel`'s own generic admin list/form here) are unchanged — the seed migration only makes the data non-empty.
+
+## 9. Column preferences — the "Columns" control ([ADR-0071](../adr/0071-entity-table-column-preferences.md), FR-ADMIN-4, COLPREF-1)
+
+**Placement.** A "Columns" button in `EntityTable`'s own `.card-header .card-tools` — the same flex row that already holds the search input (`entity-table-search`) and the caller-supplied `headerActions` node, and where ADMIN-4's sort affordances already live. No new header region, no new card, no change to §4's three screen shapes: all three (global catalog, project-scoped, branch/deep-chain) get the control identically, because it lives on the table component itself rather than on any per-shape page wrapper.
+
+```
+┌─ .card-header ─────────────────────────────────────────────────────────┐
+│  Requirements                      [ search… ] [ Columns ] [ + New ]   │
+│  .card-title                       └──────── .card-tools ─────────┘    │
+└────────────────────────────────────────────────────────────────────────┘
+┌─ .card-body ───────────────────────────────────────────────────────────┐
+│  Title ▲ | Status | Priority | …                                       │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+(Prose and sketch agree deliberately, per root `CLAUDE.md`'s own ADR-0032 lesson: the button sits **to the right of the search box and to the left of `headerActions`**, inside `.card-tools`, in both descriptions.)
+
+**The modal.** Clicking it opens `ColumnPreferencesModal` (`components/organisms/column-preferences-modal/`, an organism per [ADR-0043](../adr/0043-atomic-design-tiering-for-frontend-components.md) — it composes existing primitives and owns its own draft state). One row per field, in the current effective order:
+
+```
+┌─ Columns ──────────────────────────────────────────────┐
+│  [x] Title            (locked)              ▲   ▼      │   ← detailLinkField: checkbox disabled,
+│  [x] Status                                 ▲   ▼      │      Up/Down still enabled
+│  [ ] Created at                             ▲   ▼      │   ← unchecked = hidden column
+│  [x] Priority                               ▲   ▼      │   ← last row: ▼ disabled
+│                                                        │
+│  Reset to defaults              [ Cancel ]  [ Apply ]  │
+└────────────────────────────────────────────────────────┘
+```
+
+- **Rows offered** = exactly the served schema's `showInTable !== false` fields ([ADR-0055](../adr/0055-admin-3-backend-driven-entity-schema.md)) — the same source the rendered columns come from. This control narrows the served set; it never widens it, and a `showInTable: false` field is never offerable here.
+- **Checkbox** = show/hide. **Up/Down** = reorder — the first row's Up and the last row's Down are disabled. Not drag-and-drop, deliberately (ADR-0071 Decision §2): no drag library is a frontend dependency today, and adding one is its own decision with accessibility, touch-target and testability consequences this story declines rather than smuggles in.
+- **Locked rows** (the config's `detailLinkField` when `detailPath` is set — [ADR-0060](../adr/0060-projects-page-retired-generic-surface.md)'s navigation affordance; and whichever field is the last one still visible) render with a **disabled, checked** checkbox — visibly present and visibly unchangeable, rather than omitted from the list, which would read as a missing field rather than a protected one. Locking governs visibility only: a locked row's Up/Down stay enabled.
+- **Reset to defaults** clears the stored preference outright, returning the table to the served schema's own set and order.
+
+**Where the state lives.** `EntityTable` itself, persisted to `localStorage` under `testnexa.column-prefs.<config.resource>` — **not** `EntityListPage`, which owns `page`/`pageSize`/`sort`/`filters`/`search`. The dividing line, stated here because this is the screen where a future contributor will have to apply it: those four each map to a backend query parameter and so belong to the component owning the list query; column visibility/order maps to nothing server-side and changes only what this component paints. Consequence for this document's own §4/§5: **no screen shape changes and no page-level prop changes** — `EntityListPage.tsx` is untouched by FR-ADMIN-4, and any future non-`EntityListPage` caller of `EntityTable` gets the control for free.
+
+**Permission posture (relative to §5).** None. Column preferences are a per-viewer rendering convenience with no server-side effect and no data-access implication — there is no `<resource>.` permission code gating this control, and the button renders for anyone who can see the list at all. This is not an exception to §5's hide/disable rule; §5 governs *action* affordances (create/update/delete) that map to permission-checked writes, and this maps to no write.
+
+**Degradation.** Every `localStorage` read and write is `try`/`catch`-wrapped: a private window, blocked or cleared site data, a quota failure, or a corrupt/unrecognised stored value all fall back to the served schema's defaults and the table renders normally (NFR-71). A stored preference is merged additively with the live schema — unknown stored names ignored, newly-served fields appended in config order — so a schema change under an existing preference never silently drops a column.
