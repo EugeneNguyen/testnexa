@@ -40,7 +40,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { usePermissions } from "../../../auth/usePermissions";
-import { Alert, Button, Card, Spinner, Modal, EntityForm, EntityTable, ScopeSelector } from "../../../components";
+import { Alert, Button, Card, Icon, Spinner, Modal, EntityForm, EntityTable, ScopeSelector } from "../../../components";
 import { ApiError } from "../../../lib/api/client";
 import { createEntity, deleteEntity, EntityRow, listEntities } from "../../../lib/api/entityCrud";
 import { useAdminRouteContext } from "../../../pages/admin/useAdminRouteContext";
@@ -222,8 +222,14 @@ function EntityListPage({ entityKeyOverride }: { entityKeyOverride?: string } = 
           title={pageTitle}
           headerActions={
             canCreate && (
-              <Button color="primary" size="sm" onClick={() => setShowCreateModal(true)}>
-                New
+              <Button
+                color="primary"
+                size="sm"
+                aria-label="New"
+                title="New"
+                onClick={() => setShowCreateModal(true)}
+              >
+                <Icon name="plus" />
               </Button>
             )
           }
