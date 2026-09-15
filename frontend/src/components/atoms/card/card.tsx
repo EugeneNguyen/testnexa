@@ -28,13 +28,27 @@ function joinClassNames(...classNames: Array<string | undefined | false>) {
   return classNames.filter(Boolean).join(" ");
 }
 
-export interface CardProps {
+/**
+ * ADR-0073 Amendment 1 (2026-09-15): `data-testid` is declared and forwarded
+ * explicitly. TypeScript does **not** excess-property-check a JSX attribute
+ * whose name contains a hyphen, so `<Card.Body data-testid="x">` compiled
+ * cleanly for as long as this atom existed and silently rendered nothing —
+ * found when a test finally queried for a testid the UI Design Document had
+ * documented on this element since ADR-0073 shipped. Every `data-testid` in
+ * this repo is load-bearing (root `CLAUDE.md`), so an atom that drops one is a
+ * hole no compile or type check can see.
+ */
+interface TestIdProp {
+  "data-testid"?: string;
+}
+
+export interface CardProps extends TestIdProp {
   children: ReactNode;
   /** Appended to the outer `.card` element. */
   className?: string;
 }
 
-export interface CardSectionProps {
+export interface CardSectionProps extends TestIdProp {
   children: ReactNode;
   /** Appended to the section's own element. */
   className?: string;
@@ -45,20 +59,36 @@ export interface CardTitleProps extends CardSectionProps {
   as?: "h1" | "h2" | "h3" | "h4" | "h5" | "h6";
 }
 
-export function CardHeader({ children, className }: CardSectionProps) {
-  return <div className={joinClassNames("card-header", className)}>{children}</div>;
+export function CardHeader({ children, className, "data-testid": testId }: CardSectionProps) {
+  return (
+    <div className={joinClassNames("card-header", className)} data-testid={testId}>
+      {children}
+    </div>
+  );
 }
 
-export function CardBody({ children, className }: CardSectionProps) {
-  return <div className={joinClassNames("card-body", className)}>{children}</div>;
+export function CardBody({ children, className, "data-testid": testId }: CardSectionProps) {
+  return (
+    <div className={joinClassNames("card-body", className)} data-testid={testId}>
+      {children}
+    </div>
+  );
 }
 
-export function CardFooter({ children, className }: CardSectionProps) {
-  return <div className={joinClassNames("card-footer", className)}>{children}</div>;
+export function CardFooter({ children, className, "data-testid": testId }: CardSectionProps) {
+  return (
+    <div className={joinClassNames("card-footer", className)} data-testid={testId}>
+      {children}
+    </div>
+  );
 }
 
-export function CardTitle({ children, className, as = "h3" }: CardTitleProps) {
-  return createElement(as, { className: joinClassNames("card-title", className) }, children);
+export function CardTitle({ children, className, as = "h3", "data-testid": testId }: CardTitleProps) {
+  return createElement(
+    as,
+    { className: joinClassNames("card-title", className), "data-testid": testId },
+    children,
+  );
 }
 
 type CardComponent = ((props: CardProps) => ReactNode) & {
@@ -68,8 +98,10 @@ type CardComponent = ((props: CardProps) => ReactNode) & {
   Title: typeof CardTitle;
 };
 
-const CardBase = (({ children, className }: CardProps) => (
-  <div className={joinClassNames("card", className)}>{children}</div>
+const CardBase = (({ children, className, "data-testid": testId }: CardProps) => (
+  <div className={joinClassNames("card", className)} data-testid={testId}>
+    {children}
+  </div>
 )) as CardComponent;
 
 CardBase.Header = CardHeader;

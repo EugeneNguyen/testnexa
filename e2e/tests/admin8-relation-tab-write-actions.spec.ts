@@ -201,10 +201,20 @@ asyncio.run(main())
  * link tables by whichever id they hang off — because which of them exist
  * depends on which test ran, and a per-test id list would have to be threaded
  * back out of the page.
+ *
+ * **ADR-0073 Amendment 1 widened this from "the seeded `TestCase`" to "every
+ * `TestCase` in the seeded Project."** TC-ADMIN-084's flow creates a brand-new
+ * far-entity row through the browser, whose id exists nowhere outside the page,
+ * so a cleanup keyed on `test_case_id` alone would leave it behind — and it
+ * holds an FK to the `TestLevel`/`TestType`/`Project` rows deleted below, so
+ * the leak would surface as a *foreign-key violation on an unrelated later
+ * test's cleanup*, not as a visibly orphaned row. The project is this fixture's
+ * own, created per-run with a uuid suffix, so "every case in it" is exactly the
+ * set this spec is responsible for.
  */
 const CLEANUP_SCRIPT = `
 import asyncio, sys
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 
 from app.db.session import AsyncSessionLocal
 from app.models.actor import Actor, User
@@ -221,11 +231,15 @@ from app.models.trace import RequirementTestCaseLink
 
 async def main():
     async with AsyncSessionLocal() as session:
-        await session.execute(delete(RequirementTestCaseLink).where(RequirementTestCaseLink.test_case_id == test_case_id))
-        await session.execute(delete(TestSuiteTestCase).where(TestSuiteTestCase.test_case_id == test_case_id))
-        await session.execute(delete(TestStep).where(TestStep.test_case_id == test_case_id))
+        rows = (await session.execute(select(TestCase.id).where(TestCase.project_id == project_id))).scalars().all()
+        case_ids = [str(row) for row in rows]
+        if test_case_id not in case_ids:
+            case_ids.append(test_case_id)
+        await session.execute(delete(RequirementTestCaseLink).where(RequirementTestCaseLink.test_case_id.in_(case_ids)))
+        await session.execute(delete(TestSuiteTestCase).where(TestSuiteTestCase.test_case_id.in_(case_ids)))
+        await session.execute(delete(TestStep).where(TestStep.test_case_id.in_(case_ids)))
         await session.execute(delete(TestSuite).where(TestSuite.id == suite_id))
-        await session.execute(delete(TestCase).where(TestCase.id == test_case_id))
+        await session.execute(delete(TestCase).where(TestCase.id.in_(case_ids)))
         await session.execute(delete(Requirement).where(Requirement.id == requirement_id))
         await session.execute(delete(TestLevel).where(TestLevel.id == level_id))
         await session.execute(delete(TestType).where(TestType.id == type_id))
@@ -447,6 +461,138 @@ test.describe("ADR-0073: relationship-tab write actions", () => {
       expect(response.url()).toContain(`/test-case-links/${fixture.testCaseId}`);
 
       await expect(page.getByText(fixture.testCaseTitle)).toBeVisible({ timeout: TAB_STRIP_TIMEOUT_MS });
+    } finally {
+      cleanup(fixture);
+    }
+  });
+
+  /**
+   * TC-ADMIN-084 — ADR-0073 **Amendment 1**: both n-n actions side by side, and
+   * the compound "Create new …" flow end to end.
+   *
+   * **Why this needs a live stack rather than another Vitest case.** The Vitest
+   * suite proves the component fires `createEntity` and then `createLinkRow`
+   * with the right arguments — against mocks that agree with it by
+   * construction. What only a real stack can answer is whether the *two real
+   * routes compose*: whether the generic `POST /test-cases` actually accepts
+   * the payload `EntityForm` builds from the served schema with `project_id`
+   * merged in as a locked value, whether the id in its `201` body is the shape
+   * `interpolateLinkPath` can substitute, and whether the link route then
+   * accepts a row created *microseconds earlier* — the ADR-0029 resolver
+   * question, which for this flow is sharper than for TC-ADMIN-080's: the far
+   * row here has never been read back by anything before the link route walks
+   * it. Both requests are therefore asserted **on the wire**, in order, not
+   * only through the rendered result.
+   *
+   * The far entity is `TestCase` — `project_id`-scoped and factory-creatable,
+   * i.e. scoping case 2, the shape 9 of the 12 live link directions have. The
+   * new case is created **standalone** (no `test_condition_id`), which is also
+   * the only shape this form can produce, so this exercises
+   * `resolve_test_case_project_id`'s REQ-5 branch on a row that did not exist
+   * when the page loaded.
+   */
+  test("TC-ADMIN-084: both n-n actions render, and Create new creates the far row then links it", async ({ page }) => {
+    test.setTimeout(PER_TEST_TIMEOUT_MS);
+    const fixture = seedFixture();
+    const newCaseTitle = `ADMIN-8 created-and-linked ${Date.now()}`;
+    try {
+      await login(page, fixture.orgAdmin.email, fixture.orgAdmin.password, fixture.orgId);
+      await gotoTab(
+        page,
+        `/projects/${fixture.projectId}/admin/requirements/${fixture.requirementId}?tab=requirement-test-case-links`,
+        "requirements",
+      );
+
+      await expect(page.getByText("No records found.")).toBeVisible({ timeout: TAB_STRIP_TIMEOUT_MS });
+
+      // Both, together — the whole point of the amendment. Asserted before any
+      // click, since "only one rendered" is the regression this replaces.
+      const linkButton = page.getByTestId("entity-relation-link");
+      const createLinkButton = page.getByTestId("entity-relation-create-link");
+      await expect(linkButton).toBeVisible({ timeout: TAB_STRIP_TIMEOUT_MS });
+      await expect(createLinkButton).toBeVisible({ timeout: TAB_STRIP_TIMEOUT_MS });
+      await expect(createLinkButton).toHaveText(/create new test cases/i);
+      // In the one right-aligned strip above the table, not two strips and not
+      // in the card header — the placement the UI Design Document §6.2 sketch
+      // and prose both describe.
+      await expect(page.getByTestId("entity-relation-actions")).toHaveCount(1);
+
+      await createLinkButton.click();
+
+      // The far entity's own scope, prefilled from the route and not the
+      // user's to change — the same `lockedValues` mechanism the 1-n action
+      // uses, pointed at the FAR entity's scope field instead of the relation's.
+      await expect(page.getByLabel("Project", { exact: true })).toBeDisabled({
+        timeout: TAB_STRIP_TIMEOUT_MS,
+      });
+
+      await page.getByLabel("Title", { exact: true }).fill(newCaseTitle);
+      // `TestLevel`/`TestType` are `select: true` (small bounded catalogs), so
+      // these are native `<select>`s. Chosen by **value** (the seeded ids)
+      // rather than by label: `selectOption` retries until the option exists,
+      // which is also this directory's own prescription for the
+      // page-mount-fetch race a one-shot option read would lose.
+      await page
+        .getByLabel("Test level", { exact: true })
+        .selectOption(fixture.testLevelId, { timeout: TAB_STRIP_TIMEOUT_MS });
+      await page
+        .getByLabel("Test type", { exact: true })
+        .selectOption(fixture.testTypeId, { timeout: TAB_STRIP_TIMEOUT_MS });
+      /**
+       * `Status` is filled explicitly even though the served schema marks it
+       * **not required**, and that is a workaround for a **pre-existing**
+       * generic-form defect this story neither introduced nor owns:
+       * `EntityForm` maps every blank optional field to `null` before
+       * submitting, but `CreateStandaloneTestCaseRequest.status` is
+       * defaulted-and-non-nullable (`TestCaseStatus = "draft"`), so a blank
+       * Status `422`s with `"Input should be 'draft', ..."`. The identical
+       * failure is reachable today from `EntityListPage`'s own "New Test case"
+       * modal — nothing about a relationship tab causes it — and the real fix
+       * (omit a blank optional rather than sending `null`) is a change to the
+       * shared form affecting every entity, so it belongs to its own story.
+       * Flagged in ADR-0073's Amendment 1 rather than fixed as a drive-by.
+       */
+      await page.getByLabel("Status", { exact: true }).selectOption("draft");
+
+      const createResponse = page.waitForResponse(
+        (res) => res.url().endsWith("/api/v1/test-cases") && res.request().method() === "POST",
+        { timeout: TAB_STRIP_TIMEOUT_MS },
+      );
+      const linkResponse = page.waitForResponse(
+        (res) =>
+          res.url().includes(`/api/v1/requirements/${fixture.requirementId}/test-case-links/`) &&
+          res.request().method() === "POST",
+        { timeout: TAB_STRIP_TIMEOUT_MS },
+      );
+
+      await page.getByRole("button", { name: "Create", exact: true }).click();
+
+      const created = await createResponse;
+      // Body read once and used as the failure message too: a `422` here is a
+      // payload-shape mismatch between what `EntityForm` builds from the
+      // served schema and what the create schema accepts, and its
+      // `field_errors` name the offending field outright — a bare status
+      // assertion would hide exactly the information needed to fix it.
+      const createdBody = await created.text();
+      expect(created.status(), createdBody).toBe(201);
+      const createdCase = JSON.parse(createdBody) as { id: string; project_id: string };
+      // The locked scope really did reach the payload — asserted on the row the
+      // server actually stored, not on the form's own disabled input.
+      expect(createdCase.project_id).toBe(fixture.projectId);
+
+      const linked = await linkResponse;
+      expect(linked.status()).toBe(201);
+      // The second call's URL is built by the frontend from the *served*
+      // `pathTemplate` and the id the *first* call returned. That composition
+      // is the contract this test exists for, so it is asserted literally.
+      expect(linked.url()).toContain(`/test-case-links/${createdCase.id}`);
+
+      // And it is readable through the relation's own scoped list — a `201`
+      // followed by a tab that still says "No records found." is exactly the
+      // resolver gap ADR-0029 describes.
+      await expect(page.getByText(newCaseTitle)).toBeVisible({ timeout: TAB_STRIP_TIMEOUT_MS });
+      // No "created but not linked" notice on the success path.
+      await expect(page.getByTestId("entity-relation-create-link-error")).toHaveCount(0);
     } finally {
       cleanup(fixture);
     }

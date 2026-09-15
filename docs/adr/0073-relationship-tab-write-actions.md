@@ -294,6 +294,122 @@ defect in already-merged behaviour discovered later — the ADR-0039/ADR-0040
 "found and fixed the same day, still gets its own ADR" convention applies to
 the latter shape (`docs/CLAUDE.md`).
 
+### Amendment 1 (2026-09-15): an n-n tab carries **both** actions, and "Create new" is a compound create-then-link
+
+A same-branch, pre-merge correction to Decision §4's "Never both" clause, per
+`docs/CLAUDE.md`'s convention for a correction to this story's own Decision that
+is not a distinct architectural decision. The Decision prose above is left
+untouched: it is the accurate record of what shipped first and why. Nothing in
+§1, §2, §3 or §5 changes — no new route, no new permission code, no new schema
+key, no migration. This is a UI gating change plus one client-side sequence.
+
+**What was wrong.** "One action per tab" is right about *kind* and wrong about
+*count*. An n-n tab could only link a record that already exists, so the
+overwhelmingly common authoring case — "this requirement needs a test case, and
+that test case does not exist yet" — still required leaving the record, finding
+the far entity's own list page, creating the row there, navigating back, and
+only then linking. The original reasoning ("an n-n tab's rows are link rows, and
+there is no form to fill in for a link row") is sound about the *link* row and
+says nothing about the far row, which does have a form. Found by a live
+click-through, not by any failing test — the same class as ADR-0063's own
+Amendment and ADR-0048's: a fully-specified, fully-tested decision that is still
+provisional until someone uses it.
+
+**What changes.**
+
+1. **Every n-n tab renders both actions, side by side** — `Link existing <far
+   entity>` (solid primary, unchanged) and `Create new <far entity>` (outline
+   primary, `data-testid="entity-relation-create-link"`), in the same
+   right-aligned `card-body` strip §6.2 of the UI Design Document already
+   describes. Shown whenever permitted, **not** conditioned on whether any
+   linkable far rows exist: a tab that hides "Create new" until a search comes
+   back empty would hide it exactly when it is least discoverable, and would
+   make the strip's contents depend on a request the user has not made yet.
+2. **1-n tabs are unchanged** — still just `New`. Re-parenting an *existing*
+   child to a different parent is a different and riskier operation (it moves a
+   row out from under whatever else references it) and is explicitly out of
+   scope; "link an existing child" is not the mirror of "link an existing far
+   record".
+3. **"Create new" is one compound action, not two user-visible steps.** One
+   modal, holding the **far** entity's own `EntityForm` (its schema, not the
+   link entity's — a link row's two FK columns are the whole row and one of
+   them is the record you are standing on), whose submit runs the far entity's
+   generic `create` and then **the same `config.linkCreate` route** "Link
+   existing" already calls, with the id the create returned.
+4. **The far entity's own scope field is prefilled and locked**, from the same
+   `pickerScopeParams` that scopes the picker — a scope field is a query param
+   on `list` and a body field on `create`, so one derivation serves both rather
+   than growing a second notion of "which project is this". Where no scope can
+   be derived (case 3), the field is left editable rather than locked to a
+   guess.
+
+**Gating: both permissions, fail-closed.** The button requires the far entity's
+own `<resource>.create` **and** `config.linkCreate.permission` — and, as
+before, that the far entity's schema actually declares `create` (3 of the 12
+live link directions point at an entity authored only through bespoke routes,
+so the action correctly never appears for them). Requiring both is the primary
+defence rather than a nicety: an actor holding only the create half would get a
+`201` followed by a `403` and be left with a real, unlinked row this tab
+structurally cannot display. The "only the far-create code" cell therefore
+renders **neither** button, which is worth stating because the intuitive
+expectation is that it renders "Create new" alone.
+
+**The two calls are not one transaction, and that is accepted, not overlooked.**
+They are two independent routes — a generic factory `create` and a bespoke link
+`POST` — so making them atomic would mean a *new* backend route that creates and
+links in one request. That is real new API surface, needing its own permission
+story (which code gates a route that does two gated things?) and its own
+boundary semantics, for a failure this ADR's own gating already makes
+unreachable for the predictable cause. Rejected as out of scope; the residual
+risk is handled in the client instead:
+
+- if the link half fails anyway (a race, a `409` on an already-linked pair, a
+  cross-project `422`), the modal **closes** — so a resubmit cannot mint a
+  second row for one intent — and a persistent `alert-danger` above the table
+  (`entity-relation-create-link-error`) names the created record by its **own
+  label and its id**, quotes the API's **own** reason rather than a generic
+  failure string, states plainly that it was saved and is **not** linked, and
+  points at "Link existing …" as the one-click way to finish. The recovery path
+  is the sibling button that is already on screen, which is why no bespoke
+  "retry link" state was added.
+- An ordinary create failure (nothing was written) keeps the form open with the
+  user's input intact, the opposite handling — which is why the two failures
+  are distinguished by type rather than by message.
+
+**Found and fixed: `Card.Body` silently dropped every `data-testid`.** The
+`entity-relation-actions` testid this ADR's own UI Design Document §6.2
+documents on the actions strip has never rendered. TypeScript does not
+excess-property-check a JSX attribute whose name contains a hyphen, so
+`<Card.Body data-testid="…">` compiled cleanly against a props type declaring
+only `children`/`className`, and the attribute was discarded — invisible to
+`tsc`, to the type system, and to every test that had not yet queried for it.
+Fixed at the atom (`components/atoms/card`), which now declares and forwards
+`data-testid` on `Card`/`Header`/`Body`/`Footer`/`Title`. Recorded here rather
+than in its own ADR: it is a defect inside this ADR's own necessary surface,
+found before merge, the same shape as the `resolve_test_case_project_id` fix
+above.
+
+**Found, not fixed: a blank optional enum `422`s on every generic create form.**
+`EntityForm` maps every blank optional field to `null` before submitting, but a
+Pydantic field that is *defaulted and non-nullable* — `TestCase.status`
+(`TestCaseStatus = "draft"`) is one — rejects `null` outright. Leaving Status
+blank in this amendment's new modal `422`s with
+`"Input should be 'draft', 'reviewed', 'approved' or 'deprecated'"`, and the
+identical failure is reachable today from `EntityListPage`'s own "New Test case"
+modal, which this change does not touch. The real fix — omit a blank optional
+rather than sending `null` for it — is a change to the shared form affecting
+every entity and every create path in the generic surface, so it belongs to its
+own story rather than to a drive-by here (root `CLAUDE.md`'s rule against
+mass-fixing unrelated pre-existing findings). TC-ADMIN-084 selects a Status
+explicitly and says why at the call site.
+
+**Coverage.** TC-ADMIN-081 (the four-cell permission matrix plus the
+far-entity-has-no-`create` cell), TC-ADMIN-082 (the compound success path: far
+schema, locked scope, second call carrying the first call's id, list refetch),
+TC-ADMIN-083 (the created-not-linked message and the opposite handling of an
+ordinary create failure), TC-ADMIN-084 (end to end on a live stack, both
+requests asserted on the wire and in order).
+
 ## Alternatives considered
 
 - **A frontend map from link entity to route.** Rejected: it is the
@@ -315,6 +431,17 @@ the latter shape (`docs/CLAUDE.md`).
   change to two shipped contracts, for consistency no user can observe. Every
   role that can manage suite membership today would silently lose the ability
   until a migration granted the new code.
+- **A single backend route that creates the far row and links it atomically**
+  (Amendment 1). Rejected as out of scope: real new API surface, a new
+  permission question (which code gates a route that does two separately-gated
+  things?) and its own boundary semantics, to make atomic a two-step sequence
+  whose one predictable failure cause the amendment's two-permission gate
+  already forecloses. The residual case is handled by an error that names the
+  created row and points at the recovery already on screen.
+- **Hiding "Create new" until the picker's own search comes back empty**
+  (Amendment 1). Rejected: it would hide the action exactly when the user most
+  needs it, make the strip's contents depend on a request they have not made,
+  and reintroduce per-tab conditional chrome for no gain.
 - **Per-row "Unlink" on n-n tabs.** Deferred, not rejected — see Consequences.
   Two of six junctions have a `DELETE` route already, four have none, and
   shipping the action for a third of the tabs would be exactly the

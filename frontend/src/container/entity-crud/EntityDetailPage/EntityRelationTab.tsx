@@ -51,9 +51,8 @@
  *
  * ## Write actions ([ADR-0073](../../../../../docs/adr/0073-relationship-tab-write-actions.md))
  *
- * The tab is no longer read-only. Exactly one action renders per tab, decided
- * by `relation.kind` — never both, because the two kinds mean structurally
- * different things:
+ * The tab is no longer read-only. Which actions render is decided by
+ * `relation.kind`, because the two kinds mean structurally different things:
  *
  * - **one-to-many — "New <child>"**. The listed rows *are* child records, so
  *   the action creates one, through the same `EntityForm` create modal
@@ -73,6 +72,37 @@
  *   entity's** own schema — the same schema this tab already fetched to render
  *   the table, so the action costs no extra round trip and this component
  *   hard-codes no route.
+ * - **many-to-many — "Create new <far entity>"**, ADR-0073's
+ *   **Amendment 1**. Both n-n actions render together, side by side; the
+ *   original "one action per tab, never both" rule turned out to strand the
+ *   common case where the record you want to link does not exist yet, forcing
+ *   a detour to the far entity's own list page and back. This one is a
+ *   *compound* action, not a second create surface: one modal, holding the far
+ *   entity's own `EntityForm`, whose submit runs the far entity's generic
+ *   `create` and then the **same** `config.linkCreate` route "Link existing"
+ *   already calls. Nothing new on the backend — it is exactly the two requests
+ *   a user could already make by hand, in one step.
+ *
+ * ### The two calls are not one transaction, and the second one can fail
+ *
+ * They are two independent routes (a generic factory `create`, then a bespoke
+ * link `POST`), so there is no transaction to put them in short of a new
+ * backend route, which this change deliberately does not add. The failure that
+ * matters is therefore **create succeeded, link failed** — a real far-entity
+ * row now exists, unlinked, and this tab cannot show it (it lists *link* rows).
+ * Two things stop it becoming a row the user cannot find again:
+ *
+ * 1. The button is gated on **both** permissions up front — the far entity's
+ *    own `<resource>.create` *and* `config.linkCreate.permission` — so the one
+ *    predictable cause of a half-completed write (an actor who may create but
+ *    may not link) can never start it. Fail-closed: either missing hides the
+ *    button, exactly as a single missing permission already does.
+ * 2. If it still happens (a race, a `409`, a cross-project `422` on the link
+ *    half), the modal **closes** — so a retry cannot silently create a second
+ *    row — and a persistent alert above the table names the created record by
+ *    its own label *and* its id, says plainly that it was saved but not linked,
+ *    and points at "Link existing …" as the one-click way to finish. See
+ *    `createdNotLinkedMessage`.
  *
  * Both actions are gated twice, and the two gates answer different questions:
  * *can this API do it at all* (`config.methods`/`config.linkCreate`) and *may
@@ -81,7 +111,14 @@
  * §5's hide-don't-disable posture, the same one `EntityListPage`'s `canCreate`
  * takes.
  *
- * ### Scoping the picker
+ * ### Scoping the picker — and prefilling the create form
+ *
+ * `pickerScopeParams` answers one question that both n-n actions need: *what
+ * is the far entity's scope, here?* For "Link existing" it is the search's
+ * query params; for "Create new" the identical answer is the create form's
+ * `lockedValues`, since a scope field is a body field on create and a query
+ * param on list (`crud_factory`'s own convention). One rule, two consumers —
+ * rather than a second, separately-drifting notion of "which project is this".
  *
  * The far entity's own list route usually requires a scope value, and refusing
  * to supply one 422s (`extract_scope_value`). Resolved generically, never per
@@ -121,7 +158,7 @@ import {
 import { usePermissions } from "../../../auth/usePermissions";
 import { EntityConfig, EntityRelation } from "../../../entityConfigs/types";
 import { ApiError } from "../../../lib/api/client";
-import { createEntity, createLinkRow, listEntities } from "../../../lib/api/entityCrud";
+import { EntityRow, createEntity, createLinkRow, listEntities } from "../../../lib/api/entityCrud";
 import { useEntitySchema } from "../../../pages/admin/useEntitySchema";
 
 export interface EntityRelationTabProps {
@@ -199,6 +236,60 @@ function errorMessage(error: unknown): string {
   return error instanceof ApiError ? error.message : "Something went wrong. Please try again.";
 }
 
+/**
+ * A `422`'s per-field messages, flattened to the one-message-per-field shape
+ * `EntityForm`'s `serverFieldErrors` takes. Shared by both create paths.
+ */
+function fieldErrorsOf(error: unknown): Record<string, string> | undefined {
+  const body = error instanceof ApiError ? (error.body as { field_errors?: Record<string, string[]> }) : undefined;
+  if (!body?.field_errors) {
+    return undefined;
+  }
+  return Object.fromEntries(Object.entries(body.field_errors).map(([field, messages]) => [field, messages[0]]));
+}
+
+/**
+ * ADR-0073 Amendment 1: how a just-created far row is named back to the user
+ * when its link half failed.
+ *
+ * `labelField` is the same one the picker labels its search results with — it
+ * is declared on the *link* entity's own FK field pointing at the far entity
+ * (`FieldConfig.labelField`), so this needs no per-entity knowledge either.
+ * Falls back to the id when the create response carries no such field, which
+ * is why the id is reported **as well as** the label rather than instead of
+ * it: the label is what the user typed and recognizes, the id is what survives
+ * a rename and can be pasted into a search.
+ */
+export function farRowDisplay(row: EntityRow, labelField: string | undefined): string {
+  const raw = labelField ? row[labelField] : undefined;
+  return typeof raw === "string" && raw.trim() ? raw : String(row.id ?? "");
+}
+
+/**
+ * ADR-0073 Amendment 1: the "created, but not linked" message.
+ *
+ * Its literal wording is load-bearing, which is why it is a pure function with
+ * its own test rather than an inline template. It has to carry four things, and
+ * dropping any one of them leaves the user guessing: **that the row was
+ * saved** (so they do not create it a second time), **which row** (label *and*
+ * id — see `farRowDisplay`), **why the link failed** (the API's own message,
+ * e.g. a cross-project `422`, not a generic "something went wrong"), and
+ * **how to finish** (the "Link existing …" action sitting right above the
+ * table, which now needs no form at all because the record exists).
+ */
+export function createdNotLinkedMessage(display: string, id: string, reason: string, farLabelLower: string): string {
+  return `"${display}" (id ${id}) was created, but linking it to this record failed: ${reason} It was saved and is NOT linked — use "Link existing ${farLabelLower}" to link it.`;
+}
+
+/**
+ * ADR-0073 Amendment 1: thrown when the far-entity `create` succeeded and the
+ * link `POST` that follows it did not. A distinct type because the two
+ * failures need opposite handling — an ordinary create failure keeps the form
+ * open so the user can fix and resubmit, while this one must **close** it, or
+ * a resubmit creates a second row for the same intent.
+ */
+class CreatedNotLinkedError extends Error {}
+
 function EntityRelationTab({
   relation,
   parentId,
@@ -233,6 +324,32 @@ function EntityRelationTab({
   const [pickerScope, setPickerScope] = useState<Record<string, string> | undefined>(undefined);
   const [linkError, setLinkError] = useState<string | null>(null);
 
+  // ADR-0073 Amendment 1 — the compound "Create new <far entity>" action.
+  const [showCreateLinkModal, setShowCreateLinkModal] = useState(false);
+  const [createLinkError, setCreateLinkError] = useState<string | null>(null);
+  const [createLinkFieldErrors, setCreateLinkFieldErrors] = useState<Record<string, string> | undefined>(undefined);
+  /**
+   * Survives the modal closing, deliberately: it is the only remaining record
+   * of a row that exists and is not linked, so it stays on the tab until the
+   * user navigates away rather than vanishing with the dialog that caused it.
+   */
+  const [createdNotLinked, setCreatedNotLinked] = useState<string | null>(null);
+
+  const isOneToMany = relation.kind === "one-to-many";
+  /**
+   * What the tab is *about* — the far entity for n-n, `entity` itself for 1-n
+   * (ADR-0071 §5). Computed above the schema guard because both mutations and
+   * the "created, not linked" message need it, and hooks cannot sit below a
+   * conditional return.
+   */
+  const farLabel = relation.label.replace(/ \(linked\)$/, "");
+  /**
+   * Which field of the far entity's summary names it — declared on the *link*
+   * entity's own FK field pointing at it. Used to label the picker's results
+   * and, on Amendment 1's failure path, to name the created row back.
+   */
+  const farLabelField = config?.fields.find((f) => f.name === relation.targetField)?.labelField;
+
   const listQuery = useQuery({
     queryKey: ["entity-relation-list", relation.entity, relation.scopeField, parentId, page, pageSize],
     queryFn: () =>
@@ -262,11 +379,9 @@ function EntityRelationTab({
       invalidateRelationList();
     },
     onError: (error: unknown) => {
-      const body = error instanceof ApiError ? (error.body as { field_errors?: Record<string, string[]> }) : undefined;
-      if (body?.field_errors) {
-        setCreateFieldErrors(
-          Object.fromEntries(Object.entries(body.field_errors).map(([field, messages]) => [field, messages[0]])),
-        );
+      const fieldErrors = fieldErrorsOf(error);
+      if (fieldErrors) {
+        setCreateFieldErrors(fieldErrors);
       } else {
         setCreateError(errorMessage(error));
       }
@@ -293,6 +408,82 @@ function EntityRelationTab({
     setLinkError(null);
   }
 
+  function closeCreateLinkModal() {
+    setShowCreateLinkModal(false);
+    setCreateLinkError(null);
+    setCreateLinkFieldErrors(undefined);
+  }
+
+  /**
+   * ADR-0073 Amendment 1: create the far row, then link it — two real
+   * requests, sequenced client-side, because they are two independent routes
+   * (see this module's own docstring for why there is no transaction to use).
+   *
+   * The ordering is not arbitrary: create first, because the link route takes
+   * an id that has to exist. That is also what makes "created but not linked"
+   * the only partial state reachable, and it is why it gets its own error type
+   * rather than being folded into the generic failure path.
+   */
+  const createAndLinkMutation = useMutation({
+    mutationFn: async (values: Record<string, unknown>) => {
+      const created = (await createEntity(farConfig as EntityConfig, routeParams, values)) as EntityRow;
+      const farId = created?.id;
+      if (typeof farId !== "string" || !farId) {
+        // Not reachable against this API (every create returns its row), but
+        // silently skipping the link half would be the worst possible
+        // outcome of it ever becoming reachable.
+        throw new CreatedNotLinkedError(
+          createdNotLinkedMessage(
+            farRowDisplay(created ?? {}, farLabelField),
+            "unknown",
+            "The server did not return the new record's id.",
+            farLabel.toLowerCase(),
+          ),
+        );
+      }
+      try {
+        await createLinkRow(config!.linkCreate!, {
+          [relation.scopeField]: parentId,
+          [relation.targetField as string]: farId,
+        });
+      } catch (linkFailure) {
+        throw new CreatedNotLinkedError(
+          createdNotLinkedMessage(
+            farRowDisplay(created, farLabelField),
+            farId,
+            errorMessage(linkFailure),
+            farLabel.toLowerCase(),
+          ),
+        );
+      }
+      return created;
+    },
+    onSuccess: () => {
+      closeCreateLinkModal();
+      setCreatedNotLinked(null);
+      invalidateRelationList();
+    },
+    onError: (error: unknown) => {
+      if (error instanceof CreatedNotLinkedError) {
+        // Close, so a resubmit cannot create a second row for one intent, and
+        // surface the notice on the tab itself where it outlives the dialog.
+        closeCreateLinkModal();
+        setCreatedNotLinked(error.message);
+        // The link half's own outcome is genuinely unknown when it failed at
+        // the transport layer rather than with a status, so refetch instead of
+        // assuming nothing landed.
+        invalidateRelationList();
+        return;
+      }
+      const fieldErrors = fieldErrorsOf(error);
+      if (fieldErrors) {
+        setCreateLinkFieldErrors(fieldErrors);
+      } else {
+        setCreateLinkError(errorMessage(error));
+      }
+    },
+  });
+
   if (schemaLoading || !config) {
     return (
       <Card.Body>
@@ -307,9 +498,6 @@ function EntityRelationTab({
     );
   }
 
-  const isOneToMany = relation.kind === "one-to-many";
-  const farLabel = relation.label.replace(/ \(linked\)$/, "");
-
   const canCreateChild =
     isOneToMany &&
     config.methods.includes("create") &&
@@ -318,6 +506,33 @@ function EntityRelationTab({
   const canLinkExisting =
     !isOneToMany && Boolean(config.linkCreate) && permissions.has(config.linkCreate!.permission, projectId);
 
+  /**
+   * ADR-0073 Amendment 1. Four conditions, and every one of them is a
+   * different question:
+   *
+   * 1. `canLinkExisting` — this compound action *ends* with the same link
+   *    request that action makes, so everything it needs (an n-n tab, a
+   *    declared `linkCreate`, the permission that route gates on) is needed
+   *    here too. Reusing the flag rather than restating it keeps the two from
+   *    drifting into disagreeing about the same route.
+   * 2. The far entity's schema has arrived — `farConfig` is undefined for one
+   *    round trip, and there is no form to render without it.
+   * 3. The far entity actually has a generic `create`. Three of the twelve
+   *    live link directions point at an entity that does not (`TestCondition`
+   *    and `Defect` are authored through bespoke routes only), and for those
+   *    this action correctly never appears — the same API-capability gate the
+   *    1-n branch already applies to `config.methods`.
+   * 4. The actor may create it. **Gated in addition to, never instead of, the
+   *    link permission**: an actor who may create but may not link would get
+   *    a `201` and then a `403`, i.e. exactly the orphaned row this action's
+   *    whole error path exists to avoid — so it is refused before it starts.
+   */
+  const canCreateAndLink =
+    canLinkExisting &&
+    Boolean(farConfig) &&
+    farConfig!.methods.includes("create") &&
+    permissions.has(`${farConfig!.resource}.create`, projectId);
+
   // Which scope the picker can fire with, and whether a `ScopeSelector` step
   // is needed first. `farConfig` is undefined for one schema round trip.
   const derivedScope = farConfig ? pickerScopeParams(farConfig, projectId) : {};
@@ -325,11 +540,27 @@ function EntityRelationTab({
   const effectiveScope = needsScopeStep ? pickerScope : derivedScope ?? undefined;
   const pickerReady = !needsScopeStep || Boolean(pickerScope);
 
+  /**
+   * The same derived scope, as the create form's locked fields — a scope field
+   * is a query param on `list` and a body field on `create`, so one answer
+   * serves both (see the module docstring). `null`/empty means the route could
+   * not derive one, and the field is then left editable rather than locked to
+   * a guess: degrading to "the user picks it" beats shipping a form that
+   * cannot be submitted.
+   */
+  const createLinkLockedValues =
+    derivedScope && Object.keys(derivedScope).length > 0 ? derivedScope : undefined;
+
   return (
     <>
-      {(canCreateChild || canLinkExisting) && (
-        <Card.Body className="pb-0 d-flex justify-content-end" data-testid="entity-relation-actions">
-          {canCreateChild ? (
+      {(canCreateChild || canLinkExisting || canCreateAndLink) && (
+        /**
+         * `gap-2` (Amendment 1): an n-n tab can now render two buttons here,
+         * and two `.btn`s are adjacent siblings with no margin of their own.
+         * Harmless on a 1-n tab, which still renders exactly one child.
+         */
+        <Card.Body className="pb-0 d-flex justify-content-end gap-2" data-testid="entity-relation-actions">
+          {canCreateChild && (
             <Button
               color="primary"
               size="sm"
@@ -349,7 +580,8 @@ function EntityRelationTab({
                */}
               New
             </Button>
-          ) : (
+          )}
+          {canLinkExisting && (
             <Button
               color="primary"
               size="sm"
@@ -362,6 +594,37 @@ function EntityRelationTab({
               Link existing {farLabel.toLowerCase()}
             </Button>
           )}
+          {canCreateAndLink && (
+            <Button
+              /**
+               * `outline`, where "Link existing" is solid: both are real
+               * actions, but linking an existing record is the one ADR-0073
+               * exists for (assembling a matrix from rows that already exist),
+               * and two solid primaries side by side assert no hierarchy at
+               * all. Not `secondary` — this is not a cancel-shaped action.
+               */
+              outline
+              color="primary"
+              size="sm"
+              data-testid="entity-relation-create-link"
+              onClick={() => {
+                setCreateLinkError(null);
+                setCreateLinkFieldErrors(undefined);
+                setCreatedNotLinked(null);
+                setShowCreateLinkModal(true);
+              }}
+            >
+              Create new {farLabel.toLowerCase()}
+            </Button>
+          )}
+        </Card.Body>
+      )}
+
+      {createdNotLinked && (
+        <Card.Body className="pb-0">
+          <Alert color="danger" data-testid="entity-relation-create-link-error">
+            {createdNotLinked}
+          </Alert>
         </Card.Body>
       )}
 
@@ -398,6 +661,47 @@ function EntityRelationTab({
           navigate(`${adminBasePath(routeParams)}/${relation.targetEntity}/${String(targetId)}`);
         }}
       />
+
+      {canCreateAndLink && farConfig && (
+        <Modal
+          visible={showCreateLinkModal}
+          title={<>Create new {farLabel.toLowerCase()}</>}
+          onClose={closeCreateLinkModal}
+        >
+          <Modal.Body>
+            {/*
+             * The FAR entity's own schema drives this form — `farConfig`, not
+             * `config`. `config` here is the *link* entity, whose two FK
+             * columns are the whole row and which has no `create_schema` at
+             * all (ADR-0005); rendering its fields would ask the user to fill
+             * in two ids, one of which is the record they are already on.
+             */}
+            <EntityForm
+              config={farConfig}
+              mode="create"
+              lockedValues={createLinkLockedValues}
+              submitError={createLinkError}
+              serverFieldErrors={createLinkFieldErrors}
+              onCancel={closeCreateLinkModal}
+              onSubmit={async (values) => {
+                /**
+                 * Swallowed on purpose: `onError` above has already routed
+                 * this to either the form's own error slots or the tab's
+                 * "created, not linked" alert. Letting it propagate would
+                 * reach react-hook-form, which rethrows out of its submit
+                 * handler as an unhandled rejection with nothing left to
+                 * render it.
+                 */
+                try {
+                  await createAndLinkMutation.mutateAsync(values);
+                } catch {
+                  /* handled in onError */
+                }
+              }}
+            />
+          </Modal.Body>
+        </Modal>
+      )}
 
       {canCreateChild && (
         <Modal
@@ -454,7 +758,7 @@ function EntityRelationTab({
                 id="entity-relation-link-picker"
                 label={farLabel}
                 refEntity={relation.targetEntity}
-                labelField={config.fields.find((f) => f.name === relation.targetField)?.labelField}
+                labelField={farLabelField}
                 value={pickedId}
                 onChange={setPickedId}
                 extraParams={effectiveScope}
