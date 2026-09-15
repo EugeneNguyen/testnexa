@@ -500,9 +500,13 @@ class TestSortable:
 
 
 class TestFieldEntryKeys:
-    def test_plain_field_carries_exactly_the_six_base_keys(self) -> None:
+    def test_plain_field_carries_exactly_the_seven_base_keys(self) -> None:
+        """`filterable` joined the base set in ADR-0072 (ENTITY-FILTER-1),
+        alongside `sortable` — every field carries it unconditionally, the
+        same way `sortable` already did. Full derivation coverage for it lives
+        in `test_crud_factory.py`'s `TestFilterFieldsDerivation`."""
         entry = _fields(derive_entity_schema(_widget_config()))["name"]
-        assert set(entry) == {"name", "label", "type", "required", "showInTable", "sortable"}
+        assert set(entry) == {"name", "label", "type", "required", "showInTable", "sortable", "filterable"}
 
 
 # --- field_order (ADR-0053 Amendment 1) -------------------------------------------------------------
@@ -700,13 +704,24 @@ class TestTopLevelShape:
         )
 
     def test_search_and_filter_fields_are_serialized_as_lists(self) -> None:
-        schema = derive_entity_schema(_config(search_fields=("title", "code"), filter_fields=("status",)))
+        """`searchFields` still echoes `config.search_fields` verbatim (a
+        genuine per-entity opt-in, ADR-0022/ADR-0070). `filterFields` no longer
+        does: ADR-0072 made it DERIVED from the per-field `filterable` flags,
+        so a `_widget_config` (real fields) is needed for it to be non-empty,
+        and an explicit `filter_fields` tuple only narrows that derivation."""
+        schema = derive_entity_schema(
+            _widget_config(search_fields=("title", "code"), filter_fields=("status",))
+        )
         assert schema["searchFields"] == ["title", "code"]
         assert schema["filterFields"] == ["status"]
+        assert isinstance(schema["filterFields"], list)
 
     def test_empty_search_and_filter_fields_are_empty_lists_not_tuples(self) -> None:
         schema = derive_entity_schema(_config())
         assert schema["searchFields"] == []
+        # `_config`'s summary schema is `_IdOnlySummary`, and `id` is dropped
+        # from `fields` outright — so there is genuinely nothing to filter on
+        # here, not merely nothing declared.
         assert schema["filterFields"] == []
 
 

@@ -18,12 +18,15 @@ First UI Design Document for this repo — no prior one existed; bespoke workflo
 
 | Component | Renders | Bound to |
 |---|---|---|
-| `EntityTable` | `CTable` with one column per `fields[]` entry (label from config), pagination controls (`CPagination`), a filter row for `filter_fields`, a `?q=` search box if `search_fields` is non-empty, and a trailing actions column (Edit/Delete icons — `cilPencil`/`cilTrash`) | an entity config + the current page/filter/search state |
+| `EntityTable` | `CTable` with one column per `fields[]` entry (label from config), pagination controls (`CPagination`), ~~a filter row for `filter_fields`~~ a header "Filter" button opening `FilterModal` (see below), a `?q=` search box if `search_fields` is non-empty, and a trailing actions column (Edit/Delete icons — `cilPencil`/`cilTrash`) | an entity config + the current page/filter/search state |
+| `FilterModal` | a modal listing the current exact-match conditions, one row each (field picker + typed value control + remove button), an "Add condition" button, and Cancel/Clear all/Apply; opened from `EntityTable`'s header Filter button ([ADR-0072](../adr/0072-entity-table-filter-modal.md)) | the entity config's served `filterFields`, seeded on every open from the **applied** filter state `EntityListPage` owns |
 | `EntityForm` | one input per `fields[]` entry, type-dispatched (§3), inside a `CModal` (create) or a dedicated `/edit` route (update) | React Hook Form, Zod schema built from `fields[]` (`required` → `.min(1)`/non-optional; `enum` → `z.enum(values)`; `fk` → `z.string().uuid()`; `date` → `z.string().date()`) |
 | `FkAutocomplete` | `CFormInput` with a debounced (300ms) dropdown of matches | `?q=<term>` against the referenced entity's own list route; selecting an option stores its `id`, displays its `labelField` |
 | `ScopeSelector` | a single `FkAutocomplete` gating the rest of the page — nothing else renders until a selection is made | `entityConfig.scopeSelector.refEntity`; on selection, sets the query param `EntityTable` needs to fire its first list call |
 
 No entity-specific component exists anywhere in this list — adding entity #28 means adding a config object (§3), never touching this table.
+
+**Correction — the struck-through "filter row for `filter_fields`" above described a control that did not exist ([ADR-0072](../adr/0072-entity-table-filter-modal.md)/ENTITY-FILTER-1, 2026-09-15).** It was accurate when this document was written, but an earlier refactor dropped the per-column filter row and nothing updated this row, `EntityTable`'s own module docstring (which made the identical claim), or its props — `filters?: Record<string, string>` and `onFilterChange?: (field, value) => void` stayed *declared* while neither was destructured in the component body or rendered anywhere. The state itself was never dead: `EntityListPage` owned real `filters` state the whole time, kept it in the list query's `queryKey`, and passed it to `listEntities` — so the state-to-query pipeline was live and correct end to end, and only the control that writes to it was missing. Replaced by the header Filter button + `FilterModal` row above, and the dead `onFilterChange(field, value)` prop by `onFiltersChange(filters)` (Apply commits the whole set at once, and a removed condition must actually disappear rather than survive a per-key merge). **This is why §8's own non-goals line needed correcting too** — it cited the filter row as an existing capability when justifying a scope boundary.
 
 ## 3. Field-config schema (drives both `EntityTable` and `EntityForm`)
 
@@ -48,7 +51,7 @@ interface EntityConfig {
   scopeSelector?: { refEntity: string; paramName: string }; // RiskItem/Attachment only
   methods: ("list" | "get" | "create" | "update" | "delete")[]; // mirrors the entity's own backend CrudEntityConfig.methods
   fields: FieldConfig[];
-  filterFields?: string[];
+  filterFields?: string[];        // served, derived from the schema's own per-field `filterable` (ADR-0072) — not hand-authored
   searchFields?: string[];
 }
 ```
@@ -83,6 +86,36 @@ The `readOnly`, array-shaped `scopeSelector`, `scopeResolution` and `listPath`/`
 
 Click cycle: unsorted → ascending → descending → unsorted. Clicking a *different* column's header always restarts that column at ascending (never carries over the previous column's direction) — only one column is ever the active sort key at a time, no multi-column sort. Choosing a sort resets the table to page 1 (a sort change is a new result set, not a new page of the old one — same convention as choosing a filter or typing a search term, §4). `Actions` (the trailing Edit/Delete icon column, when present) and any column with `sortable: false` (`Release`'s three fields — its list route is 100% bespoke, out of ADMIN-4's scope) render as plain, non-interactive header text, same as before this ADR.
 
+**Filter modal ([ADR-0072](../adr/0072-entity-table-filter-modal.md), ENTITY-FILTER-1, 2026-09-15):** the exact-match filter capability gets its first real control (see §2's correction for what it replaces). `FieldConfig` gains `filterable?: boolean` (defaults `true`, served — §3's `EntityConfig.filterFields` is now the aggregate of it) and the header gains one **icon-only** "Filter" button (Font Awesome `filter` via the `Icon` atom, `aria-label`/`title="Filter"`), sitting in the `.card-header .card-tools` row immediately beside [ADR-0071](../adr/0071-entity-table-column-preferences.md)'s sibling "Columns" button — the two are designed to be adjacent. `FilterModal` composes the existing `Modal` molecule + `Button`/`Select`/`TextInput` atoms + `FkSelect`/`FkAutocomplete` molecules; no new raw `.modal`/`.btn`/`.form-select` markup is introduced.
+
+Header row, left to right (prose and this sketch must stay in agreement — root `CLAUDE.md`'s own rule for this document):
+
+```
+┌─ .card-header ─────────────────────────────────────────────────────────────┐
+│ .card-title: "<Entity label>"          .card-tools: [🔍 Search…] [▦][▼ 2][+ New] │
+└────────────────────────────────────────────────────────────────────────────┘
+                                                        │   │    │      │
+                    the `?q=` search box ───────────────┘   │    │      └── "New" (hidden/disabled per §5)
+            "Columns" button (ADR-0071, icon-only) ─────────┘    │
+              "Filter" button (icon-only) + active-condition ────┘
+              count badge; `btn-outline-primary` while any
+              filter is applied, plain otherwise
+```
+
+Each condition row is a **field picker plus a value control** — and nothing else:
+
+| Element | Behaviour |
+|---|---|
+| Field picker (`Select`) | offers only fields the served schema marks `filterable` (every field **except** those of type `text`), in config order, **minus any field another row already claims** — the row's own current field always stays selectable. Re-pointing a row at a different field clears its value |
+| Value control | typed, reusing **exactly** `EntityForm`'s own §3 branch above, so a field is filtered through the same control it is edited through: `enum` → `Select` of its served `values`; `boolean` → Yes/No `Select`; `date` → `<input type="date">`; `fk` → `field.select ? FkSelect : FkAutocomplete`; everything else → `TextInput` |
+| Operator control | **none rendered at all.** The backend supports exact equality and nothing else, and `AND`s its conditions unconditionally — there is no `OR` to express and no operator to choose, so a single-option `<select>` would imply a choice nobody has. The conjunction is stated once in the modal's prose instead |
+| Remove button | drops exactly that row; the rest keep their order |
+| "Add condition" | appends a row **pre-assigned to the first still-unused filterable field**, never a blank picker; `disabled` once every filterable field is claimed (at most one condition per field — a second on the same field would compile to `field = a AND field = b`, always empty, which a user reads as "no results" rather than "contradictory query") |
+
+Exits, and the state model behind them: **Apply** commits the whole condition set at once (incomplete rows — a field with no value, or a value with no field — are dropped rather than sent as empty-string filters); **Cancel** and **ESC** discard; **Clear all** empties the draft but still requires Apply to take effect. Draft edits are local until Apply, and the draft **re-seeds from the applied filters on every open**, so an abandoned edit never survives a reopen — same mechanism and same reason as ADR-0071's own re-seed. Applying a filter resets the table to page 1, the same convention a sort or search change already uses (§4).
+
+**Filter state lives in `EntityListPage`, not `EntityTable` — deliberately the opposite of ADR-0071's column preferences**, on ADR-0071's own stated rule: a parameter that maps to a backend query parameter belongs to whoever owns the list query, and filters map directly to `?<field>=<value>` where column visibility/order map to nothing server-side. `EntityTable` owns only the modal's open/closed boolean. **Filters are also not persisted**, a second deliberate divergence from the sibling button's `localStorage`: a hidden column announces itself (a header is visibly missing), while a silently-filtered list just shows *fewer rows*, which reads as missing data or someone else's deletions — so filters stay session-only alongside `page`/`pageSize`/`sort`/`search`, all five of which are already component state only. The active-condition count badge in the sketch above is the mitigation that argument depends on: a narrowed list always has a visible cause in the header directly above it.
+
 ## 4. Screen layouts (three shapes, not 28)
 
 **A — Global catalog** (`Role`, `Permission`, `RoleAssignment`, `TestDesignTechnique`, `TestLevel`, `TestType`): route `/orgs/:orgId/admin/:entity`. `EntityTable` fires its list query immediately on mount — no scope param needed.
@@ -109,7 +142,9 @@ Shape-A entities (global/org-scoped) get a new "Admin" `CNavGroup` in `AppSideba
 
 ## 8. Non-goals
 
-No bulk-edit, no CSV import, no per-column sort UI beyond what `filter_fields` already exposes as exact-match filters, no drag-reorder — none of FR-ADMIN-2's ACs ask for any of these, and adding them would be scope creep into what's deliberately a plain, generic list/form surface.
+No bulk-edit, no CSV import, ~~no per-column sort UI beyond what `filter_fields` already exposes as exact-match filters~~, no drag-reorder — none of FR-ADMIN-2's ACs ask for any of these, and adding them would be scope creep into what's deliberately a plain, generic list/form surface.
+
+**Two clauses above are now stale, for two different reasons** (2026-09-15). (a) The sort clause was **overtaken**: [ADR-0056](../adr/0056-admin-4-generic-admin-crud-column-sort.md)/ADMIN-4 shipped click-to-sort headers under its own FR-ADMIN-3, so "no per-column sort UI" no longer holds — §3's Column sort block above is the live description. (b) Its justification was **never accurate to begin with**: it cited "what `filter_fields` already exposes as exact-match filters" as an existing UI capability, but the filter row it referred to had already been removed by an earlier refactor (§2's correction) — the exact-match filters were reachable only by hand-editing a query string until [ADR-0072](../adr/0072-entity-table-filter-modal.md) built the Filter modal. **Still non-goals** and unchanged: bulk-edit, CSV import, drag-reorder, multi-column sort, and — per ADR-0072's own rejected alternatives — per-condition operators (`contains`/`>`/`<`/`in`) and `OR`/nested condition groups, both of which are absent backend capabilities rather than declined UI choices, and each its own future ADR.
 
 **Correction in place (2026-09-15): two of the four non-goals above have since been deliberately lifted by their own ADRs, and the sentence as written no longer describes this surface.** The original text is kept rather than rewritten (it is an accurate record of FR-ADMIN-2's own scope boundary at the time), with the two changes named here: **(a) per-column sort UI now exists** — ADMIN-4 ([ADR-0056](../adr/0056-admin-4-generic-admin-crud-column-sort.md), FR-ADMIN-3) added a click-to-toggle sort header on `EntityTable`, backed by a real `?sort=` query parameter, which is a strictly larger thing than the exact-match filters this line contemplated; **(b) column *reordering* now exists, but still not by dragging** — COLPREF-1 ([ADR-0071](../adr/0071-entity-table-column-preferences.md), FR-ADMIN-4, §9 below) adds per-viewer column visibility and ordering via Up/Down buttons in a modal, and explicitly keeps "no drag-reorder" as a live constraint, for the dependency reason ADR-0071 Decision §2 states. Bulk-edit and CSV import remain non-goals, unchanged.
 

@@ -42,8 +42,9 @@ _RISK_ITEM_CONFIG = CrudEntityConfig(
     summary_schema=RiskItemSummary,
     scope_field=("requirement_id", "test_plan_id"),
     resolve_org_id=resolve_risk_item_org_id,
-    filter_fields=("likelihood", "impact"),
-    # ADR-0070. `likelihood`/`impact` are enums and stay exact-match above.
+    # ADR-0070. `likelihood`/`impact` are enums, exact-matchable via
+    # ADR-0072's derived filter set (the explicit `filter_fields` tuple that
+    # used to sit here is gone).
     search_fields=("description", "mitigation"),
     # ADR-0053
     label="Risk items",

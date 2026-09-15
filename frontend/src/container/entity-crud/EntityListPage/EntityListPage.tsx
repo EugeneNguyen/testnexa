@@ -246,9 +246,14 @@ function EntityListPage({ entityKeyOverride }: { entityKeyOverride?: string } = 
           loading={listQuery.isLoading}
           loadError={listQuery.isError ? "Something went wrong. Please try again." : null}
           filters={filters}
-          onFilterChange={(field, value) => {
+          onFiltersChange={(next) => {
+            // ADR-0072: Apply replaces the whole map (the modal's draft is the
+            // complete set of conditions, so a removed one must actually
+            // disappear rather than survive a per-key merge). Resets to page 1,
+            // same as changing sort/search — a new filter set is a new result
+            // set, not a new page of the old one.
             setPage(1);
-            setFilters((prev) => ({ ...prev, [field]: value }));
+            setFilters(next);
           }}
           search={search}
           onSearchChange={(value) => {

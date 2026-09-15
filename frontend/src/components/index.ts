@@ -54,6 +54,7 @@ export * from "./molecules/social-auth-button";
 export * from "./molecules/social-auth-panel";
 
 // organisms
+export * from "./organisms/filter-modal";
 export { default as AppBreadcrumb } from "./organisms/app-breadcrumb";
 export { default as AppFooter } from "./organisms/app-footer";
 export { default as AppHeader } from "./organisms/app-header";

@@ -553,7 +553,6 @@ _ORG_MEMBERSHIP_CONFIG = CrudEntityConfig(
     summary_schema=OrgMembershipSummary,
     scope_field="org_id",
     resolve_org_id=chain_resolver([]),
-    filter_fields=("status",),
     methods=frozenset({"list", "get", "update", "delete"}),
     # ADR-0053. Direct org scope (the route's own `:orgId`), so no
     # scope-selector. `user_id` gets a label override but no `ref_entity`:
