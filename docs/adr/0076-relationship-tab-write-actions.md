@@ -1,15 +1,15 @@
-# ADR-0073: Write actions on the entity detail page's relationship tabs, from a declared link-create action
+# ADR-0076: Write actions on the entity detail page's relationship tabs, from a declared link-create action
 
 - **Status:** Accepted
 - **Date:** 2026-09-15
 - **Deciders:** xuanbinh91@gmail.com (CTO)
-- **Extends:** [ADR-0071](0071-entity-detail-relationship-tabs.md) (the relationship tabs themselves) and [ADR-0072](0072-junction-table-registry-completeness.md) + its Amendment 1 (all six junctions registered and bidirectional). Neither is superseded: the derivation, the exclusion rules, the `?tab=` posture and the hidden scoping column all stand unchanged, and `derive_entity_relations` is not touched.
+- **Extends:** [ADR-0074](0074-entity-detail-relationship-tabs.md) (the relationship tabs themselves) and [ADR-0075](0075-junction-table-registry-completeness.md) + its Amendment 1 (all six junctions registered and bidirectional). Neither is superseded: the derivation, the exclusion rules, the `?tab=` posture and the hidden scoping column all stand unchanged, and `derive_entity_relations` is not touched.
 - **Builds on:** [ADR-0005](0005-traceability-link-dedicated-join-tables.md) (dedicated link tables), [ADR-0027](0027-generic-admin-crud-ui-and-backend-completion.md) (the generic admin CRUD UI — create renders in a modal, only update gets a route), [ADR-0030](0030-req4-test-suite-membership-bespoke-routes.md)/[ADR-0031](0031-plan1-test-plan-membership-and-status-transition-routes.md) (the two membership routes this ADR's four new routes are shaped on), [ADR-0055](0055-admin-3-backend-driven-entity-schema.md) (`GET /entities/{resource}/schema` as the one place a client learns what an entity can do).
 
 ## Context
 
-ADR-0071 gave the generic detail page one tab per inbound relationship, and
-ADR-0072's Amendment 1 made all six junction tables list from both ends. The
+ADR-0074 gave the generic detail page one tab per inbound relationship, and
+ADR-0075's Amendment 1 made all six junction tables list from both ends. The
 result is thirty relationships across ten entities, and **every one of them is
 read-only**.
 
@@ -45,7 +45,7 @@ no relationship. Adding a *create* affordance needs two facts that no amount of
 derivation produces:
 
 1. **Which route writes a link row.** Every link table is `list`/`get` only
-   through the factory (ADR-0005/ADR-0072); its rows come from a bespoke route
+   through the factory (ADR-0005/ADR-0075); its rows come from a bespoke route
    whose URL shape is arbitrary (`/test-suites/{id}/test-cases/{case_id}`,
    `/test-plans/{id}/test-suites/{suite_id}`, and four that did not exist).
    Nothing about the entity's schema implies any of those.
@@ -55,7 +55,7 @@ derivation produces:
    junction.
 
 The obvious shortcut — a hand-authored map in the frontend from link entity to
-route — is exactly the per-entity map ADR-0071 Decision §1 exists to forbid, and
+route — is exactly the per-entity map ADR-0074 Decision §1 exists to forbid, and
 it would sit on the far side of the network boundary from the routes it
 describes, free to drift silently.
 
@@ -73,7 +73,7 @@ class LinkCreateAction:
 ```
 
 served as an eleventh key on `GET /entities/{resource}/schema`
-(`"linkCreate"`, `null` for the 23 non-link entities), beside ADR-0071's
+(`"linkCreate"`, `null` for the 23 non-link entities), beside ADR-0074's
 `relations`.
 
 Two properties make it generic rather than a map in disguise:
@@ -91,12 +91,12 @@ Two properties make it generic rather than a map in disguise:
   change and its declaration are one diff.
 
 It rides the schema request the tab already makes, so the action costs no extra
-round trip — the same reasoning ADR-0071 gives for putting `relations` there.
+round trip — the same reasoning ADR-0074 gives for putting `relations` there.
 
-`tests/unit/test_adr73_link_create_actions.py` asserts the partition in both
+`tests/unit/test_adr76_link_create_actions.py` asserts the partition in both
 directions (every `is_link_entity` config declares one; nothing else does),
 checks each template's placeholders against `fk_fields_of` and each permission
-against the live RBAC catalog, and — per ADR-0072's own lesson — is
+against the live RBAC catalog, and — per ADR-0075's own lesson — is
 **mutation-tested in-suite**, so "no gaps" and "the checker cannot see gaps" are
 distinguishable results.
 
@@ -167,7 +167,7 @@ Bundles, and the reasoning for each:
 | `ai_agent_scoped` | nothing | Reaches none of the linked entities at all. |
 
 Migration `3e6b08c5da71` backfills this — the second RBAC extension in this
-repo (after ADR-0072's `7d2c91af4e68`) that inserts `Permission` rows rather
+repo (after ADR-0075's `7d2c91af4e68`) that inserts `Permission` rows rather
 than only grants, since the codes are new. Its `downgrade()` is asymmetric on
 purpose: it removes the four new codes and every grant of them, but for the
 three *pre-existing* `.read` codes it only revokes `test_manager`'s grants,
@@ -249,7 +249,7 @@ No per-entity branch, and no new picker component.
   rather than reconciled.** REQ-5's route is a one-shot *retrofit* for a
   standalone case with no traceability at all and `409`s if the case already
   has **any** requirement link — at-most-one, from the `TestCase` side.
-  ADR-0073's route is the table's real many-to-many contract and `409`s only on
+  ADR-0076's route is the table's real many-to-many contract and `409`s only on
   the *pair*. Reconciling them would mean changing REQ-5's shipped contract,
   which no acceptance criterion asks for; a future story that wants one rule
   should pick it deliberately rather than have this ADR decide it as a side
@@ -284,7 +284,7 @@ duplication is what made the REQ-5 change *look* complete.
 Found while building this ADR's own routes, which need the same walk. Fixed by
 promoting it to `crud_factory.resolve_test_case_project_id`, beside its org-side
 sibling and mirroring its branch order exactly, with
-`test_suite_membership.py` delegating. Regression test: TC-ADMIN-071, asserted
+`test_suite_membership.py` delegating. Regression test: TC-ADMIN-086, asserted
 against **REQ-4's own route** rather than any new one, since that is the route
 that was broken.
 
@@ -400,20 +400,20 @@ modal, which this change does not touch. The real fix — omit a blank optional
 rather than sending `null` for it — is a change to the shared form affecting
 every entity and every create path in the generic surface, so it belongs to its
 own story rather than to a drive-by here (root `CLAUDE.md`'s rule against
-mass-fixing unrelated pre-existing findings). TC-ADMIN-084 selects a Status
+mass-fixing unrelated pre-existing findings). TC-ADMIN-099 selects a Status
 explicitly and says why at the call site.
 
-**Coverage.** TC-ADMIN-081 (the four-cell permission matrix plus the
-far-entity-has-no-`create` cell), TC-ADMIN-082 (the compound success path: far
+**Coverage.** TC-ADMIN-096 (the four-cell permission matrix plus the
+far-entity-has-no-`create` cell), TC-ADMIN-097 (the compound success path: far
 schema, locked scope, second call carrying the first call's id, list refetch),
-TC-ADMIN-083 (the created-not-linked message and the opposite handling of an
-ordinary create failure), TC-ADMIN-084 (end to end on a live stack, both
+TC-ADMIN-098 (the created-not-linked message and the opposite handling of an
+ordinary create failure), TC-ADMIN-099 (end to end on a live stack, both
 requests asserted on the wire and in order).
 
 ## Alternatives considered
 
 - **A frontend map from link entity to route.** Rejected: it is the
-  hand-authored per-entity map ADR-0071 Decision §1 exists to forbid, sitting on
+  hand-authored per-entity map ADR-0074 Decision §1 exists to forbid, sitting on
   the far side of the network boundary from the routes it describes. It cannot
   be completeness-tested against the real routes, and a route change would not
   even be in the same repository diff as a rule.
@@ -445,7 +445,7 @@ requests asserted on the wire and in order).
 - **Per-row "Unlink" on n-n tabs.** Deferred, not rejected — see Consequences.
   Two of six junctions have a `DELETE` route already, four have none, and
   shipping the action for a third of the tabs would be exactly the
-  incoherence ADR-0072 Decision §3 declined to create for scoping.
+  incoherence ADR-0075 Decision §3 declined to create for scoping.
 - **Reuse `EntityFormPage` for the one-to-many create.** Rejected because it
   does not do that: ADR-0027 scopes it to `/edit` and puts create in a modal on
   `EntityListPage`. The reused component is `EntityForm`, which is the actual

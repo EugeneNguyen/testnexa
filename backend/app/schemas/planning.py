@@ -195,7 +195,7 @@ class TestCycleListResponse(BaseModel):
 
 
 class TestPlanTestSuiteSummary(BaseModel):
-    """ADR-0072: the read-only summary for `TestPlanTestSuite`, PLAN-1's
+    """ADR-0075: the read-only summary for `TestPlanTestSuite`, PLAN-1's
     plan-scope junction table.
 
     Same four-column shape as `app/schemas/trace.py`'s `*LinkSummary` classes

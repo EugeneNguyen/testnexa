@@ -1,5 +1,5 @@
 /**
- * ADR-0070: batched, deduped FK-label resolution for any `EntityConfig`-driven
+ * ADR-0073: batched, deduped FK-label resolution for any `EntityConfig`-driven
  * surface — extracted verbatim out of `EntityTable`'s own body so
  * `EntityDetailPage` reuses it instead of shipping a second copy (the
  * component-reuse rule `frontend/CLAUDE.md` makes mandatory; this is a reuse
@@ -56,7 +56,7 @@ export function useFkLabels(
     .join("|");
 
   /**
-   * [ADR-0071](../../../../docs/adr/0071-entity-detail-relationship-tabs.md)
+   * [ADR-0074](../../../../docs/adr/0074-entity-detail-relationship-tabs.md)
    * — the same primitive-fingerprint trick, now for `rows` too, and for the
    * same reason applied one argument over. Keying the effect on the `rows`
    * **array identity** made it re-run on every render for any caller that
@@ -66,7 +66,7 @@ export function useFkLabels(
    * This is not hypothetical: `EntityDetailPage` passed `row ? [row] : []`,
    * a new array on every render, and measured **2913 `getEntity` calls in
    * 400ms** — an unbounded request storm against the backend, on a page that
-   * looked completely correct while doing it (see ADR-0070's own Amendment 1).
+   * looked completely correct while doing it (see ADR-0073's own Amendment 1).
    * The rendered output is identical whether the effect runs once or forever,
    * which is exactly why neither that story's unit tests nor its live manual
    * pass caught it.

@@ -1,6 +1,6 @@
-# ADR-0070: A generic, read-only entity detail page on the admin CRUD surface
+# ADR-0073: A generic, read-only entity detail page on the admin CRUD surface
 
-- **Status:** Partially superseded by [ADR-0071](0071-entity-detail-relationship-tabs.md) (the "related-record panels are out of scope" Consequences clause only — every other decision below stands unchanged)
+- **Status:** Partially superseded by [ADR-0074](0074-entity-detail-relationship-tabs.md) (the "related-record panels are out of scope" Consequences clause only — every other decision below stands unchanged)
 - **Date:** 2026-09-15
 - **Deciders:** xuanbinh91@gmail.com (CTO)
 - **Extends:** [ADR-0025](0025-requirement-title-field.md)-era generic admin CRUD surface as delivered by [ADR-0027](0027-generic-admin-crud-ui-and-backend-completion.md) / [ADR-0055](0055-admin-3-backend-driven-entity-schema.md) / [ADR-0057](0057-admin-crud-pages-relocated-to-container.md); interacts with [ADR-0060](0060-projects-page-retired-generic-surface.md)'s `detailPath`
@@ -166,7 +166,7 @@ existing `/edit` entries' shape exactly.
   own Defects/Requirement sections stay on `EntityFormPage` where ADR-0044/
   ADR-0069 put them, rather than being moved or mirrored here.
 
-  > **Partially superseded the same day, [ADR-0071](0071-entity-detail-relationship-tabs.md)
+  > **Partially superseded the same day, [ADR-0074](0074-entity-detail-relationship-tabs.md)
   > — see that ADR.** The *related-record panels* half of this clause no longer
   > holds: the page gained an Info tab plus one tab per inbound relationship,
   > driven by a new backend-derived `relations` key on the entity schema. The
@@ -227,7 +227,7 @@ don't absorb it, don't retrofit the fix into the ADR that found it.
 
 ### Amendment 1 (2026-09-15, same branch, pre-merge) — the shipped detail page issued unbounded FK-resolution requests
 
-Found during [ADR-0071](0071-entity-detail-relationship-tabs.md)'s own
+Found during [ADR-0074](0074-entity-detail-relationship-tabs.md)'s own
 implementation, on this same unmerged branch, so it is recorded here as an
 in-place amendment rather than a new ADR (`docs/CLAUDE.md`'s pre-merge
 same-story-correction convention). The fix is one line in
@@ -251,7 +251,7 @@ class as the invisible-badge finding below: a defect a rendered-output assertion
 is structurally incapable of detecting, just reached by counting requests rather
 than by looking at a screenshot.
 
-It also did not reproduce as a *test* failure until ADR-0071's own new suite
+It also did not reproduce as a *test* failure until ADR-0074's own new suite
 happened to hold the component mounted a little longer, at which point the loop
 starved the test runner and the file hung at 88% CPU — which is how it surfaced
 at all.

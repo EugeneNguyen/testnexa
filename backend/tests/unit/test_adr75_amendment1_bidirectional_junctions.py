@@ -1,13 +1,13 @@
-"""ADR-0072 Amendment 1: every n-n junction is scoped from BOTH ends.
+"""ADR-0075 Amendment 1: every n-n junction is scoped from BOTH ends.
 
-Six junction tables had a single-column `scope_field`, so ADR-0071's
+Six junction tables had a single-column `scope_field`, so ADR-0074's
 `derive_entity_relations` emitted a relation for that one side only — e.g.
 `TestSuite` got a "Test cases (linked)" tab while `TestCase` got nothing for
 the identical, genuinely bidirectional relationship, and `Defect`'s detail
 page rendered no tab strip at all. Amendment 1 widens all six to the branching
 2-tuple shape `RiskItem` has always used.
 
-**Why this file exists separately from `test_adr71_entity_relations.py`.** That
+**Why this file exists separately from `test_adr74_entity_relations.py`.** That
 file asserts the *derivation's* output — which relations are emitted. It cannot
 see the half of this change that actually decides whether a tab renders data or
 a `404`: the **resolver**. A branching `scope_field` and a single-arm
@@ -32,7 +32,7 @@ Same hand-rolled fake-session convention as `tests/unit/test_crud_factory.py`,
 `test_execution_trace_resolvers.py` and `test_req4_suite_membership_resolvers.py`
 — no DB, no live server. The live round trips (create through the real bespoke
 route, then `GET ?<reverse arm>=`) are in
-`tests/integration/test_adr72_amendment1_bidirectional_junctions.py`; neither
+`tests/integration/test_adr75_amendment1_bidirectional_junctions.py`; neither
 layer substitutes for the other.
 """
 
@@ -119,7 +119,7 @@ def _scope_stand_in(field_name: str, value: Any) -> Any:
 
 
 class TestBranchingResolverPrimitive:
-    """**TC-ADMIN-063.** `branching_resolver` itself, independent of any entity."""
+    """**TC-ADMIN-078.** `branching_resolver` itself, independent of any entity."""
 
     async def test_first_branch_whose_attribute_is_set_wins(self) -> None:
         async def _a(_db: Any, _row: Any) -> uuid.UUID:
@@ -175,9 +175,9 @@ class TestBranchingResolverPrimitive:
 
 
 class TestEveryJunctionIsScopedFromBothEnds:
-    """**TC-ADMIN-063.** The config-level half: all six, not two of six.
+    """**TC-ADMIN-078.** The config-level half: all six, not two of six.
 
-    ADR-0072 Decision §3 rejected widening only its own two junctions because
+    ADR-0075 Decision §3 rejected widening only its own two junctions because
     "doing it for two junctions and not the other four would make the rule
     incoherent." These assertions are what makes "all six" a checked fact rather
     than a claim in prose — a seventh junction added later with a single-column
@@ -216,12 +216,12 @@ class TestEveryJunctionIsScopedFromBothEnds:
         `JUNCTIONS` must name exactly the entities the structural classifier
         calls link tables, so a newly-registered junction cannot skip every
         assertion in this file by simply not being listed."""
-        from tests.unit.test_adr71_entity_relations import EXPECTED_LINK_ENTITIES
+        from tests.unit.test_adr74_entity_relations import EXPECTED_LINK_ENTITIES
 
         assert {key for key, _, _ in JUNCTIONS} == EXPECTED_LINK_ENTITIES
 
     async def test_every_link_entitys_resolver_actually_branches_on_both_arms(self) -> None:
-        """**TC-ADMIN-063.** The structural half of "and `resolve_org_id` branches on both arms",
+        """**TC-ADMIN-078.** The structural half of "and `resolve_org_id` branches on both arms",
         asserted over *every* link entity rather than as six hand-written cases.
 
         The probe distinguishes a branching resolver from a single-arm one
@@ -278,7 +278,7 @@ def _resolver(key: str) -> Any:
 
 
 class TestTheNumbersTheDocsQuote:
-    """**TC-ADMIN-063.** Every concrete figure ADR-0072 Amendment 1 and ADR-0071 §4 now state, pinned.
+    """**TC-ADMIN-078.** Every concrete figure ADR-0075 Amendment 1 and ADR-0074 §4 now state, pinned.
 
     `docs/CLAUDE.md` documents at length that a doc's own confidently-worded
     count drifts silently once nothing asserts it — the coverage-summary table
@@ -288,8 +288,8 @@ class TestTheNumbersTheDocsQuote:
     """
 
     def test_relation_and_entity_totals_match_the_adr(self) -> None:
-        """ADR-0071's Consequences: "22 relationships across 9 entities" at
-        ship, "30 across 10" after Amendment 1 (+2 from ADR-0072 registering the
+        """ADR-0074's Consequences: "22 relationships across 9 entities" at
+        ship, "30 across 10" after Amendment 1 (+2 from ADR-0075 registering the
         two junctions, +6 from making all six bidirectional; the tenth entity is
         `Defect`, which previously had no tab strip at all)."""
         from app.api.crud_factory import derive_entity_relations
@@ -304,11 +304,11 @@ class TestTheNumbersTheDocsQuote:
         assert "defects" in with_tabs, "Defect is the tenth entity — it had no tab strip before"
 
     def test_the_excluded_inbound_fk_count_matches_adr_0071_section_4(self) -> None:
-        """ADR-0071 §4's table: 12 as first written, 14 after ADR-0072, **8**
+        """ADR-0074 §4's table: 12 as first written, 14 after ADR-0075, **8**
         after Amendment 1 struck the whole "reverse side of all 6 link tables"
         row. The eight that remain are a different kind of gap entirely —
         filter-field-only FKs, and `RoleAssignment`'s missing `list` route."""
-        from tests.unit.test_adr71_entity_relations import EXPECTED_EXCLUSIONS
+        from tests.unit.test_adr74_entity_relations import EXPECTED_EXCLUSIONS
 
         assert len(EXPECTED_EXCLUSIONS) == 8
         # None of the survivors is a link table's own reverse side.
@@ -319,7 +319,7 @@ class TestTheNumbersTheDocsQuote:
         rather than a superset — `e2e/tests/admin7-entity-relation-tabs.spec.ts`
         asserts the rendered strips positionally, so a drift must fail in the
         fast layer first. `test-cases` is covered by its own dedicated test in
-        `test_adr71_entity_relations.py`; the other three are only covered here."""
+        `test_adr74_entity_relations.py`; the other three are only covered here."""
         from app.api.crud_factory import derive_entity_relations
 
         def labels(key: str) -> list[str]:
@@ -347,21 +347,21 @@ class TestTheNumbersTheDocsQuote:
     def test_no_new_permission_code_was_introduced(self) -> None:
         """Amendment 1 adds no RBAC surface and needs no migration: permission
         codes are per-*resource*, not per-direction, so all six junctions were
-        already covered by the `.read` code ADR-0027 and ADR-0072 Decision §5
+        already covered by the `.read` code ADR-0027 and ADR-0075 Decision §5
         seeded. Asserted rather than asserted-in-prose, because "no migration
         needed" is exactly the kind of claim that is expensive to be wrong
         about — a missing code would 403 the new tab for every role that can
         open the page.
 
-        **ADR-0073 amends the final assertion, not the claim.** Amendment 1
+        **ADR-0076 amends the final assertion, not the claim.** Amendment 1
         still introduces no permission code of its own — the per-*direction*
         assertions below are what actually test that, and they are untouched.
-        What changed underneath is that ADR-0073 later gave the four ADR-0005
+        What changed underneath is that ADR-0076 later gave the four ADR-0005
         traceability links a `.create` code each (for its own new bespoke
         link-create routes), so "exactly one code per junction resource" is no
         longer the right exact set. The assertion is narrowed rather than
         loosened to a subset check: each junction's code set must be exactly
-        `.read`, plus `.create` for precisely the four ADR-0073 names, so a
+        `.read`, plus `.create` for precisely the four ADR-0076 names, so a
         *fifth* code on any of the six still fails here.
         """
         from app.db.rbac_seed_catalog import (
@@ -387,13 +387,13 @@ class TestTheNumbersTheDocsQuote:
 
 
 def EXPECTED_LINK_ENTITIES_FOR_ASSERTION() -> set[str]:
-    from tests.unit.test_adr71_entity_relations import EXPECTED_LINK_ENTITIES
+    from tests.unit.test_adr74_entity_relations import EXPECTED_LINK_ENTITIES
 
     return EXPECTED_LINK_ENTITIES
 
 
 class TestReverseArmResolvesTheSameOrg:
-    """**TC-ADMIN-063.** The half `test_adr71_entity_relations.py` structurally cannot see.
+    """**TC-ADMIN-078.** The half `test_adr74_entity_relations.py` structurally cannot see.
 
     Each test builds the org chain the *reverse* arm must walk, hands the
     resolver only that arm (as `_resolve_scope_for_write` does), and asserts the
@@ -575,7 +575,7 @@ class TestSingleArmResolverWouldRegress:
 
 
 class TestScopeValidationUnderABranchingScope:
-    """**TC-ADMIN-063.** Widening `scope_field` changes the `422` body for a badly-scoped list
+    """**TC-ADMIN-078.** Widening `scope_field` changes the `422` body for a badly-scoped list
     request, which is a real (if small) API contract change worth pinning
     rather than discovering from a failing client."""
 

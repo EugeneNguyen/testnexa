@@ -335,7 +335,7 @@ class TestSuiteListResponse(BaseModel):
 
 
 class TestSuiteTestCaseSummary(BaseModel):
-    """ADR-0072: the read-only summary for `TestSuiteTestCase`, REQ-4's
+    """ADR-0075: the read-only summary for `TestSuiteTestCase`, REQ-4's
     suite-membership junction table.
 
     Shaped verbatim like `app/schemas/trace.py`'s four `*LinkSummary` classes

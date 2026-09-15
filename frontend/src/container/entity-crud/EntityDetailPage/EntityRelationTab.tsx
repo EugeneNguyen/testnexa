@@ -1,5 +1,5 @@
 /**
- * [ADR-0071](../../../../../docs/adr/0071-entity-detail-relationship-tabs.md):
+ * [ADR-0074](../../../../../docs/adr/0074-entity-detail-relationship-tabs.md):
  * the panel behind one relationship tab on `EntityDetailPage` — the related
  * entity's rows, scoped to the record being viewed.
  *
@@ -24,7 +24,7 @@
  *
  * The field stays in `fields` (only its flag changes), so it is still part of
  * the fk-schema fetch list `useFkLabels` walks — narrowing that would be a
- * silent behavior change, the same reasoning ADR-0070 gives for
+ * silent behavior change, the same reasoning ADR-0073 gives for
  * `useFkLabels`' two separate field arguments.
  *
  * ## Where a row click goes
@@ -39,7 +39,7 @@
  * (`/orgs/:orgId/admin` or `/projects/:projectId/admin`), so a relationship
  * tab navigates within the scope the user is already in.
  *
- * ## It renders card *sections*, not a card (ADR-0071's Amendment)
+ * ## It renders card *sections*, not a card (ADR-0074's Amendment)
  *
  * This component is mounted inside `EntityDetailPage`'s single card, in the
  * `.tab-pane` of its `.card-body` — Tabler's documented "tabs in the card
@@ -49,7 +49,7 @@
  * shadow inside the page's card, and repeat the tab's label as a card title.
  * It is not a standalone mount — it expects a `.card` ancestor.
  *
- * ## Write actions ([ADR-0073](../../../../../docs/adr/0073-relationship-tab-write-actions.md))
+ * ## Write actions ([ADR-0076](../../../../../docs/adr/0076-relationship-tab-write-actions.md))
  *
  * The tab is no longer read-only. Which actions render is decided by
  * `relation.kind`, because the two kinds mean structurally different things:
@@ -68,11 +68,11 @@
  *   rows, so creating one means picking an existing far record, not filling a
  *   form. The parent id and the picked id are the entire request; both travel
  *   in the path of a bespoke route the backend declares as
- *   `config.linkCreate` (ADR-0073's `LinkCreateAction`) on the **link
+ *   `config.linkCreate` (ADR-0076's `LinkCreateAction`) on the **link
  *   entity's** own schema — the same schema this tab already fetched to render
  *   the table, so the action costs no extra round trip and this component
  *   hard-codes no route.
- * - **many-to-many — "Create new <far entity>"**, ADR-0073's
+ * - **many-to-many — "Create new <far entity>"**, ADR-0076's
  *   **Amendment 1**. Both n-n actions render together, side by side; the
  *   original "one action per tab, never both" rule turned out to strand the
  *   common case where the record you want to link does not exist yet, forcing
@@ -139,7 +139,7 @@
  * documented by name in `scope-selector.tsx`'s own docstring, predates this
  * ADR, and is not worked around here. The same link is fully creatable from
  * the other end (`Defect` -> "Test cases (linked)", case 2), so the capability
- * is reachable; see ADR-0073's Consequences.
+ * is reachable; see ADR-0076's Consequences.
  */
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -168,13 +168,13 @@ export interface EntityRelationTabProps {
   /** `{orgId, projectId}` — for `:param` interpolation and the route prefix. */
   routeParams: Record<string, string | undefined>;
   /**
-   * ADR-0073: the resolved org, for `usePermissions`. Passed down rather than
+   * ADR-0076: the resolved org, for `usePermissions`. Passed down rather than
    * re-resolved here — `useAdminRouteContext` already fetched it (on a
    * project-scoped route the URL carries no `:orgId` at all), and resolving it
    * twice would fire the same `GET /projects/{id}` again per tab.
    */
   orgId: string | undefined;
-  /** ADR-0073: the project half of the same context, for project-scoped grants. */
+  /** ADR-0076: the project half of the same context, for project-scoped grants. */
   projectId: string | undefined;
   page: number;
   onPageChange: (page: number) => void;
@@ -209,7 +209,7 @@ export function adminBasePath(routeParams: Record<string, string | undefined>): 
 }
 
 /**
- * ADR-0073: which scope params the "Link existing ..." picker must send with
+ * ADR-0076: which scope params the "Link existing ..." picker must send with
  * its search, given the far entity's own schema and the current route.
  *
  * Returns `null` when the far entity needs a scope the route cannot supply and
@@ -249,7 +249,7 @@ function fieldErrorsOf(error: unknown): Record<string, string> | undefined {
 }
 
 /**
- * ADR-0073 Amendment 1: how a just-created far row is named back to the user
+ * ADR-0076 Amendment 1: how a just-created far row is named back to the user
  * when its link half failed.
  *
  * `labelField` is the same one the picker labels its search results with — it
@@ -266,7 +266,7 @@ export function farRowDisplay(row: EntityRow, labelField: string | undefined): s
 }
 
 /**
- * ADR-0073 Amendment 1: the "created, but not linked" message.
+ * ADR-0076 Amendment 1: the "created, but not linked" message.
  *
  * Its literal wording is load-bearing, which is why it is a pure function with
  * its own test rather than an inline template. It has to carry four things, and
@@ -282,7 +282,7 @@ export function createdNotLinkedMessage(display: string, id: string, reason: str
 }
 
 /**
- * ADR-0073 Amendment 1: thrown when the far-entity `create` succeeded and the
+ * ADR-0076 Amendment 1: thrown when the far-entity `create` succeeded and the
  * link `POST` that follows it did not. A distinct type because the two
  * failures need opposite handling — an ordinary create failure keeps the form
  * open so the user can fix and resubmit, while this one must **close** it, or
@@ -307,7 +307,7 @@ function EntityRelationTab({
   const { config, isLoading: schemaLoading } = useEntitySchema(relation.entity);
 
   /**
-   * ADR-0073: only the many-to-many branch needs the far entity's schema (to
+   * ADR-0076: only the many-to-many branch needs the far entity's schema (to
    * scope and label the picker). Called unconditionally anyway — Rules of
    * Hooks — with `relation.targetEntity`, which equals `relation.entity` for
    * one-to-many, so the one-to-many case resolves the cache entry the line
@@ -324,7 +324,7 @@ function EntityRelationTab({
   const [pickerScope, setPickerScope] = useState<Record<string, string> | undefined>(undefined);
   const [linkError, setLinkError] = useState<string | null>(null);
 
-  // ADR-0073 Amendment 1 — the compound "Create new <far entity>" action.
+  // ADR-0076 Amendment 1 — the compound "Create new <far entity>" action.
   const [showCreateLinkModal, setShowCreateLinkModal] = useState(false);
   const [createLinkError, setCreateLinkError] = useState<string | null>(null);
   const [createLinkFieldErrors, setCreateLinkFieldErrors] = useState<Record<string, string> | undefined>(undefined);
@@ -338,7 +338,7 @@ function EntityRelationTab({
   const isOneToMany = relation.kind === "one-to-many";
   /**
    * What the tab is *about* — the far entity for n-n, `entity` itself for 1-n
-   * (ADR-0071 §5). Computed above the schema guard because both mutations and
+   * (ADR-0074 §5). Computed above the schema guard because both mutations and
    * the "created, not linked" message need it, and hooks cannot sit below a
    * conditional return.
    */
@@ -415,7 +415,7 @@ function EntityRelationTab({
   }
 
   /**
-   * ADR-0073 Amendment 1: create the far row, then link it — two real
+   * ADR-0076 Amendment 1: create the far row, then link it — two real
    * requests, sequenced client-side, because they are two independent routes
    * (see this module's own docstring for why there is no transaction to use).
    *
@@ -507,7 +507,7 @@ function EntityRelationTab({
     !isOneToMany && Boolean(config.linkCreate) && permissions.has(config.linkCreate!.permission, projectId);
 
   /**
-   * ADR-0073 Amendment 1. Four conditions, and every one of them is a
+   * ADR-0076 Amendment 1. Four conditions, and every one of them is a
    * different question:
    *
    * 1. `canLinkExisting` — this compound action *ends* with the same link
@@ -598,7 +598,7 @@ function EntityRelationTab({
             <Button
               /**
                * `outline`, where "Link existing" is solid: both are real
-               * actions, but linking an existing record is the one ADR-0073
+               * actions, but linking an existing record is the one ADR-0076
                * exists for (assembling a matrix from rows that already exist),
                * and two solid primaries side by side assert no hierarchy at
                * all. Not `secondary` — this is not a cancel-shaped action.
@@ -646,7 +646,7 @@ function EntityRelationTab({
         loadError={listQuery.isError ? "Something went wrong. Please try again." : null}
         /**
          * Still no Edit and no Delete — omitting `onEdit`/`onDelete` is what
-         * makes `EntityTable` drop the Actions column entirely. ADR-0073 adds
+         * makes `EntityTable` drop the Actions column entirely. ADR-0076 adds
          * a *create* affordance above the table, deliberately not per-row
          * ones: every listed record is fully editable on its own screen, one
          * click away, and a link row has nothing to edit at all (ADR-0005 —

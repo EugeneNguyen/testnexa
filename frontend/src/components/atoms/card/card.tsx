@@ -29,12 +29,12 @@ function joinClassNames(...classNames: Array<string | undefined | false>) {
 }
 
 /**
- * ADR-0073 Amendment 1 (2026-09-15): `data-testid` is declared and forwarded
+ * ADR-0076 Amendment 1 (2026-09-15): `data-testid` is declared and forwarded
  * explicitly. TypeScript does **not** excess-property-check a JSX attribute
  * whose name contains a hyphen, so `<Card.Body data-testid="x">` compiled
  * cleanly for as long as this atom existed and silently rendered nothing —
  * found when a test finally queried for a testid the UI Design Document had
- * documented on this element since ADR-0073 shipped. Every `data-testid` in
+ * documented on this element since ADR-0076 shipped. Every `data-testid` in
  * this repo is load-bearing (root `CLAUDE.md`), so an atom that drops one is a
  * hole no compile or type check can see.
  */

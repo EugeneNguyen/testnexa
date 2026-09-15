@@ -1,13 +1,13 @@
-# ADR-0072: Every junction table gets a read-only registry entry, and registry completeness is asserted at the model layer
+# ADR-0075: Every junction table gets a read-only registry entry, and registry completeness is asserted at the model layer
 
 - **Status:** Accepted
 - **Date:** 2026-09-15
 - **Deciders:** xuanbinh91@gmail.com (CTO)
-- **Extends:** [ADR-0071](0071-entity-detail-relationship-tabs.md) — completes the derivation it introduced, and corrects the exhaustiveness claim in its Decision §4. Builds on [ADR-0005](0005-traceability-link-dedicated-join-tables.md)'s dedicated link tables, [ADR-0022](0022-generic-crud-router-factory.md)'s scoped list routes, [ADR-0027](0027-generic-admin-crud-ui-and-backend-completion.md)'s read-only link-table routes (the direct template), and [ADR-0055](0055-admin-3-backend-driven-entity-schema.md)'s derived entity schema.
+- **Extends:** [ADR-0074](0074-entity-detail-relationship-tabs.md) — completes the derivation it introduced, and corrects the exhaustiveness claim in its Decision §4. Builds on [ADR-0005](0005-traceability-link-dedicated-join-tables.md)'s dedicated link tables, [ADR-0022](0022-generic-crud-router-factory.md)'s scoped list routes, [ADR-0027](0027-generic-admin-crud-ui-and-backend-completion.md)'s read-only link-table routes (the direct template), and [ADR-0055](0055-admin-3-backend-driven-entity-schema.md)'s derived entity schema.
 
 ## Context
 
-[ADR-0071](0071-entity-detail-relationship-tabs.md) shipped relationship tabs
+[ADR-0074](0074-entity-detail-relationship-tabs.md) shipped relationship tabs
 derived from the backend's own entity registry, and argued — correctly, as far
 as it goes — that a *computed* relationship set is immune to the silent-omission
 failure a hand-authored one has:
@@ -19,7 +19,7 @@ failure a hand-authored one has:
 > what it enumerates.**
 
 That last sentence is true and was load-bearing for the wrong thing. A
-derivation cannot omit what it enumerates — but nothing in ADR-0071 examined
+derivation cannot omit what it enumerates — but nothing in ADR-0074 examined
 **the set being enumerated**. `entity_registry._ALL_CONFIGS` is a hand-typed
 tuple of 27 names. It is the one hand-authored list in the chain, and therefore
 precisely the artifact `backend/CLAUDE.md`'s registry-completeness note is
@@ -48,7 +48,7 @@ junction itself outside every registry-derived surface.
 
 ### Why the existing completeness test could not catch it
 
-`tests/unit/test_adr71_entity_relations.py::TestInboundFkCompleteness` is a
+`tests/unit/test_adr74_entity_relations.py::TestInboundFkCompleteness` is a
 genuinely good test. It partitions **every inbound FK in the whole registry**
 into served-or-explicitly-excluded and asserts the partition is total, so a new
 FK cannot land in neither bucket.
@@ -120,7 +120,7 @@ remains the right shape for its own callers.
 
 **The alternative — special-casing the bespoke routes inside
 `derive_entity_relations` — was rejected outright.** It would hand-author the
-per-entity relationship map ADR-0071 Decision §1 exists to forbid, reintroducing
+per-entity relationship map ADR-0074 Decision §1 exists to forbid, reintroducing
 the exact failure mode both ADRs are written against. It also could not work:
 a relationship tab needs a servable `GET /{entity}?{scopeField}={parentId}` list
 route to call, and a derivation entry with no route behind it renders a broken
@@ -132,7 +132,7 @@ This is the durable half, and the reason this is an ADR rather than a two-line
 fix. Registering two configs closes today's gap; it does nothing about the next
 junction table.
 
-`tests/unit/test_adr72_registry_completeness.py` walks SQLAlchemy's own
+`tests/unit/test_adr75_registry_completeness.py` walks SQLAlchemy's own
 `Base.metadata` — **not** `ALL_ENTITY_CONFIGS` — and asserts that every table
 holding a foreign key into a registered entity's table is either registered
 itself or listed in `EXPECTED_UNREGISTERED_CHILDREN` with a stated reason. Never
@@ -169,14 +169,14 @@ side the junction's own bespoke routes are already nested under. So `TestSuite`
 gains a "Test cases (linked)" tab and `TestPlan` a "Test suites (linked)" tab.
 
 The reverse directions (a `TestCase` listing its suites, a `TestSuite` listing
-its plans) join ADR-0071 §4's enumerated exclusion set alongside the four
+its plans) join ADR-0074 §4's enumerated exclusion set alongside the four
 traceability links' reverse sides, with the same reason: a link table is
 listable only from whichever side is its scope field.
 
 **Widening `scope_field` to a branching 2-tuple** — which `RiskItem` already
 precedents, and which would make both directions listable — **was considered and
 rejected.** Doing it for two junctions and not the other four would make the
-rule incoherent, and ADR-0071's own Alternatives already rejected relaxing the
+rule incoherent, and ADR-0074's own Alternatives already rejected relaxing the
 scope requirement as "its own API decision about widening a list route's
 contract" rather than something to smuggle into an adjacent story. Six tables
 now behave identically; that consistency is worth more than two extra tabs, and
@@ -200,7 +200,7 @@ test asserting the consequence (the parent genuinely gets no tab):
   permanently-empty "Test design techniques (linked)" tab advertising an
   ADMIN-1-era feature that was never built. The correct order is to build the
   write path first — the tab then appears for free, which is the property
-  ADR-0071 and this ADR exist to buy.
+  ADR-0074 and this ADR exist to buy.
 - **`role_permission`** — a genuine junction, and the RBAC grant graph itself.
   Exposing which permission codes each role holds is a security-surface decision
   needing its own story; and the five system roles carry `org_id IS NULL`, so
@@ -311,7 +311,7 @@ widening:
 The stated objection was *coherence across the six*, never capability, never
 tenant safety, and never cost. All six are widened here, together, in one
 change — so the objection does not apply: the six still behave identically, just
-bidirectionally. ADR-0071's own Alternatives likewise rejected "relaxing the
+bidirectionally. ADR-0074's own Alternatives likewise rejected "relaxing the
 scope requirement" as "its own API decision about widening a list route's
 contract, rather than something to smuggle into an adjacent story"; this
 amendment *is* that decision, made deliberately and uniformly rather than
@@ -350,7 +350,7 @@ walk byte-identical to its pre-amendment behaviour.
 iterated every FK and kept those in `_scope_candidates`, which explodes a
 tuple. A 2-tuple therefore emits one relation per arm for free, exactly the
 mechanism that has always made `RiskItem` a child of both `Requirement` and
-`TestPlan`. This is the property ADR-0071 Decision §1 was buying and the
+`TestPlan`. This is the property ADR-0074 Decision §1 was buying and the
 strongest evidence the derivation was designed correctly: a genuine capability
 widening across six entities cost zero changes to the derivation, the schema
 route, the MCP `describe` tool, or the frontend.
@@ -384,7 +384,7 @@ Decision §5 and ADR-0027. Nothing in `rbac_seed_catalog.py` moves.
   once (Requirements / Test conditions / Test suites, all `(linked)`),
   `TestSuite` gains "Test plans (linked)", `TestCondition` gains "Requirements
   (linked)", and `Defect` gains a tab strip where it had none.
-- **Positive.** ADR-0071 §4's exclusion table loses its entire link-table block.
+- **Positive.** ADR-0074 §4's exclusion table loses its entire link-table block.
   Six of the fourteen enumerated exclusions were reverse-side link directions;
   eight remain, all of them genuine list-capability gaps of a different kind
   (filter-field-only FKs, and `RoleAssignment`'s missing `list` route).
@@ -394,7 +394,7 @@ Decision §5 and ADR-0027. Nothing in `rbac_seed_catalog.py` moves.
   field name are unchanged, and no client in this repo matches on the message
   text. A request supplying *both* arms is newly reachable and is rejected with
   `"...not both"` — `RiskItem`'s XOR narrowing, now applying here.
-- **Neutral / accepted.** `test_adr71_entity_relations.py`'s
+- **Neutral / accepted.** `test_adr74_entity_relations.py`'s
   `test_registering_the_junctions_did_not_change_test_cases_own_tabs` asserted
   the *absence* of exactly these tabs, pinning Decision §3. It is inverted, not
   deleted, and renamed to say what it now pins — as is the integration
@@ -415,7 +415,7 @@ Decision §5 and ADR-0027. Nothing in `rbac_seed_catalog.py` moves.
 ## Alternatives considered
 
 - **Special-case the bespoke routes inside `derive_entity_relations`.** Rejected
-  — see Decision §1. It reintroduces the hand-authored map ADR-0071 forbids and
+  — see Decision §1. It reintroduces the hand-authored map ADR-0074 forbids and
   still leaves the tab with no list route to call.
 - **Register all eight junction tables.** Rejected — two of them would ship tabs
   that are permanently empty or expose the RBAC grant graph (Decision §4).

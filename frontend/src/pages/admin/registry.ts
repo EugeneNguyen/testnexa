@@ -95,8 +95,8 @@ export const projectScopedEntities: RegistryEntry[] = [
   entry("Requirement -> test condition links", "requirement-test-condition-links"),
   entry("Test condition -> test case links", "test-condition-test-case-links"),
   entry("Test case -> defect links", "test-case-defect-links"),
-  // ADR-0072: REQ-4's/PLAN-1's junction tables, registered as read-only
-  // backend entities so ADR-0071's relationship derivation can see them.
+  // ADR-0075: REQ-4's/PLAN-1's junction tables, registered as read-only
+  // backend entities so ADR-0074's relationship derivation can see them.
   // Listed here for the same reasons the four traceability links above are —
   // `ADMIN_ENTITY_KEYS` membership and an `entityLabelByKey` entry for the
   // breadcrumb/page heading — and, like them, excluded from the sidebar nav

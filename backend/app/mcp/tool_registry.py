@@ -499,7 +499,7 @@ async def _test_plan_test_suite_create(*, actor: Any, db: Any, fields: dict[str,
 
 
 def _link_create_executor(handler: Callable, first_field: str, second_field: str) -> Callable:
-    """Build the `create` executor for one of ADR-0073's four traceability-link routes.
+    """Build the `create` executor for one of ADR-0076's four traceability-link routes.
 
     All four `POST`s take exactly two path ids and no body, so all four
     executors are the same three lines with different field names — the shape
@@ -560,7 +560,7 @@ _BESPOKE_EXECUTORS: dict[str, dict[str, Callable]] = {
     # `test_suite_test_case`/`test_plan_test_suite` above (no `CrudEntityConfig`,
     # one action) — generates `tn_test_case_link_requirement_create`.
     "test_case_link_requirement": {"create": _test_case_link_requirement},
-    # ADR-0073: the four traceability links gain a real `create` over MCP too,
+    # ADR-0076: the four traceability links gain a real `create` over MCP too,
     # same one-action shape as the two junctions above. Each entity's own
     # `CrudEntityConfig` stays `{"list","get"}`, so `create` is an "extra" and
     # is declared in `BESPOKE_EXTRA_ACTIONS` below.
@@ -603,7 +603,7 @@ BESPOKE_EXTRA_ACTIONS: dict[str, frozenset[str]] = {
     "test_suite_test_case": frozenset({"create"}),
     "test_plan_test_suite": frozenset({"create"}),
     "test_case_link_requirement": frozenset({"create"}),
-    # ADR-0073 — `create` on each of the four traceability links. Unlike the
+    # ADR-0076 — `create` on each of the four traceability links. Unlike the
     # config-less rows above, these four DO have a `CrudEntityConfig`, whose
     # `methods` stays `{"list","get"}` because the generic factory still
     # registers no create for them; the create is one bespoke route each.

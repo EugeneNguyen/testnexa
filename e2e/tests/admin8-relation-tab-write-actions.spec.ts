@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { expect, test } from "@playwright/test";
 
 /**
- * ADR-0073 E2E: the relationship tabs' two write actions — real browser, full
+ * ADR-0076 E2E: the relationship tabs' two write actions — real browser, full
  * stack, real derived `relations` and real `linkCreate` from the real backend.
  *
  * **What only a live stack can answer here.** The backend suite proves each
@@ -19,7 +19,7 @@ import { expect, test } from "@playwright/test";
  * green after a contract change" note describes.
  *
  * **Three flows, chosen to cover three structurally different paths**, per
- * ADR-0073's own decision structure:
+ * ADR-0076's own decision structure:
  *
  * 1. **one-to-many create** — `TestCase` -> "Test steps". The child's own
  *    generic `POST /test-steps` with `test_case_id` locked. Proves
@@ -31,7 +31,7 @@ import { expect, test } from "@playwright/test";
  *    a permission that is *not* `<resource>.create`; if the declaration were
  *    derived rather than declared, this flow would hide its own button.
  * 3. **many-to-many link, brand-new route** — `Requirement` -> "Test cases
- *    (linked)", i.e. ADR-0073's own
+ *    (linked)", i.e. ADR-0076's own
  *    `POST /requirements/{id}/test-case-links/{case_id}`, gated on
  *    `requirement_test_case_link.create` — a permission code that did not
  *    exist before migration `3e6b08c5da71`, so this flow also proves the
@@ -40,7 +40,7 @@ import { expect, test } from "@playwright/test";
  * The same seeded `TestCase` is the far row in flows 2 and 3 and the parent in
  * flow 1, which is deliberate: it is a REQ-5 *standalone* case (`project_id`
  * set, no `TestCondition`, no links), the shape whose project resolution
- * ADR-0073 had to fix — so every flow here also exercises
+ * ADR-0076 had to fix — so every flow here also exercises
  * `resolve_test_case_project_id`'s new branch against a live route.
  *
  * Target environment: whichever isolated Compose project `E2E_BASE_URL` points
@@ -173,7 +173,7 @@ async def main():
         await session.flush()
 
         suite_name = f"ADMIN-8 Suite {suffix}"
-        suite = TestSuite(project_id=project.id, name=suite_name, purpose="ADR-0073 write-action fixture")
+        suite = TestSuite(project_id=project.id, name=suite_name, purpose="ADR-0076 write-action fixture")
         session.add(suite)
         await session.flush()
 
@@ -202,8 +202,8 @@ asyncio.run(main())
  * depends on which test ran, and a per-test id list would have to be threaded
  * back out of the page.
  *
- * **ADR-0073 Amendment 1 widened this from "the seeded `TestCase`" to "every
- * `TestCase` in the seeded Project."** TC-ADMIN-084's flow creates a brand-new
+ * **ADR-0076 Amendment 1 widened this from "the seeded `TestCase`" to "every
+ * `TestCase` in the seeded Project."** TC-ADMIN-099's flow creates a brand-new
  * far-entity row through the browser, whose id exists nowhere outside the page,
  * so a cleanup keyed on `test_case_id` alone would leave it behind — and it
  * holds an FK to the `TestLevel`/`TestType`/`Project` rows deleted below, so
@@ -325,14 +325,14 @@ async function pickInLinkModal(page: import("@playwright/test").Page, label: str
   await page.getByRole("button", { name: label, exact: true }).click({ timeout: TAB_STRIP_TIMEOUT_MS });
 }
 
-test.describe("ADR-0073: relationship-tab write actions", () => {
+test.describe("ADR-0076: relationship-tab write actions", () => {
   // Same reasoning as ADMIN-6/ADMIN-7: each test drives several full page
   // loads against the dev-profile Vite server, and running them concurrently
   // starves it. Scoped to this file only.
   test.describe.configure({ mode: "serial" });
 
   /**
-   * TC-ADMIN-078 — the one-to-many "New" flow, end to end.
+   * TC-ADMIN-093 — the one-to-many "New" flow, end to end.
    *
    * The assertion that matters is the last one: the new row appears in the
    * tab's own table, which means the locked `test_case_id` really did reach
@@ -341,7 +341,7 @@ test.describe("ADR-0073: relationship-tab write actions", () => {
    * show up here — the same create-only blind spot the backend tests guard
    * from the other side.
    */
-  test("TC-ADMIN-078: creating a child from a one-to-many tab lands it under this parent", async ({ page }) => {
+  test("TC-ADMIN-093: creating a child from a one-to-many tab lands it under this parent", async ({ page }) => {
     test.setTimeout(PER_TEST_TIMEOUT_MS);
     const fixture = seedFixture();
     const stepAction = `ADMIN-8 step ${Date.now()}`;
@@ -373,15 +373,15 @@ test.describe("ADR-0073: relationship-tab write actions", () => {
   });
 
   /**
-   * TC-ADMIN-079 — "Link existing" through a route that predates this ADR.
+   * TC-ADMIN-094 — "Link existing" through a route that predates this ADR.
    *
    * `test_suite_test_case`'s `linkCreate.permission` is `test_suite.update`,
    * not `test_suite_test_case.create` — REQ-4's route shipped with that gate
-   * and ADR-0073 re-gates nothing. This is the flow that would break if the
+   * and ADR-0076 re-gates nothing. This is the flow that would break if the
    * permission were derived by convention instead of declared, and the
    * failure would be silent: the button simply would not render.
    */
-  test("TC-ADMIN-079: linking an existing row through a pre-existing membership route", async ({ page }) => {
+  test("TC-ADMIN-094: linking an existing row through a pre-existing membership route", async ({ page }) => {
     test.setTimeout(PER_TEST_TIMEOUT_MS);
     const fixture = seedFixture();
     try {
@@ -412,7 +412,7 @@ test.describe("ADR-0073: relationship-tab write actions", () => {
   });
 
   /**
-   * TC-ADMIN-080 — "Link existing" through one of ADR-0073's four brand-new
+   * TC-ADMIN-095 — "Link existing" through one of ADR-0076's four brand-new
    * routes.
    *
    * `POST /requirements/{id}/test-case-links/{case_id}` and its
@@ -424,10 +424,10 @@ test.describe("ADR-0073: relationship-tab write actions", () => {
    *
    * The far row is the seeded **standalone** `TestCase`, so this is also the
    * live proof of `resolve_test_case_project_id`'s REQ-5 branch: before
-   * ADR-0073 fixed it, that shape resolved to no project at all and every
+   * ADR-0076 fixed it, that shape resolved to no project at all and every
    * cross-project check involving one rejected it.
    */
-  test("TC-ADMIN-080: linking an existing row through a brand-new traceability route", async ({ page }) => {
+  test("TC-ADMIN-095: linking an existing row through a brand-new traceability route", async ({ page }) => {
     test.setTimeout(PER_TEST_TIMEOUT_MS);
     const fixture = seedFixture();
     try {
@@ -467,7 +467,7 @@ test.describe("ADR-0073: relationship-tab write actions", () => {
   });
 
   /**
-   * TC-ADMIN-084 — ADR-0073 **Amendment 1**: both n-n actions side by side, and
+   * TC-ADMIN-099 — ADR-0076 **Amendment 1**: both n-n actions side by side, and
    * the compound "Create new …" flow end to end.
    *
    * **Why this needs a live stack rather than another Vitest case.** The Vitest
@@ -479,7 +479,7 @@ test.describe("ADR-0073: relationship-tab write actions", () => {
    * merged in as a locked value, whether the id in its `201` body is the shape
    * `interpolateLinkPath` can substitute, and whether the link route then
    * accepts a row created *microseconds earlier* — the ADR-0029 resolver
-   * question, which for this flow is sharper than for TC-ADMIN-080's: the far
+   * question, which for this flow is sharper than for TC-ADMIN-095's: the far
    * row here has never been read back by anything before the link route walks
    * it. Both requests are therefore asserted **on the wire**, in order, not
    * only through the rendered result.
@@ -491,7 +491,7 @@ test.describe("ADR-0073: relationship-tab write actions", () => {
    * `resolve_test_case_project_id`'s REQ-5 branch on a row that did not exist
    * when the page loaded.
    */
-  test("TC-ADMIN-084: both n-n actions render, and Create new creates the far row then links it", async ({ page }) => {
+  test("TC-ADMIN-099: both n-n actions render, and Create new creates the far row then links it", async ({ page }) => {
     test.setTimeout(PER_TEST_TIMEOUT_MS);
     const fixture = seedFixture();
     const newCaseTitle = `ADMIN-8 created-and-linked ${Date.now()}`;
@@ -550,7 +550,7 @@ test.describe("ADR-0073: relationship-tab write actions", () => {
        * modal — nothing about a relationship tab causes it — and the real fix
        * (omit a blank optional rather than sending `null`) is a change to the
        * shared form affecting every entity, so it belongs to its own story.
-       * Flagged in ADR-0073's Amendment 1 rather than fixed as a drive-by.
+       * Flagged in ADR-0076's Amendment 1 rather than fixed as a drive-by.
        */
       await page.getByLabel("Status", { exact: true }).selectOption("draft");
 

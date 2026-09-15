@@ -58,12 +58,12 @@ export function toEntityConfig(key: string, schema: EntitySchemaResponse): Entit
     ...(schema.scopeResolution !== null ? { scopeResolution: schema.scopeResolution } : {}),
     searchFields: schema.searchFields,
     filterFields: schema.filterFields,
-    // ADR-0071. Normalized to `[]` rather than passed through: a config
+    // ADR-0074. Normalized to `[]` rather than passed through: a config
     // assembled here always carries a real array, so `EntityDetailPage` never
     // has to distinguish "no relationships" from "an older backend that
     // doesn't serve the key yet".
     relations: schema.relations ?? [],
-    // ADR-0073. Spread-omitted rather than normalized to a sentinel: unlike
+    // ADR-0076. Spread-omitted rather than normalized to a sentinel: unlike
     // `relations` (where "no relationships" and "empty list" mean the same
     // thing), `linkCreate` is a presence flag — `EntityRelationTab` renders
     // the "Link existing ..." action if and only if the key is there — so the

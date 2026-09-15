@@ -140,10 +140,10 @@ def test_no_tool_exists_for_an_unknown_entity() -> None:
     [
         ("test_log", "update"),  # TestLog is get/list/create(comment) only — immutable otherwise
         ("test_log", "delete"),
-        # ADR-0073 removed `("requirement_test_case_link", "create")` from this
+        # ADR-0076 removed `("requirement_test_case_link", "create")` from this
         # list: `POST /requirements/{id}/test-case-links/{test_case_id}` is a
         # real REST capability now, so the row asserted a claim that had stopped
-        # being true — the same correction ADR-0072 made one entry below for
+        # being true — the same correction ADR-0075 made one entry below for
         # `test_suite_test_case.list`. `update`/`delete` stay: a link row is
         # still immutable and un-deletable through the API
         # (`app/models/trace.py`), which is the part of "link tables are
@@ -158,7 +158,7 @@ def test_no_tool_exists_for_an_unknown_entity() -> None:
         ("release", "get"),  # create-only bespoke resource
         ("release", "list"),
         ("release", "describe"),  # no CrudEntityConfig to describe
-        # ADR-0072 removed `("test_suite_test_case", "list")` from this list:
+        # ADR-0075 removed `("test_suite_test_case", "list")` from this list:
         # REST now genuinely has that capability (a read-only generic
         # `GET /test-suite-test-cases`), so the row asserted a claim that had
         # stopped being true. The invariant itself is undiminished —

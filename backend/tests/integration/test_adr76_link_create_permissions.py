@@ -1,7 +1,7 @@
-"""ADR-0073 integration: the live RBAC state migration `3e6b08c5da71` produces.
+"""ADR-0076 integration: the live RBAC state migration `3e6b08c5da71` produces.
 
-Covers TC-ADMIN-072 (the four `Permission` rows and every grant exist against a
-real, migrated database) and TC-ADMIN-073 (re-running `upgrade()` inserts
+Covers TC-ADMIN-087 (the four `Permission` rows and every grant exist against a
+real, migrated database) and TC-ADMIN-088 (re-running `upgrade()` inserts
 nothing).
 
 Read-only against the seeded catalog except for the idempotency test, which
@@ -38,7 +38,7 @@ _MIGRATION_PATH = (
     / "versions"
     / "3e6b08c5da71_seed_trace_link_create_permissions.py"
 )
-_spec = importlib.util.spec_from_file_location("adr73_seed_migration_integration", _MIGRATION_PATH)
+_spec = importlib.util.spec_from_file_location("adr76_seed_migration_integration", _MIGRATION_PATH)
 _migration = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_migration)
 
@@ -57,7 +57,7 @@ async def _codes_for_role(role_name: str) -> set[str]:
 
 
 @pytest.mark.asyncio
-async def test_the_four_link_create_permissions_exist_in_the_live_catalog() -> None:  # TC-ADMIN-072
+async def test_the_four_link_create_permissions_exist_in_the_live_catalog() -> None:  # TC-ADMIN-087
     async with AsyncSessionLocal() as session:
         rows = await session.execute(select(Permission).where(Permission.code.in_(NEW_CODES)))
         permissions = {p.code: p for p in rows.scalars().all()}
@@ -72,7 +72,7 @@ async def test_the_four_link_create_permissions_exist_in_the_live_catalog() -> N
 
 
 @pytest.mark.asyncio
-async def test_org_admin_still_holds_every_permission_after_the_new_rows() -> None:  # TC-ADMIN-072
+async def test_org_admin_still_holds_every_permission_after_the_new_rows() -> None:  # TC-ADMIN-087
     """`org_admin`'s bundle is defined as "every permission that exists"
     (`build_role_bundles`'s contract). Inserting `Permission` rows without
     granting them here is the specific way this migration could break a live
@@ -85,8 +85,8 @@ async def test_org_admin_still_holds_every_permission_after_the_new_rows() -> No
 
 
 @pytest.mark.asyncio
-async def test_test_manager_holds_all_four_creates_and_all_four_reads() -> None:  # TC-ADMIN-072
-    """Read and write together — without the `.read`, the ADR-0071 tab the
+async def test_test_manager_holds_all_four_creates_and_all_four_reads() -> None:  # TC-ADMIN-087
+    """Read and write together — without the `.read`, the ADR-0074 tab the
     write action lives on `403`s before the button can render."""
     codes = await _codes_for_role("test_manager")
     for resource in LINK_CREATE_RESOURCES:
@@ -95,7 +95,7 @@ async def test_test_manager_holds_all_four_creates_and_all_four_reads() -> None:
 
 
 @pytest.mark.asyncio
-async def test_tester_holds_only_the_defect_link_create() -> None:  # TC-ADMIN-072
+async def test_tester_holds_only_the_defect_link_create() -> None:  # TC-ADMIN-087
     codes = await _codes_for_role("tester")
     assert "test_case_defect_link.create" in codes
     assert "test_case_defect_link.read" in codes
@@ -105,7 +105,7 @@ async def test_tester_holds_only_the_defect_link_create() -> None:  # TC-ADMIN-0
 
 
 @pytest.mark.asyncio
-async def test_auditor_gained_no_write_and_still_holds_every_read() -> None:  # TC-ADMIN-072
+async def test_auditor_gained_no_write_and_still_holds_every_read() -> None:  # TC-ADMIN-087
     codes = await _codes_for_role("auditor")
     assert not (codes & set(NEW_CODES))
     for resource in LINK_CREATE_RESOURCES:
@@ -113,7 +113,7 @@ async def test_auditor_gained_no_write_and_still_holds_every_read() -> None:  # 
 
 
 @pytest.mark.asyncio
-async def test_the_live_grants_match_the_static_bundle_definitions() -> None:  # TC-ADMIN-072
+async def test_the_live_grants_match_the_static_bundle_definitions() -> None:  # TC-ADMIN-087
     """A backfilled database and a freshly-seeded one must be indistinguishable
     for these codes. Compares the live `role_permission` rows against what
     `build_role_bundles` would produce, restricted to the codes this ADR
@@ -128,7 +128,7 @@ async def test_the_live_grants_match_the_static_bundle_definitions() -> None:  #
 
 
 @pytest.mark.asyncio
-async def test_seed_migration_upgrade_is_idempotent() -> None:  # TC-ADMIN-073
+async def test_seed_migration_upgrade_is_idempotent() -> None:  # TC-ADMIN-088
     """Direct double invocation — see this module's docstring for why the CLI
     cannot answer this question."""
     from alembic.operations import Operations

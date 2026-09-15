@@ -19,7 +19,7 @@
  * `useAdminRouteContext`. Every other mount omits it and behaves exactly as
  * before.
  *
- * **[ADR-0070](../../../../../docs/adr/0070-generic-entity-detail-page.md):**
+ * **[ADR-0073](../../../../../docs/adr/0073-generic-entity-detail-page.md):**
  * each table row is now a navigation affordance — `EntityTable`'s new
  * `onRowClick` opens `EntityDetailPage` (`./:id`), the read-only view of
  * *every* field rather than only the table's visible columns. This page owns
@@ -265,7 +265,7 @@ function EntityListPage({ entityKeyOverride }: { entityKeyOverride?: string } = 
             setRowPendingDelete(row);
           }}
           /**
-           * ADR-0070: clicking a row opens the read-only detail view showing
+           * ADR-0073: clicking a row opens the read-only detail view showing
            * *every* field, not just the table's visible columns.
            *
            * `config.detailPath` wins when set: `Project` is the one entity

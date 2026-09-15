@@ -4,7 +4,7 @@ Revision ID: 3e6b08c5da71
 Revises: 7d2c91af4e68
 Create Date: 2026-09-15 00:00:00.000000
 
-ADR-0073: `app/api/routes/trace.py` gains one bespoke `POST` per ADR-0005
+ADR-0076: `app/api/routes/trace.py` gains one bespoke `POST` per ADR-0005
 traceability link table, each gated on a **new** `<resource>.create`
 permission code. `app/db/rbac_seed_catalog.py` declares them via the new
 `LINK_CREATE_RESOURCES` tuple (catalog 102 -> 106 rows), but editing that
@@ -12,7 +12,7 @@ module alone only affects a *fresh* database's initial seed — an
 already-seeded one needs this backfill (`backend/CLAUDE.md`'s standing rule,
 now its seventh instance).
 
-Like `7d2c91af4e68` (ADR-0072) and unlike the five extensions before it, this
+Like `7d2c91af4e68` (ADR-0075) and unlike the five extensions before it, this
 migration has to insert the `Permission` rows themselves as well as the
 `role_permission` grants: the four codes are brand new, so they exist in no
 already-seeded database.
@@ -29,7 +29,7 @@ definitions exactly, so a fresh DB and a backfilled one end up identical:
 - **`test_manager`** — all four `.create` codes **plus the three `.read`
   codes it did not already hold** (`test_case_defect_link.read` came with
   ADR-0044). Read and write together deliberately: the write action lives on
-  an ADR-0071 relationship tab whose own list request gates on the `.read`
+  an ADR-0074 relationship tab whose own list request gates on the `.read`
   code, so granting `.create` alone would ship a button on a tab that `403`s
   before it can render. This is the traceability-owning role — the only
   bundle with `requirement.export_rtm`, and already holding full
@@ -46,7 +46,7 @@ definitions exactly, so a fresh DB and a backfilled one end up identical:
 **`auditor` needs no grant and gets none**: its bundle is
 `_read_codes(ALL_RESOURCES)`, the four link tables are already in
 `READ_ONLY_RESOURCES`, so it has held all four `.read` codes since RBAC-4 —
-and ADR-0073 adds only `.create` codes, which a read-only role must not hold.
+and ADR-0076 adds only `.create` codes, which a read-only role must not hold.
 **`ai_agent_scoped`** likewise not granted: its bundle reaches no
 `requirement`/`defect`/link resource at all, so a link-create it could never
 use would be pure scope expansion (the restraint ADR-0033 took for
@@ -56,11 +56,11 @@ On a **fresh** database this migration is a pure no-op: `34053c46f9fc` runs
 first and seeds the catalog from `build_permission_catalog()`'s *current* code
 (106 rows) plus every bundle, so all four permissions and all eight grants
 already exist by the time this runs. It only does real work against a database
-seeded before ADR-0073 landed.
+seeded before ADR-0076 landed.
 
 Idempotent existence-check-then-insert throughout, mirroring `7d2c91af4e68`
 verbatim — re-running is a no-op, proven by
-`tests/unit/test_adr73_seed_trace_link_create_permissions.py` invoking
+`tests/unit/test_adr76_seed_trace_link_create_permissions.py` invoking
 `upgrade()` **twice through a real `Operations` context**, not by a second
 `alembic upgrade head` CLI call (which `backend/CLAUDE.md` documents as a
 bookkeeping-level no-op that never re-enters this function at all).
@@ -109,7 +109,7 @@ role_permission_table = sa.table(
 
 #: The four brand-new catalog rows, as `(code, resource, action)` — the same
 #: triple shape `build_permission_catalog()` emits. A unit test asserts this
-#: tuple is exactly the delta between the pre- and post-ADR-0073 catalogs, so
+#: tuple is exactly the delta between the pre- and post-ADR-0076 catalogs, so
 #: it cannot drift from `rbac_seed_catalog.LINK_CREATE_RESOURCES`.
 _NEW_PERMISSIONS: tuple[tuple[str, str, str], ...] = (
     ("requirement_test_case_link.create", "requirement_test_case_link", "create"),
@@ -215,7 +215,7 @@ def downgrade() -> None:
 
     # The three pre-existing `.read` codes this migration backfilled onto
     # `test_manager`: revoke that role's grants, but never the catalog rows —
-    # they predate ADR-0073 and other roles legitimately hold them.
+    # they predate ADR-0076 and other roles legitimately hold them.
     test_manager_id = _role_id(bind, "test_manager")
     if test_manager_id is not None:
         read_permission_ids = [

@@ -153,7 +153,7 @@ BESPOKE_CREATE_PARENT_FIELDS: dict[str, str | None] = {
     "test_suite_test_case": '"test_suite_id" and "test_case_id"',
     "test_plan_test_suite": '"test_plan_id" and "test_suite_id"',
     "test_case_link_requirement": '"test_case_id" and "requirement_id"',
-    # ADR-0073 — both ids travel in `fields`, same shape as the two junction
+    # ADR-0076 — both ids travel in `fields`, same shape as the two junction
     # rows above; the route takes no body at all.
     "requirement_test_case_link": '"requirement_id" and "test_case_id"',
     "requirement_test_condition_link": '"requirement_id" and "test_condition_id"',

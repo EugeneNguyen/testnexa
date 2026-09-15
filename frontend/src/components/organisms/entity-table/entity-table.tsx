@@ -64,7 +64,7 @@
  * direction) and the resulting `?sort=` query param are `EntityListPage`'s,
  * same split as `page`/`pageSize`.
  *
- * **[ADR-0070](../../../../../docs/adr/0070-generic-entity-detail-page.md):**
+ * **[ADR-0073](../../../../../docs/adr/0073-generic-entity-detail-page.md):**
  * two changes, both additive.
  *
  * 1. **`onRowClick`** — an optional callback making each `<tr>` a clickable,
@@ -72,7 +72,7 @@
  *    this component owns the affordance (cursor, `tabIndex`, Enter/Space
  *    parity, and the Actions cell's `stopPropagation` so Edit/Delete stay
  *    independent), `EntityListPage` owns *where* the click goes. Omitting the
- *    prop reproduces the pre-ADR-0070 `<tr>` byte-for-byte.
+ *    prop reproduces the pre-ADR-0073 `<tr>` byte-for-byte.
  * 2. **Cell rendering and fk-label resolution moved out**, to
  *    `components/molecules/entity-field-value` and
  *    `pages/admin/useFkLabels` respectively, so `EntityDetailPage` renders
@@ -144,20 +144,20 @@ export interface EntityTableProps {
   onEdit?: (row: EntityRow) => void;
   onDelete?: (row: EntityRow) => void;
   /**
-   * ADR-0070: clicking anywhere on a row that isn't an action control fires
+   * ADR-0073: clicking anywhere on a row that isn't an action control fires
    * this. Optional — omit it and every `<tr>` renders exactly as it did
    * before (no `cursor: pointer`, no `tabIndex`, no handlers), so the 9
    * pre-existing `entity-table.test.tsx` fixtures and every non-admin caller
    * are unaffected. `EntityListPage` is the one caller that passes it.
    *
    * The trailing Actions cell stops propagation, so Edit/Delete keep working
-   * as their own independent affordances (TC-ADMIN-046) — that is the one
+   * as their own independent affordances (TC-ADMIN-061) — that is the one
    * piece of "don't navigate" knowledge this component owns; everything
    * about *where* a row click goes is the caller's.
    */
   onRowClick?: (row: EntityRow) => void;
   /**
-   * ADR-0071 (Amendment): render the `.card-body` sections **without** the
+   * ADR-0074 (Amendment): render the `.card-body` sections **without** the
    * surrounding `.card`/`.card-header`, for a caller that already owns a card
    * — `EntityDetailPage`'s relationship tab pane, which lives inside one card
    * whose header is the tab strip itself (Tabler's documented "tabs in the
@@ -201,7 +201,7 @@ function EntityTable({
 
   const showActionsColumn = (config.methods.includes("update") || config.methods.includes("delete")) && (onEdit || onDelete);
 
-  // ADR-0053 (batching) / ADR-0070 (extracted to a shared hook so
+  // ADR-0053 (batching) / ADR-0073 (extracted to a shared hook so
   // `EntityDetailPage` reuses it): one `getEntity` per *distinct* fk id per fk
   // column across the current page, not one per row (§3). `config.fields` (not
   // `tableFields`) is the schema-fetch list, preserving this component's
@@ -213,7 +213,7 @@ function EntityTable({
   }
 
   /**
-   * ADR-0070: a row is only interactive when the caller actually wired
+   * ADR-0073: a row is only interactive when the caller actually wired
    * `onRowClick`. Keyboard parity matters — a bare `onClick` on a `<tr>` is
    * mouse-only, so Enter/Space on a focused row fire the same navigation
    * (`role`/accessible-name computation is untouched: `tabIndex` changes
@@ -310,7 +310,7 @@ function EntityTable({
               {showActionsColumn && (
                 <td
                   /**
-                   * ADR-0070: the row's own click handler must not fire when
+                   * ADR-0073: the row's own click handler must not fire when
                    * the user meant "Edit"/"Delete". One `stopPropagation` on
                    * the containing cell covers every current and future
                    * action control in it, rather than one per button.
@@ -352,7 +352,7 @@ function EntityTable({
     </>
   );
 
-  // ADR-0071 (Amendment): the caller already owns the card — see `bare`.
+  // ADR-0074 (Amendment): the caller already owns the card — see `bare`.
   if (bare) {
     return sections;
   }

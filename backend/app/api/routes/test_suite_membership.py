@@ -130,7 +130,7 @@ def _error(
     )
 
 
-# ADR-0073 — this module's own three-branch `_resolve_test_case_project_id`
+# ADR-0076 — this module's own three-branch `_resolve_test_case_project_id`
 # copy is retired. It predated `TestCase.project_id` (REQ-5/ADR-0069), which
 # added a fourth branch to `resolve_test_case_org_id` and nothing to the
 # private copy here, so `add_test_case_to_suite` rejected every *standalone*
@@ -326,15 +326,15 @@ async def list_test_cases_in_suite(
     )
 
 
-# --- ADR-0072: the junction table's own read-only generic-CRUD surface -------------------------
+# --- ADR-0075: the junction table's own read-only generic-CRUD surface -------------------------
 #
 # The three bespoke routes above are REQ-4's *membership management* surface:
 # they write the join row under ADR-0030's cross-project `422` /
 # duplicate-add `409` / asymmetric-`DELETE`-`404` contract, and the `GET`
 # returns the far side's `TestCase` rows, not join rows. None of that is a
 # reason the junction table cannot *also* be a plain read-only generic-CRUD
-# entity, and until ADR-0072 it wasn't one — which is exactly why
-# `TestSuite`'s ADR-0071 detail page showed zero relationship tabs despite the
+# entity, and until ADR-0075 it wasn't one — which is exactly why
+# `TestSuite`'s ADR-0074 detail page showed zero relationship tabs despite the
 # table being populated by the routes above.
 #
 # `derive_entity_relations` discovers many-to-many relationships by walking
@@ -343,7 +343,7 @@ async def list_test_cases_in_suite(
 # test partitions) invisible to the test meant to catch exactly this. Giving
 # the table a config is what makes the relationship derivable — the
 # alternative, special-casing this bespoke route inside the derivation, would
-# hand-author the per-entity relationship map ADR-0071 Decision §1 exists to
+# hand-author the per-entity relationship map ADR-0074 Decision §1 exists to
 # forbid, and still leave the tab with no servable `GET /{entity}?{scope}=`
 # list route to call.
 #
@@ -357,11 +357,11 @@ async def list_test_cases_in_suite(
 # table (two FK fields, no `create`/`update`).
 #
 # `scope_field` is the branching 2-tuple `("test_suite_id", "test_case_id")`
-# — **ADR-0072 Amendment 1**, which supersedes that ADR's own Decision §3.
+# — **ADR-0075 Amendment 1**, which supersedes that ADR's own Decision §3.
 # As first shipped this was the single column `"test_suite_id"`, deliberately
 # the suite side (the direction REQ-4's bespoke routes are nested under,
 # `/test-suites/{id}/test-cases`), with the reverse direction parked in
-# ADR-0071 §4's exclusion set. §3's stated reason for parking it was
+# ADR-0074 §4's exclusion set. §3's stated reason for parking it was
 # coherence, not capability: "doing it for two junctions and not the other
 # four would make the rule incoherent... widening all six later remains open."
 # All six are widened together in Amendment 1, so that objection no longer
@@ -394,8 +394,8 @@ _TEST_SUITE_TEST_CASE_CONFIG = CrudEntityConfig(
         ]
     ),
     methods=frozenset({"list", "get"}),
-    # ADR-0073: the declarative handle on `add_test_case_to_suite` above, so
-    # ADR-0071's relationship tab can offer "Link existing test case" from
+    # ADR-0076: the declarative handle on `add_test_case_to_suite` above, so
+    # ADR-0074's relationship tab can offer "Link existing test case" from
     # either end of this junction without knowing this route exists. The
     # permission is REQ-4's own `test_suite.update`, **not** a new
     # `test_suite_test_case.create` — that route shipped under ADR-0030 with
@@ -416,7 +416,7 @@ _TEST_SUITE_TEST_CASE_CONFIG = CrudEntityConfig(
     # at" label is already correct. Omitting `ref_entity` here would leave the
     # entity with zero FK fields, so it would not classify as a link table and
     # would silently produce no tab at all — the degrades-silently failure
-    # mode ADR-0072's model-layer completeness test now guards.
+    # mode ADR-0075's model-layer completeness test now guards.
     field_meta={
         "test_suite_id": FieldMeta(ref_entity="test-suite", label_field="name", label="Test suite"),
         "test_case_id": FieldMeta(ref_entity="test-case", label_field="title", label="Test case"),

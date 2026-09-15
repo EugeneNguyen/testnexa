@@ -406,23 +406,23 @@ async def list_covered_test_cases(
     )
 
 
-# --- ADR-0072: the junction table's own read-only generic-CRUD surface -------------------------
+# --- ADR-0075: the junction table's own read-only generic-CRUD surface -------------------------
 #
 # Same addition, same reasoning, as `test_suite_membership.py`'s own config
 # block (read that one for the full rationale — it is the direct template here,
 # exactly as ADR-0030's routes were the template for ADR-0031's above). The
 # four bespoke routes above remain PLAN-1's membership-management and coverage
 # surface; this config adds only the junction table's plain read side, so
-# `derive_entity_relations` (ADR-0071) can see a relationship that was
+# `derive_entity_relations` (ADR-0074) can see a relationship that was
 # previously invisible to it for the sole reason that the table had no entry in
 # `ALL_ENTITY_CONFIGS`.
 #
 # `scope_field` is the branching 2-tuple `("test_plan_id", "test_suite_id")` —
-# **ADR-0072 Amendment 1**, same change and same reasoning as
+# **ADR-0075 Amendment 1**, same change and same reasoning as
 # `test_suite_membership.py`'s config (read that one for the full write-up).
 # As first shipped this was the single column `"test_plan_id"`, the plan side
 # PLAN-1's own routes are nested under (`/test-plans/{id}/test-suites`), with
-# the reverse parked in ADR-0071 §4's exclusion set purely so the rule would
+# the reverse parked in ADR-0074 §4's exclusion set purely so the rule would
 # stay uniform across all six junctions. All six widen together in Amendment 1,
 # so `TestPlan` keeps its "Test suites (linked)" tab and `TestSuite` gains the
 # reverse "Test plans (linked)" one. Plan arm declared first, so the item
@@ -447,10 +447,10 @@ _TEST_PLAN_TEST_SUITE_CONFIG = CrudEntityConfig(
         ]
     ),
     methods=frozenset({"list", "get"}),
-    # ADR-0073: the declarative handle on `include_suite_in_plan` above. As
+    # ADR-0076: the declarative handle on `include_suite_in_plan` above. As
     # with REQ-4's sibling junction, the permission stays PLAN-1's own
     # `test_plan.update` — the route shipped with that gate under ADR-0031 and
-    # ADR-0073 re-gates no already-shipped route.
+    # ADR-0076 re-gates no already-shipped route.
     link_create=LinkCreateAction(
         path_template="/test-plans/{test_plan_id}/test-suites/{test_suite_id}",
         permission="test_plan.update",

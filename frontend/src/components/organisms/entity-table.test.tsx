@@ -389,13 +389,13 @@ describe("EntityTable", () => {
   });
 
   /**
-   * ADR-0070: the row-click affordance half of the generic detail view.
+   * ADR-0073: the row-click affordance half of the generic detail view.
    * `EntityTable` owns the affordance (pointer cursor, keyboard reachability,
    * and the Actions cell's propagation stop); *where* the click goes is the
    * caller's — hence `onRowClick` receiving the row and nothing more.
    */
-  describe("onRowClick (ADR-0070)", () => {
-    it("TC-ADMIN-044: fires onRowClick with the clicked row's own object", () => {
+  describe("onRowClick (ADR-0073)", () => {
+    it("TC-ADMIN-059: fires onRowClick with the clicked row's own object", () => {
       const onRowClick = vi.fn();
       render(
         <EntityTable
@@ -415,7 +415,7 @@ describe("EntityTable", () => {
       expect(onRowClick).toHaveBeenCalledWith(ROWS[1]);
     });
 
-    it("TC-ADMIN-047: fires onRowClick on Enter and on Space when a row has keyboard focus", () => {
+    it("TC-ADMIN-062: fires onRowClick on Enter and on Space when a row has keyboard focus", () => {
       const onRowClick = vi.fn();
       render(
         <EntityTable
@@ -446,7 +446,7 @@ describe("EntityTable", () => {
       expect(onRowClick).toHaveBeenNthCalledWith(2, ROWS[0]);
     });
 
-    it("TC-ADMIN-046: clicking Edit or Delete in a row fires only that action, never onRowClick", () => {
+    it("TC-ADMIN-061: clicking Edit or Delete in a row fires only that action, never onRowClick", () => {
       const onRowClick = vi.fn();
       const onEdit = vi.fn();
       const onDelete = vi.fn();
@@ -494,12 +494,12 @@ describe("EntityTable", () => {
   });
 
   /**
-   * ADR-0071 (Amendment): `bare` drops the `.card`/`.card-header` wrapper for a
+   * ADR-0074 (Amendment): `bare` drops the `.card`/`.card-header` wrapper for a
    * caller that already owns a card — `EntityDetailPage`'s relationship tab
    * pane, whose card header is the tab strip itself. The table and its
    * `.card-body` sections are unchanged; only the wrapper goes.
    */
-  describe("bare (ADR-0071)", () => {
+  describe("bare (ADR-0074)", () => {
     it("renders the same table with no .card/.card-header wrapper", () => {
       const { container } = render(
         <EntityTable

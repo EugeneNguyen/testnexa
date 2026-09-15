@@ -1,7 +1,7 @@
 /**
  * `Tabs` molecule — a horizontal tab strip.
  *
- * Built for [ADR-0071](../../../../../docs/adr/0071-entity-detail-relationship-tabs.md)
+ * Built for [ADR-0074](../../../../../docs/adr/0074-entity-detail-relationship-tabs.md)
  * (`EntityDetailPage`'s Info + one-per-relationship tabs) after the mandatory
  * reuse check (`frontend/CLAUDE.md`): `grep`ping `components/{atoms,molecules,
  * organisms,templates}` plus the raw class strings (`nav-tabs`, `role=
@@ -18,7 +18,7 @@
  * elsewhere; neither invents its own class here). Per ADR-0042 the class
  * names are the library's own, verbatim, not invented.
  *
- * ## Mounting it in a card header (ADR-0071's Amendment)
+ * ## Mounting it in a card header (ADR-0074's Amendment)
  *
  * Tabler's documented "tabs in the card header" pattern is this same `<ul>`
  * with `card-header-tabs` added, as the *only* child of a `.card-header`, with
@@ -72,7 +72,7 @@ export interface TabItem {
  *    at most one tab.
  * 2. `badge bg-secondary` is currently **invisible** repo-wide (its text
  *    colour equals its background — see `frontend/CLAUDE.md`'s measurement
- *    table and ADR-0070's own Consequences). Shipping a new call site of a
+ *    table and ADR-0073's own Consequences). Shipping a new call site of a
  *    known-broken class, in a story that isn't fixing it, would just widen
  *    the blast radius of a defect that already needs its own ADR.
  */

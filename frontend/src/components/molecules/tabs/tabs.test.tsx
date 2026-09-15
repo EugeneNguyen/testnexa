@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { Tabs, panelId, tabTriggerId } from "./tabs";
 
 /**
- * ADR-0071: the `Tabs` molecule built for `EntityDetailPage`'s Info +
+ * ADR-0074: the `Tabs` molecule built for `EntityDetailPage`'s Info +
  * relationship tabs.
  *
  * The two claims worth pinning are both about *not* handing control to a
@@ -24,7 +24,7 @@ function renderTabs(activeId = "info", onSelect = vi.fn()) {
   return onSelect;
 }
 
-describe("Tabs molecule (ADR-0071)", () => {
+describe("Tabs molecule (ADR-0074)", () => {
   it("renders stock Bootstrap 5 tab markup with one tab per item", () => {
     renderTabs();
 
@@ -61,7 +61,7 @@ describe("Tabs molecule (ADR-0071)", () => {
   });
 
   /**
-   * ADR-0071's Amendment: the panel points back with `aria-labelledby`, so
+   * ADR-0074's Amendment: the panel points back with `aria-labelledby`, so
    * each trigger needs an `id` of its own — `tabTriggerId` is what the caller
    * uses, so the pair can't drift.
    */
@@ -77,7 +77,7 @@ describe("Tabs molecule (ADR-0071)", () => {
   });
 
   /**
-   * ADR-0071's Amendment: Tabler's "tabs in the card header" pattern needs
+   * ADR-0074's Amendment: Tabler's "tabs in the card header" pattern needs
    * `card-header-tabs` on this `<ul>`. It is deliberately not baked in — a
    * strip mounted anywhere else must not carry it — so the caller passes it
    * through `className`, and it must land on the list itself, alongside (not

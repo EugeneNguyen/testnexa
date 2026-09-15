@@ -52,10 +52,10 @@ ENVELOPE_KEYS = {
     "searchFields",
     "filterFields",
     "fields",
-    # ADR-0071: the tenth key — this entity's inbound relationships, backing
+    # ADR-0074: the tenth key — this entity's inbound relationships, backing
     # `EntityDetailPage`'s tabs. Additive; every key above is unchanged.
     "relations",
-    # ADR-0073: the eleventh — this entity's bespoke link-create route, or
+    # ADR-0076: the eleventh — this entity's bespoke link-create route, or
     # `null` for the 23 entities that are not link tables. Also additive, and
     # unconditionally present for the same reason `relations` is: a frontend
     # must be able to read "no link action" off the value, not off the key's

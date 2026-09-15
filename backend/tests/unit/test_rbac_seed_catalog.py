@@ -21,9 +21,9 @@ from app.db.rbac_seed_catalog import (
 
 def test_resource_counts_match_the_plan() -> None:
     assert len(CRUD_RESOURCES) == 23
-    # 6 until ADR-0072 added `test_suite_test_case`/`test_plan_test_suite` —
+    # 6 until ADR-0075 added `test_suite_test_case`/`test_plan_test_suite` —
     # REQ-4's/PLAN-1's junction tables, registered as read-only generic-CRUD
-    # entities so ADR-0071's relationship derivation can see them.
+    # entities so ADR-0074's relationship derivation can see them.
     assert len(READ_ONLY_RESOURCES) == 8
     assert len(ALL_RESOURCES) == 31
     # no accidental overlap/duplication between the two resource lists
@@ -36,7 +36,7 @@ def test_permission_catalog_has_one_hundred_and_six_rows() -> None:
     # 23 CRUD resources x 4 actions + 8 read-only resources x 1 action
     # + 4 link-create resources x 1 action + 2 special verbs
     assert len(catalog) == 23 * 4 + 8 * 1 + 4 * 1 + 2
-    # 100 before ADR-0072's two new read-only resources; 102 before ADR-0073's
+    # 100 before ADR-0075's two new read-only resources; 102 before ADR-0076's
     # four `<link>.create` codes.
     assert len(catalog) == 106
     codes = [code for code, _resource, _action in catalog]
@@ -52,7 +52,7 @@ def test_permission_catalog_contains_special_verbs() -> None:
 
 
 def test_permission_catalog_read_only_resources_have_only_read_action() -> None:
-    """ADR-0073 narrows this claim rather than retiring it.
+    """ADR-0076 narrows this claim rather than retiring it.
 
     `READ_ONLY_RESOURCES` still means "no `update`, no `delete`, no generic
     CRUD surface" — the thing the original test was actually protecting. What
@@ -76,10 +76,10 @@ def test_permission_catalog_read_only_resources_have_only_read_action() -> None:
 
 
 def test_link_create_resources_are_exactly_the_four_traceability_links() -> None:
-    """ADR-0073: the two REQ-4/PLAN-1 junctions are deliberately absent.
+    """ADR-0076: the two REQ-4/PLAN-1 junctions are deliberately absent.
 
     Their link-create routes shipped under ADR-0030/ADR-0031 gated on the
-    *parent's* `test_suite.update`/`test_plan.update`, and ADR-0073 re-gates no
+    *parent's* `test_suite.update`/`test_plan.update`, and ADR-0076 re-gates no
     already-shipped route — so they get no `.create` code of their own. Pinned
     here because "all six junctions behave alike" is the obvious-looking
     assumption a future reader would otherwise make from
@@ -356,8 +356,8 @@ def test_exec3_migration_code_sets_match_the_catalog_delta() -> None:
     assert module.down_revision == "6a11a6a1d803"
 
 
-def test_adr72_migration_code_set_matches_the_catalog_delta() -> None:
-    """**TC-ADMIN-062.** ADR-0072's migration is the first RBAC extension here that inserts the
+def test_adr75_migration_code_set_matches_the_catalog_delta() -> None:
+    """**TC-ADMIN-077.** ADR-0075's migration is the first RBAC extension here that inserts the
     `Permission` rows themselves, not just `role_permission` grants — the two
     resources are new, so their codes exist in no already-seeded database. Both
     halves therefore need pinning against the catalog, not just the grant half
@@ -373,7 +373,7 @@ def test_adr72_migration_code_set_matches_the_catalog_delta() -> None:
         / "7d2c91af4e68_seed_junction_link_read_permissions.py"
     )
     assert migration_path.exists(), migration_path
-    spec = importlib.util.spec_from_file_location("_adr72_migration", migration_path)
+    spec = importlib.util.spec_from_file_location("_adr75_migration", migration_path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

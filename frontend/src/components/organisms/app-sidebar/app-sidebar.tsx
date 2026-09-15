@@ -217,7 +217,7 @@ export const PROJECT_EXCLUDED_ENTITY_KEYS: string[] = [
   "requirement-test-condition-links",
   "test-condition-test-case-links",
   "test-case-defect-links",
-  // ADR-0072 — same posture as the four link tables above: a join table is
+  // ADR-0075 — same posture as the four link tables above: a join table is
   // reached through its parent's relationship tab, never as a top-level nav
   // destination of its own.
   "test-suite-test-cases",

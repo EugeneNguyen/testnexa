@@ -124,7 +124,7 @@ export async function updateEntity<T = EntityRow>(
 }
 
 /**
- * ADR-0073: substitute a `LinkCreateAction.pathTemplate`'s `{field}`
+ * ADR-0076: substitute a `LinkCreateAction.pathTemplate`'s `{field}`
  * placeholders from a map of the link row's own FK values.
  *
  * Deliberately a **second** interpolator rather than a widened `interpolate`
@@ -149,7 +149,7 @@ export function interpolateLinkPath(template: string, values: Record<string, str
 }
 
 /**
- * ADR-0073: create one junction/link row through the entity's own bespoke
+ * ADR-0076: create one junction/link row through the entity's own bespoke
  * route, declared by its schema's `linkCreate` (`LinkCreateAction`).
  *
  * `values` is keyed by the link row's own FK column names — exactly the shape

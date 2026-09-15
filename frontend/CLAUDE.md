@@ -250,7 +250,7 @@ MCP-4 (ADR-0063's own `### Amendment`, 2026-09-13): a member picker needed to be
 
 ## Every `badge bg-*` renders its text in ONE fixed grey (`rgb(107,114,128)`) that never tracks the background — `bg-secondary` is therefore grey-on-grey and completely invisible
 
-Found 2026-09-15 during ADR-0070's own live verification, by looking at a screenshot — **not** by any assertion, and this is the instructive part: a test asserting `toHaveText(/draft/)` and `expect(span.badge).toBeVisible()` passes cleanly on a badge whose text cannot be seen at all, because the text genuinely is in the DOM and the element genuinely has non-zero size. Exactly the PROJ-4 class root `CLAUDE.md` describes (automated coverage cannot catch a gap in the spec), reached here through a rendered screenshot rather than a human's click-through.
+Found 2026-09-15 during ADR-0073's own live verification, by looking at a screenshot — **not** by any assertion, and this is the instructive part: a test asserting `toHaveText(/draft/)` and `expect(span.badge).toBeVisible()` passes cleanly on a badge whose text cannot be seen at all, because the text genuinely is in the DOM and the element genuinely has non-zero size. Exactly the PROJ-4 class root `CLAUDE.md` describes (automated coverage cannot catch a gap in the spec), reached here through a rendered screenshot rather than a human's click-through.
 
 Measured live against a running instance (a throwaway `page.evaluate` creating one `span.badge.bg-*` per variant and reading `getComputedStyle`), **not** inferred from source:
 

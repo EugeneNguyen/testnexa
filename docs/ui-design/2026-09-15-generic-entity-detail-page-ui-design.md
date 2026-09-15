@@ -1,8 +1,8 @@
 # UI Design Document — generic entity detail page
 
-- **Story:** ADR-0070 / FR-ADMIN-4 / NFR-70; extended 2026-09-15 by ADR-0073 / FR-ADMIN-6 / NFR-75 (§6), corrected the same day by ADR-0073 Amendment 1 / NFR-76 (§6.1, §6.2, §6.3, §6.7a)
+- **Story:** ADR-0073 / FR-ADMIN-4 / NFR-73; extended 2026-09-15 by ADR-0076 / FR-ADMIN-6 / NFR-78 (§6), corrected the same day by ADR-0076 Amendment 1 / NFR-79 (§6.1, §6.2, §6.3, §6.7a)
 - **Date:** 2026-09-15
-- **ADR:** [ADR-0070](../adr/0070-generic-entity-detail-page.md); §6 is [ADR-0073](../adr/0073-relationship-tab-write-actions.md), building on [ADR-0071](../adr/0071-entity-detail-relationship-tabs.md) + [ADR-0072](../adr/0072-junction-table-registry-completeness.md) and its Amendment 1
+- **ADR:** [ADR-0073](../adr/0073-generic-entity-detail-page.md); §6 is [ADR-0076](../adr/0076-relationship-tab-write-actions.md), building on [ADR-0074](../adr/0074-entity-detail-relationship-tabs.md) + [ADR-0075](../adr/0075-junction-table-registry-completeness.md) and its Amendment 1
 - **Screens touched:** the generic admin CRUD surface only (`EntityListPage`'s table, plus one new page). No bespoke screen changes. **No new screen and no new route is added by §6 either** — its two actions open modals on this same page.
 
 ## 1. The problem, in UI terms
@@ -81,7 +81,7 @@ One deliberate difference: `detailPath`'s name-cell **link** is suppressed here 
 
 Nothing else. No inline editing, no delete, no related-record panels. `TestCase`'s Defects and Requirement sections stay on `EntityFormPage` where ADR-0044/ADR-0069 put them.
 
-> **Two same-day corrections to that last sentence, both additive and neither touching the header actions above.** (1) ~~No related-record panels~~ — [ADR-0071](../adr/0071-entity-detail-relationship-tabs.md) partially supersedes this clause: the page gains an **Info** tab (everything described in this §3) plus one tab per inbound relationship, selected via `?tab=`, and [ADR-0072](../adr/0072-junction-table-registry-completeness.md) + its Amendment 1 take that to **30 relationships across 10 entities**. The header row, the `dl.row` body and the Back/Edit actions above are unchanged — they are what the Info tab renders. (2) ~~read-only~~, as a whole-page claim — **§6 below** ([ADR-0073](../adr/0073-relationship-tab-write-actions.md)) puts write actions on each *relationship tab* — ~~exactly one~~ one on a 1-n tab and **two** on an n-n tab, per that ADR's own Amendment 1 (see §6.1). The **Info tab stays fully read-only**, and so does this section: no inline editing and no delete, anywhere on the page.
+> **Two same-day corrections to that last sentence, both additive and neither touching the header actions above.** (1) ~~No related-record panels~~ — [ADR-0074](../adr/0074-entity-detail-relationship-tabs.md) partially supersedes this clause: the page gains an **Info** tab (everything described in this §3) plus one tab per inbound relationship, selected via `?tab=`, and [ADR-0075](../adr/0075-junction-table-registry-completeness.md) + its Amendment 1 take that to **30 relationships across 10 entities**. The header row, the `dl.row` body and the Back/Edit actions above are unchanged — they are what the Info tab renders. (2) ~~read-only~~, as a whole-page claim — **§6 below** ([ADR-0076](../adr/0076-relationship-tab-write-actions.md)) puts write actions on each *relationship tab* — ~~exactly one~~ one on a 1-n tab and **two** on an n-n tab, per that ADR's own Amendment 1 (see §6.1). The **Info tab stays fully read-only**, and so does this section: no inline editing and no delete, anywhere on the page.
 
 ### States
 
@@ -109,13 +109,13 @@ The entity segment links back to that entity's list; `Details` is the active, un
 3. **Should a row click be suppressed while a delete modal is open?** Not needed — the modal's own backdrop already intercepts clicks.
 4. **Should `readOnly` fields be visually distinguished?** Not this pass. Every field on this page is read-only, so a per-field marker would mark almost everything and mean nothing.
 
-## 6. Write actions on the relationship tabs ([ADR-0073](../adr/0073-relationship-tab-write-actions.md), FR-ADMIN-6 / NFR-75)
+## 6. Write actions on the relationship tabs ([ADR-0076](../adr/0076-relationship-tab-write-actions.md), FR-ADMIN-6 / NFR-78)
 
-ADR-0071 and ADR-0072 left **all 30 relationship tabs read-only**. For the four [ADR-0005](../adr/0005-traceability-link-dedicated-join-tables.md) traceability link tables that was a capability gap, not a styling one: the tab is the only place in the app where the relationship is visible at all, and a link row could only ever be written as a *side effect* of authoring one of its two ends. "Link a test case that already exists", "this failure is the defect we already have" — neither was reachable from anywhere. This section adds the affordance. It adds **no new screen, no new route and no new query param**: both actions are modals on the page §3 describes.
+ADR-0074 and ADR-0075 left **all 30 relationship tabs read-only**. For the four [ADR-0005](../adr/0005-traceability-link-dedicated-join-tables.md) traceability link tables that was a capability gap, not a styling one: the tab is the only place in the app where the relationship is visible at all, and a link row could only ever be written as a *side effect* of authoring one of its two ends. "Link a test case that already exists", "this failure is the defect we already have" — neither was reachable from anywhere. This section adds the affordance. It adds **no new screen, no new route and no new query param**: both actions are modals on the page §3 describes.
 
 ### 6.1 Which actions a tab carries, chosen by the relationship's kind
 
-> **Corrected by [ADR-0073](../adr/0073-relationship-tab-write-actions.md) Amendment 1 (2026-09-15, pre-merge).** This section originally read *"One action per tab — never both"*, with the n-n row offering only `Link existing`. That was right about *kind* and wrong about *count*: an n-n tab could only link a record that **already existed**, so the commonest authoring case ("this requirement needs a test case, and that test case does not exist yet") still meant leaving the record, creating the row on the far entity's own list page, navigating back, and only then linking. Found by a live click-through, not by a failing test. The table below is the corrected rule; §6.7a describes the new modal.
+> **Corrected by [ADR-0076](../adr/0076-relationship-tab-write-actions.md) Amendment 1 (2026-09-15, pre-merge).** This section originally read *"One action per tab — never both"*, with the n-n row offering only `Link existing`. That was right about *kind* and wrong about *count*: an n-n tab could only link a record that **already existed**, so the commonest authoring case ("this requirement needs a test case, and that test case does not exist yet") still meant leaving the record, creating the row on the far entity's own list page, navigating back, and only then linking. Found by a live click-through, not by a failing test. The table below is the corrected rule; §6.7a describes the new modal.
 
 | Tab kind | Buttons | What they open |
 |---|---|---|
@@ -133,7 +133,7 @@ The n-n button labels are both built from the tab's own label with the `" (linke
 ```
 ┌─ card ──────────────────────────────────────────────────────────────────┐
 │ card-header                                                             │
-│   ul.nav.nav-tabs.card-header-tabs   [Info] [Test steps] [Defects (…)]  │  ← ADR-0071
+│   ul.nav.nav-tabs.card-header-tabs   [Info] [Test steps] [Defects (…)]  │  ← ADR-0074
 ├─────────────────────────────────────────────────────────────────────────┤
 │ card-body.pb-0  ·  d-flex justify-content-end gap-2                     │
 │   1-n tab:                                                    [ New ]   │
@@ -152,9 +152,9 @@ The n-n button labels are both built from the tab's own label with the `" (linke
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-Prose and sketch agree, deliberately (root `CLAUDE.md`'s note on ADR-0032's contradicting pair): the actions sit in **one `card-body` strip above the table**, right-aligned, inside the same card as the tab strip and the table — not in the card header beside the tabs, which is the tab strip's own row, and not below the table, which is where pagination lives. **One strip, not one per action** (Amendment 1): the two n-n buttons are siblings in it, separated by `gap-2`, since two adjacent `.btn`s carry no margin of their own. When no action is available that strip is **not rendered at all**, so the tab looks byte-for-byte as it did before ADR-0073 rather than reserving empty vertical space. `data-testid="entity-relation-actions"` on the strip, `entity-relation-create` / `entity-relation-link` / `entity-relation-create-link` on the buttons.
+Prose and sketch agree, deliberately (root `CLAUDE.md`'s note on ADR-0032's contradicting pair): the actions sit in **one `card-body` strip above the table**, right-aligned, inside the same card as the tab strip and the table — not in the card header beside the tabs, which is the tab strip's own row, and not below the table, which is where pagination lives. **One strip, not one per action** (Amendment 1): the two n-n buttons are siblings in it, separated by `gap-2`, since two adjacent `.btn`s carry no margin of their own. When no action is available that strip is **not rendered at all**, so the tab looks byte-for-byte as it did before ADR-0076 rather than reserving empty vertical space. `data-testid="entity-relation-actions"` on the strip, `entity-relation-create` / `entity-relation-link` / `entity-relation-create-link` on the buttons.
 
-`Link existing` is the solid `btn-primary` and `Create new` the `btn-outline-primary`: both are real actions, but linking a record that already exists is the one ADR-0073 exists for, and two solid primaries side by side would assert no hierarchy at all. Outline **primary**, not secondary — this is not a cancel-shaped action.
+`Link existing` is the solid `btn-primary` and `Create new` the `btn-outline-primary`: both are real actions, but linking a record that already exists is the one ADR-0076 exists for, and two solid primaries side by side would assert no hierarchy at all. Outline **primary**, not secondary — this is not a cancel-shaped action.
 
 The "created, but not linked" alert (§6.7a) is its own `card-body` strip directly below the actions, above the table — deliberately **outside** the modal that produced it, because it must outlive that modal's close. `data-testid="entity-relation-create-link-error"`.
 
@@ -167,7 +167,7 @@ Both actions check two independent things, and conflating them would be wrong in
 1. **Can the API do this at all** — `config.methods` includes `create` (1-n), or `config.linkCreate` is non-null (n-n). This is a property of the entity, identical for every user.
 2. **May this actor** — `usePermissions(orgId).has(code, projectId)`, where the code is `<child resource>.create` for 1-n and the **served** `linkCreate.permission` for n-n. Fail-closed while the permission snapshot is loading.
 
-**`Create new <far entity>` checks both of those twice over, once for each half of what it does** (Amendment 1 / NFR-76): the far entity's schema must declare `create` **and** the link entity must declare `linkCreate`; the actor must hold the far entity's own `<resource>.create` **and** the declared `linkCreate.permission`. All four, or no button. The permission conjunction is the load-bearing one: an actor holding only the create half would get a `201` and then a `403`, leaving a real far-entity row that is not linked and that this tab — which lists *link* rows — structurally cannot display. So the matrix is:
+**`Create new <far entity>` checks both of those twice over, once for each half of what it does** (Amendment 1 / NFR-79): the far entity's schema must declare `create` **and** the link entity must declare `linkCreate`; the actor must hold the far entity's own `<resource>.create` **and** the declared `linkCreate.permission`. All four, or no button. The permission conjunction is the load-bearing one: an actor holding only the create half would get a `201` and then a `403`, leaving a real far-entity row that is not linked and that this tab — which lists *link* rows — structurally cannot display. So the matrix is:
 
 | Actor holds | `Link existing` | `Create new` |
 |---|---|---|
@@ -178,7 +178,7 @@ Both actions check two independent things, and conflating them would be wrong in
 
 The third row is the one worth stating outright, because the intuitive expectation is that it shows `Create new` alone. It does not, on purpose. The API-capability half matters too and is not hypothetical: 3 of the 12 live link directions point at an entity with no generic `create` at all (`TestCondition` and `Defect` are authored only through bespoke routes), so the button correctly never appears on those tabs regardless of permissions.
 
-A missing permission makes the button **absent, not disabled** — §5 of the [generic admin CRUD UI Design Document](2026-09-05-generic-admin-crud-ui-design.md)'s hide-don't-disable posture (FR-ADMIN-2 AC4 / NFR-37), identical to `EntityListPage`'s own `canCreate`. Taking the permission code from the served schema rather than guessing it is the whole point of NFR-75: two of the six junctions gate on their *parent's* `test_suite.update`/`test_plan.update`, so any client-side naming convention would hide those two buttons from exactly the people entitled to use them. As always, the check never substitutes for the API's own enforcement — a revoked-mid-session grant still gets a real `403` from the route, surfaced through the modal's own error alert.
+A missing permission makes the button **absent, not disabled** — §5 of the [generic admin CRUD UI Design Document](2026-09-05-generic-admin-crud-ui-design.md)'s hide-don't-disable posture (FR-ADMIN-2 AC4 / NFR-37), identical to `EntityListPage`'s own `canCreate`. Taking the permission code from the served schema rather than guessing it is the whole point of NFR-78: two of the six junctions gate on their *parent's* `test_suite.update`/`test_plan.update`, so any client-side naming convention would hide those two buttons from exactly the people entitled to use them. As always, the check never substitutes for the API's own enforcement — a revoked-mid-session grant still gets a real `403` from the route, surfaced through the modal's own error alert.
 
 ### 6.4 The "New" modal (one-to-many)
 
@@ -220,7 +220,7 @@ Case 3 is the same "pick a parent row before the list can fetch" step `EntityLis
 
 **Known blind spot, pre-existing and deliberately not worked around:** `TestCase` → "Defects (linked)" lands in case 3 behind `ScopeSelector`'s own cascading-picker gap — `Defect`'s selector searches `TestExecution`, which is itself scoped by `test_cycle_id` rather than `project_id`, so the search comes back empty. `scope-selector.tsx` documents that limitation by name for exactly this entity and predates this ADR; fixing it means a cascading multi-step picker, which is its own change. The same link is fully creatable from the other end (`Defect` → "Test cases (linked)", case 2) and the route itself is correct and tested, so the capability is reachable — only that one picker is blind.
 
-### 6.7a The "Create new …" modal (many-to-many) — one step, two requests ([ADR-0073](../adr/0073-relationship-tab-write-actions.md) Amendment 1, NFR-76)
+### 6.7a The "Create new …" modal (many-to-many) — one step, two requests ([ADR-0076](../adr/0076-relationship-tab-write-actions.md) Amendment 1, NFR-79)
 
 Title: **Create new {far entity}**. Body, top to bottom:
 
@@ -246,7 +246,7 @@ Prose and sketch agree: the locked scope field renders **first**, disabled, exac
 
 **Submit runs two requests, in order:** the far entity's own generic `create`, then — with the id that returned — the **same** `config.linkCreate.pathTemplate` §6.5 POSTs to. The order is forced: the link route takes an id that must already exist.
 
-**They are not one transaction, and the partial state has a defined outcome.** They are two independent routes, so atomicity would need a new backend route combining two separately-gated operations — a larger decision than the residual risk warrants (ADR-0073 Amendment 1's Alternatives). The only reachable partial state is *created, not linked*, and it is handled in two places:
+**They are not one transaction, and the partial state has a defined outcome.** They are two independent routes, so atomicity would need a new backend route combining two separately-gated operations — a larger decision than the residual risk warrants (ADR-0076 Amendment 1's Alternatives). The only reachable partial state is *created, not linked*, and it is handled in two places:
 
 - **Before**: the both-permissions gate in §6.3 forecloses the one predictable cause.
 - **After**: if the link half fails regardless (a race, a duplicate-pair `409`, a cross-project `422`), the modal **closes** — a resubmit would otherwise create a second record for one intent — and the §6.2 alert appears above the table carrying four things, none of them optional: the created record's **own label** *and* its **id** (the label is what the user recognises, the id is what survives a rename and can be pasted into a search), the API's **own** reason rather than a generic failure string, the plain statement that it was saved and is **not** linked, and the **recovery** — "Link existing …", the sibling button already on screen, which now needs no form at all because the record exists. No bespoke "retry link" state was added for exactly that reason.
@@ -254,6 +254,6 @@ Prose and sketch agree: the locked scope field renders **first**, disabled, exac
 
 ### 6.7 What is still not here
 
-- **No per-row Edit or Delete**, unchanged from ADR-0071. Every listed record is fully editable on its own screen one click away, and a link row has nothing to edit at all — links are immutable, delete-and-recreate (ADR-0005). Omitting `onEdit`/`onDelete` is still what makes `EntityTable` drop the Actions column entirely.
+- **No per-row Edit or Delete**, unchanged from ADR-0074. Every listed record is fully editable on its own screen one click away, and a link row has nothing to edit at all — links are immutable, delete-and-recreate (ADR-0005). Omitting `onEdit`/`onDelete` is still what makes `EntityTable` drop the Actions column entirely.
 - **No unlink.** Two of the six junctions have a `DELETE` route already and four have none; what removing a traceability link means for an already-exported RTM is a real decision for its own story. The tabs grow monotonically today.
 - **Nothing on the Info tab.** §3's page-level actions are still exactly Back and a permission-gated Edit.

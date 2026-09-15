@@ -5,7 +5,7 @@ New module, `app/models/trace.py`'s own cluster naming. Every entity here is
 `app/db/rbac_seed_catalog.py`) — no generic `create`/`update`/`delete` route
 exists for any of them (ADR-0005).
 
-**[ADR-0073](../../../../docs/adr/0073-relationship-tab-write-actions.md)
+**[ADR-0076](../../../../docs/adr/0076-relationship-tab-write-actions.md)
 (2026-09-15): each of the four now has one bespoke `POST` that creates a link
 row directly**, alongside the pre-existing side-effect creates (e.g.
 `POST /requirements/{id}/test-cases` still inserts a `RequirementTestCaseLink`
@@ -13,7 +13,7 @@ as part of creating the case). The generic factory surface is unchanged —
 `methods` stays `{"list","get"}`, `create_schema` stays `None`, and a link row
 still cannot be `PATCH`ed or generically `POST`ed; links remain immutable
 (delete-and-recreate), exactly as `app/models/trace.py`'s own docstring says.
-The four routes exist because ADR-0071's relationship tabs could *list* a
+The four routes exist because ADR-0074's relationship tabs could *list* a
 traceability link but never create one, so linking two existing rows was
 reachable only through whichever authoring route happened to create one side
 as a side effect:
@@ -29,7 +29,7 @@ All four are shaped verbatim on ADR-0030's `add_test_case_to_suite` and
 ADR-0031's `include_suite_in_plan` — same 404-then-403 parent gate, same
 same-org-`404`/cross-project-`422` split, same "let the unique constraint fire
 and translate the `IntegrityError`" duplicate handling. Each is declared to the
-generic surface through its config's `link_create` (ADR-0073's
+generic surface through its config's `link_create` (ADR-0076's
 `LinkCreateAction`), which is what lets a relationship tab invoke a route it
 knows nothing else about.
 
@@ -41,15 +41,15 @@ Requirement link, deliberately enforcing at-most-one from the `TestCase` side.
 `POST /requirements/{id}/test-case-links/{test_case_id}` is the table's real
 many-to-many contract: it 409s only on the *pair* already existing, the same
 rule `add_test_case_to_suite` applies to `TestSuiteTestCase`. Both are kept:
-ADR-0073 does not re-gate or re-scope a shipped route, and the two answer
-different questions (see ADR-0073's Consequences for why the asymmetry is
+ADR-0076 does not re-gate or re-scope a shipped route, and the two answer
+different questions (see ADR-0076's Consequences for why the asymmetry is
 accepted rather than reconciled).
 
-**ADR-0072 Amendment 1 (2026-09-15): every link here is scoped — and therefore
+**ADR-0075 Amendment 1 (2026-09-15): every link here is scoped — and therefore
 listable, and therefore tabbed — from BOTH ends.** Each `scope_field` is a
 branching 2-tuple naming both of the link's own FK columns, the shape
-`RiskItem` has always used, so `derive_entity_relations` (ADR-0071) emits one
-relation per direction instead of one for the scope side only. ADR-0072
+`RiskItem` has always used, so `derive_entity_relations` (ADR-0074) emits one
+relation per direction instead of one for the scope side only. ADR-0075
 Decision §3 deliberately deferred this ("widening all six later remains open")
 because doing it for two of six junctions would have made the rule incoherent;
 all six move together here, so that objection is spent. Nothing about the
@@ -148,7 +148,7 @@ _REQUIREMENT_TEST_CASE_LINK_CONFIG = CrudEntityConfig(
     create_schema=None,
     update_schema=NoSchema,
     summary_schema=RequirementTestCaseLinkSummary,
-    # ADR-0072 Amendment 1: both ends, so `Requirement` gets a "Test cases
+    # ADR-0075 Amendment 1: both ends, so `Requirement` gets a "Test cases
     # (linked)" tab and `TestCase` the reverse "Requirements (linked)" one.
     scope_field=("requirement_id", "test_case_id"),
     resolve_org_id=branching_resolver(
@@ -159,10 +159,10 @@ _REQUIREMENT_TEST_CASE_LINK_CONFIG = CrudEntityConfig(
     ),
     methods=_READ_ONLY_METHODS,
     # ADR-0053
-    # ADR-0073: the declarative handle on this module's own bespoke
-    # `POST` below, so ADR-0071's relationship tab can create a link row
+    # ADR-0076: the declarative handle on this module's own bespoke
+    # `POST` below, so ADR-0074's relationship tab can create a link row
     # from either end of the junction. Unlike REQ-4's/PLAN-1's two older
-    # junctions, these four routes are new in ADR-0073, so each gates on
+    # junctions, these four routes are new in ADR-0076, so each gates on
     # its own new `requirement_test_case_link.create` code rather than on a
     # parent entity's `.update`.
     link_create=LinkCreateAction(
@@ -170,7 +170,7 @@ _REQUIREMENT_TEST_CASE_LINK_CONFIG = CrudEntityConfig(
         permission="requirement_test_case_link.create",
     ),
     label="Requirement -> test case links",
-    # ADR-0072 Amendment 1: one option per scope arm, `RiskItem`'s own shape —
+    # ADR-0075 Amendment 1: one option per scope arm, `RiskItem`'s own shape —
     # without the second, the generic admin list page could only ever scope by
     # the arm that happened to be listed, even though the route serves both.
     scope_selector=(
@@ -189,7 +189,7 @@ _REQUIREMENT_TEST_CONDITION_LINK_CONFIG = CrudEntityConfig(
     create_schema=None,
     update_schema=NoSchema,
     summary_schema=RequirementTestConditionLinkSummary,
-    # ADR-0072 Amendment 1, both ends. The reverse arm gives `TestCondition` a
+    # ADR-0075 Amendment 1, both ends. The reverse arm gives `TestCondition` a
     # "Requirements (linked)" tab beside the "Test cases (linked)" one it
     # already had from `TestConditionTestCaseLink`.
     scope_field=("requirement_id", "test_condition_id"),
@@ -204,10 +204,10 @@ _REQUIREMENT_TEST_CONDITION_LINK_CONFIG = CrudEntityConfig(
     ),
     methods=_READ_ONLY_METHODS,
     # ADR-0053
-    # ADR-0073: the declarative handle on this module's own bespoke
-    # `POST` below, so ADR-0071's relationship tab can create a link row
+    # ADR-0076: the declarative handle on this module's own bespoke
+    # `POST` below, so ADR-0074's relationship tab can create a link row
     # from either end of the junction. Unlike REQ-4's/PLAN-1's two older
-    # junctions, these four routes are new in ADR-0073, so each gates on
+    # junctions, these four routes are new in ADR-0076, so each gates on
     # its own new `requirement_test_condition_link.create` code rather than on a
     # parent entity's `.update`.
     link_create=LinkCreateAction(
@@ -233,7 +233,7 @@ _TEST_CONDITION_TEST_CASE_LINK_CONFIG = CrudEntityConfig(
     create_schema=None,
     update_schema=NoSchema,
     summary_schema=TestConditionTestCaseLinkSummary,
-    # ADR-0072 Amendment 1, both ends.
+    # ADR-0075 Amendment 1, both ends.
     scope_field=("test_condition_id", "test_case_id"),
     resolve_org_id=branching_resolver(
         [
@@ -246,10 +246,10 @@ _TEST_CONDITION_TEST_CASE_LINK_CONFIG = CrudEntityConfig(
     ),
     methods=_READ_ONLY_METHODS,
     # ADR-0053
-    # ADR-0073: the declarative handle on this module's own bespoke
-    # `POST` below, so ADR-0071's relationship tab can create a link row
+    # ADR-0076: the declarative handle on this module's own bespoke
+    # `POST` below, so ADR-0074's relationship tab can create a link row
     # from either end of the junction. Unlike REQ-4's/PLAN-1's two older
-    # junctions, these four routes are new in ADR-0073, so each gates on
+    # junctions, these four routes are new in ADR-0076, so each gates on
     # its own new `test_condition_test_case_link.create` code rather than on a
     # parent entity's `.update`.
     link_create=LinkCreateAction(
@@ -275,9 +275,9 @@ _TEST_CASE_DEFECT_LINK_CONFIG = CrudEntityConfig(
     create_schema=None,
     update_schema=NoSchema,
     summary_schema=TestCaseDefectLinkSummary,
-    # ADR-0072 Amendment 1, both ends. The reverse arm is what finally gives
+    # ADR-0075 Amendment 1, both ends. The reverse arm is what finally gives
     # `Defect` a relationship tab at all — its detail page rendered no strip
-    # whatsoever before, the same symptom ADR-0072 fixed for `TestSuite`.
+    # whatsoever before, the same symptom ADR-0075 fixed for `TestSuite`.
     scope_field=("test_case_id", "defect_id"),
     resolve_org_id=branching_resolver(
         [
@@ -300,10 +300,10 @@ _TEST_CASE_DEFECT_LINK_CONFIG = CrudEntityConfig(
     # live backend today (no `TestCase` list route exists) — see
     # `entityConfigs/test-case.ts`'s docstring; carried over verbatim rather
     # than "fixed" here, since that's a route-surface gap, not a schema one.
-    # ADR-0073: the declarative handle on this module's own bespoke
-    # `POST` below, so ADR-0071's relationship tab can create a link row
+    # ADR-0076: the declarative handle on this module's own bespoke
+    # `POST` below, so ADR-0074's relationship tab can create a link row
     # from either end of the junction. Unlike REQ-4's/PLAN-1's two older
-    # junctions, these four routes are new in ADR-0073, so each gates on
+    # junctions, these four routes are new in ADR-0076, so each gates on
     # its own new `test_case_defect_link.create` code rather than on a
     # parent entity's `.update`.
     link_create=LinkCreateAction(
@@ -321,7 +321,7 @@ _TEST_CASE_DEFECT_LINK_CONFIG = CrudEntityConfig(
     },
 )
 
-# --- ADR-0073: the four bespoke link-create routes ----------------------------------------------
+# --- ADR-0076: the four bespoke link-create routes ----------------------------------------------
 #
 # See this module's own docstring for the contract. Everything below is the
 # ADR-0030/ADR-0031 membership-route shape with the entity names changed —
@@ -499,7 +499,7 @@ async def link_test_case_to_requirement_trace(
     actor: User | AIAgent = Depends(get_current_actor),
     db: AsyncSession = Depends(get_db),
 ) -> JSONResponse:
-    """Link an existing `TestCase` to `Requirement` `id` (ADR-0073, FR-ADMIN-6).
+    """Link an existing `TestCase` to `Requirement` `id` (ADR-0076, FR-ADMIN-6).
 
     The `TestCase` side is resolved with `resolve_test_case_org_id` /
     `resolve_test_case_project_id` verbatim (ADR-0029's branching chain plus
@@ -542,7 +542,7 @@ async def link_test_condition_to_requirement(
     actor: User | AIAgent = Depends(get_current_actor),
     db: AsyncSession = Depends(get_db),
 ) -> JSONResponse:
-    """Link an existing `TestCondition` to `Requirement` `id` (ADR-0073, FR-ADMIN-6).
+    """Link an existing `TestCondition` to `Requirement` `id` (ADR-0076, FR-ADMIN-6).
 
     A `TestCondition` already has one *owning* `Requirement`
     (`TestCondition.requirement_id`, REQ-3's rigor path). This link table is the
@@ -551,7 +551,7 @@ async def link_test_condition_to_requirement(
     condition to its own owning requirement is therefore a normal `201`, not a
     conflict — the two relationships are separate, which is exactly why
     `Requirement`'s detail page carries both a "Test conditions" tab and a
-    "Test conditions (linked)" one (ADR-0071's `" (linked)"` suffix exists for
+    "Test conditions (linked)" one (ADR-0074's `" (linked)"` suffix exists for
     this collision).
     """
     gate = await _gate_parent(
@@ -592,7 +592,7 @@ async def link_test_case_to_test_condition(
     actor: User | AIAgent = Depends(get_current_actor),
     db: AsyncSession = Depends(get_db),
 ) -> JSONResponse:
-    """Link an existing `TestCase` to `TestCondition` `id` (ADR-0073, FR-ADMIN-6).
+    """Link an existing `TestCase` to `TestCondition` `id` (ADR-0076, FR-ADMIN-6).
 
     Same "traceability link on top of an owning FK" relationship as the route
     above: `TestCase.test_condition_id` is REQ-3's rigor-path owner, this table
@@ -636,13 +636,13 @@ async def link_defect_to_test_case(
     actor: User | AIAgent = Depends(get_current_actor),
     db: AsyncSession = Depends(get_db),
 ) -> JSONResponse:
-    """Link an existing `Defect` to `TestCase` `id` (ADR-0073, FR-ADMIN-6).
+    """Link an existing `Defect` to `TestCase` `id` (ADR-0076, FR-ADMIN-6).
 
     EXEC-3's `POST /executions/{id}/defects` already writes this row as a side
     effect of *raising* a defect against an execution. This route links a
     defect that already exists — the "I found this was already reported" case
     EXEC-3 has no route for — and is what makes `Defect`'s own single
-    relationship tab (ADR-0072 Amendment 1 gave it its first) writable from the
+    relationship tab (ADR-0075 Amendment 1 gave it its first) writable from the
     `TestCase` end.
     """
     gate = await _gate_parent(

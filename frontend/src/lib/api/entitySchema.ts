@@ -44,15 +44,15 @@ export interface EntitySchemaResponse {
   filterFields: string[];
   fields: BackendFieldConfig[];
   /**
-   * ADR-0071: this entity's *inbound* relationships — see
+   * ADR-0074: this entity's *inbound* relationships — see
    * `entityConfigs/types.ts`'s `EntityRelation`. Optional on this type
-   * (not on the wire) so a response captured before ADR-0071 — every
+   * (not on the wire) so a response captured before ADR-0074 — every
    * hand-written Vitest fixture in this repo, of which there are many —
    * still type-checks; `toEntityConfig` normalizes the absent case to `[]`.
    */
   relations?: EntityRelation[];
   /**
-   * ADR-0073: this entity's bespoke link-create route, or `null` for the 25
+   * ADR-0076: this entity's bespoke link-create route, or `null` for the 25
    * entities that are not link tables. Optional on this type for the same
    * fixture-compatibility reason as `relations` above; `toEntityConfig` drops
    * both the `null` and the absent case.

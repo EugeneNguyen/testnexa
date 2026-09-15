@@ -4,10 +4,10 @@ Revision ID: 7d2c91af4e68
 Revises: 9a2f7c4d8b1e
 Create Date: 2026-09-15 00:00:00.000000
 
-ADR-0072: `app/db/rbac_seed_catalog.py`'s `READ_ONLY_RESOURCES` gains two
+ADR-0075: `app/db/rbac_seed_catalog.py`'s `READ_ONLY_RESOURCES` gains two
 entries — `test_suite_test_case` and `test_plan_test_suite`, REQ-4's and
-PLAN-1's junction tables, which ADR-0072 registers as read-only generic-CRUD
-entities so `crud_factory.derive_entity_relations` (ADR-0071) can see the
+PLAN-1's junction tables, which ADR-0075 registers as read-only generic-CRUD
+entities so `crud_factory.derive_entity_relations` (ADR-0074) can see the
 many-to-many relationships they carry.
 
 **This migration is the first RBAC extension in this repo that has to insert
@@ -38,7 +38,7 @@ Which bundles, and why each:
 - **`test_manager`** and **`tester`** — both already hold
   `test_suite.read`/`test_plan.read`, so both can open those detail pages; the
   junction tables' generic `list`/`get` gate on the junctions' *own* `.read`
-  codes, so without these grants the ADR-0071 relationship tab on a `TestSuite`
+  codes, so without these grants the ADR-0074 relationship tab on a `TestSuite`
   or `TestPlan` would `403` for exactly the two roles that use those screens.
   Same shape as ADR-0044's `test_case_defect_link.read` grant to the same two
   roles.
@@ -53,7 +53,7 @@ On a **fresh** database this migration is a pure no-op: `34053c46f9fc` runs
 first and seeds the catalog from `build_permission_catalog()`'s *current* code
 (now 102 rows) plus every bundle, so both permissions and all four grants
 already exist by the time this runs. It only does real work against a database
-seeded before ADR-0072 landed.
+seeded before ADR-0075 landed.
 
 Idempotent existence-check-then-insert throughout, mirroring `34053c46f9fc`'s
 permission seeding and `f19a7c3e5b62`'s grant seeding verbatim — re-running is
@@ -99,7 +99,7 @@ role_permission_table = sa.table(
 
 #: The two brand-new catalog rows, as `(code, resource, action)` — the same
 #: triple shape `build_permission_catalog()` emits. A unit test asserts this
-#: tuple is exactly the delta between the pre- and post-ADR-0072 catalogs, so
+#: tuple is exactly the delta between the pre- and post-ADR-0075 catalogs, so
 #: it cannot drift from `rbac_seed_catalog.READ_ONLY_RESOURCES`.
 _NEW_PERMISSIONS: tuple[tuple[str, str, str], ...] = (
     ("test_suite_test_case.read", "test_suite_test_case", "read"),
@@ -110,7 +110,7 @@ _NEW_CODES: tuple[str, ...] = tuple(code for code, _, _ in _NEW_PERMISSIONS)
 
 #: Every role that must hold both new codes. All four are grants the *static*
 #: bundle definitions already produce for a fresh DB (`org_admin` = everything,
-#: `auditor` = read-on-everything, and the two explicit additions ADR-0072 makes
+#: `auditor` = read-on-everything, and the two explicit additions ADR-0075 makes
 #: to `test_manager`/`tester`) — this list exists only to backfill a DB seeded
 #: before those definitions changed.
 _ROLES_TO_GRANT: tuple[str, ...] = ("org_admin", "auditor", "test_manager", "tester")

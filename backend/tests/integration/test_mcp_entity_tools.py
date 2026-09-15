@@ -773,7 +773,7 @@ async def test_no_tool_is_advertised_for_a_method_the_entity_does_not_support() 
             unsupported = {
                 "tn_test_log_update",  # TestLog is get/list/create(comment) only — immutable otherwise
                 "tn_test_log_delete",
-                # ADR-0073 removed `tn_requirement_test_case_link_create` from
+                # ADR-0076 removed `tn_requirement_test_case_link_create` from
                 # this set — `POST /requirements/{id}/test-case-links/{case_id}`
                 # is a real REST route now, so asserting its absence would pin
                 # a claim that has stopped being true. `update`/`delete` stay:
@@ -797,7 +797,7 @@ async def test_no_tool_is_advertised_for_a_method_the_entity_does_not_support() 
                 "tn_test_log_create",  # the bespoke POST /executions/{id}/comments route
                 "tn_requirement_test_case_link_get",
                 "tn_requirement_test_case_link_list",
-                "tn_requirement_test_case_link_create",  # ADR-0073's bespoke link-create route
+                "tn_requirement_test_case_link_create",  # ADR-0076's bespoke link-create route
                 "tn_permission_get",
                 "tn_permission_list",
                 "tn_test_case_list",  # folded in from MCP-1's nested list — see this test's docstring
@@ -810,7 +810,7 @@ async def test_no_tool_is_advertised_for_a_method_the_entity_does_not_support() 
             )
             _extract_unknown_tool_error(update_result, "tn_test_log_update")
 
-            # ADR-0073: was `..._create`, which is now a real, advertised tool.
+            # ADR-0076: was `..._create`, which is now a real, advertised tool.
             # Swapped to `..._delete`, still genuinely unadvertised, so this
             # probe keeps testing what it was written to test (the SDK rejects
             # a name that was never registered) rather than being deleted.

@@ -1,8 +1,8 @@
-"""ADR-0073 — `LinkCreateAction` completeness and shape (TC-ADMIN-065, TC-ADMIN-066).
+"""ADR-0076 — `LinkCreateAction` completeness and shape (TC-ADMIN-080, TC-ADMIN-081).
 
 Pure-Python, no DB/network. The risk this file exists to close is the same
 "degrades silently" shape `backend/CLAUDE.md`'s registry-completeness note
-describes and ADR-0072 hit for real: a junction entity that ships **without**
+describes and ADR-0075 hit for real: a junction entity that ships **without**
 a `link_create` declaration renders a relationship tab that lists rows and
 offers no way to add one — no error, no 403, just a missing button nobody
 notices until someone tries to use the feature.
@@ -18,7 +18,7 @@ Two things are asserted, and they are different claims:
    brace in it at runtime; one naming a nonexistent permission code would
    hide the button from everybody forever.
 
-Per ADR-0072's own lesson (`backend/CLAUDE.md`: "a completeness test that
+Per ADR-0075's own lesson (`backend/CLAUDE.md`: "a completeness test that
 enumerates the same set as the thing it checks passes vacuously"), the
 completeness checker takes its collection as a parameter and is
 **mutation-tested in-suite** — a deliberately-broken registry is fed through
@@ -29,7 +29,7 @@ same empty set.
 The oracle for *which* entities are link entities is `is_link_entity`, which
 is computed structurally from each config's own FK count and method set — not
 a hand-typed list. Registry membership itself is guarded one level down, at
-the model layer, by `test_adr72_registry_completeness.py`.
+the model layer, by `test_adr75_registry_completeness.py`.
 """
 
 from __future__ import annotations
@@ -55,7 +55,7 @@ _PLACEHOLDER = re.compile(r"\{([a-zA-Z_]+)\}")
 #: The six junctions, and the permission each one's link-create route gates on.
 #: Hand-written on purpose — this is the *expected* answer, and deriving it
 #: from the configs is what the code under test already does. The two REQ-4/
-#: PLAN-1 rows are the interesting ones: their routes predate ADR-0073 and keep
+#: PLAN-1 rows are the interesting ones: their routes predate ADR-0076 and keep
 #: their original parent-`update` gate rather than getting a `.create` code.
 EXPECTED_PERMISSIONS: dict[str, str] = {
     "requirement-test-case-links": "requirement_test_case_link.create",
@@ -117,7 +117,7 @@ def _fake_link_config(resource: str, *, with_action: bool) -> CrudEntityConfig:
     )
 
 
-# --- TC-ADMIN-065: completeness, both directions --------------------------------------------
+# --- TC-ADMIN-080: completeness, both directions --------------------------------------------
 
 
 def test_every_link_entity_declares_a_link_create_action() -> None:
@@ -137,7 +137,7 @@ def test_the_link_entities_are_exactly_the_six_junctions() -> None:
 
 
 def test_the_completeness_checker_actually_sees_a_gap() -> None:
-    """In-suite mutation check (ADR-0072's own lesson, `backend/CLAUDE.md`).
+    """In-suite mutation check (ADR-0075's own lesson, `backend/CLAUDE.md`).
 
     A partition asserted against a fixed codebase has never been observed to
     fail, so nothing otherwise distinguishes "correct" from "structurally
@@ -168,7 +168,7 @@ def test_the_spurious_checker_actually_sees_a_gap() -> None:
     assert spurious_link_create(ALL_ENTITY_CONFIGS) == set()
 
 
-# --- TC-ADMIN-066: each declaration is internally consistent --------------------------------
+# --- TC-ADMIN-081: each declaration is internally consistent --------------------------------
 
 
 @pytest.mark.parametrize("key", sorted(EXPECTED_PERMISSIONS))
@@ -215,7 +215,7 @@ def test_every_declared_permission_code_exists_in_the_rbac_catalog(key: str) -> 
 
 
 def test_only_the_four_new_routes_gate_on_their_own_resource_create_code() -> None:
-    """ADR-0073 introduces four `.create` codes and re-gates nothing.
+    """ADR-0076 introduces four `.create` codes and re-gates nothing.
 
     The two REQ-4/PLAN-1 junctions keep the parent-`update` gate their routes
     shipped with under ADR-0030/ADR-0031. Asserted here as well as in
@@ -233,7 +233,7 @@ def test_only_the_four_new_routes_gate_on_their_own_resource_create_code() -> No
             assert config.link_create.permission.endswith(".update"), key
 
 
-# --- TC-ADMIN-066: it reaches the wire ------------------------------------------------------
+# --- TC-ADMIN-081: it reaches the wire ------------------------------------------------------
 
 
 @pytest.mark.parametrize("key", sorted(EXPECTED_PERMISSIONS))

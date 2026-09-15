@@ -1,17 +1,17 @@
-"""Unit tests for ADR-0073's RBAC-extension migration data
+"""Unit tests for ADR-0076's RBAC-extension migration data
 (`alembic/versions/3e6b08c5da71_seed_trace_link_create_permissions.py`).
 
 Pure-Python, no DB/network — asserts the shape of the static tuples the
 migration's `upgrade()` inserts and grants. The migration's *behavior*
 (inserts, grants, idempotency under a real second invocation, symmetric
-downgrade) lives in `tests/integration/test_adr73_link_create_permissions.py`.
+downgrade) lives in `tests/integration/test_adr76_link_create_permissions.py`.
 
-Carries the **unit half of TC-ADMIN-072 and TC-ADMIN-073** — the static-shape
+Carries the **unit half of TC-ADMIN-087 and TC-ADMIN-088** — the static-shape
 assertions those two rows name (the catalog delta, the backfilled reads, the
 grants matching `build_role_bundles`, the revision chain); their live-database
 halves are in that integration file. Stated explicitly rather than left
 implicit in the sibling file's docstring, so a coverage audit grepping for
-`TC-ADMIN-072` finds both files.
+`TC-ADMIN-087` finds both files.
 
 This is the same "pure-Python catalog shape here, real DB behavior there" split
 `test_rbac_seed_catalog.py`/`test_rbac_seed.py` established for RBAC-4's own
@@ -22,7 +22,7 @@ what `build_permission_catalog()` gained, derived from
 `rbac_seed_catalog.LINK_CREATE_RESOURCES` rather than re-typed. A migration
 whose hardcoded tuple drifts from the catalog produces two databases that
 disagree depending on whether they were seeded fresh or backfilled — the
-failure mode `7d2c91af4e68` (ADR-0072) introduced this same assertion to
+failure mode `7d2c91af4e68` (ADR-0075) introduced this same assertion to
 prevent, generalized here.
 
 The migration file is loaded via `importlib` (not a normal `import`) since
@@ -44,7 +44,7 @@ _MIGRATION_PATH = (
     / "versions"
     / "3e6b08c5da71_seed_trace_link_create_permissions.py"
 )
-_spec = importlib.util.spec_from_file_location("adr73_seed_migration_unit", _MIGRATION_PATH)
+_spec = importlib.util.spec_from_file_location("adr76_seed_migration_unit", _MIGRATION_PATH)
 _migration = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_migration)
 
@@ -57,7 +57,7 @@ def test_new_permissions_is_exactly_the_catalog_delta_this_adr_introduces() -> N
 
 
 def test_every_new_code_exists_in_the_catalog_the_fresh_seed_builds() -> None:
-    """A fresh DB seeds from `build_permission_catalog()`; a pre-ADR-0073 DB
+    """A fresh DB seeds from `build_permission_catalog()`; a pre-ADR-0076 DB
     seeds from this migration. Both paths must land on the same set, or the
     two kinds of database diverge permanently."""
     codes = {code for code, _, _ in build_permission_catalog()}
@@ -104,7 +104,7 @@ def test_grants_match_the_static_bundle_definitions_exactly() -> None:
 
 
 def test_auditor_and_ai_agent_scoped_are_deliberately_not_granted() -> None:
-    """`auditor` is read-only by definition and ADR-0073 adds only writes;
+    """`auditor` is read-only by definition and ADR-0076 adds only writes;
     `ai_agent_scoped` reaches none of the linked entities. Pinned so that
     adding either one later is a deliberate test edit, not a silent widening.
     """
@@ -117,7 +117,7 @@ def test_auditor_and_ai_agent_scoped_are_deliberately_not_granted() -> None:
 
 
 def test_tester_gets_only_the_defect_link_create() -> None:
-    """ADR-0073's one restraint decision, asserted rather than left in prose:
+    """ADR-0076's one restraint decision, asserted rather than left in prose:
     `tester` already holds `test_case_defect_link.read` and full `defect`
     create/read/update, so that one write is a workflow it performs; the three
     requirement-level links belong to `test_manager`'s persona.

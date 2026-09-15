@@ -7,11 +7,11 @@ import { apiFetch } from "../../../lib/api/client";
 import { listEntities } from "../../../lib/api/entityCrud";
 
 /**
- * ADR-0070 — where a row click goes.
+ * ADR-0073 — where a row click goes.
  *
  * `EntityTable` owns the affordance itself (covered in
  * `components/organisms/entity-table.test.tsx`); this file covers the
- * destination, which is `EntityListPage`'s, including ADR-0070 Decision §4's
+ * destination, which is `EntityListPage`'s, including ADR-0073 Decision §4's
  * `detailPath`-takes-precedence rule.
  *
  * Two fixture entities: `widgets` (no `detailPath` — the 27-entity majority
@@ -102,10 +102,10 @@ function renderPage(entity: "widgets" | "projectlikes") {
   );
 }
 
-describe("EntityListPage row click (ADR-0070)", () => {
+describe("EntityListPage row click (ADR-0073)", () => {
   afterEach(() => vi.clearAllMocks());
 
-  it("TC-ADMIN-044: clicking a row navigates to that row's generic detail route", async () => {
+  it("TC-ADMIN-059: clicking a row navigates to that row's generic detail route", async () => {
     mockApiFetch.mockResolvedValue({ codes: [] });
     mockListEntities.mockResolvedValue({ items: ROWS, total: 2, page: 1, page_size: 25 });
 
@@ -118,12 +118,12 @@ describe("EntityListPage row click (ADR-0070)", () => {
   });
 
   /**
-   * TC-ADMIN-048: ADR-0070 Decision §4. An entity declaring `detailPath`
+   * TC-ADMIN-063: ADR-0073 Decision §4. An entity declaring `detailPath`
    * (ADR-0060 — only `Project` does today) already links its own name cell to
    * that bespoke workspace; a row click must land in the same place, or one
    * row would have two destinations.
    */
-  it("TC-ADMIN-048: clicking a row of an entity declaring detailPath navigates there, not to the generic route", async () => {
+  it("TC-ADMIN-063: clicking a row of an entity declaring detailPath navigates there, not to the generic route", async () => {
     mockApiFetch.mockResolvedValue({ codes: [] });
     mockListEntities.mockResolvedValue({ items: ROWS, total: 2, page: 1, page_size: 25 });
 
@@ -141,12 +141,12 @@ describe("EntityListPage row click (ADR-0070)", () => {
   });
 
   /**
-   * TC-ADMIN-046 (page half): the Edit icon still routes to the edit form and
+   * TC-ADMIN-061 (page half): the Edit icon still routes to the edit form and
    * the Delete icon still opens the confirm modal — a row click has not
    * swallowed either. `entity-table.test.tsx` covers the propagation
    * mechanism; this covers the real wiring end to end on the page.
    */
-  it("TC-ADMIN-046: the Edit and Delete row actions still work, and do not open the detail page", async () => {
+  it("TC-ADMIN-061: the Edit and Delete row actions still work, and do not open the detail page", async () => {
     mockApiFetch.mockResolvedValue({
       codes: [
         { code: "widget.update", project_id: null },

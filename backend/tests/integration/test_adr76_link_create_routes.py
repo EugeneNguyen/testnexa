@@ -1,13 +1,13 @@
-"""ADR-0073 integration: the four bespoke traceability link-create routes.
+"""ADR-0076 integration: the four bespoke traceability link-create routes.
 
 Real HTTP via `httpx.AsyncClient` against `TEST_API_BASE_URL`, reusing
 `test_admin2_crud.py`'s and `test_admin2_execution_trace.py`'s seeding helpers
 rather than duplicating them.
 
-Covers TC-ADMIN-067 (create-then-list round trip, all four routes),
-TC-ADMIN-068 (cross-tenant `404`, all four routes), TC-ADMIN-069 (duplicate
-`409` and cross-project `422`), TC-ADMIN-070 (permission `403`), and
-TC-ADMIN-071 (the standalone-`TestCase` project-resolver defect ADR-0073 found
+Covers TC-ADMIN-082 (create-then-list round trip, all four routes),
+TC-ADMIN-083 (cross-tenant `404`, all four routes), TC-ADMIN-084 (duplicate
+`409` and cross-project `422`), TC-ADMIN-085 (permission `403`), and
+TC-ADMIN-086 (the standalone-`TestCase` project-resolver defect ADR-0076 found
 and fixed).
 
 **Every positive test is a create-through-the-real-route, then fire the
@@ -174,16 +174,16 @@ async def _link_and_read_back(
     return rows[0]["id"]
 
 
-# --- TC-ADMIN-067 / TC-ADMIN-068: requirement -> test case ---------------------------------
+# --- TC-ADMIN-082 / TC-ADMIN-083: requirement -> test case ---------------------------------
 
 
 @pytest.mark.asyncio
-async def test_link_existing_test_case_to_requirement_then_read_it_back() -> None:  # TC-ADMIN-067
+async def test_link_existing_test_case_to_requirement_then_read_it_back() -> None:  # TC-ADMIN-082
     """`POST /requirements/{id}/test-case-links/{test_case_id}`.
 
     The `TestCase` is created standalone (REQ-5/ADR-0069's `project_id` shape)
     precisely because that is the shape a "Link existing test case" picker
-    surfaces most often and the one whose project resolution ADR-0073 had to
+    surfaces most often and the one whose project resolution ADR-0076 had to
     fix — see `test_a_standalone_test_case_can_be_linked_at_all` below for the
     same shape asserted as its own regression.
     """
@@ -240,7 +240,7 @@ async def test_link_existing_test_case_to_requirement_then_read_it_back() -> Non
             )
             link_ids = {"requirement_test_case_link": [row_id]}
 
-            # TC-ADMIN-069: the same pair again is a `409` on the pair's own
+            # TC-ADMIN-084: the same pair again is a `409` on the pair's own
             # unique constraint, never a silent second row.
             again = await client.post(
                 f"{API_PREFIX}/requirements/{requirement_id}/test-case-links/{case_id}", headers=auth
@@ -261,7 +261,7 @@ async def test_link_existing_test_case_to_requirement_then_read_it_back() -> Non
 
 
 @pytest.mark.asyncio
-async def test_linking_a_test_case_from_another_org_is_404_not_403() -> None:  # TC-ADMIN-068
+async def test_linking_a_test_case_from_another_org_is_404_not_403() -> None:  # TC-ADMIN-083
     """NFR-1/ADR-0007: existence is never confirmable across a tenant boundary.
 
     The caller is a real `org_admin` of org A with every permission, so the
@@ -335,14 +335,14 @@ async def test_linking_a_test_case_from_another_org_is_404_not_403() -> None:  #
         )
 
 
-# --- TC-ADMIN-067 / 068: requirement -> test condition, and test condition -> test case ------
+# --- TC-ADMIN-082 / 068: requirement -> test condition, and test condition -> test case ------
 
 
 @pytest.mark.asyncio
-async def test_link_test_condition_to_requirement_and_test_case_to_test_condition() -> None:  # TC-ADMIN-067
+async def test_link_test_condition_to_requirement_and_test_case_to_test_condition() -> None:  # TC-ADMIN-082
     """Two routes in one fixture, because REQ-3's own rigor path builds both
     entities in sequence — and because the pair is what proves the
-    `" (linked)"` label disambiguation ADR-0071 §5 depends on is reachable:
+    `" (linked)"` label disambiguation ADR-0074 §5 depends on is reachable:
     `Requirement` ends up with a "Test conditions" tab (the owning FK) *and* a
     "Test conditions (linked)" one (this link table), and both are now
     writable.
@@ -430,7 +430,7 @@ async def test_link_test_condition_to_requirement_and_test_case_to_test_conditio
 
 
 @pytest.mark.asyncio
-async def test_the_two_test_condition_routes_reject_a_cross_tenant_far_row() -> None:  # TC-ADMIN-068
+async def test_the_two_test_condition_routes_reject_a_cross_tenant_far_row() -> None:  # TC-ADMIN-083
     """One `404` assertion per route, both far rows sitting in another org."""
     user_ids: list = []
     org_ids: list = []
@@ -500,11 +500,11 @@ async def test_the_two_test_condition_routes_reject_a_cross_tenant_far_row() -> 
         )
 
 
-# --- TC-ADMIN-067 / 068: test case -> defect -------------------------------------------------
+# --- TC-ADMIN-082 / 068: test case -> defect -------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_link_existing_defect_to_test_case_then_read_it_back() -> None:  # TC-ADMIN-067
+async def test_link_existing_defect_to_test_case_then_read_it_back() -> None:  # TC-ADMIN-082
     """`POST /test-cases/{id}/defect-links/{defect_id}`.
 
     The `Defect` is reached the only way one exists — through a
@@ -601,7 +601,7 @@ async def test_link_existing_defect_to_test_case_then_read_it_back() -> None:  #
 
 
 @pytest.mark.asyncio
-async def test_linking_a_defect_from_another_org_is_404() -> None:  # TC-ADMIN-068
+async def test_linking_a_defect_from_another_org_is_404() -> None:  # TC-ADMIN-083
     """The fourth route's own tenant boundary, walked through the full
     `Defect -> TestExecution -> TestCycle -> TestPlan -> Project` chain."""
     user_ids: list = []
@@ -701,11 +701,11 @@ async def test_linking_a_defect_from_another_org_is_404() -> None:  # TC-ADMIN-0
         )
 
 
-# --- TC-ADMIN-069: cross-project is 422, not 404 ---------------------------------------------
+# --- TC-ADMIN-084: cross-project is 422, not 404 ---------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_same_org_but_cross_project_link_is_422_not_404() -> None:  # TC-ADMIN-069
+async def test_same_org_but_cross_project_link_is_422_not_404() -> None:  # TC-ADMIN-084
     """The other side of the boundary, and why the distinction matters.
 
     Both projects live in the org the caller is a member of, so there is no
@@ -777,11 +777,11 @@ async def test_same_org_but_cross_project_link_is_422_not_404() -> None:  # TC-A
         )
 
 
-# --- TC-ADMIN-070: permission gating ---------------------------------------------------------
+# --- TC-ADMIN-085: permission gating ---------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_a_member_without_the_link_create_code_gets_403_not_404() -> None:  # TC-ADMIN-070
+async def test_a_member_without_the_link_create_code_gets_403_not_404() -> None:  # TC-ADMIN-085
     """403, not 404 — the caller is a member of the org and can already read
     the parent, so there is no existence to hide; the only thing missing is
     the grant. This is also the exact code `linkCreate.permission` advertises,
@@ -849,12 +849,12 @@ async def test_a_member_without_the_link_create_code_gets_403_not_404() -> None:
         )
 
 
-# --- TC-ADMIN-071: the standalone-TestCase project-resolver defect ---------------------------
+# --- TC-ADMIN-086: the standalone-TestCase project-resolver defect ---------------------------
 
 
 @pytest.mark.asyncio
-async def test_a_standalone_test_case_can_be_added_to_a_suite_in_its_own_project() -> None:  # TC-ADMIN-071
-    """Regression for the defect ADR-0073 found and fixed.
+async def test_a_standalone_test_case_can_be_added_to_a_suite_in_its_own_project() -> None:  # TC-ADMIN-086
+    """Regression for the defect ADR-0076 found and fixed.
 
     `test_suite_membership.py` carried a private, three-branch copy of the
     `TestCase`-project walk, written before `TestCase` had a `project_id`
@@ -864,7 +864,7 @@ async def test_a_standalone_test_case_can_be_added_to_a_suite_in_its_own_project
     rejected it with `422 "This test case belongs to a different project."`
     even when the suite and the case sat in the same project.
 
-    Asserted against REQ-4's **own** route rather than any of ADR-0073's new
+    Asserted against REQ-4's **own** route rather than any of ADR-0076's new
     ones, because that is the route that was broken; a test against a new
     route would pass on a codebase where the defect is still live. The
     equivalent standalone path through a new route is covered by

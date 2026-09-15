@@ -251,15 +251,15 @@ class ScopeSelectorOption:
 
 @dataclass
 class LinkCreateAction:
-    """[ADR-0073](../../../docs/adr/0073-relationship-tab-write-actions.md): how
+    """[ADR-0076](../../../docs/adr/0076-relationship-tab-write-actions.md): how
     to create **one row** of a junction/link entity, described declaratively so
     a generic caller can invoke a bespoke route it knows nothing else about.
 
     Every one of ADR-0005's link tables (and REQ-4's/PLAN-1's two junctions)
     is `list`/`get` only through the factory — a row is written exclusively by
     a bespoke route (`test_suite_membership.py`, `test_plan_membership.py`,
-    `trace.py`'s own four). ADR-0071's relationship tabs list those rows
-    generically; ADR-0073 lets them *create* one, which needs two facts the
+    `trace.py`'s own four). ADR-0074's relationship tabs list those rows
+    generically; ADR-0076 lets them *create* one, which needs two facts the
     generic surface cannot derive:
 
     - **`path_template`** — the bespoke route's own URL, with one `{...}`
@@ -272,17 +272,17 @@ class LinkCreateAction:
       the route's positional shape: naming the placeholders after the link
       row's own columns is what makes the substitution generic, and what lets
       the same declaration serve a tab mounted from **either** end of the
-      junction (ADR-0072 Amendment 1 made all six bidirectional).
+      junction (ADR-0075 Amendment 1 made all six bidirectional).
     - **`permission`** — the exact code the bespoke route gates on, so
       `usePermissions` can hide the affordance before an attempt rather than
       surfacing a `403` after it (ADR-0025's own pre-emptive posture, UI
       Design Document §5). It is **not** always `<resource>.create`: REQ-4's
       and PLAN-1's routes predate this ADR and gate on the *parent* entity's
-      `test_suite.update`/`test_plan.update`, which ADR-0073 deliberately
+      `test_suite.update`/`test_plan.update`, which ADR-0076 deliberately
       leaves alone rather than re-gating a shipped route. Declaring the code
       rather than deriving it is what accommodates both.
 
-    A completeness test (`tests/unit/test_adr73_link_create_actions.py`) pins
+    A completeness test (`tests/unit/test_adr76_link_create_actions.py`) pins
     every `is_link_entity` config in the registry to declaring one of these,
     so a future junction cannot silently ship a read-only tab.
     """
@@ -366,7 +366,7 @@ class CrudEntityConfig:
     # every other scope-selector entity sets exactly one.
     scope_selector: ScopeSelectorOption | tuple[ScopeSelectorOption, ...] | None = None
     scope_resolution: ScopeResolution | None = None
-    # ADR-0073: set on link/junction entities only (`is_link_entity`) — the
+    # ADR-0076: set on link/junction entities only (`is_link_entity`) — the
     # declarative handle on the bespoke route that writes one of this entity's
     # rows. See `LinkCreateAction`'s own docstring. `None` everywhere else: an
     # entity whose rows the generic factory itself creates needs no such
@@ -500,7 +500,7 @@ def chain_resolver(hops: Sequence[tuple[type, str]]) -> ResolveOrgId:
 def branching_resolver(branches: Sequence[tuple[str, ResolveOrgId]]) -> ResolveOrgId:
     """Build a `resolve_org_id(db, row)` that picks a branch by which FK is present.
 
-    ADR-0072 Amendment 1. The generalization of `resolve_risk_item_org_id`'s
+    ADR-0075 Amendment 1. The generalization of `resolve_risk_item_org_id`'s
     hand-written shape, needed once a `scope_field` is a branching 2-tuple: the
     factory's own `_resolve_scope_for_write` calls `resolve_org_id` with a
     `types.SimpleNamespace` carrying **only the one scope attribute the request
@@ -617,7 +617,7 @@ async def resolve_test_case_project_id(db: AsyncSession, row: Any) -> uuid.UUID 
     (`resolve_terminal_org_id`) converts `project_id` -> `Project.org_id` and
     discards the `project_id` on the way, so there is no seam in it to reuse.
 
-    **ADR-0073 — found and fixed.** `test_suite_membership.py` had carried a
+    **ADR-0076 — found and fixed.** `test_suite_membership.py` had carried a
     private three-branch copy of this since REQ-4 (`_resolve_test_case_project_id`),
     written before `TestCase` had a `project_id` column at all. REQ-5/ADR-0069
     added that column and a matching fourth branch to the *org* resolver above
@@ -970,7 +970,7 @@ def _derived_fields(config: CrudEntityConfig) -> tuple[dict[str, Any], dict[str,
     schema-derived view of an entity starts from.
 
     Factored out of `derive_entity_schema` so `derive_entity_relations`
-    (ADR-0071) can ask "which fields does this entity's schema actually
+    (ADR-0074) can ask "which fields does this entity's schema actually
     serve?" without either re-deriving the whole schema (O(n^2) across the
     registry) or reading `config.field_meta` directly — the latter would be
     wrong, because a `FieldMeta` entry naming a field that no schema actually
@@ -1009,10 +1009,10 @@ def derive_sortable_fields(config: CrudEntityConfig) -> frozenset[str]:
     building the whole schema.
 
     Exists because `make_crud_router` needs this at *module import* time,
-    where `derive_entity_schema` is unreachable: since ADR-0071 that function
+    where `derive_entity_schema` is unreachable: since ADR-0074 that function
     resolves `relations` from the entity registry, and the registry is itself
     mid-import at that moment (it imports the route modules that call this
-    factory). `tests/unit/test_adr71_entity_relations.py` asserts the two stay
+    factory). `tests/unit/test_adr74_entity_relations.py` asserts the two stay
     in agreement for every registered entity, so this is a second *derivation*
     of one fact, never a second hand-kept list.
     """
@@ -1040,7 +1040,7 @@ def derive_entity_schema(
     `Update*Request` isn't marked required" posture `FieldConfig.required`'s
     own frontend doc comment already establishes.
 
-    **ADR-0071** adds a tenth key, `relations` — see
+    **ADR-0074** adds a tenth key, `relations` — see
     `derive_entity_relations`. `all_configs` defaults to the real registry,
     imported lazily because `entity_registry` imports *this* module at load
     time; deferring it to call time (long after both modules are loaded)
@@ -1110,7 +1110,7 @@ def derive_entity_schema(
     elif config.scope_selector is not None:
         scope_selector = _serialize_scope_selector_option(config.scope_selector)
 
-    # ADR-0073 — see `LinkCreateAction`. Serialized camelCase like every other
+    # ADR-0076 — see `LinkCreateAction`. Serialized camelCase like every other
     # key here; `None` for the 23 non-link entities.
     link_create: dict[str, Any] | None = None
     if config.link_create is not None:
@@ -1138,8 +1138,8 @@ def derive_entity_schema(
         "filterFields": list(config.filter_fields),
         "fields": fields_out,
         "relations": derive_entity_relations(config, all_configs),
-        # ADR-0073: an eleventh key, `null` for every entity that isn't a link
-        # table. Rides the same schema request ADR-0071's `relations` already
+        # ADR-0076: an eleventh key, `null` for every entity that isn't a link
+        # table. Rides the same schema request ADR-0074's `relations` already
         # does — a relationship tab has this entity's schema in hand before it
         # can render a row, so a "Link existing ..." action costs no extra
         # round trip, and the MCP `describe` tool gets it for free.
@@ -1147,7 +1147,7 @@ def derive_entity_schema(
     }
 
 
-# --- relationship derivation (ADR-0071) ----------------------------------------------------------
+# --- relationship derivation (ADR-0074) ----------------------------------------------------------
 
 
 def fk_fields_of(config: CrudEntityConfig) -> dict[str, str]:
@@ -1178,7 +1178,7 @@ def is_link_entity(config: CrudEntityConfig) -> bool:
     It also excludes the near-misses deliberately: `TestExecution` has two FKs
     but a real `update`; `RoleAssignment` has two FKs but a real `update` and
     no `list` at all; `RiskItem` has two FKs but a real `create`.
-    `tests/unit/test_adr71_entity_relations.py` pins this classifier against
+    `tests/unit/test_adr74_entity_relations.py` pins this classifier against
     the `*_link` naming convention in both directions, so a future entity that
     drifts into (or out of) this shape fails loudly rather than silently
     gaining or losing a many-to-many tab.
@@ -1191,7 +1191,7 @@ def derive_entity_relations(
     config: CrudEntityConfig,
     all_configs: Mapping[str, CrudEntityConfig],
 ) -> list[dict[str, Any]]:
-    """ADR-0071: the *inbound* relationships of `config` — every place some
+    """ADR-0074: the *inbound* relationships of `config` — every place some
     **other** entity points at this one — as the detail page's relationship
     tabs.
 
@@ -1216,7 +1216,7 @@ def derive_entity_relations(
     caller would still owe the unrelated scope value, which a detail page for
     a different entity has no way to know. Every relationship excluded this
     way is enumerated, with its reason, in
-    `tests/unit/test_adr71_entity_relations.py`, so the excluded set is an
+    `tests/unit/test_adr74_entity_relations.py`, so the excluded set is an
     asserted partition rather than an accident.
     """
     # `ref_entity` is singular and hyphenated ("test-case"); registry keys are
@@ -1369,7 +1369,7 @@ def make_crud_router(config: CrudEntityConfig) -> APIRouter:
         # /entities/{resource}/schema` route serves, not a second hand-kept
         # list (the exact drift ADR-0053 already exists to close).
         #
-        # ADR-0071: this reads `derive_sortable_fields` rather than
+        # ADR-0074: this reads `derive_sortable_fields` rather than
         # `derive_entity_schema(config)["fields"]` — the two agree by
         # construction (there is a test pinning that), but the full schema now
         # also derives `relations`, which needs the whole registry, and this

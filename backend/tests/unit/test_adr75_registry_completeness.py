@@ -1,6 +1,6 @@
-"""ADR-0072: the completeness guard one level below ADR-0071's.
+"""ADR-0075: the completeness guard one level below ADR-0074's.
 
-**Why this file exists, and why `test_adr71_entity_relations.py` could not be
+**Why this file exists, and why `test_adr74_entity_relations.py` could not be
 where it lives.** That file's `TestInboundFkCompleteness` partitions "every
 inbound FK in the whole registry" into served-or-excluded, and asserts the
 partition is total. It is a genuinely good test, and it was still blind to a
@@ -16,7 +16,7 @@ own bespoke membership routes, and `GET /entities/test-suites/schema` returned
 `"relations": []` — an entirely empty relationship strip on `TestSuite`'s detail
 page — with every assertion in that file green.
 
-ADR-0071 Decision §1's reasoning ("the set is **computed** by walking
+ADR-0074 Decision §1's reasoning ("the set is **computed** by walking
 `ALL_ENTITY_CONFIGS`, never hand-authored... a derivation cannot omit what it
 enumerates") is sound as far as it goes. What it does not cover is **the set
 being enumerated**: `entity_registry._ALL_CONFIGS` is a hand-typed tuple, which
@@ -79,7 +79,7 @@ EXPECTED_UNREGISTERED_CHILDREN: dict[str, str] = {
     # it is an ordinary one-to-many child of `TestPlan`, not a junction — and
     # registering it would be a new admin-surface entity (nav entry, list page,
     # permission-gated create), which is its own product decision. Flagged by
-    # ADR-0072's audit, not fixed by it.
+    # ADR-0075's audit, not fixed by it.
     "approval": "bespoke approval routes (governance.py); registering it is a new admin entity decision",
     # Bespoke invite routes in `app/api/routes/org_memberships.py`. Carries a
     # `token_hash` — a credential secret — so exposing it through a generic
@@ -100,7 +100,7 @@ EXPECTED_UNREGISTERED_CHILDREN: dict[str, str] = {
     # permanently-empty "Test design techniques (linked)" tab advertising an
     # ADMIN-1-era feature that was never built. The right order is to build the
     # write path first; the tab then appears for free, which is the property
-    # ADR-0071/ADR-0072 exist to buy.
+    # ADR-0074/ADR-0075 exist to buy.
     "test_case_test_design_technique": "relationship unimplemented (no route/query/UI); a config would ship an always-empty tab",
 }
 
@@ -122,8 +122,8 @@ def _children_of_registered_entities(
     `registered_tables` defaults to the real registry. The parameter exists so
     the mutation test below can inject a *reduced* one and prove this partition
     actually fails when an entity goes missing — a completeness assertion that
-    has never been observed to fail is exactly the artifact ADR-0072 exists to
-    warn about (ADR-0071's own partition was green throughout the defect).
+    has never been observed to fail is exactly the artifact ADR-0075 exists to
+    warn about (ADR-0074's own partition was green throughout the defect).
     """
     registered = REGISTERED_TABLES if registered_tables is None else registered_tables
     out: dict[str, dict[str, str]] = {}
@@ -159,7 +159,7 @@ def _is_junction_shaped(table: Table) -> bool:
 
 
 class TestModelLayerCompleteness:
-    """**TC-ADMIN-059.** The diff that `test_adr71_entity_relations.py`'s own partition cannot
+    """**TC-ADMIN-074.** The diff that `test_adr74_entity_relations.py`'s own partition cannot
     perform, because it runs against the registry rather than the schema."""
 
     def test_every_child_of_a_registered_entity_is_registered_or_declared(self) -> None:
@@ -170,7 +170,7 @@ class TestModelLayerCompleteness:
         }
         assert unclassified == {}, (
             "These tables hold a foreign key into a registered entity but have no "
-            "CrudEntityConfig, so ADR-0071's relationship derivation cannot see them "
+            "CrudEntityConfig, so ADR-0074's relationship derivation cannot see them "
             "and the parent entity silently renders no tab for them. Either register "
             "the entity in app/api/entity_registry.py, or add it to "
             f"EXPECTED_UNREGISTERED_CHILDREN with the reason: {sorted(unclassified)}"
@@ -195,11 +195,11 @@ class TestModelLayerCompleteness:
             assert len(reason) > 30, f"{table_name}'s exclusion reason is too thin to audit: {reason!r}"
 
     def test_the_partition_actually_fails_when_an_entity_goes_missing(self) -> None:
-        """**TC-ADMIN-059** (mutation half). The assertion this whole file rests on, applied to the file itself.
+        """**TC-ADMIN-074** (mutation half). The assertion this whole file rests on, applied to the file itself.
 
-        ADR-0071's completeness test was green for the entire life of the
+        ADR-0074's completeness test was green for the entire life of the
         defect, so "the completeness test passes" is demonstrably not evidence
-        that a completeness test *works*. This reproduces the exact ADR-0072
+        that a completeness test *works*. This reproduces the exact ADR-0075
         defect in-process — the registry with the two junction configs removed —
         and asserts the partition above reports precisely those two tables as
         unclassified.
@@ -208,16 +208,16 @@ class TestModelLayerCompleteness:
         keeps this a pure function call: nothing global is mutated, so it cannot
         leak into another test the way a patched module-level dict could.
         """
-        pre_adr72_registry = {
+        pre_adr75_registry = {
             table: key
             for table, key in REGISTERED_TABLES.items()
             if table not in {"test_suite_test_case", "test_plan_test_suite"}
         }
         # Sanity: the mutation actually removed something, so a future rename
         # cannot turn this test into a no-op against an unchanged registry.
-        assert len(pre_adr72_registry) == len(REGISTERED_TABLES) - 2
+        assert len(pre_adr75_registry) == len(REGISTERED_TABLES) - 2
 
-        assert _unclassified(pre_adr72_registry, EXPECTED_UNREGISTERED_CHILDREN) == {
+        assert _unclassified(pre_adr75_registry, EXPECTED_UNREGISTERED_CHILDREN) == {
             "test_suite_test_case",
             "test_plan_test_suite",
         }
@@ -238,7 +238,7 @@ class TestJunctionTablesSpecifically:
         }
 
     def test_the_schema_has_exactly_the_eight_junction_tables_we_think_it_does(self) -> None:
-        """**TC-ADMIN-059** (anchor half). A literal anchor, so a *new* junction table added by a future
+        """**TC-ADMIN-074** (anchor half). A literal anchor, so a *new* junction table added by a future
         story fails here loudly instead of joining the registry silently. Every
         other assertion in this file is a derived diff; this one catches the two
         derivations drifting together."""
@@ -248,7 +248,7 @@ class TestJunctionTablesSpecifically:
             "requirement_test_condition_link",
             "test_condition_test_case_link",
             "test_case_defect_link",
-            # REQ-4 / PLAN-1 — registered by ADR-0072, the gap this story closed.
+            # REQ-4 / PLAN-1 — registered by ADR-0075, the gap this story closed.
             "test_suite_test_case",
             "test_plan_test_suite",
             # Deliberately unregistered — see EXPECTED_UNREGISTERED_CHILDREN.

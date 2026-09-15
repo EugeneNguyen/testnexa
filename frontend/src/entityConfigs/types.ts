@@ -132,7 +132,7 @@ export interface ScopeResolution {
 }
 
 /**
- * [ADR-0071](../../../docs/adr/0071-entity-detail-relationship-tabs.md): one
+ * [ADR-0074](../../../docs/adr/0074-entity-detail-relationship-tabs.md): one
  * *inbound* relationship of an entity — some other entity pointing at it —
  * rendered as one tab on `EntityDetailPage`. Derived entirely on the backend
  * (`crud_factory.derive_entity_relations`) by walking every registered
@@ -170,7 +170,7 @@ export interface EntityRelation {
 }
 
 /**
- * [ADR-0073](../../../docs/adr/0073-relationship-tab-write-actions.md): how to
+ * [ADR-0076](../../../docs/adr/0076-relationship-tab-write-actions.md): how to
  * create **one row** of a junction/link entity, served on that entity's own
  * schema (`crud_factory.LinkCreateAction`). Present only for the six link
  * tables; `undefined` for every other entity.
@@ -184,7 +184,7 @@ export interface EntityRelation {
  *
  * `permission` is the exact code the bespoke route gates on, for
  * `usePermissions`. It is **not** always `<resource>.create`: REQ-4's and
- * PLAN-1's two junction routes predate ADR-0073 and gate on the parent's
+ * PLAN-1's two junction routes predate ADR-0076 and gate on the parent's
  * `test_suite.update`/`test_plan.update`.
  */
 export interface LinkCreateAction {
@@ -234,7 +234,7 @@ export interface EntityConfig {
   filterFields?: string[];
   searchFields?: string[];
   /**
-   * ADR-0071: backend-derived inbound relationships, one tab each on
+   * ADR-0074: backend-derived inbound relationships, one tab each on
    * `EntityDetailPage`.
    *
    * Optional for the same reason `filterFields`/`searchFields` are: a config
@@ -246,7 +246,7 @@ export interface EntityConfig {
    */
   relations?: EntityRelation[];
   /**
-   * ADR-0073: backend-declared handle on this entity's bespoke link-create
+   * ADR-0076: backend-declared handle on this entity's bespoke link-create
    * route. Optional for the same reason `relations` is — every hand-written
    * `EntityConfig` literal in the Vitest fixtures would otherwise become a
    * compile error for a key none of them care about. Absent for the 25

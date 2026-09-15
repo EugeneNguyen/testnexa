@@ -59,12 +59,12 @@ from app.mcp.tools.entity_tools import (
 #: retrofit route). They therefore get no `describe` tool, and their whole
 #: registry row is a `BESPOKE_EXTRA_ACTIONS` entry.
 #:
-#: ADR-0072 removed `test_suite_test_case` and `test_plan_test_suite` from this
+#: ADR-0075 removed `test_suite_test_case` and `test_plan_test_suite` from this
 #: set. Their bespoke `create` executors are untouched and still come from
 #: `BESPOKE_EXTRA_ACTIONS` — what changed is that the junction tables now *also*
 #: have a read-only `CrudEntityConfig` (so `list`/`get`/`describe` are generic),
 #: which is what makes their many-to-many relationships derivable at all
-#: (ADR-0071's `derive_entity_relations` walks `ALL_ENTITY_CONFIGS`). Being in
+#: (ADR-0074's `derive_entity_relations` walks `ALL_ENTITY_CONFIGS`). Being in
 #: this set was the symptom, not the cause: a config-less resource is invisible
 #: to every registry-derived surface, the relationship graph included.
 _EXPECTED_CONFIGLESS = {"release", "test_case_link_requirement"}
@@ -274,7 +274,7 @@ def test_generated_tool_count_is_the_number_adr_0067_states() -> None:
     (found merging the two branches) added one more resource and one more CRUD
     action, making it 147 (120 + 27) across 31 resources.
 
-    **ADR-0072** then gave `test_suite_test_case`/`test_plan_test_suite` a
+    **ADR-0075** then gave `test_suite_test_case`/`test_plan_test_suite` a
     read-only `CrudEntityConfig` each. The *resource* count is unchanged at 31 —
     both were already registry rows, as config-less bespoke `create`-only
     pseudo-resources — but each gains a generic `list` + `get` (+2 CRUD actions
@@ -284,7 +284,7 @@ def test_generated_tool_count_is_the_number_adr_0067_states() -> None:
     tools, so nothing here looked incomplete, while the REST/relationship
     surface had no config to derive from.
 
-    **ADR-0073** then gave each of the four ADR-0005 traceability links a
+    **ADR-0076** then gave each of the four ADR-0005 traceability links a
     bespoke `create` route, so each gains one CRUD action (124 -> 128) for 157
     total. The resource count is again unchanged at 31 — all four were already
     registry rows from their read-only configs.
@@ -297,7 +297,7 @@ def test_generated_tool_count_is_the_number_adr_0067_states() -> None:
     would have to be re-typed."""
     describe_count = len(ENTITY_CONFIGS_BY_RESOURCE)
     crud_count = sum(len(set(entry) - {"describe"}) for entry in TOOL_REGISTRY.values())
-    assert len(TOOL_REGISTRY) == 31, "resource count changed — update ADR-0068/ADR-0069/ADR-0072/ADR-0073 and this anchor together"
+    assert len(TOOL_REGISTRY) == 31, "resource count changed — update ADR-0068/ADR-0069/ADR-0075/ADR-0076 and this anchor together"
     assert (crud_count, describe_count) == (128, 29), (crud_count, describe_count)
     assert len(_registered()) == crud_count + describe_count == 157
 

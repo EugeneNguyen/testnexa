@@ -676,7 +676,7 @@ class TestNoSchema:
 
 class TestTopLevelShape:
     def test_response_carries_exactly_the_eleven_documented_keys(self) -> None:
-        """`relations` is the tenth (ADR-0071), `linkCreate` the eleventh (ADR-0073)."""
+        """`relations` is the tenth (ADR-0074), `linkCreate` the eleventh (ADR-0076)."""
         assert set(derive_entity_schema(_widget_config())) == {
             "resource",
             "label",
@@ -692,7 +692,7 @@ class TestTopLevelShape:
         }
 
     def test_link_create_is_null_for_an_entity_that_is_not_a_link_table(self) -> None:
-        """ADR-0073: the key is always present, `None` for the 23 non-link
+        """ADR-0076: the key is always present, `None` for the 23 non-link
         entities — never omitted, same posture `relations` takes for an entity
         nothing points at. A frontend reading `config.linkCreate` must be able
         to distinguish "no link action" from "older backend", and an always-
@@ -701,7 +701,7 @@ class TestTopLevelShape:
         assert derive_entity_schema(_widget_config())["linkCreate"] is None
 
     def test_relations_is_empty_for_an_entity_nothing_points_at(self) -> None:
-        """ADR-0071: the synthetic `_widget_config()` is not in the registry,
+        """ADR-0074: the synthetic `_widget_config()` is not in the registry,
         so nothing can declare an FK to it — the key is still present, as an
         empty list, never omitted."""
         assert derive_entity_schema(_widget_config(), all_configs={})["relations"] == []

@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { expect, test } from "@playwright/test";
 
 /**
- * ADR-0070 E2E: the generic, read-only entity detail page — real browser, full
+ * ADR-0073 E2E: the generic, read-only entity detail page — real browser, full
  * stack, real schemas served by `GET /entities/{resource}/schema`.
  *
  * The claim under test is **genericity**, so the same row-click -> detail flow
@@ -241,19 +241,19 @@ async function gotoAndWaitForList(page: import("@playwright/test").Page, url: st
   expect(response.ok()).toBeTruthy();
 }
 
-test.describe("ADR-0070: generic entity detail page", () => {
+test.describe("ADR-0073: generic entity detail page", () => {
   // Same reasoning as `admin2-generic-crud-ui.spec.ts`: these tests each drive
   // several full page loads against the dev-profile Vite server, and running
   // them concurrently with each other starves it. Scoped to this file only.
   test.describe.configure({ mode: "serial" });
 
   /**
-   * TC-ADMIN-044: clicking a row on a generic admin CRUD list opens that
+   * TC-ADMIN-059: clicking a row on a generic admin CRUD list opens that
    * record's detail page, which shows a labeled value for EVERY field the
    * served schema declares — including the five `test-plans` fields the list
    * table itself does not render.
    */
-  test("TC-ADMIN-044: a row click opens the detail page, showing every served field including the five the list table hides", async ({
+  test("TC-ADMIN-059: a row click opens the detail page, showing every served field including the five the list table hides", async ({
     page,
   }) => {
     test.setTimeout(90000);
@@ -325,12 +325,12 @@ test.describe("ADR-0070: generic entity detail page", () => {
   });
 
   /**
-   * TC-ADMIN-045: the identical flow, with no per-entity code path, across two
+   * TC-ADMIN-060: the identical flow, with no per-entity code path, across two
    * more structurally different entities — a project-scoped one with **no**
    * hidden fields, and an org/global-scoped single-field catalog on the other
    * route shape entirely.
    */
-  test("TC-ADMIN-045: the same row-click detail flow works unchanged for a no-hidden-field entity and an org-scoped catalog entity", async ({
+  test("TC-ADMIN-060: the same row-click detail flow works unchanged for a no-hidden-field entity and an org-scoped catalog entity", async ({
     page,
   }) => {
     test.setTimeout(90000);
@@ -372,11 +372,11 @@ test.describe("ADR-0070: generic entity detail page", () => {
   });
 
   /**
-   * TC-ADMIN-046: the row's own action controls are not row clicks. Clicking
+   * TC-ADMIN-061: the row's own action controls are not row clicks. Clicking
    * Edit opens the edit form (not the detail page); clicking Delete opens the
    * delete-confirm modal and leaves the route alone entirely.
    */
-  test("TC-ADMIN-046: Edit and Delete in a row still work and never open the detail page", async ({ page }) => {
+  test("TC-ADMIN-061: Edit and Delete in a row still work and never open the detail page", async ({ page }) => {
     test.setTimeout(90000);
     const fixture = seedFixture();
     try {
@@ -422,12 +422,12 @@ test.describe("ADR-0070: generic entity detail page", () => {
   });
 
   /**
-   * TC-ADMIN-047 (keyboard half, live): a row is genuinely keyboard-reachable
+   * TC-ADMIN-062 (keyboard half, live): a row is genuinely keyboard-reachable
    * — focusing it and pressing Enter navigates exactly as a mouse click does.
    * The unit suite proves the handler wiring; this proves the affordance
    * survives into a real browser's focus model.
    */
-  test("TC-ADMIN-047: a focused row navigates on Enter, same as a mouse click", async ({ page }) => {
+  test("TC-ADMIN-062: a focused row navigates on Enter, same as a mouse click", async ({ page }) => {
     test.setTimeout(90000);
     const fixture = seedFixture();
     try {
@@ -450,12 +450,12 @@ test.describe("ADR-0070: generic entity detail page", () => {
   });
 
   /**
-   * TC-ADMIN-048: ADR-0070 Decision §4 against the one real entity that
+   * TC-ADMIN-063: ADR-0073 Decision §4 against the one real entity that
    * declares `detailPath` — `Project`. Its row click must land on the bespoke
    * `ProjectDetail` workspace (the same target its own name cell links to),
    * not on the generic detail route.
    */
-  test("TC-ADMIN-048: a Project row click opens the bespoke ProjectDetail workspace, not the generic detail route", async ({
+  test("TC-ADMIN-063: a Project row click opens the bespoke ProjectDetail workspace, not the generic detail route", async ({
     page,
   }) => {
     test.setTimeout(90000);
@@ -467,7 +467,7 @@ test.describe("ADR-0070: generic entity detail page", () => {
       const row = page.getByTestId(`entity-table-row-${fixture.projectId}`);
       await expect(row).toBeVisible();
 
-      // ADR-0060's name-cell link and ADR-0070's row click agree on one target.
+      // ADR-0060's name-cell link and ADR-0073's row click agree on one target.
       await expect(row.getByRole("link", { name: fixture.projectName })).toHaveAttribute(
         "href",
         `/projects/${fixture.projectId}`,

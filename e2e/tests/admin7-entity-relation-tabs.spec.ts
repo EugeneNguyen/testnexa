@@ -2,12 +2,12 @@ import { execFileSync } from "node:child_process";
 import { expect, test } from "@playwright/test";
 
 /**
- * ADR-0071 E2E: relationship tabs on the generic entity detail page — real
+ * ADR-0074 E2E: relationship tabs on the generic entity detail page — real
  * browser, full stack, real `relations` derived by the real backend from the
  * real `ALL_ENTITY_CONFIGS`.
  *
  * **Why this file exists at all, given the backend unit suite is the heavier
- * half.** `test_adr71_entity_relations.py` proves the derived relationship set
+ * half.** `test_adr74_entity_relations.py` proves the derived relationship set
  * is complete and that every served relation *is* listable in principle. It
  * cannot prove the tab actually fetches and renders anything: the frontend's
  * own unit tests run against fixture `relations` and hand-written mocks, so
@@ -16,7 +16,7 @@ import { expect, test } from "@playwright/test";
  * real gated route with real RBAC and real tenant scoping — returns the rows
  * and renders them. That is this file's whole job.
  *
- * **Entity choice is not arbitrary.** ADR-0071's own Decision §5 turns on
+ * **Entity choice is not arbitrary.** ADR-0074's own Decision §5 turns on
  * `Requirement` being reachable to `TestCase` one way and `TestCondition` two
  * ways, so `requirements` is the only entity that exercises every branch at
  * once — a 1-n child tab, an n-n link tab, and the `" (linked)"` label
@@ -25,8 +25,8 @@ import { expect, test } from "@playwright/test";
  * too, so the feature is proven against two independent entities rather than
  * one.
  *
- * **ADR-0072 Amendment 1 (2026-09-15): junctions are tabbed from BOTH ends.**
- * ADR-0072 registered the six n-n junction tables but left each one's
+ * **ADR-0075 Amendment 1 (2026-09-15): junctions are tabbed from BOTH ends.**
+ * ADR-0075 registered the six n-n junction tables but left each one's
  * `scope_field` a single column, so `derive_entity_relations` emitted a
  * relation for the scope side only — `TestSuite` got "Test cases (linked)"
  * while `TestCase` got nothing for the identical, genuinely bidirectional
@@ -36,7 +36,7 @@ import { expect, test } from "@playwright/test";
  * assertion below is therefore a *positional* assertion against the post-
  * Amendment derivation: `test-cases` went from three tabs to six, `test-suites`
  * from one to two, and the previously-asserted absence of those reverse tabs
- * (ADR-0072 Decision §3, superseded) is gone. Not one line of the derivation
+ * (ADR-0075 Decision §3, superseded) is gone. Not one line of the derivation
  * changed to get this — the widened `scope_field` alone does it — which is why
  * the live proof that the reverse tab actually *fetches and renders* is worth
  * its own test rather than being inferred from the forward one.
@@ -104,7 +104,7 @@ interface SeededFixture {
   testLevelId: string;
   testTypeId: string;
   /**
-   * ADR-0072. Linked to the TestCase via `TestSuiteTestCase` — the junction
+   * ADR-0075. Linked to the TestCase via `TestSuiteTestCase` — the junction
    * that had no `CrudEntityConfig`, so `TestSuite` derived *zero* tabs.
    */
   testSuiteId: string;
@@ -129,7 +129,7 @@ interface SeededFixture {
  * needs no Defect row behind it.
  *
  * The same reasoning now covers `test-cases`' three **reverse-direction** tabs,
- * which ADR-0072 Amendment 1 added: "Requirements (linked)", "Test conditions
+ * which ADR-0075 Amendment 1 added: "Requirements (linked)", "Test conditions
  * (linked)" and "Test suites (linked)" are all derived from the widened
  * `scope_field`, so all three are asserted to exist off this one fixture. Only
  * one of them is also driven end to end with a real row behind it — the
@@ -138,7 +138,7 @@ interface SeededFixture {
  * /test-suite-test-cases?test_case_id=`) and its rendered row are proven live,
  * not inferred from the forward arm passing. The other two reverse arms go
  * through the identical branching-resolver code path and are covered at the
- * backend layer (`test_adr72_amendment1_bidirectional_junctions.py`, both the
+ * backend layer (`test_adr75_amendment1_bidirectional_junctions.py`, both the
  * unit and integration halves).
  *
  * `TestCase.test_level_id`/`test_type_id` are NOT NULL, so a TestLevel and a
@@ -238,14 +238,14 @@ async def main():
         session.add(step)
         await session.flush()
 
-        # ADR-0072: the two junction tables that had no CrudEntityConfig. Rows
+        # ADR-0075: the two junction tables that had no CrudEntityConfig. Rows
         # are inserted directly here rather than through REQ-4's/PLAN-1's
         # bespoke routes on purpose -- this spec's subject is what the detail
         # page renders, and the backend integration suite
-        # (test_adr72_junction_relations.py) already covers the real-write-path
+        # (test_adr75_junction_relations.py) already covers the real-write-path
         # round trip. A direct insert keeps the fixture one transaction.
         suite_name = f"ADMIN-7 Suite {suffix}"
-        suite = TestSuite(project_id=project.id, name=suite_name, purpose="ADR-0072 relation tab fixture")
+        suite = TestSuite(project_id=project.id, name=suite_name, purpose="ADR-0075 relation tab fixture")
         session.add(suite)
         await session.flush()
         session.add(TestSuiteTestCase(test_suite_id=suite.id, test_case_id=test_case.id))
@@ -307,7 +307,7 @@ from app.models.trace import RequirementTestCaseLink
 async def main():
     async with AsyncSessionLocal() as session:
         await session.execute(delete(RequirementTestCaseLink).where(RequirementTestCaseLink.requirement_id == requirement_id))
-        # ADR-0072's two junctions, before the rows on either side of them.
+        # ADR-0075's two junctions, before the rows on either side of them.
         await session.execute(delete(TestPlanTestSuite).where(TestPlanTestSuite.test_plan_id == plan_id))
         await session.execute(delete(TestSuiteTestCase).where(TestSuiteTestCase.test_suite_id == suite_id))
         await session.execute(delete(TestPlan).where(TestPlan.id == plan_id))
@@ -406,23 +406,23 @@ async function gotoDetail(
   });
 }
 
-test.describe("ADR-0071: entity detail relationship tabs", () => {
+test.describe("ADR-0074: entity detail relationship tabs", () => {
   // Same reasoning as `admin6-entity-detail-page.spec.ts`: each test drives
   // several full page loads against the dev-profile Vite server, and running
   // them concurrently starves it. Scoped to this file only.
   test.describe.configure({ mode: "serial" });
 
   /**
-   * TC-ADMIN-050 / TC-ADMIN-051 / TC-ADMIN-057, against the real derivation.
+   * TC-ADMIN-065 / TC-ADMIN-066 / TC-ADMIN-072, against the real derivation.
    *
    * `requirements` is the entity where every branch coincides: an Info tab, two
-   * 1-n child tabs, two n-n link tabs, and — the case ADR-0071 Decision §5
+   * 1-n child tabs, two n-n link tabs, and — the case ADR-0074 Decision §5
    * exists for — two of those tabs targeting `test-conditions`, distinguished
    * only by the `" (linked)"` suffix. A backend unit test asserts the derived
    * labels; this asserts the browser actually renders them as distinct,
    * selectable tabs.
    */
-  test("TC-ADMIN-050/051/057: a Requirement's detail page shows Info plus its real 1-n and n-n tabs, with linked tabs disambiguated", async ({
+  test("TC-ADMIN-065/066/072: a Requirement's detail page shows Info plus its real 1-n and n-n tabs, with linked tabs disambiguated", async ({
     page,
   }) => {
     test.setTimeout(PER_TEST_TIMEOUT_MS);
@@ -435,7 +435,7 @@ test.describe("ADR-0071: entity detail relationship tabs", () => {
         "requirements",
       );
 
-      // Info is first and selected on arrival, with ADR-0070's field list under it.
+      // Info is first and selected on arrival, with ADR-0073's field list under it.
       const tabs = page.getByRole("tab");
       await expect(tabs.first()).toHaveText("Info", { timeout: TAB_STRIP_TIMEOUT_MS });
       await expect(tabs.first()).toHaveAttribute("aria-selected", "true");
@@ -454,14 +454,14 @@ test.describe("ADR-0071: entity detail relationship tabs", () => {
         { timeout: TAB_STRIP_TIMEOUT_MS },
       );
 
-      // TC-ADMIN-051's exclusion half: `Requirement.project_id` is a
+      // TC-ADMIN-066's exclusion half: `Requirement.project_id` is a
       // many-to-one pointing at its parent Project. It renders as a field...
       await expect(page.getByTestId("entity-detail-field-project_id")).toBeVisible();
       // ...and must not have become a tab.
       await expect(page.getByTestId("entity-detail-tab-projects")).toHaveCount(0);
 
       /**
-       * ADR-0071's Amendment — Tabler's documented "tabs in the card header"
+       * ADR-0074's Amendment — Tabler's documented "tabs in the card header"
        * markup, asserted in a real browser because this is the half the unit
        * tests structurally cannot answer: jsdom applies no CSS, so only a real
        * engine can confirm the classes actually *resolve* (`.tab-content >
@@ -496,7 +496,7 @@ test.describe("ADR-0071: entity detail relationship tabs", () => {
   });
 
   /**
-   * TC-ADMIN-052 / TC-ADMIN-054: opening a 1-n tab really fetches and renders
+   * TC-ADMIN-067 / TC-ADMIN-069: opening a 1-n tab really fetches and renders
    * the child rows scoped to this record, the scoping column is suppressed, and
    * the tab is reflected in the URL.
    *
@@ -505,7 +505,7 @@ test.describe("ADR-0071: entity detail relationship tabs", () => {
    * coincidence (an unscoped list that happens to contain them) would look
    * identical on screen.
    */
-  test("TC-ADMIN-052/054: a one-to-many tab lists the real child rows scoped to this record and appears in the URL", async ({
+  test("TC-ADMIN-067/069: a one-to-many tab lists the real child rows scoped to this record and appears in the URL", async ({
     page,
   }) => {
     test.setTimeout(PER_TEST_TIMEOUT_MS);
@@ -538,7 +538,7 @@ test.describe("ADR-0071: entity detail relationship tabs", () => {
       expect(headers).not.toContain("Requirement");
 
       /**
-       * ADR-0071's Amendment: the related table renders inside the page's one
+       * ADR-0074's Amendment: the related table renders inside the page's one
        * card (`EntityTable` in `bare` mode), not as a second card nested in
        * that card's body — the visible defect the relocation would otherwise
        * introduce, and one no unit test can see, since a nested `.card`'s
@@ -553,7 +553,7 @@ test.describe("ADR-0071: entity detail relationship tabs", () => {
       await expect(page.getByTestId("entity-detail-back")).toBeVisible();
       await expect(detailPage.getByRole("heading", { name: /details$/i })).toBeVisible();
 
-      // TC-ADMIN-054: the active tab is in the URL, so this view is shareable.
+      // TC-ADMIN-069: the active tab is in the URL, so this view is shareable.
       await expect(page).toHaveURL(/\?tab=test-conditions/);
     } finally {
       cleanup(fixture);
@@ -561,14 +561,14 @@ test.describe("ADR-0071: entity detail relationship tabs", () => {
   });
 
   /**
-   * TC-ADMIN-053: the many-to-many case, and the one that cannot be inferred
+   * TC-ADMIN-068: the many-to-many case, and the one that cannot be inferred
    * from the one-to-many case — the rows listed are
    * `requirement-test-case-links`, but a row click must follow `targetField`
    * to the **TestCase**, not open the link row. Asserted as an exact URL, plus
    * an explicit check that the listed row's id is NOT the TestCase's, so
    * "navigated somewhere" cannot pass and neither can a coincidence.
    */
-  test("TC-ADMIN-053: a many-to-many tab lists link rows but a row click opens the far entity's detail page", async ({
+  test("TC-ADMIN-068: a many-to-many tab lists link rows but a row click opens the far entity's detail page", async ({
     page,
   }) => {
     test.setTimeout(PER_TEST_TIMEOUT_MS);
@@ -579,7 +579,7 @@ test.describe("ADR-0071: entity detail relationship tabs", () => {
       // First, the tab set of the *other* both-kinds entity. Tabs are derived
       // from the schema, not from data, so this needs no Defect row behind it.
       //
-      // ADR-0072 Amendment 1: this was `["Info", "Attachments", "Test steps",
+      // ADR-0075 Amendment 1: this was `["Info", "Attachments", "Test steps",
       // "Defects (linked)"]` while all six junctions scoped from one end only.
       // `TestCase` is the entity three separate junctions point at, and it
       // could show none of them; widening every `scope_field` to the branching
@@ -648,11 +648,11 @@ test.describe("ADR-0071: entity detail relationship tabs", () => {
   });
 
   /**
-   * TC-ADMIN-054 (deep-link half): arriving with `?tab=` opens that tab
+   * TC-ADMIN-069 (deep-link half): arriving with `?tab=` opens that tab
    * directly against the real backend, without an Info-tab render first — the
    * claim that makes a relationship tab genuinely shareable.
    */
-  test("TC-ADMIN-054: a ?tab= deep link opens that relationship tab directly on load", async ({ page }) => {
+  test("TC-ADMIN-069: a ?tab= deep link opens that relationship tab directly on load", async ({ page }) => {
     test.setTimeout(PER_TEST_TIMEOUT_MS);
     const fixture = seedFixture();
     try {
@@ -675,12 +675,12 @@ test.describe("ADR-0071: entity detail relationship tabs", () => {
   });
 
   /**
-   * TC-ADMIN-050 (negative half), against a real entity rather than a fixture:
+   * TC-ADMIN-065 (negative half), against a real entity rather than a fixture:
    * an entity the real derivation reports no relationships for renders no tab
    * strip at all. `test-steps` is such an entity — nothing in the registry
    * declares an FK to it.
    */
-  test("TC-ADMIN-050: an entity with no derived relationships renders no tab strip", async ({ page }) => {
+  test("TC-ADMIN-065: an entity with no derived relationships renders no tab strip", async ({ page }) => {
     test.setTimeout(PER_TEST_TIMEOUT_MS);
     const fixture = seedFixture();
     try {
@@ -695,7 +695,7 @@ test.describe("ADR-0071: entity detail relationship tabs", () => {
       await expect(page.getByTestId("entity-detail-tablist")).toHaveCount(0);
       await expect(page.getByRole("tab")).toHaveCount(0);
 
-      // ADR-0071's Amendment: with no strip there is no header to give it, so
+      // ADR-0074's Amendment: with no strip there is no header to give it, so
       // the card carries none — and no `tab-content`/`tab-pane`/`tabpanel`
       // either, which would be a tabpanel with no tablist.
       const detailPage = page.getByTestId("entity-detail-page");
@@ -709,18 +709,18 @@ test.describe("ADR-0071: entity detail relationship tabs", () => {
   });
 
   /**
-   * TC-ADMIN-060 — ADR-0072, the gap ADR-0071's own completeness test could not
+   * TC-ADMIN-075 — ADR-0075, the gap ADR-0074's own completeness test could not
    * see.
    *
    * `TestSuite` is the sharpest case in the whole feature, and the reason it is
-   * worth a live assertion rather than only a backend one: before ADR-0072 this
+   * worth a live assertion rather than only a backend one: before ADR-0075 this
    * page rendered **no tab strip at all** — `getByRole("tab")` returned 0, the
    * card had no header, and the page was indistinguishable from `TestStep`'s
    * genuinely-relationless one asserted directly above. Nothing was broken;
    * `test_suite_test_case` simply had no `CrudEntityConfig`, so the derivation
    * had nothing to walk. A relationship that renders nothing and a relationship
    * that does not exist look identical from the browser, which is exactly why
-   * the model-layer guard (`test_adr72_registry_completeness.py`) had to be
+   * the model-layer guard (`test_adr75_registry_completeness.py`) had to be
    * added alongside the fix.
    *
    * Asserts the full chain a user experiences: the strip now exists, its tab
@@ -729,7 +729,7 @@ test.describe("ADR-0071: entity detail relationship tabs", () => {
    * whose gap was the more dangerous shape (a tab strip that already looked
    * complete with three tabs, silently missing a fourth).
    *
-   * **ADR-0072 Amendment 1 moved one of the two lists asserted here.**
+   * **ADR-0075 Amendment 1 moved one of the two lists asserted here.**
    * `test-suites` was `["Info", "Test cases (linked)"]` under Decision §3's
    * single-column `scope_field`; widening `test_plan_test_suite` to the
    * branching 2-tuple emits its reverse arm too, so `TestSuite` also gains
@@ -741,7 +741,7 @@ test.describe("ADR-0071: entity detail relationship tabs", () => {
    * claims (the branching resolver is the half that can 404 a perfectly
    * well-derived tab).
    */
-  test("TC-ADMIN-060: the junction tables registered by ADR-0072 render real relationship tabs", async ({
+  test("TC-ADMIN-075: the junction tables registered by ADR-0075 render real relationship tabs", async ({
     page,
   }) => {
     test.setTimeout(PER_TEST_TIMEOUT_MS);
@@ -749,7 +749,7 @@ test.describe("ADR-0071: entity detail relationship tabs", () => {
     try {
       await login(page, fixture.orgAdmin.email, fixture.orgAdmin.password, fixture.orgId);
 
-      // --- TestSuite: an empty strip before ADR-0072, two tabs after --------
+      // --- TestSuite: an empty strip before ADR-0075, two tabs after --------
       // Amendment 1 adds the second: `test_plan_test_suite`'s reverse arm.
       await gotoDetail(
         page,
@@ -773,7 +773,7 @@ test.describe("ADR-0071: entity detail relationship tabs", () => {
       ]);
       expect(suiteListResponse.ok()).toBeTruthy();
       // The scoped request is the one the relation describes — a plain
-      // unscoped `GET /test-suite-test-cases` is a 422 by design (NFR-71).
+      // unscoped `GET /test-suite-test-cases` is a 422 by design (NFR-74).
       expect(new URL(suiteListResponse.url()).searchParams.get("test_suite_id")).toBe(
         fixture.testSuiteId,
       );
@@ -783,11 +783,11 @@ test.describe("ADR-0071: entity detail relationship tabs", () => {
       // because `test_case_id` carries a `ref_entity` in the new config.
       const suitePanel = page.getByRole("tabpanel");
       await expect(suitePanel.getByText(fixture.testCaseTitle)).toBeVisible({ timeout: 15000 });
-      // ADR-0071 Decision §6: the scoping column is suppressed, so the suite's
+      // ADR-0074 Decision §6: the scoping column is suppressed, so the suite's
       // own id — identical on every row here by construction — is not a column.
       await expect(suitePanel.getByText(fixture.testSuiteId)).toHaveCount(0);
 
-      // ADR-0071 Decision §5: the listed row is a link row, but the click
+      // ADR-0074 Decision §5: the listed row is a link row, but the click
       // follows `targetField` to the far record's own detail page.
       await suitePanel.getByText(fixture.testCaseTitle).click();
       await page.waitForURL(
@@ -826,7 +826,7 @@ test.describe("ADR-0071: entity detail relationship tabs", () => {
   });
 
   /**
-   * ADR-0072 **Amendment 1** — the reverse direction, end to end, in a real
+   * ADR-0075 **Amendment 1** — the reverse direction, end to end, in a real
    * browser. This is the case that started the amendment: `GET
    * /entities/test-cases/schema` carried no `test_suite` relation at all, so a
    * TestCase's detail page could not show the suites it belongs to even though
@@ -847,10 +847,10 @@ test.describe("ADR-0071: entity detail relationship tabs", () => {
    * the division of labour this file's own header docstring claims as its job.
    *
    * The backend layer proves the same round trip without a browser
-   * (`test_adr72_amendment1_bidirectional_junctions.py`, unit + integration);
+   * (`test_adr75_amendment1_bidirectional_junctions.py`, unit + integration);
    * neither substitutes for the other, per that file's own note.
    */
-  test("ADR-0072 Amendment 1: a TestCase's reverse-direction 'Test suites (linked)' tab fetches and lists its real link rows", async ({
+  test("ADR-0075 Amendment 1: a TestCase's reverse-direction 'Test suites (linked)' tab fetches and lists its real link rows", async ({
     page,
   }) => {
     test.setTimeout(PER_TEST_TIMEOUT_MS);
@@ -872,7 +872,7 @@ test.describe("ADR-0071: entity detail relationship tabs", () => {
 
       // Clicking it fires the REVERSE arm's scoped list request. Asserted on
       // the real network request, not inferred from what rendered: an unscoped
-      // `GET /test-suite-test-cases` is a 422 by design (NFR-71), and a
+      // `GET /test-suite-test-cases` is a 422 by design (NFR-74), and a
       // single-arm resolver would 404 this exact call while the tab above
       // still looked perfectly correct.
       const [reverseListResponse] = await Promise.all([
@@ -895,7 +895,7 @@ test.describe("ADR-0071: entity detail relationship tabs", () => {
       const panel = page.getByRole("tabpanel");
       await expect(panel.getByText(fixture.testSuiteName)).toBeVisible({ timeout: 15000 });
 
-      // ADR-0071 Decision §6, now applying to the reverse arm: the scoping
+      // ADR-0074 Decision §6, now applying to the reverse arm: the scoping
       // column is what gets suppressed, so it is `Test case` that is absent
       // here and `Test suite` that remains — the mirror image of the forward
       // tab asserted above, which is what proves the suppression follows the
@@ -904,7 +904,7 @@ test.describe("ADR-0071: entity detail relationship tabs", () => {
       expect(headers).toContain("Test suite");
       expect(headers).not.toContain("Test case");
 
-      // TC-ADMIN-054's URL half holds for a reverse tab too.
+      // TC-ADMIN-069's URL half holds for a reverse tab too.
       await expect(page).toHaveURL(/\?tab=test-suite-test-cases/);
 
       // And the row click follows `targetField` the other way — to the far

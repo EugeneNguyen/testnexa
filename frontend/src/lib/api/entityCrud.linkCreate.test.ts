@@ -1,5 +1,5 @@
 /**
- * ADR-0073 — `interpolateLinkPath` / `createLinkRow` (TC-ADMIN-074).
+ * ADR-0076 — `interpolateLinkPath` / `createLinkRow` (TC-ADMIN-089).
  *
  * The URL these two build is the entire contract between a relationship tab
  * and a bespoke route it knows nothing else about: the tab has two ids and a
@@ -31,8 +31,8 @@ function jsonResponse(body: unknown, status = 201): Response {
   });
 }
 
-describe("interpolateLinkPath (ADR-0073)", () => {
-  it("TC-ADMIN-074: fills every {field} placeholder from the matching key", () => {
+describe("interpolateLinkPath (ADR-0076)", () => {
+  it("TC-ADMIN-089: fills every {field} placeholder from the matching key", () => {
     expect(
       interpolateLinkPath(ACTION.pathTemplate, {
         requirement_id: REQUIREMENT_ID,
@@ -41,7 +41,7 @@ describe("interpolateLinkPath (ADR-0073)", () => {
     ).toBe(`/requirements/${REQUIREMENT_ID}/test-case-links/${CASE_ID}`);
   });
 
-  it("TC-ADMIN-074: substitutes by NAME, not by position", () => {
+  it("TC-ADMIN-089: substitutes by NAME, not by position", () => {
     /**
      * The whole reason `LinkCreateAction` names its placeholders after the
      * link row's own FK columns: a tab mounted at either end of the junction
@@ -55,7 +55,7 @@ describe("interpolateLinkPath (ADR-0073)", () => {
     );
   });
 
-  it("TC-ADMIN-074: throws rather than POSTing a URL with a literal brace in it", () => {
+  it("TC-ADMIN-089: throws rather than POSTing a URL with a literal brace in it", () => {
     /**
      * A missing value is a programming error (the tab always holds both ids),
      * and the alternative — leaving `{test_case_id}` in the path — produces a
@@ -70,18 +70,18 @@ describe("interpolateLinkPath (ADR-0073)", () => {
     ).toThrow(/test_case_id/);
   });
 
-  it("TC-ADMIN-074: leaves a template with no placeholders untouched", () => {
+  it("TC-ADMIN-089: leaves a template with no placeholders untouched", () => {
     expect(interpolateLinkPath("/health", {})).toBe("/health");
   });
 });
 
-describe("createLinkRow (ADR-0073)", () => {
+describe("createLinkRow (ADR-0076)", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     clearAccessToken();
   });
 
-  it("TC-ADMIN-074: POSTs the interpolated path under /api/v1 with no request body", async () => {
+  it("TC-ADMIN-089: POSTs the interpolated path under /api/v1 with no request body", async () => {
     const fetchMock = vi.fn(async () => jsonResponse({ requirement_id: REQUIREMENT_ID, test_case_id: CASE_ID }));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -96,7 +96,7 @@ describe("createLinkRow (ADR-0073)", () => {
     expect(init.body).toBeUndefined();
   });
 
-  it("TC-ADMIN-074: surfaces the route's own error envelope as an ApiError", async () => {
+  it("TC-ADMIN-089: surfaces the route's own error envelope as an ApiError", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>

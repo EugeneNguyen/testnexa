@@ -1,4 +1,4 @@
-"""ADR-0072 Amendment 1 integration: all six junctions list from BOTH ends.
+"""ADR-0075 Amendment 1 integration: all six junctions list from BOTH ends.
 
 Real HTTP via `httpx.AsyncClient` against `TEST_API_BASE_URL`, reusing
 `test_admin2_crud.py`'s and `test_admin2_execution_trace.py`'s seeding helpers
@@ -33,7 +33,7 @@ back proves it. So each test below does the same four things:
 Step 4 is what makes step 3 meaningful: a resolver that accidentally swapped
 arms rather than branching would pass step 3 alone.
 
-`tests/unit/test_adr72_amendment1_bidirectional_junctions.py` covers the
+`tests/unit/test_adr75_amendment1_bidirectional_junctions.py` covers the
 resolver branches in isolation (including the dangling-FK and orphan shapes no
 live fixture can legally construct) and carries the mutation check proving the
 pre-Amendment resolver genuinely fails these same inputs.
@@ -114,13 +114,13 @@ async def _assert_relation_lists(
     relations = _relations(schema.json())
     assert link_entity in relations, (
         f"{parent_entity}'s schema does not advertise {link_entity} — the reverse "
-        f"direction ADR-0072 Amendment 1 adds. Served: {sorted(relations)}"
+        f"direction ADR-0075 Amendment 1 adds. Served: {sorted(relations)}"
     )
     relation = relations[link_entity]
     assert relation["kind"] == "many-to-many"
     assert relation["scopeField"] == expected_scope_field
     assert relation["label"] == expected_label
-    # ADR-0071 §5: the tab is labelled and navigated by the FAR entity.
+    # ADR-0074 §5: the tab is labelled and navigated by the FAR entity.
     assert relation["targetEntity"] == expected_target_entity
     assert relation["targetField"] == expected_target_field
 
@@ -148,7 +148,7 @@ async def _assert_relation_lists(
 
 @pytest.mark.asyncio
 async def test_requirement_test_case_link_lists_from_the_test_case_end_too() -> None:
-    """**TC-ADMIN-063.** The case that started this: `GET /entities/test-cases/schema` carried no
+    """**TC-ADMIN-078.** The case that started this: `GET /entities/test-cases/schema` carried no
     `requirement`/`test-suite` relation at all, so a `TestCase` detail page could
     not show the requirements tracing to it even though the link table was
     populated and the relationship is genuinely bidirectional.
@@ -247,12 +247,12 @@ async def test_requirement_test_case_link_lists_from_the_test_case_end_too() -> 
 
 @pytest.mark.asyncio
 async def test_the_two_test_condition_junctions_list_from_their_reverse_ends() -> None:
-    """**TC-ADMIN-063.** Two junctions in one fixture, because REQ-3's rigor path builds both in
+    """**TC-ADMIN-078.** Two junctions in one fixture, because REQ-3's rigor path builds both in
     sequence: `POST /requirements/{id}/test-conditions` writes the
     `RequirementTestConditionLink`, and `POST /test-conditions/{id}/test-cases`
     writes the `TestConditionTestCaseLink`.
 
-    Also asserts the label-collision property ADR-0071 §5 depends on: after the
+    Also asserts the label-collision property ADR-0074 §5 depends on: after the
     widening, `TestCondition` serves a "Requirements (linked)" tab *and* a "Test
     cases (linked)" tab, and `TestCase` serves "Requirements (linked)" *and*
     "Test conditions (linked)" — four tabs whose labels must stay distinct or
@@ -396,9 +396,9 @@ async def test_the_two_test_condition_junctions_list_from_their_reverse_ends() -
 
 @pytest.mark.asyncio
 async def test_the_two_membership_junctions_list_from_their_reverse_ends() -> None:
-    """**TC-ADMIN-063.** ADR-0072's own two junctions, now bidirectional.
+    """**TC-ADMIN-078.** ADR-0075's own two junctions, now bidirectional.
 
-    `TestSuite` is the entity ADR-0072 gave its first tab; Amendment 1 gives it
+    `TestSuite` is the entity ADR-0075 gave its first tab; Amendment 1 gives it
     a second ("Test plans (linked)") and gives `TestCase` the reverse of the
     suite membership it never had. Both join rows are written through the real
     bespoke membership routes (ADR-0030 / ADR-0031).
@@ -477,7 +477,7 @@ async def test_the_two_membership_junctions_list_from_their_reverse_ends() -> No
             suite_link_ids = [suite_link_id]
 
             # NEW: TestSuite -> the plans including it. This is `TestSuite`'s
-            # second tab; ADR-0072 gave it its first.
+            # second tab; ADR-0075 gave it its first.
             plan_link_id = await _assert_relation_lists(
                 client,
                 auth,
@@ -555,8 +555,8 @@ async def test_the_two_membership_junctions_list_from_their_reverse_ends() -> No
 
 @pytest.mark.asyncio
 async def test_defect_gains_its_first_relationship_tab_from_the_defect_arm() -> None:
-    """**TC-ADMIN-063.** `Defect`'s detail page rendered **no tab strip at all** before Amendment 1
-    — the same symptom ADR-0072 fixed for `TestSuite`, and equally
+    """**TC-ADMIN-078.** `Defect`'s detail page rendered **no tab strip at all** before Amendment 1
+    — the same symptom ADR-0075 fixed for `TestSuite`, and equally
     indistinguishable from an entity that genuinely has no relationships.
 
     This arm also walks the longest new chain (`Defect` -> `TestExecution` ->
@@ -703,7 +703,7 @@ async def test_defect_gains_its_first_relationship_tab_from_the_defect_arm() -> 
 
 @pytest.mark.asyncio
 async def test_the_reverse_arm_enforces_the_same_404_tenant_boundary_as_the_original() -> None:
-    """**TC-ADMIN-064.** A new scope arm is a new way into the resolver, so it is a new way to get
+    """**TC-ADMIN-079.** A new scope arm is a new way into the resolver, so it is a new way to get
     the tenant boundary wrong — and the widening's whole mechanism is "add a
     branch to `resolve_org_id`," i.e. a direct edit to the function NFR-1 rests
     on for these entities.

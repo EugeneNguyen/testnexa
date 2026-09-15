@@ -47,7 +47,7 @@ CRUD_RESOURCES: tuple[str, ...] = (
 
 # 8 resources that are read-only (system-appended / no direct write API).
 #
-# ADR-0072 added the last two. `test_suite_test_case`/`test_plan_test_suite`
+# ADR-0075 added the last two. `test_suite_test_case`/`test_plan_test_suite`
 # are REQ-4's/PLAN-1's junction tables: their rows are written only by the
 # bespoke membership routes (`app/api/routes/test_suite_membership.py`,
 # `test_plan_membership.py`), gated on `test_suite.update`/`test_plan.update`,
@@ -70,7 +70,7 @@ READ_ONLY_RESOURCES: tuple[str, ...] = (
 # 31 resources total (23 CRUD + 8 read-only), per the plan/Database Document.
 ALL_RESOURCES: tuple[str, ...] = CRUD_RESOURCES + READ_ONLY_RESOURCES
 
-# ADR-0073: the 4 ADR-0005 traceability link tables gain a **`create` action
+# ADR-0076: the 4 ADR-0005 traceability link tables gain a **`create` action
 # only** — they stay in `READ_ONLY_RESOURCES` above because that tuple's real
 # meaning is "no generic CRUD surface, no `update`, no `delete`", which is
 # still exactly true: a link row remains immutable and un-deletable through the
@@ -86,7 +86,7 @@ ALL_RESOURCES: tuple[str, ...] = CRUD_RESOURCES + READ_ONLY_RESOURCES
 # The two junction resources (`test_suite_test_case`/`test_plan_test_suite`)
 # are deliberately **absent**: their link-create routes shipped under
 # ADR-0030/ADR-0031 gated on `test_suite.update`/`test_plan.update`, and
-# ADR-0073 re-gates no already-shipped route — see each config's own
+# ADR-0076 re-gates no already-shipped route — see each config's own
 # `link_create` comment.
 LINK_CREATE_RESOURCES: tuple[str, ...] = (
     "requirement_test_case_link",
@@ -120,7 +120,7 @@ def build_permission_catalog() -> list[tuple[str, str, str]]:
 
     23 CRUD resources x 4 actions (92) + 8 read-only resources x 1 action (8)
     + 4 link-create resources x 1 action (4) + 2 special verbs (2) = 106 total
-    (ADR-0072 took this from 100 to 102; ADR-0073 from 102 to 106).
+    (ADR-0075 took this from 100 to 102; ADR-0076 from 102 to 106).
     """
     catalog: list[tuple[str, str, str]] = []
 
@@ -131,7 +131,7 @@ def build_permission_catalog() -> list[tuple[str, str, str]]:
     for resource in READ_ONLY_RESOURCES:
         catalog.append((_code(resource, "read"), resource, "read"))
 
-    # ADR-0073 — see `LINK_CREATE_RESOURCES`. Appended after the read block so
+    # ADR-0076 — see `LINK_CREATE_RESOURCES`. Appended after the read block so
     # each link table's `.read`/`.create` pair still reads together in the
     # catalog's natural order by resource.
     for resource in LINK_CREATE_RESOURCES:
@@ -211,26 +211,26 @@ def build_role_bundles(all_permission_codes: set[str]) -> dict[str, set[str]]:
         # ADR-0033 already took for `test_execution.*` above. Fifth such ad hoc
         # extension for this role.
         | {_code("defect", "create"), _code("test_case_defect_link", "read")}
-        # ADR-0072: `test_suite_test_case.read` + `test_plan_test_suite.read`.
+        # ADR-0075: `test_suite_test_case.read` + `test_plan_test_suite.read`.
         # This role already held full `test_suite` and `test_plan` CRUD (RBAC-4
         # / ADR-0018), so it could already manage suite membership and plan
         # scope through REQ-4's/PLAN-1's bespoke routes — but those are gated on
         # `test_suite.update`/`test_plan.update`, while the junction tables'
         # new generic `list`/`get` gate on their own `.read` codes, which no
         # bundle held because the resources did not exist until this ADR.
-        # Without these two the ADR-0071 relationship tabs on `TestSuite`/
+        # Without these two the ADR-0074 relationship tabs on `TestSuite`/
         # `TestPlan` would render a `403` for the very role that owns those
         # screens. Sixth such ad hoc extension for this role — exactly the
         # pattern `backend/CLAUDE.md` flags as eventually deserving a dedicated
         # bundle audit rather than a seventh silent patch.
         | {_code("test_suite_test_case", "read"), _code("test_plan_test_suite", "read")}
-        # ADR-0073: `create` on all four ADR-0005 traceability links, plus the
+        # ADR-0076: `create` on all four ADR-0005 traceability links, plus the
         # three `.read` codes this role still lacked (it already held
         # `test_case_defect_link.read` from ADR-0044). Read and write are
-        # granted together deliberately: without the read, the ADR-0071
+        # granted together deliberately: without the read, the ADR-0074
         # relationship tab the write action lives on would `403` before the
         # button could render, so granting one without the other would ship a
-        # capability nobody can reach — the same read+write pairing ADR-0072
+        # capability nobody can reach — the same read+write pairing ADR-0075
         # established for the two junctions above.
         #
         # This is the traceability-owning role: it is the only bundle holding
@@ -238,7 +238,7 @@ def build_role_bundles(all_permission_codes: set[str]) -> dict[str, set[str]]:
         # already has full `test_condition`/`test_case` CRUD (ADR-0028) and
         # `defect.create` (ADR-0044) — every entity on both ends of all four
         # links. Seventh ad hoc extension for this role; `backend/CLAUDE.md`
-        # flags the pattern as overdue a dedicated bundle audit, which ADR-0073
+        # flags the pattern as overdue a dedicated bundle audit, which ADR-0076
         # deliberately does not attempt.
         | _read_codes(LINK_CREATE_RESOURCES)
         | {_code(resource, "create") for resource in LINK_CREATE_RESOURCES}
@@ -269,13 +269,13 @@ def build_role_bundles(all_permission_codes: set[str]) -> dict[str, set[str]]:
         | {_code("test_case_defect_link", "read")}
         | {_code("test_plan", "read")}
         | {_code("test_suite", "read")}
-        # ADR-0072: `tester` already held `test_suite.read`/`test_plan.read`,
+        # ADR-0075: `tester` already held `test_suite.read`/`test_plan.read`,
         # so it can open both detail pages; these two codes are what let the
         # relationship tabs on them actually list rather than `403`. Same
         # reasoning, and same pairing with an existing `.read`, as ADR-0044's
         # own `test_case_defect_link.read` grant just above.
         | {_code("test_suite_test_case", "read"), _code("test_plan_test_suite", "read")}
-        # ADR-0073: exactly one of the four new codes. `tester` already holds
+        # ADR-0076: exactly one of the four new codes. `tester` already holds
         # `test_case_defect_link.read` (ADR-0044) and `defect.create`/`.read`/
         # `.update`, so "this failure is the defect I already raised" is a
         # workflow this role genuinely performs — the read it needs to see the

@@ -1,15 +1,15 @@
-# ADR-0071: Relationship tabs on the generic entity detail page, from a backend-derived relationship graph
+# ADR-0074: Relationship tabs on the generic entity detail page, from a backend-derived relationship graph
 
 - **Status:** Accepted
 - **Date:** 2026-09-15
 - **Deciders:** xuanbinh91@gmail.com (CTO)
 - **Extends:** [ADR-0053](0053-tabler-install-phase-1-cdn.md)-era backend-driven entity schema as delivered by [ADR-0055](0055-admin-3-backend-driven-entity-schema.md); builds on [ADR-0005](0005-traceability-link-dedicated-join-tables.md)'s dedicated link tables and [ADR-0022](0022-generic-crud-router-factory.md)'s scoped list routes
-- **Completed by:** [ADR-0072](0072-junction-table-registry-completeness.md) (2026-09-15) — this ADR's derivation was correct but incomplete in one specific way, found the same day: it enumerates `ALL_ENTITY_CONFIGS`, and two real junction tables had no entry there, so two genuine many-to-many relationships produced no tab (`TestSuite`'s strip was empty entirely). Decision §1's "a derivation cannot omit what it enumerates" and Decision §4's excluded-set-is-exhaustive claim are both corrected in place below. **Nothing in this ADR's Decision is reversed** — the derivation rule, the exclusion rules, the `?tab=` posture, the hidden scoping column and the read-only stance all stand; ADR-0072 registers the missing entities and moves the completeness assertion down to the model layer.
-- **Partially supersedes:** [ADR-0070](0070-generic-entity-detail-page.md) — its Consequences clause "related-record panels ... are deliberately out of scope". Every other part of ADR-0070 (the page itself, the unfiltered field list, row-click entry, `detailPath` precedence, the shared value renderer) stands unchanged.
+- **Completed by:** [ADR-0075](0075-junction-table-registry-completeness.md) (2026-09-15) — this ADR's derivation was correct but incomplete in one specific way, found the same day: it enumerates `ALL_ENTITY_CONFIGS`, and two real junction tables had no entry there, so two genuine many-to-many relationships produced no tab (`TestSuite`'s strip was empty entirely). Decision §1's "a derivation cannot omit what it enumerates" and Decision §4's excluded-set-is-exhaustive claim are both corrected in place below. **Nothing in this ADR's Decision is reversed** — the derivation rule, the exclusion rules, the `?tab=` posture, the hidden scoping column and the read-only stance all stand; ADR-0075 registers the missing entities and moves the completeness assertion down to the model layer.
+- **Partially supersedes:** [ADR-0073](0073-generic-entity-detail-page.md) — its Consequences clause "related-record panels ... are deliberately out of scope". Every other part of ADR-0073 (the page itself, the unfiltered field list, row-click entry, `detailPath` precedence, the shared value renderer) stands unchanged.
 
 ## Context
 
-[ADR-0070](0070-generic-entity-detail-page.md) shipped a read-only detail page
+[ADR-0073](0073-generic-entity-detail-page.md) shipped a read-only detail page
 that renders every field of one record. It is deliberately flat: a record's
 fields and nothing else.
 
@@ -34,10 +34,10 @@ holding one schema can see which parents a record points **at** (many-to-one),
 and has no way at all to discover what points **back**. Answering that from the
 frontend would mean fetching all 28 schemas on every detail page.
 
-### Why this is not an ADR-0070 amendment
+### Why this is not an ADR-0073 amendment
 
 `docs/CLAUDE.md` reserves an in-place `### Amendment` for a same-branch
-correction to a story's own decision. This is not a correction — ADR-0070's
+correction to a story's own decision. This is not a correction — ADR-0073's
 read-only, no-related-panels scope was right for what it shipped and its text
 stays accurate. This adds a **new API contract field** (`relations` on a route
 five components already consume), a **new derivation rule** other surfaces can
@@ -62,7 +62,7 @@ This is the direct answer to `backend/CLAUDE.md`'s registry-completeness rule
 relationship map is exactly the shape that silently omits one entity and simply
 never renders its tab. A derivation cannot omit what it enumerates.
 
-> **Corrected by [ADR-0072](0072-junction-table-registry-completeness.md)
+> **Corrected by [ADR-0075](0075-junction-table-registry-completeness.md)
 > (2026-09-15).** That last sentence is true and was load-bearing for the wrong
 > thing. A derivation cannot omit what it enumerates — but this paragraph never
 > examined **the set being enumerated**, and `entity_registry._ALL_CONFIGS` is
@@ -70,7 +70,7 @@ never renders its tab. A derivation cannot omit what it enumerates.
 > about. Two junction tables (`test_suite_test_case`, `test_plan_test_suite`)
 > had bespoke membership routes and no `CrudEntityConfig`, so their
 > relationships were invisible here and `TestSuite` rendered no tab strip at
-> all. ADR-0072 registers both and moves the completeness assertion to the
+> all. ADR-0075 registers both and moves the completeness assertion to the
 > model layer (`Base.metadata`), which a model joins by declaration and so
 > cannot be forgotten the way a registry row can.
 
@@ -110,9 +110,9 @@ so the FK must be the child's own `scope_field` (or one arm of a branching
 **An FK that is only a `filter_field` is not enough** — the caller would still
 owe the child's unrelated scope value, which a detail page for a different
 entity cannot know. This is a real boundary, not a technicality, and it is why
-**8** inbound FKs produce no tab today (12 as first written; 14 after ADR-0072
+**8** inbound FKs produce no tab today (12 as first written; 14 after ADR-0075
 registered two more junctions, each contributing its own reverse side; **8**
-since [ADR-0072 Amendment 1](0072-junction-table-registry-completeness.md#amendment-1-2026-09-15--every-junction-is-scoped-and-therefore-tabbed-from-both-ends)
+since [ADR-0075 Amendment 1](0075-junction-table-registry-completeness.md#amendment-1-2026-09-15--every-junction-is-scoped-and-therefore-tabbed-from-both-ends)
 removed the entire link-table row below):
 
 | Excluded relationship | Why |
@@ -121,7 +121,7 @@ removed the entire link-table row below):
 | `TestCondition` → `TestCase`s | `test_condition_id` is neither scope nor filter on `TestCase` |
 | `TestLevel`/`TestType` → `TestCase`s | filter fields only; `TestCase`'s scope is `project_id` |
 | `Environment`/`Release` → `TestCycle`s | `TestCycle`'s scope is `test_plan_id` |
-| ~~Reverse side of all 6 link tables~~ | ~~each link's scope is one of its two FKs, so it lists from that side only~~ — **no longer excluded.** [ADR-0072 Amendment 1](0072-junction-table-registry-completeness.md#amendment-1-2026-09-15--every-junction-is-scoped-and-therefore-tabbed-from-both-ends) (2026-09-15) widened all six junctions' `scope_field` to the branching 2-tuple of both FK columns — the option ADR-0072 Decision §3 explicitly left open for "all six at once" — so every link table now lists, and tabs, from both ends. This clause was the *only* entry in the table that described a deliberate design limit rather than a genuine list-capability gap, and the remaining rows are unaffected |
+| ~~Reverse side of all 6 link tables~~ | ~~each link's scope is one of its two FKs, so it lists from that side only~~ — **no longer excluded.** [ADR-0075 Amendment 1](0075-junction-table-registry-completeness.md#amendment-1-2026-09-15--every-junction-is-scoped-and-therefore-tabbed-from-both-ends) (2026-09-15) widened all six junctions' `scope_field` to the branching 2-tuple of both FK columns — the option ADR-0075 Decision §3 explicitly left open for "all six at once" — so every link table now lists, and tabs, from both ends. This clause was the *only* entry in the table that described a deliberate design limit rather than a genuine list-capability gap, and the remaining rows are unaffected |
 | `Project`/`Role` → `RoleAssignment`s | `RoleAssignment` registers no `list` route at all |
 
 Note what did **not** change to make that happen: this section's rule is still
@@ -132,16 +132,16 @@ relaxing it — `derive_entity_relations` is byte-for-byte unchanged.
 **These are flagged, not worked around.** Serving them needs new backend list
 capability (a widened `scope_field`, a bespoke reverse-list route, or promoting
 a filter field to a scope) — a per-relationship API decision, not something to
-smuggle into a frontend story. `tests/unit/test_adr71_entity_relations.py`
+smuggle into a frontend story. `tests/unit/test_adr74_entity_relations.py`
 asserts this excluded set is the exact complement of the served one, so a future
 entity or FK cannot land in neither bucket.
 
-> **Scope of that guarantee, per [ADR-0072](0072-junction-table-registry-completeness.md):**
+> **Scope of that guarantee, per [ADR-0075](0075-junction-table-registry-completeness.md):**
 > "a future entity or FK" means one *registered in `ALL_ENTITY_CONFIGS`*. The
 > partition enumerates the same registry the derivation does, so a model with no
 > config contributes to neither side and the assertion holds vacuously — which
 > is precisely how the two missing junctions went unnoticed. The model-layer
-> partition in `tests/unit/test_adr72_registry_completeness.py` is what closes
+> partition in `tests/unit/test_adr75_registry_completeness.py` is what closes
 > that outer ring.
 
 ### 5. Many-to-many tabs list the link rows but are labelled and navigated by the far entity
@@ -182,7 +182,7 @@ still part of `useFkLabels`' schema-fetch list.
 
 `?tab=<entity slug>`, validated against the served relationship set, falling
 back to Info when absent or unrecognized. Same deep-link posture that made
-ADR-0070 fetch its own row rather than reuse the list's in-memory copy — a
+ADR-0073 fetch its own row rather than reuse the list's in-memory copy — a
 relationship tab is shareable and survives a reload. Written with `replace` so
 tabbing around doesn't bury the list page in history.
 
@@ -204,7 +204,7 @@ hand-written markup owns its own semantics.
 
 The molecule deliberately has **no count badge**: a count would mean firing
 every relationship's list request on mount just to render the strip, and
-`badge bg-secondary` is currently invisible repo-wide (ADR-0070's own
+`badge bg-secondary` is currently invisible repo-wide (ADR-0073's own
 Consequences) — a new call site of a known-broken class is not something to add
 in a story that isn't fixing it.
 
@@ -213,7 +213,7 @@ in a story that isn't fixing it.
 - **Positive.** Every record's related records are one click away, on all 28
   entities at once, with no per-entity code. 22 relationships across 9 entities
   became reachable when this shipped; **30 across 10** as of
-  [ADR-0072](0072-junction-table-registry-completeness.md) and its Amendment 1
+  [ADR-0075](0075-junction-table-registry-completeness.md) and its Amendment 1
   (+2 from registering the two missing junctions, +6 from making all six
   bidirectional — the tenth entity is `Defect`, which had no tab strip at all).
 - **Positive.** A new backend FK whose field is the child's scope field becomes
@@ -226,7 +226,7 @@ in a story that isn't fixing it.
   since it shares `derive_entity_schema` — an agent can now discover the
   relationship graph it previously had to infer.
 - **Neutral / accepted.** 12 inbound FKs produce no tab (Decision §4) — 14 after
-  [ADR-0072](0072-junction-table-registry-completeness.md) registered two more
+  [ADR-0075](0075-junction-table-registry-completeness.md) registered two more
   link tables, each adding its own reverse side, then **8** after that ADR's
   Amendment 1 made all six junctions bidirectional. This is a *backend
   list-capability* gap surfaced by this story, not created by it, and it is
@@ -304,7 +304,7 @@ now gives each trigger an `id` (`tabTriggerId`) so the panel can point back with
 `card-header-tabs` is passed in by the caller rather than baked into the
 molecule, since a strip mounted anywhere else must not carry it.
 
-**Coverage.** No new TC — this is a markup correction inside TC-ADMIN-050..054's
+**Coverage.** No new TC — this is a markup correction inside TC-ADMIN-065..069's
 existing scope, and the assertions were added to the specs those TCs already
 name: `tabs.test.tsx` (trigger ids, `className` reaching the list),
 `EntityDetailPage.tabs.test.tsx` (strip is the card header's only child, pane is
@@ -337,7 +337,7 @@ reach, since jsdom applies no CSS: a real engine confirming the pane is actually
   Rejected as out of scope: each one is its own API decision about widening a
   list route's contract, and quietly dropping the 422 guard would break the
   tenant-scoping posture ADR-0022 built it for. **Six of them were subsequently
-  served — without relaxing anything** ([ADR-0072](0072-junction-table-registry-completeness.md)
+  served — without relaxing anything** ([ADR-0075](0075-junction-table-registry-completeness.md)
   Amendment 1, 2026-09-15): widening the six link tables' own `scope_field` to a
   branching 2-tuple makes both directions satisfy the scope rule as written, so
   the `422` guard is fully intact and each direction still carries exactly one

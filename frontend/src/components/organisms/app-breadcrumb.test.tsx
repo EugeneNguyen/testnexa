@@ -157,12 +157,12 @@ describe("AppBreadcrumb", () => {
   });
 
   /**
-   * ADR-0070 / TC-ADMIN-045: the new read-only detail route gets its own
+   * ADR-0073 / TC-ADMIN-060: the new read-only detail route gets its own
    * trail in both scopes, entity segment linked back to that entity's list,
    * `Details` as the active (unlinked) final segment — the same shape the
    * pre-existing `/edit` entries already use.
    */
-  it("TC-ADMIN-045: an org-scoped admin detail route resolves Dashboard -> {entity label} -> Details", () => {
+  it("TC-ADMIN-060: an org-scoped admin detail route resolves Dashboard -> {entity label} -> Details", () => {
     const { container } = renderBreadcrumb("/orgs/org-1/admin/roles/role-1");
 
     const rolesLabel = allEntities.find((e) => e.key === "roles")!.label;
@@ -171,7 +171,7 @@ describe("AppBreadcrumb", () => {
     expect(screen.getByText("Details").closest("a")).toBeNull();
   });
 
-  it("TC-ADMIN-045: a project-scoped admin detail route resolves Projects -> {name} -> {entity label} -> Details", async () => {
+  it("TC-ADMIN-060: a project-scoped admin detail route resolves Projects -> {name} -> {entity label} -> Details", async () => {
     mockGetProject.mockResolvedValue(PROJECT_FIXTURE);
 
     const { container } = renderBreadcrumb(`/projects/${PROJECT_ID}/admin/test-cases/tc-1`);

@@ -1,4 +1,4 @@
-"""ADR-0072 integration: the two junction tables ADR-0071's relationship
+"""ADR-0075 integration: the two junction tables ADR-0074's relationship
 derivation could not see, end to end against a live server.
 
 Real HTTP via `httpx.AsyncClient` against `TEST_API_BASE_URL`, same style and
@@ -12,7 +12,7 @@ tenant walk, a `scope_field` the list route 422s on. `backend/CLAUDE.md`'s
 resolver-completeness note makes the same point for bespoke creates ("write a
 create-then-immediate-read integration test, not just a create-response
 assertion — a create-only test cannot catch this class of bug"), and it applies
-with full force here: the whole defect ADR-0072 fixes was a config that *didn't
+with full force here: the whole defect ADR-0075 fixes was a config that *didn't
 exist*, so "the config exists" is precisely the assertion that would have looked
 fine either way.
 
@@ -70,7 +70,7 @@ def _relations(schema_body: dict) -> dict[str, dict]:
 
 @pytest.mark.asyncio
 async def test_test_suite_schema_serves_a_test_case_relation_and_that_relation_actually_lists() -> None:
-    """**TC-ADMIN-060.** The headline regression: before ADR-0072,
+    """**TC-ADMIN-075.** The headline regression: before ADR-0075,
     `GET /entities/test-suites/schema` returned `"relations": []` — an entirely
     empty tab strip on `TestSuite`'s detail page — even with join rows present,
     because `test_suite_test_case` had no `CrudEntityConfig` for
@@ -96,21 +96,21 @@ async def test_test_suite_schema_serves_a_test_case_relation_and_that_relation_a
     suite_link_ids: list = []
     try:
         async with AsyncSessionLocal() as session:
-            admin, org = await _create_org_admin(session, "adr72-suite")
-            other_admin, other_org = await _create_org_admin(session, "adr72-suite-other")
-            project = await _create_project(session, org, "adr72-suite")
-            requirement = await _create_requirement(session, project, "adr72-suite")
-            condition = await _create_test_condition(session, requirement, "adr72-suite")
-            level, type_ = await _create_taxonomy_pair(session, "adr72-suite")
+            admin, org = await _create_org_admin(session, "adr75-suite")
+            other_admin, other_org = await _create_org_admin(session, "adr75-suite-other")
+            project = await _create_project(session, org, "adr75-suite")
+            requirement = await _create_requirement(session, project, "adr75-suite")
+            condition = await _create_test_condition(session, requirement, "adr75-suite")
+            level, type_ = await _create_taxonomy_pair(session, "adr75-suite")
             case = await _create_test_case(
                 session,
                 test_condition=condition,
                 test_level=level,
                 test_type=type_,
                 created_by=admin.actor_id,
-                tag="adr72-suite",
+                tag="adr75-suite",
             )
-            suite = TestSuite(project_id=project.id, name=_unique_name("Suite adr72"))
+            suite = TestSuite(project_id=project.id, name=_unique_name("Suite adr75"))
             session.add(suite)
             await session.flush()
             await session.commit()
@@ -143,12 +143,12 @@ async def test_test_suite_schema_serves_a_test_case_relation_and_that_relation_a
             schema = await client.get(f"{API_PREFIX}/entities/test-suites/schema", headers=auth)
             assert schema.status_code == 200
             relations = _relations(schema.json())
-            assert relations != {}, "TestSuite's relation set is empty — the ADR-0072 regression"
+            assert relations != {}, "TestSuite's relation set is empty — the ADR-0075 regression"
             relation = relations["test-suite-test-cases"]
             assert relation["kind"] == "many-to-many"
             assert relation["scopeField"] == "test_suite_id"
             assert relation["label"] == "Test cases (linked)"
-            # The tab is labelled and navigated by the FAR entity (ADR-0071 §5).
+            # The tab is labelled and navigated by the FAR entity (ADR-0074 §5).
             assert relation["targetEntity"] == "test-cases"
             assert relation["targetField"] == "test_case_id"
 
@@ -202,7 +202,7 @@ async def test_test_suite_schema_serves_a_test_case_relation_and_that_relation_a
 
 @pytest.mark.asyncio
 async def test_test_plan_schema_serves_a_test_suite_relation_and_that_relation_actually_lists() -> None:
-    """**TC-ADMIN-060** (second half). `TestPlan`'s gap was the more dangerous shape of the same
+    """**TC-ADMIN-075** (second half). `TestPlan`'s gap was the more dangerous shape of the same
     bug: it already had three one-to-many tabs, so nothing looked broken — the
     plan-scope relationship was simply absent from a strip that rendered fine.
 
@@ -216,14 +216,14 @@ async def test_test_plan_schema_serves_a_test_suite_relation_and_that_relation_a
     plan_link_ids: list = []
     try:
         async with AsyncSessionLocal() as session:
-            admin, org = await _create_org_admin(session, "adr72-plan")
-            project = await _create_project(session, org, "adr72-plan")
+            admin, org = await _create_org_admin(session, "adr75-plan")
+            project = await _create_project(session, org, "adr75-plan")
             plan = TestPlan(
                 project_id=project.id,
                 created_by_actor_id=admin.actor_id,
-                identifier=_unique_name("plan-adr72"),
+                identifier=_unique_name("plan-adr75"),
             )
-            suite = TestSuite(project_id=project.id, name=_unique_name("Suite adr72-plan"))
+            suite = TestSuite(project_id=project.id, name=_unique_name("Suite adr75-plan"))
             session.add_all([plan, suite])
             await session.flush()
             await session.commit()
@@ -282,21 +282,21 @@ async def test_test_plan_schema_serves_a_test_suite_relation_and_that_relation_a
 
 @pytest.mark.asyncio
 async def test_a_junction_list_without_its_scope_value_is_a_422_not_an_unscoped_dump() -> None:
-    """**TC-ADMIN-061.** The invariant NFR-71 rests on, checked against the live route rather than
+    """**TC-ADMIN-076.** The invariant NFR-74 rests on, checked against the live route rather than
     against `_scope_candidates` in a unit test.
 
     `extract_scope_value` 422s a list request not carrying exactly one scope
-    value. That is *why* ADR-0071 only emits a relation whose FK is the child's
+    value. That is *why* ADR-0074 only emits a relation whose FK is the child's
     own `scope_field` — and it is also what stops the junction routes from being
     an unscoped, cross-tenant dump of every membership row in the database.
 
-    **Amended by ADR-0072 Amendment 1.** As first written this test also
+    **Amended by ADR-0075 Amendment 1.** As first written this test also
     asserted that supplying the *other* FK instead of the scope one 422s, on
     the grounds that "the reverse direction is an enumerated exclusion, not a
     servable relation." Amendment 1 made both FKs scope arms on all six
     junctions, so that half is no longer true and has moved — inverted — to
-    `test_adr72_amendment1_bidirectional_junctions.py`. What survives here, and
-    is the part NFR-71 actually rests on, is the **zero-scope** case: a
+    `test_adr75_amendment1_bidirectional_junctions.py`. What survives here, and
+    is the part NFR-74 actually rests on, is the **zero-scope** case: a
     branching scope still requires *exactly one* arm, so neither "no params at
     all" nor "both arms at once" may ever return an unscoped dump. Both are
     asserted below; the second is new, since it only became reachable once
@@ -306,7 +306,7 @@ async def test_a_junction_list_without_its_scope_value_is_a_422_not_an_unscoped_
     org_ids: list = []
     try:
         async with AsyncSessionLocal() as session:
-            admin, org = await _create_org_admin(session, "adr72-scope")
+            admin, org = await _create_org_admin(session, "adr75-scope")
             await session.commit()
             user_ids = [admin.actor_id]
             org_ids = [org.id]
@@ -320,7 +320,7 @@ async def test_a_junction_list_without_its_scope_value_is_a_422_not_an_unscoped_
             assert unscoped.json()["code"] == "validation_error"
             assert "test_suite_id" in unscoped.json()["field_errors"]
 
-            # ADR-0072 Amendment 1: supplying BOTH arms is the case that
+            # ADR-0075 Amendment 1: supplying BOTH arms is the case that
             # replaced the old "supply the non-scope FK" assertion. `RiskItem`'s
             # long-standing XOR narrowing now applies here too — two arms is as
             # invalid as zero, and neither may fall back to an unscoped list.
@@ -355,7 +355,7 @@ async def test_a_junction_list_without_its_scope_value_is_a_422_not_an_unscoped_
 
 @pytest.mark.asyncio
 async def test_the_new_read_permissions_are_seeded_and_gate_the_junction_routes() -> None:
-    """**TC-ADMIN-062.** ADR-0072 adds two brand-new permission codes, so unlike every prior RBAC
+    """**TC-ADMIN-077.** ADR-0075 adds two brand-new permission codes, so unlike every prior RBAC
     extension in this repo the `Permission` rows themselves had to be inserted
     by the migration, not just granted.
 
@@ -369,7 +369,7 @@ async def test_the_new_read_permissions_are_seeded_and_gate_the_junction_routes(
     org_ids: list = []
     try:
         async with AsyncSessionLocal() as session:
-            admin, org = await _create_org_admin(session, "adr72-perm")
+            admin, org = await _create_org_admin(session, "adr75-perm")
             await session.commit()
             user_ids = [admin.actor_id]
             org_ids = [org.id]
@@ -401,7 +401,7 @@ async def test_the_new_read_permissions_are_seeded_and_gate_the_junction_routes(
 
 @pytest.mark.asyncio
 async def test_the_migration_upgrade_body_is_genuinely_idempotent() -> None:
-    """**TC-ADMIN-062** (idempotency half). Re-running the migration must not duplicate rows.
+    """**TC-ADMIN-077** (idempotency half). Re-running the migration must not duplicate rows.
 
     **Deliberately not a second `alembic upgrade head`.** `backend/CLAUDE.md`
     documents (ADMIN-5/TC-ADMIN-041) that once the database is already at a
@@ -435,7 +435,7 @@ async def test_the_migration_upgrade_body_is_genuinely_idempotent() -> None:
         / "7d2c91af4e68_seed_junction_link_read_permissions.py"
     )
     assert migration_path.exists(), migration_path
-    spec = importlib.util.spec_from_file_location("_adr72_live_migration", migration_path)
+    spec = importlib.util.spec_from_file_location("_adr75_live_migration", migration_path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

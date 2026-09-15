@@ -1,11 +1,11 @@
 /**
- * [ADR-0070](../../../../../docs/adr/0070-generic-entity-detail-page.md): the
+ * [ADR-0073](../../../../../docs/adr/0073-generic-entity-detail-page.md): the
  * generic admin CRUD surface's **third** page component — a read-only record
  * view showing *every* field of one entity row, reached by clicking a row in
  * `EntityListPage`'s table.
  *
  * (ADR-0025 originally scoped this surface to exactly two page components,
- * `EntityListPage` + `EntityFormPage`. ADR-0070 extends that to three — see
+ * `EntityListPage` + `EntityFormPage`. ADR-0073 extends that to three — see
  * that ADR for why a read view is not the same thing as the edit form.)
  *
  * Routes, added by `entityCrudRoutes()` alongside the existing list/edit pair:
@@ -31,7 +31,7 @@
  * is no per-entity `if`. Field *values* render through the shared
  * `EntityFieldValue` molecule — the same fk-label lookup, enum/boolean badges
  * and date formatting `EntityTable`'s cells use, so a value reads identically
- * in both places (ADR-0070's own reuse extraction, not a second renderer).
+ * in both places (ADR-0073's own reuse extraction, not a second renderer).
  *
  * Every entity in the registry supports `get` (verified against the live
  * `GET /entities/{resource}/schema` for all 28, plus `Release`'s static
@@ -40,14 +40,14 @@
  * `EntityListPage`'s own `canList` posture — a future entity could be served
  * without it and must degrade to a message, not a failed fetch.
  *
- * ## Tabs ([ADR-0071](../../../../../docs/adr/0071-entity-detail-relationship-tabs.md))
+ * ## Tabs ([ADR-0074](../../../../../docs/adr/0074-entity-detail-relationship-tabs.md))
  *
  * The page opens on an **Info** tab — the all-fields view described above,
  * unchanged — followed by one tab per *inbound* relationship the backend
  * reports in `config.relations` (`crud_factory.derive_entity_relations`). That
  * set is derived server-side by walking the whole entity registry, so this
  * component hard-codes no entity name and no relationship; an entity with none
- * renders no tab strip at all and is byte-for-byte the pre-ADR-0071 page.
+ * renders no tab strip at all and is byte-for-byte the pre-ADR-0074 page.
  *
  * Many-to-**one** deliberately gets no tab — a field of *this* entity pointing
  * at a parent is already a labelled value on the Info tab, and a tab listing
@@ -55,10 +55,10 @@
  *
  * The active tab lives in the URL (`?tab=`), not component state, so a tab is
  * shareable and survives a reload — the same deep-link posture that made
- * ADR-0070 fetch its own row rather than reuse the list's in-memory copy. An
+ * ADR-0073 fetch its own row rather than reuse the list's in-memory copy. An
  * unknown or absent `?tab=` falls back to Info rather than erroring.
  *
- * ## Markup (ADR-0071's Amendment — Tabler's "tabs in the card header")
+ * ## Markup (ADR-0074's Amendment — Tabler's "tabs in the card header")
  *
  * One card spans every tab, laid out exactly as Tabler's own tab component
  * documents it: the tab strip is the *only* child of `.card-header` (as
@@ -107,7 +107,7 @@ const TAB_TEST_ID_PREFIX = "entity-detail";
 const RELATION_PAGE_SIZE = 25;
 
 /**
- * ADR-0071: a relationship's tab id. Keyed on the **listed** entity
+ * ADR-0074: a relationship's tab id. Keyed on the **listed** entity
  * (`relation.entity`), not on `targetEntity` or the label: `Requirement`
  * reaches `TestCondition` both directly and through a traceability link, so
  * those two tabs share a `targetEntity` and differ in label only by the
@@ -120,7 +120,7 @@ export function relationTabId(relation: EntityRelation): string {
 }
 
 /**
- * ADR-0070: `entityKeyOverride` mirrors `EntityListPage`/`EntityFormPage`'s own
+ * ADR-0073: `entityKeyOverride` mirrors `EntityListPage`/`EntityFormPage`'s own
  * ADR-0060 prop, for a future route with no `:entity` segment. No such mount
  * exists today — `Project`'s own detail view is the bespoke `ProjectDetail`
  * workspace, reached via `EntityConfig.detailPath` (ADR-0060), which this
@@ -135,7 +135,7 @@ function EntityDetailPage({ entityKeyOverride }: { entityKeyOverride?: string } 
   const permissions = usePermissions(orgId);
 
   /**
-   * ADR-0071: paging state for whichever relationship tab is open — one pair
+   * ADR-0074: paging state for whichever relationship tab is open — one pair
    * of values shared across tabs, reset on every switch. Per-tab paging would
    * have to be keyed by entity and carried around, for a read-only page
    * nobody navigates deeply from. Component state only, the same posture
@@ -195,7 +195,7 @@ function EntityDetailPage({ entityKeyOverride }: { entityKeyOverride?: string } 
     config.methods.includes("update") && permissions.has(`${config.resource}.update`, projectId);
 
   /**
-   * ADR-0071. `?tab=` is validated against the served relationship set rather
+   * ADR-0074. `?tab=` is validated against the served relationship set rather
    * than trusted: a stale bookmark naming a relationship a later deploy no
    * longer serves must fall back to Info, not render an empty panel.
    */
@@ -224,7 +224,7 @@ function EntityDetailPage({ entityKeyOverride }: { entityKeyOverride?: string } 
   }
 
   /**
-   * ADR-0071 (Amendment): above the card, not inside its header — Tabler's
+   * ADR-0074 (Amendment): above the card, not inside its header — Tabler's
    * `.card-header-tabs` is `flex:1` with negative margins on all four sides,
    * so it consumes the whole header and would paint over a title or button
    * sibling there.
@@ -347,7 +347,7 @@ function EntityDetailPage({ entityKeyOverride }: { entityKeyOverride?: string } 
                 parentId={String(id)}
                 routeParams={routeParams}
                 /**
-                 * ADR-0073: the tab's write actions are permission-gated, and
+                 * ADR-0076: the tab's write actions are permission-gated, and
                  * `usePermissions` needs the *resolved* org — which this page
                  * already has from `useAdminRouteContext` (on a project-scoped
                  * route the URL carries no `:orgId` at all, so it costs a

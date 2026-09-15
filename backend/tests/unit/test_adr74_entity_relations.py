@@ -1,4 +1,4 @@
-"""ADR-0071: `crud_factory.derive_entity_relations` — the inbound-relationship
+"""ADR-0074: `crud_factory.derive_entity_relations` — the inbound-relationship
 set behind `EntityDetailPage`'s tabs.
 
 **Why the completeness test in here matters more than the per-case ones.**
@@ -19,19 +19,19 @@ entity, or a new FK on an existing one, lands in neither bucket and fails
 loudly here rather than quietly not rendering a tab.
 
 **The gap that partition could not see, and where it is now closed
-([ADR-0072](../../../docs/adr/0072-junction-table-registry-completeness.md)).**
+([ADR-0075](../../../docs/adr/0075-junction-table-registry-completeness.md)).**
 "every inbound FK in the whole registry" is exactly as complete as the registry
 is. `_all_inbound_fks()` below walks `ALL_ENTITY_CONFIGS`, and so does the
 derivation it is checking — so an entity with **no config at all** contributes
 no FKs to either side, and the partition holds *vacuously* while that entity's
 relationships silently render no tab. That is not hypothetical: it was true of
 `TestSuiteTestCase` and `TestPlanTestSuite` for this whole file's first
-revision. ADR-0071 Decision §1's claim that "a derivation cannot omit what it
+revision. ADR-0074 Decision §1's claim that "a derivation cannot omit what it
 enumerates" is sound; what it does not cover is the set being enumerated, and
 `entity_registry._ALL_CONFIGS` is hand-authored — the one hand-typed list in the
 chain, and therefore the one `backend/CLAUDE.md`'s registry-completeness note
 actually applies to. The guard for *that* is one level down and lives in
-`test_adr72_registry_completeness.py`, which partitions the **model** layer
+`test_adr75_registry_completeness.py`, which partitions the **model** layer
 (`Base.metadata`) instead of the config layer.
 """
 
@@ -57,7 +57,7 @@ def _by_entity(entity_key: str) -> dict[str, dict]:
 
 
 #: Every registered entity `is_link_entity` classifies as a many-to-many join
-#: table. Six since [ADR-0072](../../../docs/adr/0072-junction-table-registry-completeness.md)
+#: table. Six since [ADR-0075](../../../docs/adr/0075-junction-table-registry-completeness.md)
 #: registered `TestSuiteTestCase`/`TestPlanTestSuite`; the first four are
 #: ADR-0005's traceability links.
 EXPECTED_LINK_ENTITIES = {
@@ -65,7 +65,7 @@ EXPECTED_LINK_ENTITIES = {
     "requirement-test-condition-links",
     "test-condition-test-case-links",
     "test-case-defect-links",
-    # ADR-0072. Neither table name ends in `_link` — see
+    # ADR-0075. Neither table name ends in `_link` — see
     # `test_structural_rule_is_not_the_table_naming_convention` below.
     "test-suite-test-cases",
     "test-plan-test-suites",
@@ -73,7 +73,7 @@ EXPECTED_LINK_ENTITIES = {
 
 
 class TestLinkEntityClassifier:
-    """**TC-ADMIN-056.** `is_link_entity` decides many-to-many-ness *structurally* (exactly two
+    """**TC-ADMIN-071.** `is_link_entity` decides many-to-many-ness *structurally* (exactly two
     FKs, no create/update) rather than by table name. These tests pin that
     rule against the `*_link` naming convention in BOTH directions, so a future
     entity drifting into or out of the shape fails here rather than silently
@@ -84,9 +84,9 @@ class TestLinkEntityClassifier:
         assert structural == EXPECTED_LINK_ENTITIES
 
     def test_structural_rule_is_not_the_table_naming_convention(self) -> None:
-        """**TC-ADMIN-059.** ADR-0071 Decision §3 chose a structural classifier over a `_link`
+        """**TC-ADMIN-074.** ADR-0074 Decision §3 chose a structural classifier over a `_link`
         suffix because "matching on a `_link` suffix would be a naming
-        convention masquerading as a contract." Until ADR-0072 the two sets
+        convention masquerading as a contract." Until ADR-0075 the two sets
         happened to be identical, so nothing demonstrated the choice mattered —
         this test is the demonstration: `test_suite_test_case` and
         `test_plan_test_suite` are genuine ADR-0005-shaped join tables (exactly
@@ -168,7 +168,7 @@ class TestManyToManyRelations:
         assert _by_entity("test-cases")["test-case-defect-links"]["label"] == "Defects (linked)"
 
     def test_the_linked_suffix_disambiguates_requirements_two_test_condition_tabs(self) -> None:
-        """**TC-ADMIN-057.** `Requirement` reaches `TestCondition` twice over — directly via
+        """**TC-ADMIN-072.** `Requirement` reaches `TestCondition` twice over — directly via
         `TestCondition.requirement_id` (REQ-3's rigor path) and via
         `RequirementTestConditionLink` (ADR-0005 traceability). Both are real,
         separately-populated tabs, so their labels must not collide."""
@@ -181,7 +181,7 @@ class TestManyToManyRelations:
         assert len(set(labels)) == len(labels)
 
     def test_test_suite_reaches_test_cases_through_its_membership_junction(self) -> None:
-        """**TC-ADMIN-060.** ADR-0072's headline fix. `TestSuite`'s relation set was literally
+        """**TC-ADMIN-075.** ADR-0075's headline fix. `TestSuite`'s relation set was literally
         empty before its junction table was registered, even though REQ-4's
         bespoke routes populate that table — the derivation walks
         `ALL_ENTITY_CONFIGS`, and `test_suite_test_case` had no entry in it."""
@@ -195,7 +195,7 @@ class TestManyToManyRelations:
         assert relation["targetField"] == "test_case_id"
 
     def test_test_plan_reaches_test_suites_through_its_scope_junction(self) -> None:
-        """**TC-ADMIN-060** (second half). `TestPlan` already had three one-to-many tabs, so unlike
+        """**TC-ADMIN-075** (second half). `TestPlan` already had three one-to-many tabs, so unlike
         `TestSuite` its gap was invisible as a *missing* tab rather than an empty
         strip — the more dangerous shape of the same bug."""
         relation = _by_entity("test-plans")["test-plan-test-suites"]
@@ -206,10 +206,10 @@ class TestManyToManyRelations:
         assert relation["targetField"] == "test_suite_id"
 
     def test_test_case_gains_the_reverse_side_of_every_junction_pointing_at_it(self) -> None:
-        """**TC-ADMIN-061** (amended by **ADR-0072 Amendment 1**).
+        """**TC-ADMIN-076** (amended by **ADR-0075 Amendment 1**).
 
         The original of this test asserted `test-cases`' tab list was exactly
-        `["Attachments", "Test steps", "Defects (linked)"]` — pinning ADR-0072
+        `["Attachments", "Test steps", "Defects (linked)"]` — pinning ADR-0075
         Decision §3's choice to scope both new junctions on their *parent*
         side, which deliberately left `TestCase` with no reverse tabs.
 
@@ -232,8 +232,8 @@ class TestManyToManyRelations:
         ]
 
     def test_every_junctions_reverse_tab_is_present_on_its_far_parent(self) -> None:
-        """**TC-ADMIN-063.** The reverse direction of all six junctions, enumerated — the exact
-        set ADR-0071 §4's exclusion table used to list as unservable."""
+        """**TC-ADMIN-078.** The reverse direction of all six junctions, enumerated — the exact
+        set ADR-0074 §4's exclusion table used to list as unservable."""
         assert _by_entity("test-cases")["requirement-test-case-links"]["label"] == "Requirements (linked)"
         assert (
             _by_entity("test-conditions")["requirement-test-condition-links"]["label"]
@@ -245,7 +245,7 @@ class TestManyToManyRelations:
         assert _by_entity("test-suites")["test-plan-test-suites"]["label"] == "Test plans (linked)"
 
     def test_no_entity_has_two_tabs_with_the_same_label(self) -> None:
-        """**TC-ADMIN-057** (generalized half). Generalizes the case above across the whole registry — a duplicate
+        """**TC-ADMIN-072** (generalized half). Generalizes the case above across the whole registry — a duplicate
         label is a tab strip the user cannot tell apart."""
         for key in ALL_ENTITY_CONFIGS:
             labels = [r["label"] for r in _relations(key)]
@@ -275,16 +275,16 @@ class TestExclusions:
         assert "test-executions" not in _by_entity("test-cases")
 
     def test_a_link_table_is_listable_from_both_of_its_own_scope_arms(self) -> None:
-        """**TC-ADMIN-063.** Superseded premise, deliberately inverted rather than deleted.
+        """**TC-ADMIN-078.** Superseded premise, deliberately inverted rather than deleted.
 
         This test used to be `test_link_table_is_only_listable_from_its_own_
         scope_side` and asserted `_relations("defects") == []` — true while
         `TestCaseDefectLink`'s `scope_field` was the single column
         `test_case_id`, so the link listed from the `TestCase` end only and
         `Defect`'s detail page rendered no tab strip at all (the exact symptom
-        ADR-0072 was written to fix for `TestSuite`).
+        ADR-0075 was written to fix for `TestSuite`).
 
-        **ADR-0072 Amendment 1** widened all six junctions to a branching
+        **ADR-0075 Amendment 1** widened all six junctions to a branching
         2-tuple `scope_field`, so each is now listable — and therefore tabbed —
         from both ends. The old assertion is not merely stale, it asserted the
         gap as if it were the contract; keeping it inverted here preserves the
@@ -301,7 +301,7 @@ class TestExclusions:
         assert reverse["targetField"] == "test_case_id"
 
     def test_both_arms_of_a_branching_scope_are_emitted_without_touching_the_derivation(self) -> None:
-        """**TC-ADMIN-063.** ADR-0072 Amendment 1 changed six *configs* and zero lines of
+        """**TC-ADMIN-078.** ADR-0075 Amendment 1 changed six *configs* and zero lines of
         `derive_entity_relations`. The derivation already iterated every FK and
         kept the ones in `_scope_candidates`, so a 2-tuple naturally produces
         one relation per arm — exactly the mechanism that already made
@@ -348,12 +348,12 @@ EXPECTED_EXCLUSIONS: dict[tuple[str, str], str] = {
     ("test-cycles", "environment_id"): "test-cycles scope is test_plan_id",
     ("test-cycles", "release_id"): "test-cycles scope is test_plan_id; Release is unregistered",
     #
-    # --- No link-table entries remain here (ADR-0072 Amendment 1) -------------
+    # --- No link-table entries remain here (ADR-0075 Amendment 1) -------------
     #
     # This block previously held six rows, one per junction's reverse side, all
     # reading "link scope is <the other column>". They were correct and
-    # deliberate: ADR-0071 §4 established that a link table lists only from
-    # whichever single column is its `scope_field`, and ADR-0072 Decision §3
+    # deliberate: ADR-0074 §4 established that a link table lists only from
+    # whichever single column is its `scope_field`, and ADR-0075 Decision §3
     # kept its two newly-registered junctions to that same rule specifically so
     # all six would behave identically ("widening all six later remains open").
     #
@@ -372,7 +372,7 @@ EXPECTED_EXCLUSIONS: dict[tuple[str, str], str] = {
 
 
 class TestInboundFkCompleteness:
-    """**TC-ADMIN-055.** The diff-based completeness test (`backend/CLAUDE.md`'s registry note).
+    """**TC-ADMIN-070.** The diff-based completeness test (`backend/CLAUDE.md`'s registry note).
 
     Spot-checking a handful of entities would never notice one silently-missing
     relationship. This walks every FK of every registered entity and asserts it
@@ -455,8 +455,8 @@ class TestDerivationIsStable:
 
 
 class TestSortableFieldsAgreement:
-    """**TC-ADMIN-058.** `make_crud_router` reads `derive_sortable_fields` rather than
-    `derive_entity_schema(config)["fields"]`, because since ADR-0071 the full
+    """**TC-ADMIN-073.** `make_crud_router` reads `derive_sortable_fields` rather than
+    `derive_entity_schema(config)["fields"]`, because since ADR-0074 the full
     schema needs the entity registry and that line runs while the registry is
     still importing. The two must stay a second *derivation* of one fact, never
     a second hand-kept list — this is what pins that."""

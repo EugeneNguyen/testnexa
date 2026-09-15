@@ -1,5 +1,5 @@
 /**
- * ADR-0070: one `EntityConfig`-driven field-value renderer, shared by
+ * ADR-0073: one `EntityConfig`-driven field-value renderer, shared by
  * `EntityTable`'s table cells and `EntityDetailPage`'s field list.
  *
  * Extracted verbatim from `EntityTable`'s own private `renderCell`/
@@ -61,7 +61,7 @@ export interface EntityFieldValueProps {
   fkLabels: FkLabelMap;
   config: EntityConfig;
   /**
-   * ADR-0070: `EntityDetailPage` passes `false` — the whole row is already the
+   * ADR-0073: `EntityDetailPage` passes `false` — the whole row is already the
    * thing `detailPath` would navigate to, so re-rendering the name as a link to
    * the page you are already looking at is noise. `EntityTable` leaves it
    * `true` (the default), preserving ADR-0060's row-name link exactly.
