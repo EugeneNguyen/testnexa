@@ -308,7 +308,9 @@ describe("EntityDetailPage relationship-tab write actions (ADR-0076)", () => {
 
     renderPage(ONE_TO_MANY);
 
-    expect(await screen.findByTestId("entity-relation-create")).toHaveTextContent("New");
+    // Icon-only button (CTO request, 2026-09-15) — the accessible name lives
+    // in `aria-label`, not visible text content.
+    expect(await screen.findByTestId("entity-relation-create")).toHaveAccessibleName(/new sprocket/i);
     // Exactly one action per tab — never the link action on a 1-n tab, which
     // has no far entity to pick.
     expect(screen.queryByTestId("entity-relation-link")).not.toBeInTheDocument();
@@ -369,8 +371,9 @@ describe("EntityDetailPage relationship-tab write actions (ADR-0076)", () => {
 
     const button = await screen.findByTestId("entity-relation-link");
     // The tab is *about* the far entity (ADR-0074 §5) — `relation.label` minus
-    // the `" (linked)"` suffix, never the link table's own name.
-    expect(button).toHaveTextContent(/link existing gizmos/i);
+    // the `" (linked)"` suffix, never the link table's own name. Icon-only
+    // button (CTO request, 2026-09-15) — accessible name, not text content.
+    expect(button).toHaveAccessibleName(/link existing gizmos/i);
     expect(screen.queryByTestId("entity-relation-create")).not.toBeInTheDocument();
   });
 
@@ -493,10 +496,11 @@ describe("EntityDetailPage relationship-tab write actions (ADR-0076)", () => {
 
     const link = await screen.findByTestId("entity-relation-link");
     const createLink = await screen.findByTestId("entity-relation-create-link");
-    expect(link).toHaveTextContent(/link existing gizmos/i);
+    // Icon-only buttons (CTO request, 2026-09-15) — accessible name, not text.
+    expect(link).toHaveAccessibleName(/link existing gizmos/i);
     // Labelled by the FAR entity, exactly like its sibling — never by the link
     // table, whose rows are not what the user is creating.
-    expect(createLink).toHaveTextContent(/create new gizmos/i);
+    expect(createLink).toHaveAccessibleName(/create new gizmos/i);
     // Still never the 1-n action: re-parenting an existing child is a
     // different, riskier operation this amendment does not add.
     expect(screen.queryByTestId("entity-relation-create")).not.toBeInTheDocument();
@@ -567,7 +571,8 @@ describe("EntityDetailPage relationship-tab write actions (ADR-0076)", () => {
 
     renderPage("?tab=widget-thing-links");
 
-    expect(await screen.findByTestId("entity-relation-link")).toHaveTextContent(/link existing things/i);
+    // Icon-only button (CTO request, 2026-09-15) — accessible name, not text.
+    expect(await screen.findByTestId("entity-relation-link")).toHaveAccessibleName(/link existing things/i);
     expect(screen.queryByTestId("entity-relation-create-link")).not.toBeInTheDocument();
   });
 

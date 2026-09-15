@@ -155,6 +155,7 @@ import {
   ScopeSelector,
   Spinner,
 } from "../../../components";
+import { Icon } from "../../../components/atoms/icon/icon";
 import { usePermissions } from "../../../auth/usePermissions";
 import { EntityConfig, EntityRelation } from "../../../entityConfigs/types";
 import { ApiError } from "../../../lib/api/client";
@@ -558,12 +559,24 @@ function EntityRelationTab({
          * `gap-2` (Amendment 1): an n-n tab can now render two buttons here,
          * and two `.btn`s are adjacent siblings with no margin of their own.
          * Harmless on a 1-n tab, which still renders exactly one child.
+         *
+         * `mb-3`: separates the strip from `EntityTable` below — `bare` mode
+         * renders no card header/spacing of its own for this component to
+         * lean on (see that prop's own docstring), so without this the
+         * buttons sit flush against the table's top border.
+         *
+         * Icon-only (CTO request, 2026-09-15): each button's visible label is
+         * gone, replaced by `aria-label` carrying the exact former text — the
+         * same `Icon`-atom-plus-`aria-label` pattern `EntityTable`'s own
+         * per-row Edit/Delete buttons already use, not a new convention.
          */
-        <Card.Body className="pb-0 d-flex justify-content-end gap-2" data-testid="entity-relation-actions">
+        <Card.Body className="pb-0 mb-3 d-flex justify-content-end gap-2" data-testid="entity-relation-actions">
           {canCreateChild && (
             <Button
               color="primary"
               size="sm"
+              aria-label={`New ${farLabel.toLowerCase()}`}
+              title={`New ${farLabel.toLowerCase()}`}
               data-testid="entity-relation-create"
               onClick={() => {
                 setCreateError(null);
@@ -571,27 +584,22 @@ function EntityRelationTab({
                 setShowCreateModal(true);
               }}
             >
-              {/*
-               * Just "New", exactly as `EntityListPage`'s own create button
-               * reads — the tab the user is standing on supplies the noun, the
-               * same way that page's card title does. Avoids inventing a
-               * singularizer for a set of backend labels that are all plural
-               * and not all regular ("Entry/exit criteria").
-               */}
-              New
+              <Icon name="plus" />
             </Button>
           )}
           {canLinkExisting && (
             <Button
               color="primary"
               size="sm"
+              aria-label={`Link existing ${farLabel.toLowerCase()}`}
+              title={`Link existing ${farLabel.toLowerCase()}`}
               data-testid="entity-relation-link"
               onClick={() => {
                 setLinkError(null);
                 setShowLinkModal(true);
               }}
             >
-              Link existing {farLabel.toLowerCase()}
+              <Icon name="link" />
             </Button>
           )}
           {canCreateAndLink && (
@@ -606,6 +614,8 @@ function EntityRelationTab({
               outline
               color="primary"
               size="sm"
+              aria-label={`Create new ${farLabel.toLowerCase()}`}
+              title={`Create new ${farLabel.toLowerCase()}`}
               data-testid="entity-relation-create-link"
               onClick={() => {
                 setCreateLinkError(null);
@@ -614,7 +624,7 @@ function EntityRelationTab({
                 setShowCreateLinkModal(true);
               }}
             >
-              Create new {farLabel.toLowerCase()}
+              <Icon name="plus" />
             </Button>
           )}
         </Card.Body>

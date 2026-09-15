@@ -395,8 +395,9 @@ test.describe("ADR-0076: relationship-tab write actions", () => {
       await expect(page.getByText("No records found.")).toBeVisible({ timeout: TAB_STRIP_TIMEOUT_MS });
 
       const linkButton = page.getByTestId("entity-relation-link");
-      // Labelled by the FAR entity, not by the junction table.
-      await expect(linkButton).toHaveText(/link existing test cases/i, { timeout: TAB_STRIP_TIMEOUT_MS });
+      // Labelled by the FAR entity, not by the junction table. Icon-only
+      // button (CTO request, 2026-09-15) — accessible name, not visible text.
+      await expect(linkButton).toHaveAccessibleName(/link existing test cases/i, { timeout: TAB_STRIP_TIMEOUT_MS });
       await linkButton.click();
 
       await pickInLinkModal(page, fixture.testCaseTitle, fixture.testCaseTitle);
@@ -511,7 +512,8 @@ test.describe("ADR-0076: relationship-tab write actions", () => {
       const createLinkButton = page.getByTestId("entity-relation-create-link");
       await expect(linkButton).toBeVisible({ timeout: TAB_STRIP_TIMEOUT_MS });
       await expect(createLinkButton).toBeVisible({ timeout: TAB_STRIP_TIMEOUT_MS });
-      await expect(createLinkButton).toHaveText(/create new test cases/i);
+      // Icon-only button (CTO request, 2026-09-15) — accessible name, not text.
+      await expect(createLinkButton).toHaveAccessibleName(/create new test cases/i);
       // In the one right-aligned strip above the table, not two strips and not
       // in the card header — the placement the UI Design Document §6.2 sketch
       // and prose both describe.
