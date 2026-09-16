@@ -147,7 +147,6 @@ def test_no_tool_exists_for_an_unknown_entity() -> None:
         ("permission", "update"),
         ("permission", "delete"),
         ("organization", "list"),  # no flat org list route exists
-        ("role_assignment", "list"),
         ("release", "get"),  # create-only bespoke resource
         ("release", "list"),
         ("release", "describe"),  # no CrudEntityConfig to describe

@@ -166,17 +166,22 @@ _ROLE_ASSIGNMENT_CONFIG = CrudEntityConfig(
     summary_schema=RoleAssignmentSummary,
     scope_field="org_id",
     resolve_org_id=chain_resolver([]),
-    methods=frozenset({"get", "update", "delete"}),
-    # ADR-0053. **No `full_methods`**: RBAC-3's bespoke `POST`/`GET
-    # /orgs/{org_id}/role-assignments` do widen this entity's real REST
-    # surface, but neither is usable by the generic admin surface — the
-    # bespoke `GET` returns a bare array, not the `{items,total,page,
-    # page_size}` envelope every generic list route (and `EntityTable`)
-    # speaks. `methods` here therefore matches the real *generic* capability
-    # exactly (`get`/`update`/`delete`, no `list`), as the pre-ADR-0053
-    # `entityConfigs/role-assignment.ts` already documented at length. This
-    # is the opposite call from `_PROJECT_FACTORY_CONFIG`'s `full_methods`,
-    # where the bespoke routes sit at the same URL shape and *are* usable.
+    methods=frozenset({"list", "get", "update", "delete"}),
+    # ADR-0053, revised: `list` now generic. The original reasoning here
+    # (bespoke `GET /orgs/{org_id}/role-assignments` returns a bare array,
+    # can't back the generic admin surface) is stale — DS-2/ADR-0041 changed
+    # that bespoke route to the standard `{items,total,page,page_size}`
+    # envelope. Even so, this does NOT reuse the bespoke route via
+    # `full_methods` (the `_PROJECT_FACTORY_CONFIG` pattern) — that route is
+    # path-nested (`/orgs/{org_id}/...`), not the flat `?org_id=`-scoped
+    # shape the generic factory itself expects, so the two aren't
+    # URL-interchangeable the way Project's bespoke routes are. Instead
+    # `list` is added to `methods` directly: the factory registers its own,
+    # separate flat `GET /role-assignments?org_id=...` route (gated on the
+    # same `role_assignment.read` permission the bespoke route already
+    # uses — no RBAC bundle change needed). `RoleAssignmentsPanel.tsx` is
+    # untouched, still calls the bespoke nested route; this only adds a
+    # second, generic-admin-compatible path alongside it.
     #
     # `actor_id`/`org_id` stay plain read-only strings (the raw id), NOT
     # `fk` — `User`/`AIAgent` are structurally excluded from this surface

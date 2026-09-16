@@ -264,18 +264,24 @@ def test_generated_tool_count_is_the_number_adr_0067_states() -> None:
     """ADR-0068 stated 146 tools (119 CRUD actions across 30 resources + 27
     `describe`); REQ-5/ADR-0069's `test_case_link_requirement` pseudo-resource
     (found merging the two branches) adds one more resource and one more CRUD
-    action, making it 147 (120 + 27) across 31 resources. Every other
-    assertion here is a *derived* diff on purpose (Decision §8 — a hardcoded
-    name list would drift with the thing it polices), which means none of
-    them would notice if the derivation itself and the ADR's published number
-    silently diverged. This one literal anchor catches that, and is cheap to
-    update deliberately when an entity is added — unlike a 147-name list,
+    action, making it 147 (120 + 27) across 31 resources. `role_assignment`
+    gaining a real generic `list` (rbac_routes.py's `_ROLE_ASSIGNMENT_CONFIG`,
+    the bespoke nested `GET /orgs/{org_id}/role-assignments` route's envelope
+    shape now matches the generic one since DS-2/ADR-0041, so the factory's
+    own flat `GET /role-assignments?org_id=...` list is safe to enable
+    alongside it) adds one more CRUD action without a new resource, making it
+    148 (121 + 27) still across 31 resources. Every other assertion here is a
+    *derived* diff on purpose (Decision §8 — a hardcoded name list would
+    drift with the thing it polices), which means none of them would notice
+    if the derivation itself and the ADR's published number silently
+    diverged. This one literal anchor catches that, and is cheap to update
+    deliberately when an entity/method is added — unlike a 148-name list,
     which would have to be re-typed."""
     describe_count = len(ENTITY_CONFIGS_BY_RESOURCE)
     crud_count = sum(len(set(entry) - {"describe"}) for entry in TOOL_REGISTRY.values())
     assert len(TOOL_REGISTRY) == 31, "resource count changed — update ADR-0068/ADR-0069 and this anchor together"
-    assert (crud_count, describe_count) == (120, 27), (crud_count, describe_count)
-    assert len(_registered()) == crud_count + describe_count == 147
+    assert (crud_count, describe_count) == (121, 27), (crud_count, describe_count)
+    assert len(_registered()) == crud_count + describe_count == 148
 
 
 def test_no_tool_takes_a_resource_argument() -> None:
