@@ -219,7 +219,16 @@ _DEFECT_CONFIG = CrudEntityConfig(
     # form that cannot exist: the same stale-after-restriction drift
     # `_TEST_CONDITION_CONFIG` documents, so the derived shape is authoritative.
     label="Defects",
-    scope_selector=ScopeSelectorOption(ref_entity="test-execution", param_name="test_execution_id"),
+    # ADR-0081: `TestExecution`'s own list needs `test_case_id` (or
+    # `test_cycle_id`) that this page's route params never supply — `via`
+    # threads a `TestCase` pick (`project_id`-scoped, already available) in
+    # as the extra search param, the same gap and the same fix as
+    # `_TEST_EXECUTION_CONFIG`'s own "By test cycle" arm above.
+    scope_selector=ScopeSelectorOption(
+        ref_entity="test-execution",
+        param_name="test_execution_id",
+        via=ScopeSelectorOption(ref_entity="test-case", param_name="test_case_id"),
+    ),
     # `test_execution_id` is summary-only (no create schema to lead with), so it
     # derives last without this — the hand-written config led with it.
     field_order=("test_execution_id", "external_ref", "severity", "status"),
@@ -314,7 +323,19 @@ _TEST_EXECUTION_CONFIG = CrudEntityConfig(
     # scope by the cycle arm even though the route now serves both, the exact
     # gap ADR-0075 Amendment 1 closed for the six junctions.
     scope_selector=(
-        ScopeSelectorOption(ref_entity="test-cycle", param_name="test_cycle_id", label="By test cycle"),
+        # ADR-0081: `TestCycle`'s own list needs `test_plan_id`, which this
+        # page's route params never supply — `via` threads a `TestPlan` pick
+        # (itself `project_id`-scoped, already available) in as the extra
+        # search param, closing the gap this option's own picker used to
+        # 422/silently-empty on before any character was ever typed.
+        ScopeSelectorOption(
+            ref_entity="test-cycle",
+            param_name="test_cycle_id",
+            label="By test cycle",
+            via=ScopeSelectorOption(ref_entity="test-plan", param_name="test_plan_id"),
+        ),
+        # `TestCase`'s own list is `project_id`-scoped directly — no `via`
+        # needed, this arm already worked before ADR-0081.
         ScopeSelectorOption(ref_entity="test-case", param_name="test_case_id", label="By test case"),
     ),
     # Both FKs are summary-only (`UpdateTestExecutionRequest` reassigns neither),
@@ -364,7 +385,16 @@ _TEST_LOG_CONFIG = CrudEntityConfig(
     # `methods` set (still no "create"/"update") is what actually keeps this
     # entity's generic REST surface unchanged.
     label="Test logs",
-    scope_selector=ScopeSelectorOption(ref_entity="test-execution", param_name="test_execution_id"),
+    # ADR-0081: `TestExecution`'s own list needs `test_case_id` (or
+    # `test_cycle_id`) that this page's route params never supply — `via`
+    # threads a `TestCase` pick (`project_id`-scoped, already available) in
+    # as the extra search param, the same gap and the same fix as
+    # `_TEST_EXECUTION_CONFIG`'s own "By test cycle" arm above.
+    scope_selector=ScopeSelectorOption(
+        ref_entity="test-execution",
+        param_name="test_execution_id",
+        via=ScopeSelectorOption(ref_entity="test-case", param_name="test_case_id"),
+    ),
     # `text`/`attachment_url`/`file_name` lead (the new writable fields, in
     # the same order `AddTestLogCommentRequest` declares them), then the
     # pre-existing summary-only fields — mirrors every other config's

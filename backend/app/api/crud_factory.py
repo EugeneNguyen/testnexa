@@ -273,11 +273,27 @@ class ScopeSelectorOption:
     `requirement_id`-or-`test_plan_id` branch is the one entity needing more
     than one option — `CrudEntityConfig.scope_selector` accepts a tuple for
     exactly that case, same as its single-option siblings accept one).
+
+    ADR-0081. `via`, when set, names a SECOND, earlier pick this option's own
+    `ref_entity` needs before its list route can be searched at all — this
+    entity's own `scope_selector` docstring already flagged the gap this
+    closes: `ref_entity`'s own generic `list` route requires a scope query
+    param (`TestCycle` needs `test_plan_id`, `TestExecution` needs
+    `test_case_id`/`test_cycle_id`) that this page's own route params never
+    supply, so `FkAutocomplete`'s search 422s, is swallowed, and the picker
+    silently never finds anything — not a rendering bug, a missing query
+    param. `via` is itself a full `ScopeSelectorOption` (recursive, though
+    every declaration today is exactly one level deep) so the frontend
+    renders it as a preceding picker step, feeding its resolved value in as
+    `{via.param_name: pickedId}` on the OUTER option's own search — never
+    reported to `onResolved` itself, which still only ever fires for the
+    outer, real scope field this page's list route actually needs.
     """
 
     ref_entity: str
     param_name: str
     label: str | None = None
+    via: "ScopeSelectorOption | None" = None
 
 
 @dataclass
@@ -1554,6 +1570,8 @@ def derive_entity_schema(
         out: dict[str, Any] = {"refEntity": option.ref_entity, "paramName": option.param_name}
         if option.label:
             out["label"] = option.label
+        if option.via is not None:
+            out["via"] = _serialize_scope_selector_option(option.via)
         return out
 
     scope_selector: Any = None

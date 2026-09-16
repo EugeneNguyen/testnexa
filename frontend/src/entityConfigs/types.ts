@@ -122,6 +122,15 @@ export interface ScopeSelectorOption {
   paramName: string;
   /** Toggle-button label when this option is one of several (`RiskItem`). */
   label?: string;
+  /**
+   * ADR-0081: when set, `refEntity`'s own list route needs a SECOND scope
+   * param this page's own route params never supply (`TestCycle` needs
+   * `test_plan_id`, `TestExecution` needs `test_case_id`) — `ScopeSelector`
+   * renders this as a preceding picker step and threads its resolved value
+   * in as an extra search param on the OUTER option's own `FkAutocomplete`,
+   * never reporting it to `onResolved` itself.
+   */
+  via?: ScopeSelectorOption;
 }
 
 /**

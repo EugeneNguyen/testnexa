@@ -873,6 +873,33 @@ class TestScopeSelector:
         assert isinstance(schema["scopeSelector"], list)
         assert len(schema["scopeSelector"]) == 1
 
+    def test_via_is_absent_when_unset(self) -> None:
+        schema = derive_entity_schema(
+            _config(scope_selector=ScopeSelectorOption(ref_entity="project", param_name="project_id"))
+        )
+        assert "via" not in schema["scopeSelector"]
+
+    def test_via_serializes_as_a_nested_option_object(self) -> None:  # TC-ADMIN-138 (ADR-0081)
+        """`via` recurses through the identical `_serialize_scope_selector_option`
+        helper — asserted structurally rather than assumed, since the two are
+        genuinely the same shape one level down."""
+        schema = derive_entity_schema(
+            _config(
+                scope_selector=ScopeSelectorOption(
+                    ref_entity="test-cycle",
+                    param_name="test_cycle_id",
+                    label="By test cycle",
+                    via=ScopeSelectorOption(ref_entity="test-plan", param_name="test_plan_id"),
+                )
+            )
+        )
+        assert schema["scopeSelector"] == {
+            "refEntity": "test-cycle",
+            "paramName": "test_cycle_id",
+            "label": "By test cycle",
+            "via": {"refEntity": "test-plan", "paramName": "test_plan_id"},
+        }
+
 
 class TestScopeResolution:
     def test_absent_scope_resolution_is_none(self) -> None:

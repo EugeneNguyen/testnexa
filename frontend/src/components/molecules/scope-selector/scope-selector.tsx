@@ -32,15 +32,20 @@
  * scope-selectors were unusable end to end. `extraParams` now threads the
  * current route's `project_id` through (`EntityListPage` passes it in) —
  * fixes every *one-hop* case above, where the ref entity's own scope field
- * is literally `project_id`. Documented, not fixed here: entities whose
- * scope-selector target is itself scoped by something other than
- * `project_id` (`TestExecution` -> `TestCycle` needs `test_plan_id`,
- * `Defect`/`TestLog` -> `TestExecution` needs `test_cycle_id`,
- * `TestConditionTestCaseLink` -> `TestCondition` needs `requirement_id`) —
- * those need a cascading multi-step picker, a larger change; and anything
- * scoped via `TestCase` (`TestStep`, `TestCaseDefectLink`, `Attachment`)
- * stays blocked on `test-case.ts`'s own pre-existing "no list route exists"
- * gap regardless of this fix.
+ * is literally `project_id`.
+ *
+ * **ADR-0081 closes the two-hop case this file's own comment used to leave
+ * open** (`TestExecution` -> `TestCycle` needs `test_plan_id`, `Defect`/
+ * `TestLog` -> `TestExecution` needs `test_case_id`): an option's own `via`
+ * (`ScopeSelectorOption.via`, backend-declared) renders as a PRECEDING
+ * picker step. Once the via entity is picked, its id feeds into the outer
+ * option's own `extraParams` as `{[via.paramName]: viaValue}` — never
+ * reported to `onResolved` itself, which still only ever fires for the
+ * real scope field this page's list route needs. `TestConditionTestCaseLink`
+ * -> `TestCondition` (`requirement_id`) and anything scoped via `TestCase`
+ * (`TestStep`, `TestCaseDefectLink`, `Attachment`, still blocked on
+ * `test-case.ts`'s own pre-existing "no list route exists" gap) remain
+ * undeclared — no live config needs them yet, not a limit of this mechanism.
  */
 import { useState } from "react";
 import { ScopeSelectorOption } from "../../../entityConfigs/types";
@@ -58,11 +63,15 @@ function ScopeSelector({ options, onResolved, extraParams }: ScopeSelectorProps)
   const optionList = Array.isArray(options) ? options : [options];
   const [activeIndex, setActiveIndex] = useState(0);
   const [value, setValue] = useState<string | undefined>(undefined);
+  // ADR-0081: the intermediate pick for `active.via`, when the active
+  // option declares one — cleared whenever the active option itself changes.
+  const [viaValue, setViaValue] = useState<string | undefined>(undefined);
   const active = optionList[activeIndex];
 
   function selectOption(index: number) {
     setActiveIndex(index);
     setValue(undefined);
+    setViaValue(undefined);
   }
 
   function handleChange(id: string | undefined) {
@@ -71,6 +80,8 @@ function ScopeSelector({ options, onResolved, extraParams }: ScopeSelectorProps)
       onResolved(active.paramName, id);
     }
   }
+
+  const needsViaFirst = Boolean(active.via) && !viaValue;
 
   return (
     <div className="mb-4" data-testid="scope-selector">
@@ -92,14 +103,41 @@ function ScopeSelector({ options, onResolved, extraParams }: ScopeSelectorProps)
           })}
         </div>
       )}
-      <FkAutocomplete
-        id="scope-selector-fk"
-        label={active.label ?? `Filter by ${active.refEntity}`}
-        refEntity={active.refEntity}
-        value={value}
-        onChange={handleChange}
-        extraParams={extraParams}
-      />
+      {needsViaFirst ? (
+        <FkAutocomplete
+          id="scope-selector-via-fk"
+          label={active.via!.label ?? `First, pick a ${active.via!.refEntity}`}
+          refEntity={active.via!.refEntity}
+          value={undefined}
+          onChange={(id) => id && setViaValue(id)}
+          extraParams={extraParams}
+        />
+      ) : (
+        <>
+          {active.via && (
+            <p className="text-body-secondary small mb-1">
+              <button
+                type="button"
+                className="btn btn-link btn-sm p-0 align-baseline"
+                onClick={() => {
+                  setViaValue(undefined);
+                  setValue(undefined);
+                }}
+              >
+                Change {active.via.label ?? active.via.refEntity}
+              </button>
+            </p>
+          )}
+          <FkAutocomplete
+            id="scope-selector-fk"
+            label={active.label ?? `Filter by ${active.refEntity}`}
+            refEntity={active.refEntity}
+            value={value}
+            onChange={handleChange}
+            extraParams={active.via ? { ...extraParams, [active.via.paramName]: viaValue } : extraParams}
+          />
+        </>
+      )}
     </div>
   );
 }
