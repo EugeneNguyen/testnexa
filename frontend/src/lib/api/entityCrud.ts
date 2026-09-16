@@ -15,7 +15,12 @@
  * a fixed `Record<string, unknown>` row type is used throughout by the
  * `crud/` components, sufficient for that.
  */
-import { EntityConfig, LinkCreateAction, LinkDeleteAction } from "../../entityConfigs/types";
+import {
+  CompoundCreateAction,
+  EntityConfig,
+  LinkCreateAction,
+  LinkDeleteAction,
+} from "../../entityConfigs/types";
 import { apiFetch } from "./client";
 
 export type EntityRow = Record<string, unknown>;
@@ -167,6 +172,42 @@ export async function createLinkRow(
   values: Record<string, string>,
 ): Promise<unknown> {
   return apiFetch<unknown>(`/api/v1${interpolateLinkPath(action.pathTemplate, values)}`, { method: "POST" });
+}
+
+/**
+ * ADR-0078: create the **far** record of a junction through the bespoke atomic
+ * route that is its only authoring path, declared by the link entity's own
+ * `compoundCreates` (`CompoundCreateAction`).
+ *
+ * The middle ground between the two helpers around it, and that is exactly why
+ * it is its own function rather than a parameter on either:
+ *
+ * - unlike `createEntity`, the parent id travels in the **path**, not the body,
+ *   and the path is a `{field}` template rather than an entity's own
+ *   `path`/`createPath` — so it interpolates with `interpolateLinkPath`, the
+ *   `{...}` substitutor, and fails loudly on a missing value for the same
+ *   reason that one does;
+ * - unlike `createLinkRow`, there **is** a body: the created record's own
+ *   fields, collected by the far entity's `EntityForm`.
+ *
+ * Returns the created row, whose `id` the caller needs — either to follow with
+ * `createLinkRow` (`linksAutomatically: false`) or simply to report back if
+ * something downstream fails.
+ *
+ * Rejects with an `ApiError` carrying the API Document §1 envelope, same as
+ * every other write here: `422` with `field_errors` for a bad body or a
+ * violated business rule (a defect raised against a non-failed execution),
+ * `404` across a tenant boundary, `403` for a missing permission.
+ */
+export async function createViaCompoundRoute<T = EntityRow>(
+  action: CompoundCreateAction,
+  parentValues: Record<string, string>,
+  body: Record<string, unknown>,
+): Promise<T> {
+  return apiFetch<T>(`/api/v1${interpolateLinkPath(action.pathTemplate, parentValues)}`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }
 
 /**

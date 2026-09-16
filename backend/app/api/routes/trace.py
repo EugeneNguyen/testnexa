@@ -125,6 +125,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.crud_factory import (
+    CompoundCreateAction,
     CrudEntityConfig,
     FieldMeta,
     LinkCreateAction,
@@ -265,6 +266,28 @@ _REQUIREMENT_TEST_CONDITION_LINK_CONFIG = CrudEntityConfig(
         path_template="/requirements/{requirement_id}/test-condition-links/{test_condition_id}",
         permission="requirement_test_condition_link.delete",
     ),
+    # ADR-0078: the `Requirement` -> "Test conditions (linked)" direction. The
+    # far entity (`TestCondition`) has no generic `create` — ADR-0028 removed
+    # it precisely because a `TestCondition` cannot exist without a
+    # `Requirement` (`requirement_id` is `NOT NULL`) *and* because its real
+    # create must write this very link row in the same transaction.
+    #
+    # This is the cleanest of the three: REQ-3's atomic route is already
+    # parented by exactly the record this tab is on, so the placeholder names
+    # the tab's own scope field, no picker is needed, and the route writes this
+    # junction's row itself — one request, and the tab is done.
+    compound_creates=(
+        CompoundCreateAction(
+            far_field="test_condition_id",
+            path_template="/requirements/{requirement_id}/test-conditions",
+            permission="test_condition.create",
+            # `create_test_condition_for_requirement` inserts the
+            # `RequirementTestConditionLink` inside its own transaction — this
+            # tab's row, not some other junction's. Following it with
+            # `link_create` would 409 on the pair it just wrote.
+            links_automatically=True,
+        ),
+    ),
     label="Requirement -> test condition links",
     scope_selector=(
         ScopeSelectorOption(ref_entity="requirement", param_name="requirement_id", label="By requirement"),
@@ -311,6 +334,36 @@ _TEST_CONDITION_TEST_CASE_LINK_CONFIG = CrudEntityConfig(
     link_delete=LinkDeleteAction(
         path_template="/test-conditions/{test_condition_id}/test-case-links/{test_case_id}",
         permission="test_condition_test_case_link.delete",
+    ),
+    # ADR-0078: the `TestCase` -> "Test conditions (linked)" direction. Same far
+    # entity as the sibling config above, same atomic route — and a materially
+    # different shape, which is why the declaration is per-direction.
+    #
+    # Here the tab is on a `TestCase`, and REQ-3's route is parented by a
+    # `Requirement` the tab has no way to know. `TestCondition.requirement_id`
+    # is `NOT NULL`, so there is no "create it without one" to fall back to and
+    # no honest way to guess: the user picks the requirement the new condition
+    # belongs to, which is a real authoring decision, not a scoping detail.
+    # That is the rigor path run in reverse — author the condition under its
+    # requirement, then attach it to the case that covers it.
+    #
+    # The atomic route then writes the *requirement* link, not this one, so
+    # this direction is genuinely two calls and `links_automatically` is False:
+    # the client follows with this config's own `link_create` above, the
+    # identical second request ADR-0076 Amendment 1 already makes.
+    compound_creates=(
+        CompoundCreateAction(
+            far_field="test_condition_id",
+            path_template="/requirements/{requirement_id}/test-conditions",
+            permission="test_condition.create",
+            links_automatically=False,
+            parent_entity="requirement",
+            parent_label="Requirement",
+            # `description` is what `_REQUIREMENT_TEST_CONDITION_LINK_CONFIG`'s
+            # own `requirement_id` FieldMeta labels a requirement with, reused
+            # verbatim so the same row reads the same way in both places.
+            parent_label_field="description",
+        ),
     ),
     label="Test condition -> test case links",
     scope_selector=(
@@ -372,6 +425,44 @@ _TEST_CASE_DEFECT_LINK_CONFIG = CrudEntityConfig(
     link_delete=LinkDeleteAction(
         path_template="/test-cases/{test_case_id}/defect-links/{defect_id}",
         permission="test_case_defect_link.delete",
+    ),
+    # ADR-0078: the `TestCase` -> "Defects (linked)" direction. `Defect` has no
+    # generic `create` either, and for the same reason one level deeper:
+    # `Defect.test_execution_id` is `NOT NULL`, and EXEC-3's
+    # `POST /executions/{id}/defects` additionally `422`s unless that execution
+    # actually failed.
+    #
+    # What makes this direction work rather than merely compile: that route
+    # writes `TestCaseDefectLink(test_case_id=execution.test_case_id, ...)`
+    # itself — so the link lands on *this* tab's test case precisely when the
+    # chosen execution belongs to it. The picker is therefore scoped to this
+    # test case's own executions (derived client-side: `TestExecution`'s scope
+    # field, widened to a branching pair by this same ADR, includes the very
+    # column this tab is scoped by), and filtered to the failed ones. Inside
+    # that scope `links_automatically=True` is exact, not approximate.
+    #
+    # This also retires ADR-0076's own documented dead end for this direction —
+    # "cannot be linked from that end today", behind `ScopeSelector`'s
+    # cascading-picker gap — because the same widening gives "Link existing"
+    # a scope it can actually fire with.
+    compound_creates=(
+        CompoundCreateAction(
+            far_field="defect_id",
+            path_template="/executions/{test_execution_id}/defects",
+            permission="defect.create",
+            links_automatically=True,
+            parent_entity="test-execution",
+            parent_label="Failed test execution",
+            # NOT `_DEFECT_CONFIG`'s own `test_execution_id` label field
+            # (`result`): this picker only ever offers failed executions, so
+            # every option would read "fail". `executed_at` is the column that
+            # actually distinguishes one run of this test case from another.
+            parent_label_field="executed_at",
+            # EXEC-3 AC1's literal precondition, enforced by the route with a
+            # `422`. Offering a passed execution here would be offering a
+            # guaranteed rejection.
+            parent_filters=(("result", "fail"),),
+        ),
     ),
     label="Test case -> defect links",
     scope_selector=(

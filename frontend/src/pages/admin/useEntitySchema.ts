@@ -78,6 +78,15 @@ export function toEntityConfig(key: string, schema: EntitySchemaResponse): Entit
     // client that inferred one key from the other would have rendered a
     // Remove button for a route that did not exist.
     ...(schema.linkDelete ? { linkDelete: schema.linkDelete } : {}),
+    // ADR-0078. Normalized to `[]` like `relations`, NOT spread-omitted like
+    // the two keys above — and the difference is not stylistic. Those two are
+    // presence flags answering "does this capability exist at all"; this one
+    // is a *list the caller searches by direction* (`find(a => a.farField ===
+    // relation.targetField)`), so "no compound create declared" and "none for
+    // this direction" already collapse to the same miss. An older backend that
+    // serves no key at all lands on the same empty array and behaves
+    // identically to a junction that needs none.
+    compoundCreates: schema.compoundCreates ?? [],
   };
 }
 

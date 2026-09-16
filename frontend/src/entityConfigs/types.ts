@@ -233,6 +233,68 @@ export interface LinkDeleteAction {
   permission: string;
 }
 
+/**
+ * [ADR-0078](../../../docs/adr/0078-compound-create-through-bespoke-routes.md):
+ * how a relationship tab creates the **far** entity of a junction when that
+ * entity has no generic `create` route at all.
+ *
+ * ADR-0076 Amendment 1's "Create new <far entity>" is the far entity's generic
+ * `create` followed by this junction's `linkCreate`. Three of the twelve live
+ * link directions point at an entity with no generic `create` —
+ * `TestCondition` and `Defect`, both authored only through a bespoke atomic
+ * route because their parent FK is `NOT NULL`. This declaration substitutes
+ * that bespoke route for the first call; everything else about the action is
+ * unchanged.
+ *
+ * Served on the **link** entity's own schema, as a list, because it is
+ * **directional**: a junction lists from both ends and typically only one end
+ * needs this. `farField` says which — match it against
+ * `relation.targetField`.
+ */
+export interface CompoundCreateAction {
+  /**
+   * Which of the link row's two FK columns the created record fills. The tab's
+   * own `relation.scopeField` is the other one, by construction.
+   */
+  farField: string;
+  /**
+   * The bespoke route's URL with **exactly one** `{...}` placeholder, named
+   * after the created entity's own parent FK column
+   * (`/requirements/{requirement_id}/test-conditions`). Filled by
+   * `interpolateLinkPath`, the same substitution `linkCreate` uses.
+   */
+  pathTemplate: string;
+  /** The exact code that route gates on — not always `<resource>.create`. */
+  permission: string;
+  /**
+   * Whether that route writes **this junction's** link row itself, inside its
+   * own transaction. `true` — one request and the tab is done; calling
+   * `linkCreate` afterwards would `409` on the pair it just wrote. `false` —
+   * the route linked something else (or nothing), and the client must follow
+   * with `linkCreate`, exactly as ADR-0076 Amendment 1 does.
+   *
+   * Not inferable from anything else on the wire, which is why it is declared.
+   */
+  linksAutomatically: boolean;
+  /**
+   * The four fields below describe the **parent picker**, and are `null`
+   * exactly when none is needed — i.e. when `pathTemplate`'s placeholder names
+   * the tab's own `scopeField`, so the tab already holds the value. Whether a
+   * picker is needed is therefore *derived* from that comparison, never read
+   * off these being present.
+   */
+  parentEntity: string | null;
+  parentLabel: string | null;
+  /** Which field of a picked parent row to display — declared, because the far entity's own FK `labelField` can be a poor picker label. */
+  parentLabelField: string | null;
+  /**
+   * Extra fixed query params the picker must send for a business rule the
+   * route enforces and the picker cannot see (`{result: "fail"}` — a defect
+   * can only be raised against a failed execution). `{}` when there is none.
+   */
+  parentFilters: Record<string, string>;
+}
+
 export interface EntityConfig {
   /** snake_case, matches the API's permission-code resource segment. */
   resource: string;
@@ -305,4 +367,14 @@ export interface EntityConfig {
    * not modelled as one.
    */
   linkDelete?: LinkDeleteAction;
+  /**
+   * ADR-0078: per-direction compound-create actions, for a junction direction
+   * whose far entity has no generic `create`. Optional for the same
+   * fixture-compatibility reason as the two keys above, but semantically a
+   * *list searched by direction* rather than a presence flag — a consumer does
+   * `compoundCreates?.find(a => a.farField === relation.targetField)`, so
+   * absent, `[]`, and "declared, but not for this direction" all correctly
+   * collapse to "no compound create here".
+   */
+  compoundCreates?: CompoundCreateAction[];
 }

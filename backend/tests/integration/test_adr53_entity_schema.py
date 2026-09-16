@@ -68,6 +68,16 @@ ENVELOPE_KEYS = {
     # is not hypothetical, it is what four of the six were between the two
     # ADRs.
     "linkDelete",
+    # ADR-0078: the thirteenth — per-*direction* compound-create actions for a
+    # junction whose far entity has no generic `create` at all. Additive and
+    # unconditionally present like the three above it, but a **list** rather
+    # than a nullable object: a client searches it by direction
+    # (`find(a => a.farField === relation.targetField)`), so "declares none" and
+    # "declares some, but not for your direction" are already the same answer,
+    # and `[]` says it without a null check at every call site. Empty for the 23
+    # non-link entities AND for the 3 junctions whose every direction's far
+    # entity can already be created generically.
+    "compoundCreates",
 }
 
 

@@ -224,6 +224,12 @@ class TestManyToManyRelations:
         assert [r["label"] for r in _relations("test-cases")] == [
             # one-to-many first, each alphabetical (the derivation's own sort)
             "Attachments",
+            # ADR-0078: `TestExecution`'s scope widened to a branching pair
+            # including `test_case_id`, so a test case's own execution history
+            # becomes a tab — a side effect of the widening the `Defects
+            # (linked)` picker needed, and a genuinely useful one: nothing else
+            # in the app lists a single test case's runs.
+            "Test executions",
             "Test steps",
             # then many-to-many, alphabetical
             "Defects (linked)",
@@ -267,21 +273,48 @@ class TestExclusions:
         assert all(r["targetEntity"] != "projects" for r in _relations("requirements"))
 
     def test_filter_field_only_fk_is_excluded(self) -> None:
-        """`TestExecution.test_case_id` is a real filterable column, but
-        `TestExecution`'s scope is `test_cycle_id` — unknowable from a
-        `TestCase` detail page.
+        """**Superseded premise, inverted in place rather than deleted** — the
+        same treatment ADR-0075 Amendment 1 gave
+        `test_a_link_table_is_listable_from_both_of_its_own_scope_arms` below,
+        and for the same reason: the *rule* being demonstrated still exists,
+        only its example stopped being an example.
 
-        Reads `derive_filter_fields(config)`, not `config.filter_fields`:
-        ADR-0072 (merged 2026-09-15) turned the filter allow-list from a
-        hand-declared per-entity tuple into a derivation, leaving
-        `config.filter_fields` as a *narrowing* override that is empty on
-        every config in this repo. The claim under test is unchanged — this
-        FK really is filterable — only where the answer now lives is.
+        This test used to assert that `TestExecution.test_case_id` is a real
+        filterable column whose FK is nonetheless **not** servable as a tab,
+        because `TestExecution`'s scope was `test_cycle_id` alone — a value a
+        `TestCase` detail page cannot supply. That was true and deliberate:
+        ADR-0074 Decision §2 requires an FK to be a *scope arm*, not merely a
+        filter field, precisely because the caller would still owe the
+        unrelated scope value.
+
+        ADR-0078 widened that scope to `("test_cycle_id", "test_case_id")`, so
+        the FK is now both filterable and a scope arm, and the relation is
+        served. The rule did not change — `TestCase` did not gain this tab by
+        `test_case_id` becoming filterable (it always was), it gained it by
+        that column becoming something a list request may scope by.
+
+        `test_filterable_alone_is_still_not_enough` below keeps the original
+        claim asserted against an example that is still an example.
         """
         config = ALL_ENTITY_CONFIGS["test-executions"]
         assert "test_case_id" in derive_filter_fields(config)
-        assert "test_case_id" not in _scope_candidates(config)
-        assert "test-executions" not in _by_entity("test-cases")
+        assert "test_case_id" in _scope_candidates(config)
+        assert "test-executions" in _by_entity("test-cases")
+        assert _by_entity("test-cases")["test-executions"]["kind"] == "one-to-many"
+
+    def test_filterable_alone_is_still_not_enough(self) -> None:
+        """ADR-0074 Decision §2's actual rule, on an FK that still demonstrates
+        it after ADR-0078 moved this test's original example out from under it.
+
+        `TestCase.test_level_id` is filterable and points at a registered
+        entity, and `TestLevel`'s detail page still gets no "Test cases" tab —
+        because `TestCase`'s own scope is `project_id`, which a `TestLevel`
+        page has no way to know. Filterable is not scopeable.
+        """
+        config = ALL_ENTITY_CONFIGS["test-cases"]
+        assert "test_level_id" in derive_filter_fields(config)
+        assert "test_level_id" not in _scope_candidates(config)
+        assert "test-cases" not in _by_entity("test-levels")
 
     def test_a_link_table_is_listable_from_both_of_its_own_scope_arms(self) -> None:
         """**TC-ADMIN-078.** Superseded premise, deliberately inverted rather than deleted.
@@ -351,7 +384,14 @@ EXPECTED_EXCLUSIONS: dict[tuple[str, str], str] = {
     # FK is filterable (ADR-0072's derivation), but the child's own scope is a
     # different column the parent's detail page cannot supply.
     ("test-cases", "test_condition_id"): "test-cases scope is project_id",
-    ("test-executions", "test_case_id"): "test-executions scope is test_cycle_id",
+    # ("test-executions", "test_case_id") lived here until ADR-0078, for the
+    # same reason the six link rows below it did: `TestExecution`'s scope was
+    # `test_cycle_id` alone, so a `TestCase` detail page had no way to ask for
+    # its own executions. ADR-0078 widened that scope to the branching pair
+    # `("test_cycle_id", "test_case_id")` — needed so the `TestCase` ->
+    # "Defects (linked)" tab can narrow its execution picker to this very test
+    # case — and the exclusion stopped being true the moment it did.
+    # `test_no_declared_exclusion_is_actually_being_served` is what caught it.
     ("test-cases", "test_level_id"): "test-cases scope is project_id",
     ("test-cases", "test_type_id"): "test-cases scope is project_id",
     ("test-cycles", "environment_id"): "test-cycles scope is test_plan_id",

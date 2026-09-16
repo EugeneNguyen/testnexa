@@ -41,6 +41,15 @@ import { expect, test } from "@playwright/test";
  * the live proof that the reverse tab actually *fetches and renders* is worth
  * its own test rather than being inferred from the forward one.
  *
+ * **[ADR-0078](../../docs/adr/0078-compound-create-through-bespoke-routes.md)
+ * (2026-09-16): `test-cases` gains a seventh tab, by the same mechanism a third
+ * time.** That ADR widens `TestExecution.scope_field` to
+ * `("test_cycle_id", "test_case_id")` so a `TestCase`'s "Defects (linked)" tab
+ * can scope its execution picker to the record being viewed — and the
+ * derivation emits the new arm as a one-to-many "Test executions" tab with no
+ * further change. The positional assertion below is what caught it: a new tab
+ * on a screen that story was not otherwise about.
+ *
  * Target environment: whichever isolated Compose project `E2E_BASE_URL` points
  * at (never the main `testnexa` stack) — `E2E_BACKEND_CONTAINER` names its
  * backend container. Seed/cleanup follows `admin6-entity-detail-page.spec.ts`
@@ -595,6 +604,13 @@ test.describe("ADR-0074: entity detail relationship tabs", () => {
         [
           "Info",
           "Attachments",
+          // ADR-0078: `TestExecution`'s `scope_field` widened to the branching
+          // pair `("test_cycle_id", "test_case_id")` — needed so the
+          // "Defects (linked)" tab can scope its execution picker to this very
+          // test case — and `derive_entity_relations` emits the new arm as a
+          // one-to-many tab for free. A test case's own execution history,
+          // which nothing else in the app lists.
+          "Test executions",
           "Test steps",
           "Defects (linked)",
           "Requirements (linked)",

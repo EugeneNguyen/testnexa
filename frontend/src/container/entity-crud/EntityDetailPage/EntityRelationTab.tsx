@@ -111,6 +111,50 @@
  * §5's hide-don't-disable posture, the same one `EntityListPage`'s `canCreate`
  * takes.
  *
+ * ### When the far entity has no generic `create` at all ([ADR-0078](../../../../../docs/adr/0078-compound-create-through-bespoke-routes.md))
+ *
+ * "Create new" as ADR-0076 Amendment 1 built it is *the far entity's generic
+ * `create`, then `linkCreate`*. That composition needs a generic `create` to
+ * exist, and for three of the twelve live link directions it does not:
+ * `TestCondition` and `Defect` are authored only through bespoke atomic routes,
+ * because their parent FK is `NOT NULL` and the generic factory has no way to
+ * stamp it. Those three tabs therefore rendered "Link existing" alone — which
+ * is precisely the gap Amendment 1 exists to close, left open for exactly the
+ * entities whose authoring is least discoverable.
+ *
+ * ADR-0078 substitutes the **first call** and changes nothing else. The link
+ * entity's schema declares, per direction, which bespoke route creates its far
+ * record (`config.compoundCreates`, matched on `relation.targetField`), and
+ * two facts the client cannot infer:
+ *
+ * - **`linksAutomatically`** — whether that route already writes *this* tab's
+ *   link row inside its own transaction. `POST /requirements/{id}/test-conditions`
+ *   does (REQ-3 wrote it that way so a condition can never exist unlinked), and
+ *   so does `POST /executions/{id}/defects`. When it is true there is no second
+ *   call at all, and `CreatedNotLinkedError` is unreachable by construction —
+ *   one request, one transaction, strictly safer than the generic path above.
+ *   When it is false (`TestCase` -> "Test conditions (linked)", whose atomic
+ *   route writes the *requirement* link, not this one) the client follows with
+ *   the identical `linkCreate` call Amendment 1 already makes.
+ * - **a parent, when the tab cannot supply one.** The bespoke route is parented
+ *   by a record the tab may or may not be standing on. Whether it is, is
+ *   *derived*: `compoundParentField` reads the template's single placeholder,
+ *   and if it names this tab's own `relation.scopeField` the parent **is** the
+ *   record being viewed (`Requirement` -> "Test conditions (linked)" — one
+ *   modal, no picker). Otherwise the user picks it first, above the form, in
+ *   the same `FkAutocomplete` "Link existing" uses.
+ *
+ * That picker's own scope is derived too, by one rule with one new clause
+ * (`compoundParentScopeParams`): if the parent entity is itself scopeable by
+ * the very column this tab is scoped by, the tab's parent id *is* the scope.
+ * That is what makes `TestCase` -> "Defects (linked)" correct rather than
+ * merely present — `POST /executions/{id}/defects` links the new defect to
+ * `execution.test_case_id`, so offering executions of *any other* test case
+ * would quietly file the defect against a record the user is not looking at.
+ * Narrowed to this test case's own executions, `linksAutomatically` is exact.
+ * Failing that clause it falls through to `pickerScopeParams` unchanged, and
+ * to `ScopeSelector` after that.
+ *
  * ### Scoping the picker — and prefilling the create form
  *
  * `pickerScopeParams` answers one question that both n-n actions need: *what
@@ -167,14 +211,15 @@
  * "loading actions" placeholder for that same window (see `actionsLoading`),
  * so the arrival is accounted for on screen rather than unexplained.
  *
- * One live direction (`TestCase` -> "Defects (linked)") lands in case 3 behind
- * `ScopeSelector`'s own **pre-existing** cascading-picker gap: `Defect`'s
- * selector searches `TestExecution`, which is itself scoped by `test_cycle_id`
- * rather than `project_id`, so the search comes back empty. That limitation is
- * documented by name in `scope-selector.tsx`'s own docstring, predates this
- * ADR, and is not worked around here. The same link is fully creatable from
- * the other end (`Defect` -> "Test cases (linked)", case 2), so the capability
- * is reachable; see ADR-0076's Consequences.
+ * One live direction (`TestCase` -> "Defects (linked)") used to land in case 3
+ * behind `ScopeSelector`'s own cascading-picker gap: `Defect`'s selector
+ * searches `TestExecution`, which was scoped by `test_cycle_id` alone, so the
+ * search came back empty and ADR-0076 recorded the direction as unlinkable
+ * from that end. **ADR-0078 retires that limitation at its source** rather
+ * than working around it here: `TestExecution`'s `scope_field` is now the
+ * branching pair `("test_cycle_id", "test_case_id")`, so a `TestCase` tab can
+ * scope the search by the record it is already on, and both n-n actions work
+ * from both ends of all six junctions.
  */
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -192,12 +237,13 @@ import {
 } from "../../../components";
 import { Icon } from "../../../components/atoms/icon/icon";
 import { usePermissions } from "../../../auth/usePermissions";
-import { EntityConfig, EntityRelation } from "../../../entityConfigs/types";
+import { CompoundCreateAction, EntityConfig, EntityRelation } from "../../../entityConfigs/types";
 import { ApiError } from "../../../lib/api/client";
 import {
   EntityRow,
   createEntity,
   createLinkRow,
+  createViaCompoundRoute,
   deleteLinkRow,
   listEntities,
 } from "../../../lib/api/entityCrud";
@@ -264,14 +310,80 @@ export function pickerScopeParams(
   farConfig: EntityConfig,
   projectId: string | undefined,
 ): Record<string, string> | null {
-  const { scopeField } = farConfig;
-  if (!scopeField) {
+  const arms = scopeArmsOf(farConfig);
+  if (arms.length === 0) {
     return {};
   }
-  if (scopeField === "project_id" && projectId) {
+  if (arms.includes("project_id") && projectId) {
     return { project_id: projectId };
   }
   return farConfig.scopeSelector ? null : {};
+}
+
+/**
+ * An entity's scope field(s) as a plain list — one element for the ordinary
+ * single-column case, two for a branching scope (`RiskItem`, all six junctions
+ * since ADR-0075 Amendment 1, and `TestExecution` since ADR-0078).
+ *
+ * Exists because the several places that ask "can this entity be scoped by
+ * column X" were written when `scopeField` was only ever a string, and a
+ * strict `scopeField === "project_id"` silently answers *no* for an array —
+ * the wrong answer, and a quiet one. Normalizing once is cheaper than auditing
+ * each comparison every time another config widens.
+ */
+export function scopeArmsOf(config: EntityConfig): string[] {
+  const { scopeField } = config;
+  if (!scopeField) {
+    return [];
+  }
+  return Array.isArray(scopeField) ? [...scopeField] : [scopeField];
+}
+
+/**
+ * ADR-0078: the single `{...}` placeholder in a `CompoundCreateAction`'s
+ * `pathTemplate` — the parent the bespoke create route is mounted under.
+ *
+ * Returns `null` when the template does not carry exactly one, which is a
+ * declaration bug rather than a runtime condition (the backend's own
+ * completeness test pins it). Returning `null` rather than throwing keeps a
+ * malformed declaration from taking down a tab that renders fine otherwise:
+ * the action is simply not offered, the same fail-closed posture every other
+ * gate here takes.
+ */
+export function compoundParentField(action: CompoundCreateAction): string | null {
+  const matches = action.pathTemplate.match(/\{([a-zA-Z_]+)\}/g);
+  if (!matches || matches.length !== 1) {
+    return null;
+  }
+  return matches[0].slice(1, -1);
+}
+
+/**
+ * ADR-0078: which scope params the compound action's **parent** picker must
+ * send — `pickerScopeParams`' rule with one clause in front of it.
+ *
+ * The new clause: if the parent entity can itself be scoped by the very column
+ * this tab is scoped by, then the record being viewed *is* the scope. That is
+ * what makes `TestCase` -> "Defects (linked)" correct rather than merely
+ * available — `POST /executions/{id}/defects` files the defect against
+ * `execution.test_case_id`, so an unnarrowed execution picker would let the
+ * user create a row that lands on a different test case and never appears in
+ * the tab they created it from.
+ *
+ * Everything else falls through to `pickerScopeParams` unchanged, `null` and
+ * all, so a parent entity needing a `ScopeSelector` step gets one exactly as
+ * the far-entity picker does.
+ */
+export function compoundParentScopeParams(
+  parentConfig: EntityConfig,
+  relation: EntityRelation,
+  parentId: string,
+  projectId: string | undefined,
+): Record<string, string> | null {
+  if (scopeArmsOf(parentConfig).includes(relation.scopeField)) {
+    return { [relation.scopeField]: parentId };
+  }
+  return pickerScopeParams(parentConfig, projectId);
 }
 
 function errorMessage(error: unknown): string {
@@ -358,6 +470,66 @@ function EntityRelationTab({
   const { config: farConfig, isLoading: farSchemaLoading } = useEntitySchema(relation.targetEntity);
 
   /**
+   * ADR-0078: the compound-create declaration for **this direction**, if the
+   * far entity has no generic `create` of its own. Matched on
+   * `relation.targetField`, which is the link row's FK naming the far side —
+   * the same key `farField` is declared against.
+   *
+   * Read off `config` (the *link* entity) rather than `farConfig`: the
+   * declaration describes how this junction reaches that entity, and the two
+   * directions of one junction can disagree about it (they do — see
+   * `trace.py`'s two `TestCondition` actions, one of which links
+   * automatically and one of which does not).
+   */
+  const compoundCreate =
+    relation.kind === "many-to-many" && relation.targetField !== null
+      ? config?.compoundCreates?.find((action) => action.farField === relation.targetField)
+      : undefined;
+  /**
+   * The compound action **in effect**, which is not the same thing as "a
+   * compound action is declared for this direction".
+   *
+   * A declaration is a *fallback*: it exists because the far entity has no
+   * generic `create`. If the far entity has one, ADR-0076 Amendment 1's
+   * original composition applies and the declaration must not fire — otherwise
+   * the button's permission gate, its locked values and its parent picker would
+   * all be computed for the generic path while the request actually sent was
+   * the compound one. That internal disagreement is the bug this single
+   * derivation exists to make unrepresentable: **every** downstream consumer
+   * reads this, never `compoundCreate`.
+   *
+   * No live config produces the overlap today — the backend's own
+   * `test_no_declaration_is_dead_code` rejects a declaration for a direction
+   * whose far entity can already be created generically — but "unreachable
+   * because another layer forbids it" is not the same as "cannot be expressed
+   * here", and the two answers must not disagree if it ever is.
+   */
+  const activeCompoundCreate =
+    farConfig && farConfig.methods.includes("create") ? undefined : compoundCreate;
+  const compoundParent = activeCompoundCreate ? compoundParentField(activeCompoundCreate) : null;
+  /**
+   * Derived, never declared: the route's parent placeholder either names the
+   * column this tab is already scoped by — in which case the parent *is* the
+   * record being viewed and there is nothing to ask — or it does not, and the
+   * user must pick one. `Requirement` -> "Test conditions (linked)" is the
+   * first case; both `TestCase` directions are the second.
+   */
+  const compoundNeedsParentPicker = Boolean(compoundParent) && compoundParent !== relation.scopeField;
+
+  /**
+   * The parent entity's schema, for the picker's scope and label. Called
+   * unconditionally (Rules of Hooks) and deliberately falls back to
+   * `relation.targetEntity` — the key the line above already resolved — so a
+   * tab with no compound create, or one whose parent needs no picker, resolves
+   * a warm cache entry instead of firing a third request.
+   */
+  const { config: compoundParentConfig } = useEntitySchema(
+    compoundNeedsParentPicker && activeCompoundCreate?.parentEntity
+      ? activeCompoundCreate.parentEntity
+      : relation.targetEntity,
+  );
+
+  /**
    * CTO-reported bug, 2026-09-15: the action buttons "sometimes show,
    * sometimes don't" on the identical tab/account — not a permission logic
    * bug, a **race**. `canCreateChild`/`canLinkExisting`/`canCreateAndLink`
@@ -392,6 +564,20 @@ function EntityRelationTab({
    * user navigates away rather than vanishing with the dialog that caused it.
    */
   const [createdNotLinked, setCreatedNotLinked] = useState<string | null>(null);
+
+  /**
+   * ADR-0078: the parent row picked inside the "Create new" modal, for a
+   * compound action whose bespoke route is mounted under a record this tab
+   * does not hold. Separate from `pickedId` (the "Link existing" picker's
+   * state) because the two modals are open at different times and hold
+   * different kinds of thing — one is the record to link, this one is the
+   * parent to create *under*.
+   */
+  const [compoundParentId, setCompoundParentId] = useState<string | undefined>(undefined);
+  /** The `ScopeSelector`-resolved scope for the parent picker, case 3 only. */
+  const [compoundParentScope, setCompoundParentScope] = useState<Record<string, string> | undefined>(
+    undefined,
+  );
 
   // ADR-0077 — the per-row "Remove" action's confirm step. `rowPendingUnlink`
   // doubles as the modal's own visibility flag, exactly as
@@ -514,6 +700,12 @@ function EntityRelationTab({
     setShowCreateLinkModal(false);
     setCreateLinkError(null);
     setCreateLinkFieldErrors(undefined);
+    // ADR-0078: reset the parent pick too, or reopening the modal silently
+    // reuses whatever was chosen last time — which for the `Defect` action
+    // would mean filing against a stale execution the user is no longer
+    // looking at.
+    setCompoundParentId(undefined);
+    setCompoundParentScope(undefined);
   }
 
   /**
@@ -528,7 +720,31 @@ function EntityRelationTab({
    */
   const createAndLinkMutation = useMutation({
     mutationFn: async (values: Record<string, unknown>) => {
-      const created = (await createEntity(farConfig as EntityConfig, routeParams, values)) as EntityRow;
+      /**
+       * ADR-0078: the first call is either the far entity's own generic
+       * `create` (ADR-0076 Amendment 1's original composition) or the bespoke
+       * atomic route that is its only authoring path. Nothing downstream of
+       * this branch cares which — both return the created row.
+       */
+      const created = (activeCompoundCreate
+        ? await createViaCompoundRoute(
+            activeCompoundCreate,
+            { [compoundParent as string]: compoundNeedsParentPicker ? (compoundParentId as string) : parentId },
+            values,
+          )
+        : await createEntity(farConfig as EntityConfig, routeParams, values)) as EntityRow;
+
+      /**
+       * ADR-0078: when the bespoke route wrote this junction's link row inside
+       * its own transaction, there is no second call to make and no partial
+       * state to recover from — `CreatedNotLinkedError` is unreachable on this
+       * path by construction, which makes it strictly safer than the two-call
+       * one, not merely different.
+       */
+      if (activeCompoundCreate?.linksAutomatically) {
+        return created;
+      }
+
       const farId = created?.id;
       if (typeof farId !== "string" || !farId) {
         // Not reachable against this API (every create returns its row), but
@@ -650,11 +866,55 @@ function EntityRelationTab({
    *    a `201` and then a `403`, i.e. exactly the orphaned row this action's
    *    whole error path exists to avoid — so it is refused before it starts.
    */
+  /**
+   * ADR-0078 rewrites condition 3 and relaxes condition 1. Which route makes
+   * the far record, and therefore which permission it costs, is now a branch:
+   *
+   * - **generic** — the far entity has its own `create` (9 of the 12 live link
+   *   directions). Unchanged from Amendment 1 in every respect.
+   * - **compound** — it does not, and this direction declares the bespoke
+   *   route that does (the other 3). The permission is that route's own
+   *   declared code, which is emphatically not `<far resource>.create` by
+   *   convention — it happens to be `test_condition.create`/`defect.create`
+   *   here, but reading it off the declaration is what stops the next such
+   *   route from needing a client change.
+   *
+   * `null` means neither is available, and the action correctly does not
+   * render — the same API-capability gate as before, just no longer equivalent
+   * to "the far entity has a generic create".
+   */
+  const createLinkMode: "generic" | "compound" | null = !farConfig
+    ? null
+    : farConfig.methods.includes("create")
+      ? "generic"
+      : activeCompoundCreate && compoundParent
+        ? "compound"
+        : null;
+
+  /**
+   * Whether the sequence still owes a separate `linkCreate` call after the
+   * create — true for the generic composition always, and for a compound
+   * action whose route does not write this junction's row itself.
+   *
+   * This is what condition 1 now turns on. Amendment 1 required
+   * `canLinkExisting` unconditionally, and its reason was specific: an actor
+   * who may create but may not link would get a `201` then a `403`, stranding
+   * a real row this tab cannot display. When the create route does the linking
+   * there is no second call to be refused, so requiring the link permission
+   * would hide a button for a request that is never made — over-gating, not
+   * caution. The reason and the condition move together.
+   */
+  const createLinkNeedsLinkCall = createLinkMode === "generic" || !activeCompoundCreate?.linksAutomatically;
+
+  const createLinkPermission =
+    createLinkMode === "compound" ? activeCompoundCreate!.permission : `${farConfig?.resource}.create`;
+
   const canCreateAndLink =
-    canLinkExisting &&
-    Boolean(farConfig) &&
-    farConfig!.methods.includes("create") &&
-    permissions.has(`${farConfig!.resource}.create`, projectId);
+    !isOneToMany &&
+    relation.targetField !== null &&
+    createLinkMode !== null &&
+    permissions.has(createLinkPermission, projectId) &&
+    (!createLinkNeedsLinkCall || canLinkExisting);
 
   // Which scope the picker can fire with, and whether a `ScopeSelector` step
   // is needed first. `farConfig` is undefined for one schema round trip.
@@ -673,6 +933,49 @@ function EntityRelationTab({
    */
   const createLinkLockedValues =
     derivedScope && Object.keys(derivedScope).length > 0 ? derivedScope : undefined;
+
+  /**
+   * ADR-0078: the compound action's parent picker — its scope, whether a
+   * `ScopeSelector` step is needed first, and whether the form may render yet.
+   * Structurally identical to the "Link existing" picker's own three values
+   * above, deliberately: it is the same component solving the same problem one
+   * level up (pick the record this create hangs off, rather than the record to
+   * link), so it resolves its scope through the same rule.
+   */
+  const compoundParentDerivedScope =
+    compoundNeedsParentPicker && compoundParentConfig
+      ? compoundParentScopeParams(compoundParentConfig, relation, parentId, projectId)
+      : {};
+  const compoundParentNeedsScopeStep = compoundParentDerivedScope === null;
+  const compoundParentEffectiveScope = {
+    ...(compoundParentNeedsScopeStep ? compoundParentScope : compoundParentDerivedScope ?? undefined),
+    // The route's own business-rule precondition, declared because the picker
+    // cannot see it (`result=fail` — a defect only exists against a failure).
+    ...(activeCompoundCreate?.parentFilters ?? {}),
+  };
+  const compoundParentPickerReady = !compoundParentNeedsScopeStep || Boolean(compoundParentScope);
+  /**
+   * Whether the create form may render at all. For a compound action needing a
+   * parent, the answer is "once one is picked" — the form is *about* a record
+   * that does not exist yet under a parent we do not have, so showing it first
+   * would offer a submit that cannot be built into a URL.
+   */
+  const compoundFormReady = !compoundNeedsParentPicker || Boolean(compoundParentId);
+
+  /**
+   * What the far entity's create form locks. For the generic path this is the
+   * derived scope, exactly as Amendment 1 had it. For a compound one it is the
+   * *parent* — which is the far entity's own scope column in both live cases
+   * (`TestCondition.requirement_id`, `Defect.test_execution_id`) — so the form
+   * shows the user which record they are creating under and cannot retarget
+   * it. The route reads that id from the path either way; sending it in the
+   * body too is harmless (both request schemas ignore unknown keys) and is
+   * what makes the field visible rather than invisible-but-implied.
+   */
+  const createLinkFormLockedValues =
+    createLinkMode === "compound" && compoundParent
+      ? { [compoundParent]: (compoundNeedsParentPicker ? compoundParentId : parentId) as string }
+      : createLinkLockedValues;
 
   return (
     <>
@@ -884,16 +1187,78 @@ function EntityRelationTab({
         >
           <Modal.Body>
             {/*
+              ADR-0078: the parent step, when the bespoke create route is
+              mounted under a record this tab does not hold. Rendered above the
+              form and gating it, rather than beside it, because it is not
+              another field of the thing being created — it decides which URL
+              the create is even sent to.
+
+              Same two-stage shape as the "Link existing" modal below
+              (`ScopeSelector` first if the parent's own list needs a scope the
+              route can't supply, then the picker), reusing both components
+              rather than growing a third picker.
+            */}
+            {compoundNeedsParentPicker && activeCompoundCreate && (
+              <>
+                {compoundParentNeedsScopeStep && compoundParentConfig?.scopeSelector && (
+                  <ScopeSelector
+                    options={compoundParentConfig.scopeSelector}
+                    onResolved={(paramName, value) => {
+                      setCompoundParentScope({ [paramName]: value });
+                      setCompoundParentId(undefined);
+                    }}
+                    extraParams={projectId ? { project_id: projectId } : undefined}
+                  />
+                )}
+                {compoundParentPickerReady && (
+                  <FkAutocomplete
+                    id="entity-relation-compound-parent-picker"
+                    label={activeCompoundCreate.parentLabel ?? "Parent"}
+                    refEntity={activeCompoundCreate.parentEntity as string}
+                    labelField={activeCompoundCreate.parentLabelField ?? undefined}
+                    value={compoundParentId}
+                    onChange={setCompoundParentId}
+                    extraParams={compoundParentEffectiveScope}
+                    routeParams={routeParams}
+                  />
+                )}
+                {!compoundFormReady && (
+                  /*
+                    Deliberately does NOT interpolate `farLabel` here, though an
+                    earlier draft did — caught by looking at the rendered modal
+                    in a real browser, not by any assertion. A relation's label
+                    is a *plural* ("Test conditions", "Defects"), so "the new
+                    test conditions is created under it" reads as a grammar bug;
+                    and every test that could have pinned the wording would have
+                    pinned the wrong wording equally happily. "the new record" is
+                    number-agnostic and its referent is unambiguous — the modal's
+                    own title, two lines up, already names what is being created.
+
+                    Exactly the same trap, and the same fix, as ADR-0077's unlink
+                    confirm body (see its own comment below); worth writing twice
+                    because the pull toward interpolating the label is strong and
+                    the rendered result is the only place it shows.
+                  */
+                  <p className="text-secondary mb-0 mt-2" data-testid="entity-relation-compound-parent-hint">
+                    Choose a {(activeCompoundCreate.parentLabel ?? "parent").toLowerCase()} first — the new
+                    record is created under it.
+                  </p>
+                )}
+              </>
+            )}
+
+            {/*
              * The FAR entity's own schema drives this form — `farConfig`, not
              * `config`. `config` here is the *link* entity, whose two FK
              * columns are the whole row and which has no `create_schema` at
              * all (ADR-0005); rendering its fields would ask the user to fill
              * in two ids, one of which is the record they are already on.
              */}
+            {compoundFormReady && (
             <EntityForm
               config={farConfig}
               mode="create"
-              lockedValues={createLinkLockedValues}
+              lockedValues={createLinkFormLockedValues}
               submitError={createLinkError}
               serverFieldErrors={createLinkFieldErrors}
               onCancel={closeCreateLinkModal}
@@ -913,6 +1278,7 @@ function EntityRelationTab({
                 }
               }}
             />
+            )}
           </Modal.Body>
         </Modal>
       )}

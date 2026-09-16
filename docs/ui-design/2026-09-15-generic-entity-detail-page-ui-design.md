@@ -177,7 +177,7 @@ Both actions check two independent things, and conflating them would be wrong in
 | far-`create` code only | hidden | **hidden** |
 | neither | hidden | hidden |
 
-The third row is the one worth stating outright, because the intuitive expectation is that it shows `Create new` alone. It does not, on purpose. The API-capability half matters too and is not hypothetical: 3 of the 12 live link directions point at an entity with no generic `create` at all (`TestCondition` and `Defect` are authored only through bespoke routes), so the button correctly never appears on those tabs regardless of permissions.
+The third row is the one worth stating outright, because the intuitive expectation is that it shows `Create new` alone. It does not, on purpose. The API-capability half matters too and is not hypothetical: 3 of the 12 live link directions point at an entity with no generic `create` at all (`TestCondition` and `Defect` are authored only through bespoke routes), so ~~the button correctly never appears on those tabs regardless of permissions~~ — **superseded 2026-09-16 by [ADR-0078](../adr/0078-compound-create-through-bespoke-routes.md) / FR-ADMIN-10, see §6.7b.** Those three tabs now render `Create new` too, driven by a declared **bespoke** create route rather than the far entity's generic one. The matrix above is **unchanged for every two-call direction** — including `TestCase` → "Test conditions (linked)", which is compound *and* still owes a `linkCreate` — but its third row **inverts** where the bespoke route writes this junction's link row itself (`linksAutomatically`): with no second call to be refused there is no `201`-then-`403` to foreclose, so holding the create permission alone **shows** the button. The gate that moved is the *reason*, not the posture: the link permission is required exactly where a separately-gated second call is owed. §6.7b gives the corrected matrix.
 
 A missing permission makes the button **absent, not disabled** — §5 of the [generic admin CRUD UI Design Document](2026-09-05-generic-admin-crud-ui-design.md)'s hide-don't-disable posture (FR-ADMIN-2 AC4 / NFR-37), identical to `EntityListPage`'s own `canCreate`. Taking the permission code from the served schema rather than guessing it is the whole point of NFR-78: two of the six junctions gate on their *parent's* `test_suite.update`/`test_plan.update`, so any client-side naming convention would hide those two buttons from exactly the people entitled to use them. As always, the check never substitutes for the API's own enforcement — a revoked-mid-session grant still gets a real `403` from the route, surfaced through the modal's own error alert.
 
@@ -219,7 +219,7 @@ The far entity's own list route usually requires a scope value and `422`s withou
 
 Case 3 is the same "pick a parent row before the list can fetch" step `EntityListPage` already shows for the same entities, in the same component — the modal reuses it rather than inventing a second scope-gate UI.
 
-**Known blind spot, pre-existing and deliberately not worked around:** `TestCase` → "Defects (linked)" lands in case 3 behind `ScopeSelector`'s own cascading-picker gap — `Defect`'s selector searches `TestExecution`, which is itself scoped by `test_cycle_id` rather than `project_id`, so the search comes back empty. `scope-selector.tsx` documents that limitation by name for exactly this entity and predates this ADR; fixing it means a cascading multi-step picker, which is its own change. The same link is fully creatable from the other end (`Defect` → "Test cases (linked)", case 2) and the route itself is correct and tested, so the capability is reachable — only that one picker is blind.
+**Known blind spot, pre-existing and deliberately not worked around:** `TestCase` → "Defects (linked)" lands in case 3 behind `ScopeSelector`'s own cascading-picker gap — `Defect`'s selector searches `TestExecution`, which is itself scoped by `test_cycle_id` rather than `project_id`, so the search comes back empty. `scope-selector.tsx` documents that limitation by name for exactly this entity and predates this ADR; fixing it means a cascading multi-step picker, which is its own change. The same link is fully creatable from the other end (`Defect` → "Test cases (linked)", case 2) and the route itself is correct and tested, so the capability is reachable — only that one picker is blind. **Superseded 2026-09-16 by [ADR-0078](../adr/0078-compound-create-through-bespoke-routes.md): ~~that picker is no longer blind and this tab is no longer the one direction with a broken action~~.** `TestExecution`'s list scope widened from `test_cycle_id` alone to the branching `("test_cycle_id", "test_case_id")` — needed for §6.7b's own execution picker, and it gives `Defect`'s `ScopeSelector` a scope it can actually fire with. The tab therefore goes from *neither* action working to **both**. The *general* cascading-picker limitation `scope-selector.tsx` documents is **not** fixed and the paragraph above remains the accurate description of it — what changed is that this particular entity pair stopped being an instance of it.
 
 ### 6.7a The "Create new …" modal (many-to-many) — one step, two requests ([ADR-0076](../adr/0076-relationship-tab-write-actions.md) Amendment 1, NFR-79)
 
@@ -252,6 +252,58 @@ Prose and sketch agree: the locked scope field renders **first**, disabled, exac
 - **Before**: the both-permissions gate in §6.3 forecloses the one predictable cause.
 - **After**: if the link half fails regardless (a race, a duplicate-pair `409`, a cross-project `422`), the modal **closes** — a resubmit would otherwise create a second record for one intent — and the §6.2 alert appears above the table carrying four things, none of them optional: the created record's **own label** *and* its **id** (the label is what the user recognises, the id is what survives a rename and can be pasted into a search), the API's **own** reason rather than a generic failure string, the plain statement that it was saved and is **not** linked, and the **recovery** — "Link existing …", the sibling button already on screen, which now needs no form at all because the record exists. No bespoke "retry link" state was added for exactly that reason.
 - An **ordinary create failure** (nothing was written) gets the opposite handling: the modal stays open with the user's input intact, `field_errors` land on their matching inputs, and no "created, not linked" alert appears — because nothing was created.
+
+### 6.7b The compound "Create new …" modal — when the far entity has no generic `create` ([ADR-0078](../adr/0078-compound-create-through-bespoke-routes.md), FR-ADMIN-10 / NFR-81)
+
+§6.7a assumes the far entity has a generic `create` to call. For **3 of the 12 live link directions** it does not, and those are exactly the tabs for the two entities that cannot be authored anywhere else without leaving the page — `TestCondition` (whose `requirement_id` is `NOT NULL` and whose link row must be written in the same transaction) and `Defect` (whose `test_execution_id` is `NOT NULL`). Until ADR-0078 those tabs rendered `Link existing …` alone, silently: no error, no refusal, just an action that never appeared. This section is the same modal, with the create half pointed at the **declared bespoke route** instead, and — where that route is mounted under a parent the tab is not already standing on — one extra step above the form.
+
+**Everything in §6.7a that is not about *which route creates* is unchanged:** the title, the far entity's own `EntityForm`, the locked scope field, the submit-level error alert below the fields, the Cancel + Create footer, the modal-closes-and-list-refetches success path, and the entire "created, but not linked" handling (§6.2's alert, the modal closing so a resubmit cannot mint a second row) for the directions that still owe a second call.
+
+**Two shapes, chosen by comparing the route's own parent placeholder against the tab's scope field** — derived, never declared, so a declaration can neither claim a parent step it does not need nor omit one it does:
+
+| | Parent placeholder **==** the tab's scope field | Parent placeholder **!=** the tab's scope field |
+|---|---|---|
+| Example | `Requirement` → "Test conditions (linked)" | `TestCase` → "Test conditions (linked)"; `TestCase` → "Defects (linked)" |
+| Parent step | **none** — the route's parent *is* the record being viewed | a picker, above the form, **gating** it |
+| Requests on submit | **one** | one, then `linkCreate` — **unless** the route links automatically |
+
+```
+┌─ modal ─────────────────────────────────────────────────┐
+│ Create new test conditions                         [×]  │
+├─────────────────────────────────────────────────────────┤
+│  [ ScopeSelector ]        ← only if the parent entity   │
+│                             itself needs a scope first  │
+│  [ Requirement ▾ (search…) ]   ← the parent picker,     │
+│                                  only when needed       │
+│  ─ "Choose a requirement first — the new test           │
+│     condition is created under it."   ← until picked    │
+│  ·································· form begins here ···│
+│  [ Description                                     ]    │  ← the FAR entity's
+│  [ Priority ▾ ]                                         │     own fields, only
+│  [ alert alert-danger ]  ← only after a failed create   │     after the pick
+├─────────────────────────────────────────────────────────┤
+│                                  [ Cancel ] [ Create ]  │
+└─────────────────────────────────────────────────────────┘
+```
+
+Prose and sketch agree: the parent picker sits **above** the form and nothing below the dotted line renders until a parent is chosen — **the form does not render, as opposed to rendering disabled**. That is a deliberate choice and the sketch shows it rather than implying it: a rendered-but-unsubmittable form invites the user to fill in fields whose scope the later parent choice may change, and then either silently re-scopes them or discards the typing. The hint occupies the form's place until then, so the modal never looks broken or empty. Where the parent entity *itself* needs a scope before it can be searched, §6.6's `ScopeSelector` step sits above the picker in turn — the same component, the same order, one more level of the same rule.
+
+`data-testid="entity-relation-compound-parent-hint"` on the hint paragraph. The picker is the shared `FkAutocomplete`, identified by `id="entity-relation-compound-parent-picker"` (which is the input's own `id`, the hook `FkAutocomplete` exposes — it takes an `id`, not a `data-testid`, so the id is what tests and labels both bind to). Neither is new machinery: the picker is the same one §6.5 uses for "Link existing".
+
+**The parent picker is narrowed to the rows the route will actually accept**, not merely to the right entity. For `TestCase` → "Defects (linked)" it offers only **this test case's failed executions**: `POST /executions/{id}/defects` files the defect against `execution.test_case_id`, so an unnarrowed picker would let a user create a defect that lands on a record they are not looking at and never appears in the tab they created it from — a wrong result, not a slow one — and EXEC-3's route `422`s a non-failed execution, so offering a passed run is offering a guaranteed rejection. Each option is labelled by its `executed_at`, deliberately **not** by `Defect`'s own `test_execution_id` label field (`result`), which in a failed-only list would render every option as "fail".
+
+**Where the bespoke route writes this junction's link row itself, submit is one request and the partial state is unreachable.** `POST /requirements/{id}/test-conditions` and `POST /executions/{id}/defects` both do. There is no second call to fail, so §6.7a's "created, but not linked" alert cannot occur on those two directions by construction rather than by luck — which makes the compound path **safer** than the generic two-call one, not a degraded fallback for entities that lack a proper create. The client must not "just try the link anyway": it would `409` on the pair the first call already wrote, turning a success into a visible error.
+
+**Gating, corrected from §6.3 for exactly the case whose reason changed:**
+
+| Actor holds | `Link existing` | `Create new` (2 calls) | `Create new` (1 call, route links it) |
+|---|---|---|---|
+| both codes | shown | shown | shown |
+| link code only | shown | hidden | hidden |
+| create code only | hidden | **hidden** | **shown** |
+| neither | hidden | hidden | hidden |
+
+The third row's last cell is the surprising one and it is correct for a stated reason: §6.3 requires the link permission to foreclose a `201` followed by a `403` that strands a row this tab cannot display, and where no second call is made there is no such request to refuse. Requiring it there would hide a button for something that never happens — over-gating, not caution. The code checked is always the one the **backend declared for that route**, never `${farResource}.create` by convention; they coincide for all three of today's declarations, which is precisely why the convention must not be relied on. Hidden-not-disabled and fail-closed-while-loading (§5) are unchanged.
 
 ### 6.7 What is still not here
 

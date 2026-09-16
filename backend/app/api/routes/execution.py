@@ -67,9 +67,11 @@ from app.api.crud_factory import (
     NoSchema,
     ResolveOrgId,
     ScopeSelectorOption,
+    branching_resolver,
     chain_resolver,
     make_crud_router,
     resolve_test_case_org_id,
+    resolve_via_test_case,
 )
 from app.api.deps import get_current_actor, get_db
 from app.core.rbac import has_permission
@@ -239,8 +241,38 @@ _TEST_EXECUTION_CONFIG = CrudEntityConfig(
     create_schema=None,
     update_schema=UpdateTestExecutionRequest,
     summary_schema=TestExecutionSummary,
-    scope_field="test_cycle_id",
-    resolve_org_id=_resolve_test_execution_org_id,
+    # ADR-0078: widened from the single `"test_cycle_id"` to a branching pair,
+    # the shape `RiskItem` has always had and ADR-0075 Amendment 1 gave all six
+    # junctions. Both columns are `NOT NULL` on every row, so this is purely
+    # about which one a *list request* may scope by — an execution has always
+    # belonged to a test case exactly as much as to a cycle, and only the cycle
+    # arm was reachable.
+    #
+    # Needed because `TestCase` -> "Defects (linked)" cannot offer either of
+    # its write actions without it: `POST /executions/{id}/defects` links the
+    # new defect to `execution.test_case_id`, so the execution picker must be
+    # narrowed to *this* test case's executions or the row lands on a different
+    # one (see `_TEST_CASE_DEFECT_LINK_CONFIG.compound_creates`), and
+    # "Link existing" needs the same scope to escape ADR-0076's documented
+    # cascading-picker dead end.
+    #
+    # Two deliberate consequences, neither a side effect to regret:
+    # `GET /test-executions?test_case_id=...` becomes legal (it 422'd before),
+    # and `derive_entity_relations` gives `TestCase` a "Test executions" tab —
+    # a test case's own execution history, which nothing else in the app
+    # surfaces. Passing BOTH arms is a `422`, per `extract_scope_value`'s
+    # exactly-one rule; no caller in this repo passes both.
+    scope_field=("test_cycle_id", "test_case_id"),
+    # The cycle arm is declared FIRST, which keeps the item-route walk
+    # (`GET`/`PATCH`/`DELETE`, where a real row carries both FKs) byte-identical
+    # to its pre-widening behaviour — the same ordering discipline
+    # `trace.py`'s own docstring spells out for the four link configs.
+    resolve_org_id=branching_resolver(
+        [
+            ("test_cycle_id", _resolve_test_execution_org_id),
+            ("test_case_id", resolve_via_test_case),
+        ]
+    ),
     # ADR-0070. `actual_result` is the only free-text column; `result` itself
     # is an enum, exact-matchable via ADR-0072's derived filter set (the
     # explicit `filter_fields` tuple that used to sit here is gone).
@@ -259,7 +291,14 @@ _TEST_EXECUTION_CONFIG = CrudEntityConfig(
     # derive as not-required for the same `create_schema=None` reason as
     # `_DEFECT_CONFIG` above.
     label="Test executions",
-    scope_selector=ScopeSelectorOption(ref_entity="test-cycle", param_name="test_cycle_id"),
+    # ADR-0078: one option per scope arm, matching the widened `scope_field`
+    # above — without the second, the generic admin list page could only ever
+    # scope by the cycle arm even though the route now serves both, the exact
+    # gap ADR-0075 Amendment 1 closed for the six junctions.
+    scope_selector=(
+        ScopeSelectorOption(ref_entity="test-cycle", param_name="test_cycle_id", label="By test cycle"),
+        ScopeSelectorOption(ref_entity="test-case", param_name="test_case_id", label="By test case"),
+    ),
     # Both FKs are summary-only (`UpdateTestExecutionRequest` reassigns neither),
     # so they derive last without this — the hand-written config led with them.
     field_order=("test_cycle_id", "test_case_id", "result", "actual_result", "executed_at"),

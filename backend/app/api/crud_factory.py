@@ -362,6 +362,95 @@ class LinkDeleteAction:
 
 
 @dataclass
+class CompoundCreateAction:
+    """[ADR-0078](../../../docs/adr/0078-compound-create-through-bespoke-routes.md):
+    how a relationship tab creates the **far** entity of a junction when that
+    entity has no generic `create` at all — by invoking the bespoke atomic
+    route that is its only real authoring path.
+
+    ADR-0076 Amendment 1 gave every many-to-many tab a "Create new <far
+    entity>" action, built as the far entity's generic `create` followed by
+    this junction's own `link_create`. That composition is only available when
+    the far entity *has* a generic `create`, and three of the twelve live link
+    directions point at one that does not: `TestCondition` (authored only by
+    `POST /requirements/{id}/test-conditions`, REQ-3/ADR-0028) and `Defect`
+    (only by `POST /executions/{id}/defects`, EXEC-3/ADR-0044). Both are
+    bespoke precisely because the row cannot exist without a parent the
+    generic factory has no way to stamp — `TestCondition.requirement_id` and
+    `Defect.test_execution_id` are both `NOT NULL`.
+
+    So this is not "a second create surface"; it is the *same* compound action
+    pointed at a different first call. Declared, never derived, for exactly the
+    two reasons `LinkCreateAction`'s docstring gives — a bespoke route's URL
+    shape and its permission code are both arbitrary facts about that route.
+
+    - **`far_field`** — which of this link entity's own two FK columns the
+      created row fills (`"test_condition_id"`). This is what makes the
+      declaration *directional*: a junction lists from both ends (ADR-0075
+      Amendment 1), and only one end may need this. The tab's own scope field
+      is the other FK, by construction.
+    - **`path_template`** — the bespoke route's URL, carrying **exactly one**
+      `{...}` placeholder, named after the FK column of the **created entity**
+      that the segment fills (`"/requirements/{requirement_id}/test-conditions"`,
+      `"/executions/{test_execution_id}/defects"`). Same naming convention as
+      `LinkCreateAction`, and named rather than positional for the same reason.
+    - **`permission`** — the code that route gates on (`"test_condition.create"`),
+      so the affordance is hidden before an attempt rather than surfacing a
+      `403` after it.
+    - **`links_automatically`** — whether that route *already writes this
+      junction's row itself*, inside its own transaction. This is the one fact
+      a client cannot possibly infer and the one that changes what it must do:
+      `True` means the tab is finished after one request; `False` means it must
+      follow with this entity's own `link_create`, the identical second call
+      ADR-0076 Amendment 1 already makes. Both shapes are live — see the three
+      declarations in `app/api/routes/trace.py` for which is which and why.
+
+    The remaining fields describe the **parent picker**, and are set only when
+    one is needed. Whether it is needed is *derived*, not declared: the
+    placeholder either names the tab's own scope field (so the tab already
+    holds the value — `Requirement` -> "Test conditions (linked)", where the
+    route's parent *is* the record being viewed) or it names something else the
+    tab cannot know, and the user must pick it first. `tests/unit/
+    test_adr78_compound_create_actions.py` asserts that partition in both
+    directions, so a declaration cannot claim a picker it does not need or omit
+    one it does.
+
+    - **`parent_entity`** — the resource slug to search (`"requirement"`,
+      `"test-execution"`), in the same singular-hyphenated spelling
+      `FieldMeta.ref_entity` uses.
+    - **`parent_label`** / **`parent_label_field`** — the picker's own label,
+      and which field of the picked row to display. `parent_label_field` is
+      declared rather than reused from the far entity's FK `label_field`
+      because the two answer different questions: `Defect.test_execution_id`'s
+      `label_field` is `"result"`, correct for naming a defect's execution in a
+      table, and useless in a picker this action filters to `result=fail` —
+      every option would read "fail".
+    - **`parent_filters`** — extra fixed query params the picker must send,
+      for a business rule the route enforces but the picker cannot see.
+      `("result", "fail")` on the `Defect` action is the only one today:
+      `POST /executions/{id}/defects` `422`s against a non-failed execution
+      (EXEC-3 AC1's own literal precondition), so offering those rows would be
+      offering a guaranteed rejection.
+
+    The picker's *scope* needs no declaration at all and deliberately gets
+    none — the client derives it, because the answer is already in the served
+    schemas: if the parent entity's own scope field is the same column the tab
+    is scoped by (`TestExecution.test_case_id` on a `TestCase` tab), the tab's
+    parent id *is* the scope; otherwise the ordinary `pickerScopeParams` rule
+    (ADR-0076 Decision §5) applies unchanged.
+    """
+
+    far_field: str
+    path_template: str
+    permission: str
+    links_automatically: bool
+    parent_entity: str | None = None
+    parent_label: str | None = None
+    parent_label_field: str | None = None
+    parent_filters: tuple[tuple[str, str], ...] = ()
+
+
+@dataclass
 class ScopeResolution:
     """ADR-0053 (moved from the frontend, same posture as `ScopeSelectorOption`
     above). Derives a scope value automatically, no picker, by resolving
@@ -464,6 +553,14 @@ class CrudEntityConfig:
     # own id, and flipping the flag would make `EntityTable` render a per-row
     # Delete calling a route that answers `405`.
     link_delete: LinkDeleteAction | None = None
+    # ADR-0078: set on link/junction entities only, and only for a *direction*
+    # whose far entity has no generic `create` — see `CompoundCreateAction`.
+    # A tuple because the declaration is per-direction and a junction has two;
+    # empty (the default, and what three of the six link configs keep) means
+    # every direction's far entity can already be created generically, which is
+    # what ADR-0076 Amendment 1's own composition needs and all this field
+    # exists to substitute for.
+    compound_creates: tuple[CompoundCreateAction, ...] = ()
     # ADR-0053: overrides `methods` for the derived schema's own `methods`
     # array only — never affects which routes `make_crud_router` registers.
     # `Project` is the one user today: its real REST surface is `list`/
@@ -1457,6 +1554,25 @@ def derive_entity_schema(
             "permission": config.link_delete.permission,
         }
 
+    # ADR-0078 — `link_create`'s directional companion. Serialized as a LIST,
+    # always present (`[]` for every entity that declares none), so a client
+    # reads "no compound create for this direction" off a `find` that misses
+    # rather than off the key's absence — the same posture ADR-0077 took for
+    # `linkDelete`'s `null`.
+    compound_creates: list[dict[str, Any]] = [
+        {
+            "farField": action.far_field,
+            "pathTemplate": action.path_template,
+            "permission": action.permission,
+            "linksAutomatically": action.links_automatically,
+            "parentEntity": action.parent_entity,
+            "parentLabel": action.parent_label,
+            "parentLabelField": action.parent_label_field,
+            "parentFilters": {name: value for name, value in action.parent_filters},
+        }
+        for action in config.compound_creates
+    ]
+
     scope_resolution: dict[str, Any] | None = None
     if config.scope_resolution is not None:
         scope_resolution = {
@@ -1491,6 +1607,11 @@ def derive_entity_schema(
         # off the key's absence, so an older backend and a non-link entity stay
         # distinguishable).
         "linkDelete": link_delete,
+        # ADR-0078: a thirteenth key. Empty for the 23 non-link entities AND
+        # for the three junctions whose every direction's far entity already
+        # has a generic `create` — a relationship tab asks "is there a compound
+        # create for THIS direction", never "is this a link table".
+        "compoundCreates": compound_creates,
     }
 
 

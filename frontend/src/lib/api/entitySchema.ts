@@ -15,6 +15,7 @@
  */
 import { apiFetch } from "./client";
 import {
+  CompoundCreateAction,
   EntityRelation,
   LinkCreateAction,
   LinkDeleteAction,
@@ -72,6 +73,15 @@ export interface EntitySchemaResponse {
    * both the `null` and the absent case.
    */
   linkDelete?: LinkDeleteAction | null;
+  /**
+   * ADR-0078: per-*direction* compound-create actions for a junction whose far
+   * entity has no generic `create` — `[]` for every entity that declares none,
+   * which is most of them. Optional here for the same fixture-compatibility
+   * reason as `relations`/`linkCreate` above; `toEntityConfig` normalizes the
+   * absent case to `[]` rather than dropping it, since a caller searches this
+   * list by direction and an empty list is already the "none for me" answer.
+   */
+  compoundCreates?: CompoundCreateAction[];
 }
 
 /** `entityKey` is the plural `:entity` route slug (`registry.ts`'s own keys). */

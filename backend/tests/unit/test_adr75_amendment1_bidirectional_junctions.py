@@ -299,18 +299,20 @@ class TestTheNumbersTheDocsQuote:
             for key, config in ALL_ENTITY_CONFIGS.items()
         }
         with_tabs = {key: rels for key, rels in per_entity.items() if rels}
-        assert sum(len(r) for r in with_tabs.values()) == 30
+        assert sum(len(r) for r in with_tabs.values()) == 31
         assert len(with_tabs) == 10
         assert "defects" in with_tabs, "Defect is the tenth entity — it had no tab strip before"
 
     def test_the_excluded_inbound_fk_count_matches_adr_0071_section_4(self) -> None:
-        """ADR-0074 §4's table: 12 as first written, 14 after ADR-0075, **8**
+        """ADR-0074 §4's table: 12 as first written, 14 after ADR-0075, 8
         after Amendment 1 struck the whole "reverse side of all 6 link tables"
-        row. The eight that remain are a different kind of gap entirely —
+        row, and **7** after ADR-0078 struck
+        `("test-executions", "test_case_id")` by widening that entity's scope.
+        The seven that remain are a different kind of gap entirely —
         filter-field-only FKs, and `RoleAssignment`'s missing `list` route."""
         from tests.unit.test_adr74_entity_relations import EXPECTED_EXCLUSIONS
 
-        assert len(EXPECTED_EXCLUSIONS) == 8
+        assert len(EXPECTED_EXCLUSIONS) == 7
         # None of the survivors is a link table's own reverse side.
         assert not ({key for key, _ in EXPECTED_EXCLUSIONS} & EXPECTED_LINK_ENTITIES_FOR_ASSERTION())
 
