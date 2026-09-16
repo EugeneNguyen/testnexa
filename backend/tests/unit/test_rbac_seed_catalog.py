@@ -11,6 +11,7 @@ from app.db.rbac_seed_catalog import (
     ALL_RESOURCES,
     CRUD_RESOURCES,
     LINK_CREATE_RESOURCES,
+    LINK_DELETE_RESOURCES,
     READ_ONLY_RESOURCES,
     SPECIAL_PERMISSIONS,
     SYSTEM_ROLE_NAMES,
@@ -31,14 +32,15 @@ def test_resource_counts_match_the_plan() -> None:
     assert len(set(ALL_RESOURCES)) == len(ALL_RESOURCES)
 
 
-def test_permission_catalog_has_one_hundred_and_six_rows() -> None:
+def test_permission_catalog_has_one_hundred_and_ten_rows() -> None:
     catalog = build_permission_catalog()
     # 23 CRUD resources x 4 actions + 8 read-only resources x 1 action
-    # + 4 link-create resources x 1 action + 2 special verbs
-    assert len(catalog) == 23 * 4 + 8 * 1 + 4 * 1 + 2
+    # + 4 link-create resources x 1 action + 4 link-delete resources x 1 action
+    # + 2 special verbs
+    assert len(catalog) == 23 * 4 + 8 * 1 + 4 * 1 + 4 * 1 + 2
     # 100 before ADR-0075's two new read-only resources; 102 before ADR-0076's
-    # four `<link>.create` codes.
-    assert len(catalog) == 106
+    # four `<link>.create` codes; 106 before ADR-0077's four `<link>.delete`.
+    assert len(catalog) == 110
     codes = [code for code, _resource, _action in catalog]
     assert len(codes) == len(set(codes)), "duplicate permission codes in the catalog"
 
@@ -52,27 +54,44 @@ def test_permission_catalog_contains_special_verbs() -> None:
 
 
 def test_permission_catalog_read_only_resources_have_only_read_action() -> None:
-    """ADR-0076 narrows this claim rather than retiring it.
+    """ADR-0076 and ADR-0077 each narrow this claim rather than retiring it.
 
-    `READ_ONLY_RESOURCES` still means "no `update`, no `delete`, no generic
-    CRUD surface" — the thing the original test was actually protecting. What
-    changed is that four of the eight (the ADR-0005 traceability links) gained
-    a `create`, served by one bespoke route each (`app/api/routes/trace.py`),
-    so the resource's action set is `{"read", "create"}` for exactly those four
-    and still `{"read"}` for the other four.
+    `READ_ONLY_RESOURCES` still means what the original test was actually
+    protecting: **no generic CRUD surface, and no `update` ever** — a link row
+    is immutable (ADR-0005), and every write it does have is one bespoke route
+    (`app/api/routes/trace.py`). What changed is which bespoke writes exist:
+    ADR-0076 gave the four ADR-0005 traceability links a `create`, ADR-0077 the
+    matching `delete`. So those four resources' action set is
+    `{"read", "create", "delete"}` and the other four's is still `{"read"}`.
 
     Asserted as an exact set on **both** sides rather than a subset check, so a
-    fifth resource silently gaining a write still fails here.
+    fifth resource silently gaining a write still fails here — and with an
+    explicit "no `update` anywhere in the tuple" assertion below, because that
+    is the specific claim the two widenings could otherwise have eroded
+    unnoticed.
     """
     catalog = build_permission_catalog()
     for resource in READ_ONLY_RESOURCES:
         actions_for_resource = {action for _code, res, action in catalog if res == resource}
-        expected = {"read", "create"} if resource in LINK_CREATE_RESOURCES else {"read"}
+        expected = {"read"}
+        if resource in LINK_CREATE_RESOURCES:
+            expected.add("create")
+        if resource in LINK_DELETE_RESOURCES:
+            expected.add("delete")
         assert actions_for_resource == expected, resource
 
-    # And nothing outside that tuple was quietly promoted.
+    # And nothing outside those tuples was quietly promoted.
     assert set(LINK_CREATE_RESOURCES) < set(READ_ONLY_RESOURCES)
+    assert set(LINK_DELETE_RESOURCES) < set(READ_ONLY_RESOURCES)
     assert len(LINK_CREATE_RESOURCES) == 4
+    assert len(LINK_DELETE_RESOURCES) == 4
+    # `update` is the action neither ADR added and none may: a link row is
+    # immutable (ADR-0005 — delete and recreate, never edit), which is the
+    # single reason these eight stay in `READ_ONLY_RESOURCES` at all rather
+    # than being promoted into `CRUD_RESOURCES`.
+    assert not any(
+        action == "update" for _code, res, action in catalog if res in READ_ONLY_RESOURCES
+    )
 
 
 def test_link_create_resources_are_exactly_the_four_traceability_links() -> None:
@@ -96,6 +115,86 @@ def test_link_create_resources_are_exactly_the_four_traceability_links() -> None
     assert "test_plan_test_suite.create" not in codes
 
 
+def test_link_delete_resources_are_exactly_the_four_traceability_links() -> None:  # TC-ADMIN-100
+    """ADR-0077: the same four, and the same two deliberate absences.
+
+    REQ-4's `DELETE /test-suites/{id}/test-cases/{case_id}` and PLAN-1's
+    `DELETE /test-plans/{id}/test-suites/{suite_id}` have existed since those
+    stories shipped, gated on the *parent's* `test_suite.update` /
+    `test_plan.update` — ADR-0077 makes them *reachable from the generic
+    surface* (via `CrudEntityConfig.link_delete`) without re-gating them, so
+    they get no `.delete` code of their own either.
+
+    Asserted separately from `LINK_CREATE_RESOURCES` above rather than by
+    comparing the two tuples, even though they are equal today: they are equal
+    by coincidence of scope, not by rule (see `LINK_DELETE_RESOURCES`' own
+    comment), and a test that asserted `LINK_DELETE_RESOURCES ==
+    LINK_CREATE_RESOURCES` would turn a future append-only junction into a
+    failure rather than a decision.
+    """
+    assert LINK_DELETE_RESOURCES == (
+        "requirement_test_case_link",
+        "requirement_test_condition_link",
+        "test_condition_test_case_link",
+        "test_case_defect_link",
+    )
+    codes = {code for code, _resource, _action in build_permission_catalog()}
+    assert "test_suite_test_case.delete" not in codes
+    assert "test_plan_test_suite.delete" not in codes
+
+
+def test_test_manager_holds_every_link_delete_code() -> None:  # TC-ADMIN-100
+    """ADR-0077 Decision §3: symmetric with the four `.create`s ADR-0076 gave it.
+
+    `test_manager` is the only bundle holding `requirement.export_rtm` — the
+    role accountable for the traceability matrix being correct. Granted the
+    ability to assemble it and not to correct it, every mislink it makes would
+    be permanent.
+    """
+    all_codes = {code for code, _resource, _action in build_permission_catalog()}
+    bundles = build_role_bundles(all_codes)
+
+    for resource in LINK_DELETE_RESOURCES:
+        assert f"{resource}.delete" in bundles["test_manager"], resource
+        # The read is what makes the tab the action lives on render at all;
+        # ADR-0076 granted it, and this pins that the pair stays together.
+        assert f"{resource}.read" in bundles["test_manager"], resource
+
+
+def test_tester_holds_only_the_defect_link_delete() -> None:  # TC-ADMIN-100
+    """ADR-0077 Decision §3: exactly mirroring `tester`'s single `.create`.
+
+    The unlink is the literal undo of the one link this role may make. The
+    other three stay withheld for the identical reason their `.create`s are —
+    `tester` holds only `requirement.read`, and requirement-level traceability
+    is `test_manager`'s activity.
+    """
+    all_codes = {code for code, _resource, _action in build_permission_catalog()}
+    bundles = build_role_bundles(all_codes)
+
+    assert "test_case_defect_link.delete" in bundles["tester"]
+    assert "test_case_defect_link.create" in bundles["tester"], "the pair it undoes"
+    for resource in LINK_DELETE_RESOURCES:
+        if resource == "test_case_defect_link":
+            continue
+        assert f"{resource}.delete" not in bundles["tester"], resource
+        assert f"{resource}.create" not in bundles["tester"], resource
+
+
+def test_auditor_and_ai_agent_hold_no_link_delete_code() -> None:  # TC-ADMIN-100
+    """`auditor` is read-only by definition and `ai_agent_scoped` reaches none
+    of these entities at all — ADR-0077 grants neither anything, the same
+    posture ADR-0076 took for the matching creates."""
+    all_codes = {code for code, _resource, _action in build_permission_catalog()}
+    bundles = build_role_bundles(all_codes)
+
+    for resource in LINK_DELETE_RESOURCES:
+        assert f"{resource}.delete" not in bundles["auditor"], resource
+        assert f"{resource}.delete" not in bundles["ai_agent_scoped"], resource
+        # `auditor` does still hold every link's `.read`, unchanged.
+        assert f"{resource}.read" in bundles["auditor"], resource
+
+
 def test_permission_catalog_crud_resources_have_all_four_actions() -> None:
     # Some CRUD resources (e.g. `requirement`, `test_plan`) also carry a
     # special verb on top of CRUD (`export_rtm`, `approve`) — assert the
@@ -116,7 +215,7 @@ def test_org_admin_bundle_is_the_entire_catalog() -> None:
     bundles = build_role_bundles(all_codes)
 
     assert bundles["org_admin"] == all_codes
-    assert len(bundles["org_admin"]) == 106
+    assert len(bundles["org_admin"]) == 110
 
 
 def test_ai_agent_scoped_bundle_never_contains_test_plan_approve() -> None:

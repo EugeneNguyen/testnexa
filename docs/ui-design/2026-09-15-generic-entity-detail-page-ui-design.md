@@ -146,7 +146,8 @@ The n-n button labels are both built from the tab's own label with the `" (linke
 ├─────────────────────────────────────────────────────────────────────────┤
 │ card-body (bare EntityTable)                                            │
 │   ┌───────────────────────────────────────────────────────────────────┐ │
-│   │ <th> … related rows, scoping column hidden, no Actions column …   │ │
+│   │ <th> … related rows, scoping column hidden …          [Actions] │ │
+│   │   n-n tab only, per row, when permitted:              [ 🗑 ]    │ │  ← §6.8
 │   └───────────────────────────────────────────────────────────────────┘ │
 │   pagination                                                            │
 └─────────────────────────────────────────────────────────────────────────┘
@@ -255,5 +256,70 @@ Prose and sketch agree: the locked scope field renders **first**, disabled, exac
 ### 6.7 What is still not here
 
 - **No per-row Edit or Delete**, unchanged from ADR-0074. Every listed record is fully editable on its own screen one click away, and a link row has nothing to edit at all — links are immutable, delete-and-recreate (ADR-0005). Omitting `onEdit`/`onDelete` is still what makes `EntityTable` drop the Actions column entirely.
-- **No unlink.** Two of the six junctions have a `DELETE` route already and four have none; what removing a traceability link means for an already-exported RTM is a real decision for its own story. The tabs grow monotonically today.
+- ~~**No unlink.** Two of the six junctions have a `DELETE` route already and four have none; what removing a traceability link means for an already-exported RTM is a real decision for its own story. The tabs grow monotonically today.~~ **Superseded 2026-09-16 by [ADR-0077](../adr/0077-relationship-tab-unlink-action.md) — see §6.8.** All six junctions now carry a per-row Remove on their n-n tabs. The "no per-row Edit" half of the bullet above is **unchanged**: a link row still has nothing to *edit*, and ADR-0005's delete-and-recreate is what the new action makes possible rather than something it contradicts.
 - **Nothing on the Info tab.** §3's page-level actions are still exactly Back and a permission-gated Edit.
+
+## 6.8 Removing a link ([ADR-0077](../adr/0077-relationship-tab-unlink-action.md), FR-ADMIN-9 / NFR-80)
+
+**Many-to-many tabs only, per row.** The counterpart of §6.5's "Link existing …", and the reason §6.7's "No unlink" bullet above is struck: a traceability matrix that can be assembled and never corrected accumulates every mislink anyone ever made.
+
+One-to-many tabs deliberately get **nothing** here. Their rows are *records*, so "remove" would have to mean "delete this child" — a different and much larger action that the child's own screen already offers, and one whose blast radius (anything else referencing that row) has nothing to do with a relationship tab. Same asymmetry §6.1 already keeps between "Create new" and "New".
+
+### Where it sits
+
+In `EntityTable`'s own trailing **Actions** column — the same column `EntityListPage` uses for its per-row Edit/Delete, which relationship tabs have never rendered until now because they pass neither handler. A single icon-only `btn-outline-danger` with the `trash` glyph, `aria-label="Remove"` and a matching `title`, `data-testid="entity-table-unlink"`.
+
+**"Remove", not "Delete"** — the word is load-bearing, not a style preference. The far record survives untouched, keeps every other link it holds, and can be linked again a moment later; "Delete" on a row whose visible content *is* the far record's own label would read as destroying it. The colour stays `danger` because it is still a destructive write, just a narrower one than the word "Delete" would promise.
+
+Clicking it never navigates: the Actions cell stops propagation (ADR-0073), so the row click that opens the far record does not fire underneath the button that is about to open a modal.
+
+### The confirm
+
+```
+┌─ Modal ─────────────────────────────────────────────┐
+│ Remove link                                    [×]  │
+├─────────────────────────────────────────────────────┤
+│ (alert-danger, only after a failed attempt:         │
+│  "This test case is not linked to this requirement.")│
+│                                                     │
+│ Remove this link? Only the link is removed — the    │
+│ record it points to is not deleted, and you can     │
+│ link it again at any time.                          │
+├─────────────────────────────────────────────────────┤
+│                        [ Cancel ]  [ Remove ]       │
+└─────────────────────────────────────────────────────┘
+```
+
+The same `Modal` + `Modal.Body` + `Modal.Footer` shape `EntityListPage`'s own row-delete confirm uses, reused rather than reinvented — and deliberately **not** a native `confirm()`: nothing in this app uses one, it cannot render the API's own failure message (which is the whole point of the alert slot above), and it is untestable through RTL without stubbing a global.
+
+The body answers the only two questions a user actually has at this point — *does this delete the record?* (no) and *is it final?* (no) — because "Remove" alone does not. It deliberately does **not** name the far entity, though a first draft did (`"The {farLabel} itself is not deleted"`): a relation's label is a *plural* ("Test cases", "Defects"), so that sentence rendered as "The test cases itself is not deleted". Caught by **looking at the rendered modal** during the live click-through, not by any assertion — every test that could have pinned the wording would have pinned the broken wording just as happily, which is the PROJ-4 class root `CLAUDE.md` describes. "the record it points to" is number-agnostic, and its referent is unambiguous because the user is looking at the row whose own cell carries that record's title. `data-testid="entity-relation-unlink-submit"` on the confirm; `entity-relation-unlink-error` on the alert.
+
+### On failure, the confirm stays open
+
+**The opposite of §6.7a's compound create, and for a stated reason.** There, the modal must *close* on a partial failure, because the far record had already been written and a resubmit would mint a second one. Here **nothing was written**, so re-confirming is a plain retry and closing the dialog would only make the user find the row and click Remove again.
+
+The route's **own** message is rendered verbatim rather than a generic string, because the two realistic failures mean opposite things the user can act on:
+
+| Failure | What it means | What the user does |
+|---|---|---|
+| `404` — "This test case is not linked to this requirement." | Someone else already removed it | Cancel; the list refetches without it |
+| `403` — "You do not have permission to perform this action." | They may not do this | Cancel; ask for the grant |
+
+A `404` here is deliberate rather than an idempotent success: a client that unlinked a pair twice should learn the second call did nothing (ADR-0030's own asymmetry with the `POST`'s `409`, inherited by all four new routes).
+
+### Gating
+
+Both questions §6.3 already asks, asked again independently:
+
+1. **Can the API do this at all** — `config.linkDelete` is present on the *link* entity's served schema. Read **separately** from `config.linkCreate`: a junction that can be linked and not unlinked is exactly what four of the six were before this ADR, so neither key may be inferred from the other.
+2. **May this actor** — `permissions.has(config.linkDelete.permission, projectId)`, fail-closed while loading. For the four traceability links this is a **different code** from the link action's (`<link>.delete`, not `<link>.create`), so a user can legitimately see "Link existing …" and no Remove, or the reverse. `tester` is a live example: it holds both halves for `test_case_defect_link` and neither for the other three.
+
+Either failing makes the whole **Actions column** absent — hidden, not disabled, §5's standing posture — rather than rendering an inert cell.
+
+One accepted consequence, named rather than hidden: while `usePermissions` is still resolving, the column is absent and appears when it lands. §6.3's actions-strip placeholder covers that same window immediately above the table, so the arrival is accounted for on screen; a second placeholder inside the table was judged not worth the complexity.
+
+### What is still not here
+
+- **No bulk unlink** — one row at a time, one confirm each. A multi-select surface is its own design.
+- **No undo.** The recovery is the sibling "Link existing …" button already on screen, which re-creates the pair in two clicks. This is ADR-0005's delete-and-recreate model being *usable*, not a gap in it.
+- **No audit trail.** Neither a link nor an unlink is recorded anywhere — `TestLog` covers execution events, not traceability edits — so this ADR makes an existing gap symmetric rather than introducing one. Named as its own future decision in ADR-0077's Consequences.

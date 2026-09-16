@@ -206,6 +206,33 @@ export interface LinkCreateAction {
   permission: string;
 }
 
+/**
+ * [ADR-0077](../../../docs/adr/0077-relationship-tab-unlink-action.md):
+ * `LinkCreateAction`'s exact mirror — how to **remove one row** of a
+ * junction/link entity, served on that entity's own schema
+ * (`crud_factory.LinkDeleteAction`). Present only for the six link tables;
+ * `undefined` for every other entity.
+ *
+ * `pathTemplate` is filled by `interpolateLinkPath` from the same
+ * `{scopeField: parentId, targetField: farId}` map "Link existing …" already
+ * builds, so a relationship tab needs no extra state to unlink a row it is
+ * already rendering. For all six junctions today it is the same URL as
+ * `linkCreate.pathTemplate` — a fact about how those six were designed, not a
+ * rule: it is served separately precisely so a future junction whose unlink
+ * lives elsewhere needs no client change.
+ *
+ * `permission` is the exact code the bespoke `DELETE` gates on, and is **not**
+ * always `<resource>.delete`: REQ-4's and PLAN-1's junction routes predate this
+ * ADR and gate both verbs on the parent's `test_suite.update`/
+ * `test_plan.update`. It is also **not** necessarily the same code as
+ * `linkCreate.permission` — for the four ADR-0005 traceability links the two
+ * differ, which is the whole reason the actions are gated independently.
+ */
+export interface LinkDeleteAction {
+  pathTemplate: string;
+  permission: string;
+}
+
 export interface EntityConfig {
   /** snake_case, matches the API's permission-code resource segment. */
   resource: string;
@@ -267,4 +294,15 @@ export interface EntityConfig {
    * non-link entities.
    */
   linkCreate?: LinkCreateAction;
+  /**
+   * ADR-0077: backend-declared handle on this entity's bespoke link-delete
+   * route. Optional for the same reason `linkCreate` is — every hand-written
+   * `EntityConfig` literal in the Vitest fixtures would otherwise become a
+   * compile error for a key none of them care about. Absent for the 25
+   * non-link entities, and independently absent from `linkCreate`: a junction
+   * that could be linked and not unlinked was the real, shipped state of four
+   * of the six between ADR-0076 and ADR-0077, so the two keys are deliberately
+   * not modelled as one.
+   */
+  linkDelete?: LinkDeleteAction;
 }

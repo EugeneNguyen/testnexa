@@ -61,6 +61,13 @@ ENVELOPE_KEYS = {
     # must be able to read "no link action" off the value, not off the key's
     # absence.
     "linkCreate",
+    # ADR-0077: the twelfth — this entity's bespoke link-*delete* route, or
+    # `null` for the 23 entities that are not link tables. Additive and
+    # unconditionally present for the same reason `linkCreate` is, and read
+    # **independently** of it: a junction that can be linked and not unlinked
+    # is not hypothetical, it is what four of the six were between the two
+    # ADRs.
+    "linkDelete",
 }
 
 

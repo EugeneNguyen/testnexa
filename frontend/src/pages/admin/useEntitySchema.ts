@@ -71,6 +71,13 @@ export function toEntityConfig(key: string, schema: EntitySchemaResponse): Entit
     // falsy object, matching `scopeField`/`scopeSelector`'s own treatment two
     // lines up.
     ...(schema.linkCreate ? { linkCreate: schema.linkCreate } : {}),
+    // ADR-0077. Spread-omitted on exactly the same terms as `linkCreate`
+    // above, and spread *separately* rather than under one condition: a
+    // junction with a create and no delete is not hypothetical — it is what
+    // four of the six actually were between ADR-0076 and ADR-0077, and a
+    // client that inferred one key from the other would have rendered a
+    // Remove button for a route that did not exist.
+    ...(schema.linkDelete ? { linkDelete: schema.linkDelete } : {}),
   };
 }
 

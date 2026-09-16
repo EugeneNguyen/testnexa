@@ -78,6 +78,7 @@ from app.api.crud_factory import (
     CrudEntityConfig,
     FieldMeta,
     LinkCreateAction,
+    LinkDeleteAction,
     NoSchema,
     ScopeSelectorOption,
     _org_membership_exists,
@@ -452,6 +453,14 @@ _TEST_PLAN_TEST_SUITE_CONFIG = CrudEntityConfig(
     # `test_plan.update` — the route shipped with that gate under ADR-0031 and
     # ADR-0076 re-gates no already-shipped route.
     link_create=LinkCreateAction(
+        path_template="/test-plans/{test_plan_id}/test-suites/{test_suite_id}",
+        permission="test_plan.update",
+    ),
+    # ADR-0077: the same handle for `remove_suite_from_plan` above, which has
+    # existed since PLAN-1. As with REQ-4's sibling junction, the permission
+    # stays PLAN-1's own `test_plan.update` — that is the gate the shipped
+    # route checks, and ADR-0077 re-gates no already-shipped route.
+    link_delete=LinkDeleteAction(
         path_template="/test-plans/{test_plan_id}/test-suites/{test_suite_id}",
         permission="test_plan.update",
     ),

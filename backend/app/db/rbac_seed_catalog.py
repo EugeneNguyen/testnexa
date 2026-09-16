@@ -51,8 +51,12 @@ CRUD_RESOURCES: tuple[str, ...] = (
 # are REQ-4's/PLAN-1's junction tables: their rows are written only by the
 # bespoke membership routes (`app/api/routes/test_suite_membership.py`,
 # `test_plan_membership.py`), gated on `test_suite.update`/`test_plan.update`,
-# so like the four traceability links above they have a `.read` code and
-# nothing else. The new codes are backfilled onto already-seeded databases by
+# so they have a `.read` code and nothing else. (The four traceability links
+# above no longer share that property — ADR-0076 gave each a `.create` code and
+# ADR-0077 a `.delete`, via the two tuples below. These two junctions get
+# neither, because their own link/unlink routes shipped years earlier gated on
+# the parent's `.update`, and neither ADR re-gates a shipped route.) The new
+# codes are backfilled onto already-seeded databases by
 # `alembic/versions/7d2c91af4e68_seed_junction_link_read_permissions.py` —
 # editing this catalog alone only affects a fresh DB's initial seed
 # (`backend/CLAUDE.md`'s standing rule).
@@ -95,6 +99,28 @@ LINK_CREATE_RESOURCES: tuple[str, ...] = (
     "test_case_defect_link",
 )
 
+# ADR-0077: the same four link tables gain a **`delete` action** — the matching
+# bespoke `DELETE` beside each `POST` ADR-0076 added (`app/api/routes/trace.py`).
+# Same tuple contents as `LINK_CREATE_RESOURCES` above and deliberately a
+# *separate* name rather than a rename to `LINK_WRITE_RESOURCES`: the two are
+# equal today by coincidence of scope, not by rule. A future junction could
+# reasonably ship a create with no unlink (append-only traceability) or an
+# unlink with no create (rows written only as a side effect of another route,
+# which is what all four of these were before ADR-0076) — collapsing them into
+# one tuple would make either shape unrepresentable.
+#
+# They still do **not** move into `CRUD_RESOURCES`: that would also mint an
+# `.update` code, and a link row remains immutable (ADR-0005 — delete and
+# recreate, never edit). `READ_ONLY_RESOURCES` likewise still holds them, since
+# it means "no generic CRUD surface" — the generic factory registers neither a
+# create nor a delete for these; both are one bespoke route each.
+LINK_DELETE_RESOURCES: tuple[str, ...] = (
+    "requirement_test_case_link",
+    "requirement_test_condition_link",
+    "test_condition_test_case_link",
+    "test_case_defect_link",
+)
+
 # 2 special verbs beyond CRUD.
 SPECIAL_PERMISSIONS: tuple[tuple[str, str], ...] = (
     ("test_plan", "approve"),
@@ -116,11 +142,12 @@ def _code(resource: str, action: str) -> str:
 
 
 def build_permission_catalog() -> list[tuple[str, str, str]]:
-    """Return the full `(code, resource, action)` catalog — 106 rows.
+    """Return the full `(code, resource, action)` catalog — 110 rows.
 
     23 CRUD resources x 4 actions (92) + 8 read-only resources x 1 action (8)
-    + 4 link-create resources x 1 action (4) + 2 special verbs (2) = 106 total
-    (ADR-0075 took this from 100 to 102; ADR-0076 from 102 to 106).
+    + 4 link-create resources x 1 action (4) + 4 link-delete resources x 1
+    action (4) + 2 special verbs (2) = 110 total (ADR-0075 took this from 100
+    to 102; ADR-0076 from 102 to 106; ADR-0077 from 106 to 110).
     """
     catalog: list[tuple[str, str, str]] = []
 
@@ -136,6 +163,12 @@ def build_permission_catalog() -> list[tuple[str, str, str]]:
     # catalog's natural order by resource.
     for resource in LINK_CREATE_RESOURCES:
         catalog.append((_code(resource, "create"), resource, "create"))
+
+    # ADR-0077 — see `LINK_DELETE_RESOURCES`. Appended after the creates so
+    # each link table's `.read`/`.create`/`.delete` triple still reads together
+    # in the catalog's natural order by resource.
+    for resource in LINK_DELETE_RESOURCES:
+        catalog.append((_code(resource, "delete"), resource, "delete"))
 
     for resource, action in SPECIAL_PERMISSIONS:
         catalog.append((_code(resource, action), resource, action))
@@ -242,6 +275,27 @@ def build_role_bundles(all_permission_codes: set[str]) -> dict[str, set[str]]:
         # deliberately does not attempt.
         | _read_codes(LINK_CREATE_RESOURCES)
         | {_code(resource, "create") for resource in LINK_CREATE_RESOURCES}
+        # ADR-0077: `delete` on all four, matching the four `create`s directly
+        # above. This role is granted the *symmetric* pair deliberately, and
+        # the reasoning is specific to what a link row is rather than a default
+        # "creates imply deletes":
+        #
+        # `test_manager` is the only bundle holding `requirement.export_rtm` —
+        # it is the role accountable for the traceability matrix being *right*,
+        # not merely populous. ADR-0076 let it assemble the matrix from rows
+        # that already exist; without the matching delete, the only correction
+        # available for a mislink is to grow the matrix further, and every
+        # wrong assertion it makes is permanent. That is a worse outcome for
+        # the artifact this role owns than the alternative.
+        #
+        # This is NOT the same judgment as the `.delete` codes this bundle is
+        # deliberately *withheld* (ADR-0018's `release`, ADR-0033's
+        # `test_execution`, ADR-0044's `defect`): each of those destroys a
+        # record carrying real content and history. A link row has no content
+        # at all — two FK columns and a timestamp (ADR-0005) — so deleting one
+        # retracts an assertion rather than destroying work product. The
+        # restraint precedent is about the latter; this is the former.
+        | {_code(resource, "delete") for resource in LINK_DELETE_RESOURCES}
         # RBAC-3/ADR-0021: a project's own creator is auto-granted this Role,
         # project-scoped, unconditionally (PROJ-1/ADR-0017's `create_project`)
         # specifically so they can subsequently GET/PATCH the project they
@@ -289,6 +343,23 @@ def build_role_bundles(all_permission_codes: set[str]) -> dict[str, set[str]]:
         # silent scope expansion, the same restraint ADR-0033 took for
         # `test_execution.update`/`.delete` and ADR-0044 for `defect.delete`.
         | {_code("test_case_defect_link", "create")}
+        # ADR-0077: the `delete` half of exactly that one link, and nothing
+        # else — the same single relationship, not a wider reach.
+        #
+        # An unlink here is the literal undo of the one link this role may
+        # make. Withholding it would mean a tester who links the wrong Defect
+        # to a TestCase (a one-click mistake in a picker, on a row that carries
+        # no content of its own) cannot correct it without escalating to a
+        # `test_manager` or `org_admin`, while the wrong traceability assertion
+        # sits in the matrix in the meantime. Granting the undo of a write a
+        # role already performs is not a scope expansion in the sense
+        # ADR-0033/ADR-0044's restraint notes mean it: those withheld deletes
+        # of Defects and executions, which destroy real recorded work.
+        #
+        # The other three `.delete` codes stay withheld for the identical
+        # reason their `.create`s are: `tester` holds only `requirement.read`,
+        # and requirement-level traceability is `test_manager`'s activity.
+        | {_code("test_case_defect_link", "delete")}
         | {_code("requirement", "read")}
     )
 

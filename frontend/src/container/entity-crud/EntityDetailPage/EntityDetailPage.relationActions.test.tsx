@@ -7,7 +7,13 @@ import EntityDetailPage from "./EntityDetailPage";
 import { createdNotLinkedMessage, farRowDisplay, pickerScopeParams } from "./EntityRelationTab";
 import type { EntityConfig } from "../../../entityConfigs/types";
 import { ApiError, apiFetch } from "../../../lib/api/client";
-import { createEntity, createLinkRow, getEntity, listEntities } from "../../../lib/api/entityCrud";
+import {
+  createEntity,
+  createLinkRow,
+  deleteLinkRow,
+  getEntity,
+  listEntities,
+} from "../../../lib/api/entityCrud";
 
 /**
  * ADR-0076 — the relationship tabs' two write actions (TC-ADMIN-090,
@@ -139,6 +145,17 @@ vi.mock("../../../pages/admin/useEntitySchema", () => {
         pathTemplate: "/widgets/{widget_id}/gizmo-links/{gizmo_id}",
         permission: "widget_gizmo_link.create",
       },
+      /**
+       * ADR-0077. A **different permission code** from `linkCreate`'s, which
+       * is the shape the four real ADR-0005 traceability links have
+       * (`<link>.create` vs `<link>.delete`) — and the whole reason the two
+       * actions are gated independently. A fixture reusing one code for both
+       * would make every gating assertion below pass for the wrong reason.
+       */
+      linkDelete: {
+        pathTemplate: "/widgets/{widget_id}/gizmo-links/{gizmo_id}",
+        permission: "widget_gizmo_link.delete",
+      },
     },
     "widget-doodad-links": {
       resource: "widget_doodad_link",
@@ -172,6 +189,16 @@ vi.mock("../../../pages/admin/useEntitySchema", () => {
         pathTemplate: "/widgets/{widget_id}/thing-links/{thing_id}",
         permission: "widget_thing_link.create",
       },
+      /**
+       * ADR-0077: deliberately **no** `linkDelete`, which makes this the
+       * pre-ADR-0077 shape — a junction that can be linked and not unlinked,
+       * exactly what four of the six really were between the two ADRs. It is
+       * what lets the unlink tests below isolate the *API-capability* half of
+       * the gate: on this tab "Link existing" must render and Remove must not,
+       * no matter which codes the actor holds. `widget-doodad-links` cannot
+       * make that distinction (it is missing both keys at once), which is the
+       * same reason that fixture could not isolate the create half.
+       */
     },
     /** Authored only through a bespoke route: no generic `create`. */
     things: {
@@ -243,7 +270,15 @@ vi.mock("../../../pages/admin/useEntitySchema", () => {
 
 vi.mock("../../../lib/api/entityCrud", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../../lib/api/entityCrud")>();
-  return { ...actual, getEntity: vi.fn(), listEntities: vi.fn(), createEntity: vi.fn(), createLinkRow: vi.fn() };
+  return {
+    ...actual,
+    getEntity: vi.fn(),
+    listEntities: vi.fn(),
+    createEntity: vi.fn(),
+    createLinkRow: vi.fn(),
+    // ADR-0077
+    deleteLinkRow: vi.fn(),
+  };
 });
 
 vi.mock("../../../lib/api/client", async (importOriginal) => {
@@ -255,6 +290,7 @@ const mockGetEntity = vi.mocked(getEntity);
 const mockListEntities = vi.mocked(listEntities);
 const mockCreateEntity = vi.mocked(createEntity);
 const mockCreateLinkRow = vi.mocked(createLinkRow);
+const mockDeleteLinkRow = vi.mocked(deleteLinkRow);
 const mockApiFetch = vi.mocked(apiFetch);
 
 const WIDGET_ROW = { id: "w-1", title: "First widget" };
@@ -277,7 +313,17 @@ function primeMocks(codes: string[], items: Record<string, unknown>[] = []) {
   );
   mockCreateEntity.mockResolvedValue({ id: "new-1" });
   mockCreateLinkRow.mockResolvedValue({});
+  mockDeleteLinkRow.mockResolvedValue(undefined);
 }
+
+/**
+ * ADR-0077: one already-linked row on the `widget-gizmo-links` tab, so the
+ * table has something to render a per-row Remove *in*. Its `gizmo_id` is the
+ * far id the unlink route must be called with, and it is deliberately not
+ * equal to its own `id` — a component reading the wrong one would otherwise
+ * produce an identical request and the tests would not notice.
+ */
+const GIZMO_LINK_ROW = { id: "l-1", widget_id: "w-1", gizmo_id: "g-9" };
 
 function renderPage(search: string) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -733,6 +779,166 @@ describe("EntityDetailPage relationship-tab write actions (ADR-0076)", () => {
     expect(screen.getByLabelText("Name", { exact: true })).toBeInTheDocument();
     expect(mockCreateLinkRow).not.toHaveBeenCalled();
     expect(screen.queryByTestId("entity-relation-create-link-error")).not.toBeInTheDocument();
+  });
+
+  // --- ADR-0077: the per-row "Remove" action ------------------------------------------------
+  //
+  // Kept in this file rather than a sibling because the harness above — four
+  // synthetic relations, a fake permission endpoint, a project-scoped route
+  // whose `:orgId` has to be resolved before any gate can evaluate — is
+  // exactly what an unlink test needs too, and two copies of it would drift.
+  // The claim is the same *kind* as this file's ("which write action renders,
+  // gated twice"), just for the third one.
+
+  it("TC-ADMIN-104: an n-n tab renders a per-row Remove when the actor holds the link-delete code", async () => {
+    primeMocks(["widget_gizmo_link.delete"], [GIZMO_LINK_ROW]);
+
+    renderPage(MANY_TO_MANY);
+
+    // Icon-only, same as every other action here — the accessible name lives
+    // in `aria-label`. "Remove", not "Delete": the gizmo survives.
+    expect(await screen.findByTestId("entity-table-unlink")).toHaveAccessibleName("Remove");
+    // The *create* actions are absent, because this actor holds neither write
+    // code — which is what proves the Remove above rendered on its own gate
+    // rather than riding along with the strip.
+    expect(screen.queryByTestId("entity-relation-link")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("entity-relation-create-link")).not.toBeInTheDocument();
+  });
+
+  it("TC-ADMIN-104: the Remove action is absent when the actor holds the link-create code but not link-delete", async () => {
+    /**
+     * The gate's whole point. `widget_gizmo_link.create` and
+     * `widget_gizmo_link.delete` are different codes (as the four real
+     * traceability links' are), and holding the first says nothing about the
+     * second — `tester` is a live example of exactly this asymmetry on three
+     * of the four links. Hidden, not disabled: UI Design Document §5.
+     */
+    primeMocks(["widget_gizmo_link.create"], [GIZMO_LINK_ROW]);
+
+    renderPage(MANY_TO_MANY);
+
+    // The link action IS present, so the tab definitely rendered and the row
+    // definitely listed — without this the absence below would be vacuous.
+    expect(await screen.findByTestId("entity-relation-link")).toBeInTheDocument();
+    expect(screen.queryByTestId("entity-table-unlink")).not.toBeInTheDocument();
+  });
+
+  it("TC-ADMIN-104: the Remove action is absent when the junction declares no linkDelete, however permissioned the actor", async () => {
+    /**
+     * The API-capability half, isolated from the permission half.
+     * `widget-thing-links` declares a `linkCreate` and no `linkDelete` — the
+     * pre-ADR-0077 shape four of the six junctions really had. The actor here
+     * is given *both* plausible codes, so nothing about permissions can
+     * explain the absence.
+     */
+    primeMocks(["widget_thing_link.create", "widget_thing_link.delete"], [
+      { id: "tl-1", widget_id: "w-1", thing_id: "t-3" },
+    ]);
+
+    renderPage("?tab=widget-thing-links");
+
+    expect(await screen.findByTestId("entity-relation-link")).toBeInTheDocument();
+    expect(screen.queryByTestId("entity-table-unlink")).not.toBeInTheDocument();
+  });
+
+  it("TC-ADMIN-104: a one-to-many tab never renders Remove, even for a fully-permissioned actor", async () => {
+    /**
+     * A 1-n tab's rows are *records*, not link rows — removing one would mean
+     * deleting the child, a different and much larger action. Asserted with
+     * every code this actor could plausibly hold, so the absence is
+     * structural rather than a permission accident.
+     */
+    primeMocks(["sprocket.create", "sprocket.delete", "widget_gizmo_link.delete"], [
+      { id: "s-1", name: "First sprocket", widget_id: "w-1" },
+    ]);
+
+    renderPage(ONE_TO_MANY);
+
+    expect(await screen.findByTestId("entity-relation-create")).toBeInTheDocument();
+    expect(screen.queryByTestId("entity-table-unlink")).not.toBeInTheDocument();
+  });
+
+  it("TC-ADMIN-105: clicking Remove asks for confirmation and writes nothing until it is given", async () => {
+    const user = userEvent.setup();
+    primeMocks(["widget_gizmo_link.delete"], [GIZMO_LINK_ROW]);
+
+    renderPage(MANY_TO_MANY);
+
+    await user.click(await screen.findByTestId("entity-table-unlink"));
+
+    // The confirm is open and explains what survives — the assertion that
+    // matters about the wording, since "Remove" alone reads as a delete.
+    expect(await screen.findByTestId("entity-relation-unlink-submit")).toBeInTheDocument();
+    expect(screen.getByText(/the record it points to is not deleted/i)).toBeInTheDocument();
+    // ...and nothing has been written. A Remove that deleted on the first
+    // click and *then* showed a dialog would pass a test that only checked
+    // the dialog appears.
+    expect(mockDeleteLinkRow).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() =>
+      expect(screen.queryByTestId("entity-relation-unlink-submit")).not.toBeInTheDocument(),
+    );
+    expect(mockDeleteLinkRow).not.toHaveBeenCalled();
+  });
+
+  it("TC-ADMIN-105: confirming calls the declared route with both ids and refetches the tab", async () => {
+    const user = userEvent.setup();
+    primeMocks(["widget_gizmo_link.delete"], [GIZMO_LINK_ROW]);
+
+    renderPage(MANY_TO_MANY);
+
+    await user.click(await screen.findByTestId("entity-table-unlink"));
+    const listCallsBefore = mockListEntities.mock.calls.length;
+    await user.click(await screen.findByTestId("entity-relation-unlink-submit"));
+
+    await waitFor(() => expect(mockDeleteLinkRow).toHaveBeenCalledTimes(1));
+    expect(mockDeleteLinkRow).toHaveBeenCalledWith(
+      // The *served* declaration, not a path this component built — the whole
+      // point of `linkDelete`. Note the permission is the delete code, so a
+      // component that reused `config.linkCreate` here would fail this.
+      {
+        pathTemplate: "/widgets/{widget_id}/gizmo-links/{gizmo_id}",
+        permission: "widget_gizmo_link.delete",
+      },
+      // Keyed by the link row's own FK columns: the parent from the route,
+      // the far id read off the row. `g-9`, not the link row's own `l-1`.
+      { widget_id: "w-1", gizmo_id: "g-9" },
+    );
+
+    // And the tab re-lists: a `204` followed by a stale table is the bug a
+    // response-only assertion cannot see.
+    await waitFor(() => expect(mockListEntities.mock.calls.length).toBeGreaterThan(listCallsBefore));
+    await waitFor(() =>
+      expect(screen.queryByTestId("entity-relation-unlink-submit")).not.toBeInTheDocument(),
+    );
+  });
+
+  it("TC-ADMIN-106: a failed unlink keeps the confirm open and shows the API's own reason", async () => {
+    /**
+     * The opposite handling from ADR-0076 Amendment 1's compound create, and
+     * deliberately so: nothing was written here, so leaving the dialog open
+     * makes the confirm button a **retry** rather than a second write. The
+     * API's own message is rendered verbatim because the two realistic
+     * failures say different things a user can act on — a `404` means someone
+     * else already removed it, a `403` means they may not.
+     */
+    const user = userEvent.setup();
+    primeMocks(["widget_gizmo_link.delete"], [GIZMO_LINK_ROW]);
+    mockDeleteLinkRow.mockRejectedValue(
+      new ApiError("This gizmo is not linked to this widget.", 404, { code: "not_found" }),
+    );
+
+    renderPage(MANY_TO_MANY);
+
+    await user.click(await screen.findByTestId("entity-table-unlink"));
+    await user.click(await screen.findByTestId("entity-relation-unlink-submit"));
+
+    expect(await screen.findByTestId("entity-relation-unlink-error")).toHaveTextContent(
+      "This gizmo is not linked to this widget.",
+    );
+    expect(screen.getByTestId("entity-relation-unlink-submit")).toBeInTheDocument();
   });
 });
 

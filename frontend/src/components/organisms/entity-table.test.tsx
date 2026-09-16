@@ -162,6 +162,89 @@ describe("EntityTable", () => {
     expect(screen.queryByLabelText("Delete")).not.toBeInTheDocument();
   });
 
+  // --- ADR-0077: the per-row Remove (unlink) action -----------------------------------------
+
+  it("TC-ADMIN-108: renders a per-row Remove, and an Actions column, on a read-only config when onUnlink is given", () => {
+    /**
+     * The claim that matters, and the whole reason `onUnlink` is a third prop
+     * rather than a reuse of `onDelete`: a link entity's `methods` is
+     * `["list","get"]` and **must stay that way** (there is no generic
+     * `DELETE /{resource}/{id}` for a link row — it has no addressable id of
+     * its own on that surface). So the Remove action has to render on exactly
+     * the config shape the test two cases up asserts renders *no* actions
+     * column at all. `READ_ONLY_CONFIG` here is literally that same fixture.
+     */
+    render(
+      <EntityTable
+        config={READ_ONLY_CONFIG}
+        rows={ROWS}
+        total={2}
+        page={1}
+        pageSize={25}
+        onPageChange={vi.fn()}
+        onUnlink={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("columnheader", { name: "Actions" })).toBeInTheDocument();
+    expect(screen.getAllByLabelText("Remove")).toHaveLength(2);
+    // "Remove", never "Delete" — different word for a different act, and the
+    // two must not be confusable by an assertion or by a user.
+    expect(screen.queryByLabelText("Delete")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Edit")).not.toBeInTheDocument();
+  });
+
+  it("TC-ADMIN-108: renders no Remove and no actions column when onUnlink is omitted", () => {
+    /**
+     * Hide-don't-disable: `EntityRelationTab` passes `undefined` when the
+     * junction declares no `linkDelete` or the actor lacks its permission, so
+     * "the prop is absent" is the only representation of "not allowed" this
+     * component ever sees.
+     */
+    render(
+      <EntityTable
+        config={FULL_CRUD_CONFIG}
+        rows={ROWS}
+        total={2}
+        page={1}
+        pageSize={25}
+        onPageChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByLabelText("Remove")).not.toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Actions" })).not.toBeInTheDocument();
+  });
+
+  it("TC-ADMIN-108: clicking Remove calls onUnlink with that row and does not fire onRowClick", () => {
+    /**
+     * The second half is ADR-0073's actions-cell `stopPropagation` contract,
+     * re-asserted for the new control: a relationship tab's row click
+     * navigates to the far record, so a Remove that also navigated would
+     * unmount the confirm modal the click is supposed to open.
+     */
+    const onUnlink = vi.fn();
+    const onRowClick = vi.fn();
+    render(
+      <EntityTable
+        config={READ_ONLY_CONFIG}
+        rows={ROWS}
+        total={2}
+        page={1}
+        pageSize={25}
+        onPageChange={vi.fn()}
+        onUnlink={onUnlink}
+        onRowClick={onRowClick}
+      />,
+    );
+
+    fireEvent.click(screen.getAllByLabelText("Remove")[1]);
+
+    expect(onUnlink).toHaveBeenCalledTimes(1);
+    expect(onUnlink).toHaveBeenCalledWith(ROWS[1]);
+    expect(onRowClick).not.toHaveBeenCalled();
+  });
+
   it("renders a search box only when searchFields is non-empty", () => {
     const { rerender } = render(
       <EntityTable

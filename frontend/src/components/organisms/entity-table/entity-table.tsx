@@ -191,6 +191,32 @@ export interface EntityTableProps {
   onEdit?: (row: EntityRow) => void;
   onDelete?: (row: EntityRow) => void;
   /**
+   * [ADR-0077](../../../../../docs/adr/0077-relationship-tab-unlink-action.md):
+   * a per-row **Remove** action, for a table whose rows are ADR-0005 link rows
+   * rather than records — `EntityRelationTab`'s many-to-many tab is the one
+   * caller.
+   *
+   * A third prop rather than reusing `onDelete`, because the two gate on
+   * genuinely different facts and collapsing them would require lying about
+   * one of them:
+   *
+   * - `onDelete` is gated on `config.methods.includes("delete")` — "the
+   *   generic factory serves `DELETE /{resource}/{id}`". For a link entity
+   *   that is **false and must stay false**: a link row has no addressable id
+   *   of its own on the generic surface, and flipping the flag to reuse the
+   *   existing button would make every *other* consumer of that config (the
+   *   entity's own list page included) offer a row delete that `405`s.
+   * - `onUnlink` is gated on the prop's presence alone. Whether the capability
+   *   exists is `config.linkDelete`, and whether this actor may use it is that
+   *   declaration's own permission — both questions the caller has already
+   *   answered before it passes the handler, neither of them derivable here.
+   *
+   * It also renders with `aria-label="Remove"`, not "Delete", which is the
+   * accurate word: the far record survives, only the assertion that the two
+   * relate goes away.
+   */
+  onUnlink?: (row: EntityRow) => void;
+  /**
    * ADR-0073: clicking anywhere on a row that isn't an action control fires
    * this. Optional — omit it and every `<tr>` renders exactly as it did
    * before (no `cursor: pointer`, no `tabIndex`, no handlers), so the 9
@@ -243,6 +269,7 @@ function EntityTable({
   canDeleteRow = () => true,
   onEdit,
   onDelete,
+  onUnlink,
   onRowClick,
   bare = false,
 }: EntityTableProps) {
@@ -291,7 +318,13 @@ function EntityTable({
     setShowColumnPreferences(false);
   }
 
-  const showActionsColumn = (config.methods.includes("update") || config.methods.includes("delete")) && (onEdit || onDelete);
+  // ADR-0077 adds the third disjunct. `onUnlink` carries **no**
+  // `config.methods` conjunct on purpose — see that prop's own doc comment:
+  // the capability it renders is declared by `config.linkDelete`, which is
+  // precisely the thing `methods` does not and must not describe.
+  const showActionsColumn =
+    ((config.methods.includes("update") || config.methods.includes("delete")) && (onEdit || onDelete)) ||
+    Boolean(onUnlink);
 
   // ADR-0053 (batching) / ADR-0073 (extracted to a shared hook so
   // `EntityDetailPage` reuses it): one `getEntity` per *distinct* fk id per fk
@@ -436,6 +469,27 @@ function EntityTable({
                         size="sm"
                         aria-label="Delete"
                         onClick={() => onDelete(row)}
+                      >
+                        <Icon name="trash" />
+                      </Button>
+                    )}
+                    {/*
+                      ADR-0077. Same visual/a11y shape as the Delete button
+                      above — `btn-outline-danger`, the `trash` glyph, an
+                      `aria-label` carrying the accessible name because the
+                      button is icon-only — but a different word, because the
+                      thing it removes is the *link*, not the record the row
+                      points at.
+                    */}
+                    {onUnlink && (
+                      <Button
+                        color="danger"
+                        outline
+                        size="sm"
+                        aria-label="Remove"
+                        title="Remove"
+                        data-testid="entity-table-unlink"
+                        onClick={() => onUnlink(row)}
                       >
                         <Icon name="trash" />
                       </Button>

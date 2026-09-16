@@ -323,6 +323,45 @@ class LinkCreateAction:
 
 
 @dataclass
+class LinkDeleteAction:
+    """[ADR-0077](../../../docs/adr/0077-relationship-tab-unlink-action.md):
+    `LinkCreateAction`'s exact mirror — how to **remove one row** of a
+    junction/link entity, declared so a generic caller can invoke a bespoke
+    `DELETE` it knows nothing else about.
+
+    Everything `LinkCreateAction`'s own docstring says about *why* this is
+    declared rather than derived applies here verbatim and for the same two
+    reasons:
+
+    - **`path_template`** — the bespoke route's URL, one `{...}` placeholder
+      per id-bearing segment, each named after **this entity's own FK column**
+      so a caller holding both ids substitutes by field name. For all six
+      junctions today the template happens to equal the entity's own
+      `link_create.path_template` (same URL, different verb), which is a
+      *fact about how these six were designed*, not a contract — deriving
+      one from the other would silently bake it in, and the first junction
+      whose unlink lives elsewhere would fail with a literal brace in its URL.
+      `tests/unit/test_adr76_link_create_actions.py` therefore checks the
+      placeholders against `fk_fields_of` (the real contract) rather than
+      against the create template.
+    - **`permission`** — the exact code the bespoke `DELETE` gates on. Not
+      always `<resource>.delete`: REQ-4's and PLAN-1's two junction routes
+      predate this ADR and gate their `DELETE` on the *parent's*
+      `test_suite.update`/`test_plan.update`, exactly as their `POST` does,
+      and ADR-0077 re-gates no shipped route.
+
+    A completeness test pins every `is_link_entity` config in the registry to
+    declaring one, in both directions, mutation-tested in suite — the same
+    partition `link_create` already has, in the same file, because the two
+    range over the identical six configs and splitting them would create two
+    checkers that have to agree.
+    """
+
+    path_template: str
+    permission: str
+
+
+@dataclass
 class ScopeResolution:
     """ADR-0053 (moved from the frontend, same posture as `ScopeSelectorOption`
     above). Derives a scope value automatically, no picker, by resolving
@@ -415,6 +454,16 @@ class CrudEntityConfig:
     # entity whose rows the generic factory itself creates needs no such
     # declaration, its `create` method already says so.
     link_create: LinkCreateAction | None = None
+    # ADR-0077: `link_create`'s mirror — the declarative handle on the bespoke
+    # route that *removes* one of this entity's rows. Set on link/junction
+    # entities only (`is_link_entity`), `None` everywhere else, for exactly the
+    # reasons `link_create` above is. Deliberately NOT expressed by adding
+    # `"delete"` to `methods`/`full_methods`: that flag means "the generic
+    # factory's `DELETE /{resource}/{id}` works", which stays false — a link
+    # row is addressed by its *pair* of FK ids on a bespoke path, never by its
+    # own id, and flipping the flag would make `EntityTable` render a per-row
+    # Delete calling a route that answers `405`.
+    link_delete: LinkDeleteAction | None = None
     # ADR-0053: overrides `methods` for the derived schema's own `methods`
     # array only — never affects which routes `make_crud_router` registers.
     # `Project` is the one user today: its real REST surface is `list`/
@@ -1400,6 +1449,14 @@ def derive_entity_schema(
             "permission": config.link_create.permission,
         }
 
+    # ADR-0077 — `link_create`'s mirror, serialized the same way.
+    link_delete: dict[str, Any] | None = None
+    if config.link_delete is not None:
+        link_delete = {
+            "pathTemplate": config.link_delete.path_template,
+            "permission": config.link_delete.permission,
+        }
+
     scope_resolution: dict[str, Any] | None = None
     if config.scope_resolution is not None:
         scope_resolution = {
@@ -1428,6 +1485,12 @@ def derive_entity_schema(
         # can render a row, so a "Link existing ..." action costs no extra
         # round trip, and the MCP `describe` tool gets it for free.
         "linkCreate": link_create,
+        # ADR-0077: a twelfth key, and `linkCreate`'s exact mirror — `null` for
+        # every entity that isn't a link table, present unconditionally for the
+        # same reason (a client reads "no unlink action" off the *value*, never
+        # off the key's absence, so an older backend and a non-link entity stay
+        # distinguishable).
+        "linkDelete": link_delete,
     }
 
 

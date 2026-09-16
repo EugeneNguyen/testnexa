@@ -599,4 +599,116 @@ test.describe("ADR-0076: relationship-tab write actions", () => {
       cleanup(fixture);
     }
   });
+
+  /**
+   * TC-ADMIN-115 — [ADR-0077](../../docs/adr/0077-relationship-tab-unlink-action.md):
+   * link an existing row, then remove the link, end to end.
+   *
+   * **Why this needs a live stack rather than another Vitest case.** The
+   * backend suite proves each `DELETE` route's boundaries; the Vitest suite
+   * proves the component renders the Remove action, gated twice, and calls
+   * `deleteLinkRow` with the right declaration and ids — against mocks that
+   * agree with it by construction. Neither can prove the two halves *meet*:
+   * that the `linkDelete.pathTemplate` the backend **serves**, interpolated by
+   * the frontend from the relation's own `scopeField`/`targetField`, produces a
+   * URL the real router accepts **for the `DELETE` verb**, with the real
+   * `requirement_test_case_link.delete` code — which did not exist before
+   * migration `8c1d5a7b93e2` — granted to the real logged-in actor. The
+   * Remove button's mere visibility is itself part of that proof: it is gated
+   * on that code, so a database where the migration never ran renders no
+   * button at all.
+   *
+   * **It links first and unlinks second, in one test, rather than seeding a
+   * link row.** That is the only arrangement that proves the two *separately
+   * served* declarations agree about the same pair — a seeded row would let
+   * `linkCreate.pathTemplate` and `linkDelete.pathTemplate` diverge
+   * undetected, which is precisely the coupling ADR-0077 declined to hard-code
+   * (see its Decision §1 and TC-ADMIN-102's deliberately-absent assertion).
+   */
+  test("TC-ADMIN-115: linking an existing row and then removing the link, live", async ({ page }) => {
+    test.setTimeout(PER_TEST_TIMEOUT_MS);
+    const fixture = seedFixture();
+    try {
+      await login(page, fixture.orgAdmin.email, fixture.orgAdmin.password, fixture.orgId);
+      await gotoTab(
+        page,
+        `/projects/${fixture.projectId}/admin/requirements/${fixture.requirementId}?tab=requirement-test-case-links`,
+        "requirements",
+      );
+
+      await expect(page.getByText("No records found.")).toBeVisible({ timeout: TAB_STRIP_TIMEOUT_MS });
+
+      // --- link it (ADR-0076's own action, the precondition) -------------------
+      await page.getByTestId("entity-relation-link").click({ timeout: TAB_STRIP_TIMEOUT_MS });
+      await pickInLinkModal(page, fixture.testCaseTitle, fixture.testCaseTitle);
+      const [linkResponse] = await Promise.all([
+        page.waitForResponse(
+          (res) =>
+            res.url().includes(`/api/v1/requirements/${fixture.requirementId}/test-case-links/`) &&
+            res.request().method() === "POST",
+          { timeout: TAB_STRIP_TIMEOUT_MS },
+        ),
+        page.getByTestId("entity-relation-link-submit").click(),
+      ]);
+      expect(linkResponse.status()).toBe(201);
+      await expect(page.getByText(fixture.testCaseTitle)).toBeVisible({ timeout: TAB_STRIP_TIMEOUT_MS });
+
+      // --- remove it (ADR-0077) -----------------------------------------------
+      const removeButton = page.getByTestId("entity-table-unlink");
+      // Visible at all ⇒ `linkDelete` was served AND the actor holds
+      // `requirement_test_case_link.delete`, i.e. migration `8c1d5a7b93e2` ran
+      // against this database and granted it to `org_admin`. Asserted before
+      // the click, because "the button was never there" and "the click did
+      // nothing" fail identically otherwise.
+      await expect(removeButton).toBeVisible({ timeout: TAB_STRIP_TIMEOUT_MS });
+      // Icon-only, same convention as every other action here — the accessible
+      // name is "Remove", never "Delete": the TestCase survives.
+      await expect(removeButton).toHaveAccessibleName("Remove");
+      await removeButton.click();
+
+      // The confirm explains what survives, which is the whole reason it is a
+      // real modal rather than a native `confirm()`.
+      await expect(page.getByText(/the record it points to is not deleted/i)).toBeVisible({ timeout: TAB_STRIP_TIMEOUT_MS });
+
+      const [deleteResponse] = await Promise.all([
+        page.waitForResponse(
+          (res) =>
+            res.url().includes(`/api/v1/requirements/${fixture.requirementId}/test-case-links/`) &&
+            res.request().method() === "DELETE",
+          { timeout: TAB_STRIP_TIMEOUT_MS },
+        ),
+        page.getByTestId("entity-relation-unlink-submit").click(),
+      ]);
+      // Asserted on the wire: this URL is built by the frontend from the
+      // *served* `pathTemplate`, so the exact path and verb are the contract
+      // under test — and it must be the same path the `POST` above used.
+      expect(deleteResponse.status()).toBe(204);
+      expect(deleteResponse.url()).toContain(`/test-case-links/${fixture.testCaseId}`);
+      // The two served declarations agree about the same pair — the claim that
+      // only a link-then-unlink flow can make, and the reason this test does
+      // not seed its link row. `linkCreate.pathTemplate` and
+      // `linkDelete.pathTemplate` are served separately and could diverge.
+      expect(deleteResponse.url()).toBe(linkResponse.url());
+
+      // The tab's own list refetched and no longer carries the row — a `204`
+      // followed by a table that still shows it is the failure a
+      // response-only assertion cannot see.
+      await expect(page.getByText("No records found.")).toBeVisible({ timeout: TAB_STRIP_TIMEOUT_MS });
+      await expect(page.getByTestId("entity-table-unlink")).toHaveCount(0);
+
+      // And the far record itself survives — the whole distinction between
+      // "Remove" and "Delete", proven by loading its own detail page rather
+      // than inferred from the tab.
+      await gotoTab(
+        page,
+        `/projects/${fixture.projectId}/admin/test-cases/${fixture.testCaseId}`,
+        "test-cases",
+      );
+      await expect(page.getByText(fixture.testCaseTitle).first()).toBeVisible({
+        timeout: TAB_STRIP_TIMEOUT_MS,
+      });
+    } finally {
+      cleanup(fixture);
+    }
+  });
 });

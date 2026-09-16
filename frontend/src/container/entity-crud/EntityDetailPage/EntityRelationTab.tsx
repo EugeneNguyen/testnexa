@@ -132,6 +132,41 @@
  *    "pick a parent row before the list can fetch" step `EntityListPage` shows
  *    for the same entities, in the same component.
  *
+ * ## Removing a link ([ADR-0077](../../../../../docs/adr/0077-relationship-tab-unlink-action.md))
+ *
+ * A many-to-many tab's rows carry a per-row **Remove**, the exact counterpart
+ * of "Link existing …" above and declared the same way: `config.linkDelete`
+ * (`LinkDeleteAction`) names the bespoke `DELETE` and the permission it gates
+ * on, so this component hard-codes no route here either. Both ids the route
+ * needs are already on screen — `relation.scopeField` is the record being
+ * viewed, `relation.targetField` is read off the row the button sits in — so
+ * unlinking needs no picker, no form and no extra fetch.
+ *
+ * Three things about it are deliberate:
+ *
+ * - **It is on n-n tabs only.** A one-to-many tab's rows are *records*, and
+ *   removing one would mean deleting the child outright, which is a different
+ *   and much larger action that the child's own screen already offers. Same
+ *   asymmetry ADR-0076 Amendment 1 kept for "Create new" vs "New".
+ * - **`config.linkDelete` is read independently of `config.linkCreate`.** A
+ *   junction that can be linked and not unlinked is not hypothetical — it is
+ *   what four of the six were between the two ADRs — so neither key is
+ *   inferred from the other, and the two permissions are checked separately
+ *   (for the four traceability links they are genuinely different codes).
+ * - **It confirms before writing**, in the same `Modal` shape
+ *   `EntityListPage`'s own row delete uses (title, plain-language body, Cancel
+ *   + a `danger` confirm, the API's own error rendered inside the modal so the
+ *   user can read it and retry or cancel). Reused rather than reinvented, and
+ *   specifically not a native `confirm()` — nothing else in this app uses one,
+ *   and it cannot render an `ApiError`'s message on a failed attempt.
+ *
+ * Like every other action here it is gated twice and **hidden, not disabled**,
+ * when either gate fails. One accepted consequence of the fail-closed gate:
+ * while `permissions` is still in flight the column is absent and appears when
+ * it resolves. The actions strip above the table renders its own explicit
+ * "loading actions" placeholder for that same window (see `actionsLoading`),
+ * so the arrival is accounted for on screen rather than unexplained.
+ *
  * One live direction (`TestCase` -> "Defects (linked)") lands in case 3 behind
  * `ScopeSelector`'s own **pre-existing** cascading-picker gap: `Defect`'s
  * selector searches `TestExecution`, which is itself scoped by `test_cycle_id`
@@ -159,7 +194,13 @@ import { Icon } from "../../../components/atoms/icon/icon";
 import { usePermissions } from "../../../auth/usePermissions";
 import { EntityConfig, EntityRelation } from "../../../entityConfigs/types";
 import { ApiError } from "../../../lib/api/client";
-import { EntityRow, createEntity, createLinkRow, listEntities } from "../../../lib/api/entityCrud";
+import {
+  EntityRow,
+  createEntity,
+  createLinkRow,
+  deleteLinkRow,
+  listEntities,
+} from "../../../lib/api/entityCrud";
 import { useEntitySchema } from "../../../pages/admin/useEntitySchema";
 
 export interface EntityRelationTabProps {
@@ -352,6 +393,12 @@ function EntityRelationTab({
    */
   const [createdNotLinked, setCreatedNotLinked] = useState<string | null>(null);
 
+  // ADR-0077 — the per-row "Remove" action's confirm step. `rowPendingUnlink`
+  // doubles as the modal's own visibility flag, exactly as
+  // `EntityListPage`'s `rowPendingDelete` does for its row delete.
+  const [rowPendingUnlink, setRowPendingUnlink] = useState<EntityRow | null>(null);
+  const [unlinkError, setUnlinkError] = useState<string | null>(null);
+
   const isOneToMany = relation.kind === "one-to-many";
   /**
    * What the tab is *about* — the far entity for n-n, `entity` itself for 1-n
@@ -417,6 +464,44 @@ function EntityRelationTab({
     },
     onError: (error: unknown) => setLinkError(errorMessage(error)),
   });
+
+  /**
+   * ADR-0077: remove the one link row this table row *is*.
+   *
+   * The far id comes off the row itself (`relation.targetField`), so the
+   * request needs nothing the table was not already rendering. Guarded on a
+   * real string: a row missing that column would otherwise reach
+   * `interpolateLinkPath` and throw its "Missing …" programming-error, which
+   * is the right behaviour for a bug but a poor one to surface to a user
+   * mid-confirm.
+   */
+  const unlinkMutation = useMutation({
+    mutationFn: (row: EntityRow) => {
+      const farId = relation.targetField !== null ? row[relation.targetField] : undefined;
+      if (typeof farId !== "string" || !farId) {
+        return Promise.reject(new Error("This row is missing the id of the record it links to."));
+      }
+      return deleteLinkRow(config!.linkDelete!, {
+        [relation.scopeField]: parentId,
+        [relation.targetField as string]: farId,
+      });
+    },
+    onSuccess: () => {
+      setRowPendingUnlink(null);
+      setUnlinkError(null);
+      invalidateRelationList();
+    },
+    // Kept open on failure, unlike `createAndLinkMutation`'s own close-on-error
+    // path: nothing was written here, so re-confirming is a retry rather than a
+    // second write, and the API's own reason (a `404` for an already-removed
+    // pair, a `403`) is worth reading in place.
+    onError: (error: unknown) => setUnlinkError(errorMessage(error)),
+  });
+
+  function closeUnlinkModal() {
+    setRowPendingUnlink(null);
+    setUnlinkError(null);
+  }
 
   function closeLinkModal() {
     setShowLinkModal(false);
@@ -522,6 +607,27 @@ function EntityRelationTab({
 
   const canLinkExisting =
     !isOneToMany && Boolean(config.linkCreate) && permissions.has(config.linkCreate!.permission, projectId);
+
+  /**
+   * ADR-0077. Structurally parallel to `canLinkExisting` and deliberately
+   * **not** derived from it: the capability is a different served key
+   * (`config.linkDelete`) and, for the four ADR-0005 traceability links, a
+   * different permission code (`<link>.delete`, not `<link>.create`). An actor
+   * can legitimately hold either without the other — `tester` is a real
+   * example in the opposite direction on three of the four links — so "may
+   * link" is never evidence of "may unlink".
+   *
+   * `relation.targetField !== null` is the third conjunct and is what confines
+   * this to many-to-many tabs: it is `null` exactly when the listed row *is*
+   * the record (one-to-many), where there is no link row to remove and
+   * "Remove" would have to mean "delete this child", a different action
+   * entirely (see the module docstring).
+   */
+  const canUnlink =
+    !isOneToMany &&
+    relation.targetField !== null &&
+    Boolean(config.linkDelete) &&
+    permissions.has(config.linkDelete!.permission, projectId);
 
   /**
    * ADR-0076 Amendment 1. Four conditions, and every one of them is a
@@ -689,12 +795,19 @@ function EntityRelationTab({
         loadError={listQuery.isError ? "Something went wrong. Please try again." : null}
         /**
          * Still no Edit and no Delete — omitting `onEdit`/`onDelete` is what
-         * makes `EntityTable` drop the Actions column entirely. ADR-0076 adds
-         * a *create* affordance above the table, deliberately not per-row
-         * ones: every listed record is fully editable on its own screen, one
-         * click away, and a link row has nothing to edit at all (ADR-0005 —
-         * links are immutable, delete-and-recreate).
+         * keeps `EntityTable` from offering either: every listed record is
+         * fully editable on its own screen, one click away, and a link row has
+         * nothing to edit at all (ADR-0005 — links are immutable,
+         * delete-and-recreate).
+         *
+         * ADR-0077 adds the third action, `onUnlink`, and it is the
+         * *delete-and-* half of that same rule rather than an exception to it:
+         * it removes the link row, never the record the row points at. Passed
+         * as `undefined` when either gate fails, which is what makes the whole
+         * Actions column disappear rather than render an inert cell — the
+         * hide-don't-disable posture every other action here takes.
          */
+        onUnlink={canUnlink ? (row) => { setUnlinkError(null); setRowPendingUnlink(row); } : undefined}
         onRowClick={(row) => {
           const targetId =
             relation.targetField !== null ? row[relation.targetField] : row.id;
@@ -704,6 +817,64 @@ function EntityRelationTab({
           navigate(`${adminBasePath(routeParams)}/${relation.targetEntity}/${String(targetId)}`);
         }}
       />
+
+      {/*
+        ADR-0077: the confirm step for the per-row Remove.
+
+        Same `Modal` + `Modal.Body` + `Modal.Footer` shape `EntityListPage`'s
+        own row-delete confirm uses, deliberately reused rather than reinvented
+        — and specifically not a native `confirm()`, which nothing in this app
+        uses and which could not render the `ApiError` message this one does on
+        a failed attempt.
+
+        The body says what actually happens, in the two sentences that answer
+        the only two questions a user has here: *does this delete the record?*
+        (no) and *is it final?* (no — the sibling "Link existing …" button puts
+        it back, and re-linking is exactly what ADR-0005's immutable
+        delete-and-recreate model means in practice).
+      */}
+      {canUnlink && (
+        <Modal
+          visible={Boolean(rowPendingUnlink)}
+          title={<>Remove link</>}
+          onClose={closeUnlinkModal}
+        >
+          <Modal.Body>
+            {unlinkError && (
+              <Alert color="danger" data-testid="entity-relation-unlink-error">
+                {unlinkError}
+              </Alert>
+            )}
+            {/*
+              Deliberately does NOT interpolate `farLabel` here, though an
+              earlier draft did. A relation's label is a *plural* ("Test
+              cases", "Defects"), so "The test cases itself is not deleted"
+              reads as a grammar bug — caught by looking at the rendered
+              modal, not by any assertion, since every test that could have
+              pinned the wording would have pinned the wrong wording equally
+              happily. "the record it points to" is number-agnostic and its
+              referent is unambiguous: the user is looking at the row whose
+              own cell carries that record's title.
+            */}
+            Remove this link? Only the link is removed — the record it points to is not deleted,
+            and you can link it again at any time.
+          </Modal.Body>
+          <Modal.Footer>
+            <Button outline color="secondary" type="button" onClick={closeUnlinkModal}>
+              Cancel
+            </Button>
+            <Button
+              color="danger"
+              type="button"
+              data-testid="entity-relation-unlink-submit"
+              disabled={unlinkMutation.isPending}
+              onClick={() => rowPendingUnlink && unlinkMutation.mutate(rowPendingUnlink)}
+            >
+              Remove
+            </Button>
+          </Modal.Footer>
+        </Modal>
+      )}
 
       {canCreateAndLink && farConfig && (
         <Modal

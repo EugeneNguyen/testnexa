@@ -363,9 +363,20 @@ class TestTheNumbersTheDocsQuote:
         loosened to a subset check: each junction's code set must be exactly
         `.read`, plus `.create` for precisely the four ADR-0076 names, so a
         *fifth* code on any of the six still fails here.
+
+        **ADR-0077 amends it the same way, for the same reason** — its four
+        `<link>.delete` codes widen the set once more, and the assertion stays
+        exact (now `.read` + `.create` + `.delete` for the four named
+        resources, `.read` alone for REQ-4's/PLAN-1's two, whose own
+        link/unlink routes gate on the parent's `.update` instead). Kept exact
+        rather than relaxed to a subset check deliberately: the whole value of
+        this test is that an *unplanned* code on a junction resource fails it,
+        and every ADR that legitimately adds one pays a one-line edit here as
+        the price of keeping that property.
         """
         from app.db.rbac_seed_catalog import (
             LINK_CREATE_RESOURCES,
+            LINK_DELETE_RESOURCES,
             READ_ONLY_RESOURCES,
             build_permission_catalog,
         )
@@ -383,6 +394,9 @@ class TestTheNumbersTheDocsQuote:
             expected = {f"{resource}.read"}
             if resource in LINK_CREATE_RESOURCES:
                 expected.add(f"{resource}.create")
+            # ADR-0077 — see this test's own docstring.
+            if resource in LINK_DELETE_RESOURCES:
+                expected.add(f"{resource}.delete")
             assert {c for c in codes if c.startswith(f"{resource}.")} == expected, resource
 
 

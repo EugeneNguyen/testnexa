@@ -33,6 +33,42 @@ generic surface through its config's `link_create` (ADR-0076's
 `LinkCreateAction`), which is what lets a relationship tab invoke a route it
 knows nothing else about.
 
+**[ADR-0077](../../../../docs/adr/0077-relationship-tab-unlink-action.md)
+(2026-09-16): each of the four gains the matching `DELETE`**, at the same URL
+as its `POST`, closing the gap ADR-0076's own Consequences deferred by name
+("Unlinking is not shipped... the tabs therefore grow monotonically today"):
+
+```
+DELETE /requirements/{id}/test-case-links/{test_case_id}            requirement_test_case_link.delete
+DELETE /requirements/{id}/test-condition-links/{test_condition_id}  requirement_test_condition_link.delete
+DELETE /test-conditions/{id}/test-case-links/{test_case_id}         test_condition_test_case_link.delete
+DELETE /test-cases/{id}/defect-links/{defect_id}                    test_case_defect_link.delete
+```
+
+Shaped verbatim on REQ-4's `remove_test_case_from_suite` and PLAN-1's
+`remove_suite_from_plan`, which are the two junction unlinks that have existed
+all along: the **same** `_gate_parent` the `POST` above uses (so the NFR-1
+existence boundary is literally one function for both verbs), then a lookup of
+the link row by its own pair, then `204` — or `404` if that pair is not linked.
+Deliberately **asymmetric with `POST`'s `409`**, exactly as ADR-0030 fixed for
+its own pair: a `DELETE`'s "already true" case reads as "nothing to find here",
+not as a conflict. And deliberately **not** idempotent-`204`, so a client that
+unlinks a pair twice learns the second call did nothing.
+
+There is no cross-project `422` on this side, and its absence is the point:
+that check exists on `POST` to reject an *invalid new relationship*, and a link
+row that already exists is by construction one the `POST` already accepted.
+Re-deriving both sides' projects here could only ever reject a row the system
+itself created — leaving a user unable to remove exactly the rows a past bug
+let in.
+
+Each is declared to the generic surface through its config's `link_delete`
+(ADR-0077's `LinkDeleteAction`), the exact mirror of `link_create`. Links stay
+**immutable**, not mutable: `methods` is still `{"list","get"}`, `create_schema`
+still `None`, and a link row still cannot be `PATCH`ed or reached by the generic
+factory's own `DELETE /{resource}/{id}`. ADR-0005's "delete-and-recreate" is
+what these routes make *possible*, not something they contradict.
+
 **Distinct from REQ-5's `POST /test-cases/{id}/link-requirement`**
 (ADR-0069), which writes the same `RequirementTestCaseLink` table. That route
 is a one-shot *retrofit* for a standalone case with no traceability at all — it
@@ -82,8 +118,9 @@ row carries both FKs) byte-identical to its pre-widening behaviour:
 from typing import Any, Awaitable, Callable, Sequence
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from fastapi.responses import JSONResponse
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -91,6 +128,7 @@ from app.api.crud_factory import (
     CrudEntityConfig,
     FieldMeta,
     LinkCreateAction,
+    LinkDeleteAction,
     NoSchema,
     ResolveOrgId,
     ScopeSelectorOption,
@@ -169,6 +207,14 @@ _REQUIREMENT_TEST_CASE_LINK_CONFIG = CrudEntityConfig(
         path_template="/requirements/{requirement_id}/test-case-links/{test_case_id}",
         permission="requirement_test_case_link.create",
     ),
+    # ADR-0077: the same handle for this module's own `DELETE` below. Same URL
+    # as the `POST`, different verb and a *different permission code* — the
+    # declaration is what makes both facts knowable to a client that hard-codes
+    # neither.
+    link_delete=LinkDeleteAction(
+        path_template="/requirements/{requirement_id}/test-case-links/{test_case_id}",
+        permission="requirement_test_case_link.delete",
+    ),
     label="Requirement -> test case links",
     # ADR-0075 Amendment 1: one option per scope arm, `RiskItem`'s own shape —
     # without the second, the generic admin list page could only ever scope by
@@ -214,6 +260,11 @@ _REQUIREMENT_TEST_CONDITION_LINK_CONFIG = CrudEntityConfig(
         path_template="/requirements/{requirement_id}/test-condition-links/{test_condition_id}",
         permission="requirement_test_condition_link.create",
     ),
+    # ADR-0077 — see the sibling config above.
+    link_delete=LinkDeleteAction(
+        path_template="/requirements/{requirement_id}/test-condition-links/{test_condition_id}",
+        permission="requirement_test_condition_link.delete",
+    ),
     label="Requirement -> test condition links",
     scope_selector=(
         ScopeSelectorOption(ref_entity="requirement", param_name="requirement_id", label="By requirement"),
@@ -255,6 +306,11 @@ _TEST_CONDITION_TEST_CASE_LINK_CONFIG = CrudEntityConfig(
     link_create=LinkCreateAction(
         path_template="/test-conditions/{test_condition_id}/test-case-links/{test_case_id}",
         permission="test_condition_test_case_link.create",
+    ),
+    # ADR-0077 — see the sibling configs above.
+    link_delete=LinkDeleteAction(
+        path_template="/test-conditions/{test_condition_id}/test-case-links/{test_case_id}",
+        permission="test_condition_test_case_link.delete",
     ),
     label="Test condition -> test case links",
     scope_selector=(
@@ -309,6 +365,13 @@ _TEST_CASE_DEFECT_LINK_CONFIG = CrudEntityConfig(
     link_create=LinkCreateAction(
         path_template="/test-cases/{test_case_id}/defect-links/{defect_id}",
         permission="test_case_defect_link.create",
+    ),
+    # ADR-0077 — see the sibling configs above. This is the one of the four
+    # whose `.delete` code `tester` also holds (ADR-0077 Decision §3): it is the
+    # exact undo of the one link `tester` may create.
+    link_delete=LinkDeleteAction(
+        path_template="/test-cases/{test_case_id}/defect-links/{defect_id}",
+        permission="test_case_defect_link.delete",
     ),
     label="Test case -> defect links",
     scope_selector=(
@@ -484,6 +547,49 @@ async def _insert_link(db: AsyncSession, link_row: Base, conflict_message: str, 
 
     await db.commit()
     return JSONResponse(status_code=201, content=body)
+
+
+async def _delete_link(
+    db: AsyncSession,
+    model: type[Base],
+    first_column: Any,
+    first_value: UUID,
+    second_column: Any,
+    second_value: UUID,
+    not_linked_message: str,
+) -> Response | JSONResponse:
+    """ADR-0077: remove the one link row naming this pair, or `404`.
+
+    The mirror of `_insert_link` above, and shaped verbatim on
+    `test_suite_membership.remove_test_case_from_suite` /
+    `test_plan_membership.remove_suite_from_plan` — the two junction unlinks
+    that predate this ADR. Shared by all four routes for the same reason
+    `_gate_parent`/`_load_same_org` are: a fifth independently-reasoned copy of
+    "look the pair up, 404 if it isn't there, otherwise delete and 204" is how
+    four routes that are supposed to be identical end up disagreeing about
+    which case returns which status.
+
+    `404`, not an idempotent `204`, when the pair is not linked — ADR-0030's
+    own deliberate asymmetry with `POST`'s `409`, inherited unchanged. Note
+    every caller runs this only *after* `_gate_parent`, so this `404` can never
+    reveal anything about a row the caller could not already see.
+
+    No cross-project `422` here, unlike the `POST` side: see this module's
+    docstring for why re-validating an already-existing relationship could only
+    ever strand rows.
+    """
+    link_row = await db.scalar(
+        select(model).where(first_column == first_value, second_column == second_value)
+    )
+    if link_row is None:
+        return _error(404, "not_found", not_linked_message)
+
+    await db.delete(link_row)
+    await db.commit()
+    # `Response(status_code=204)` + `response_model=None` on each decorator,
+    # exactly as `crud_factory.delete_item` and both membership routes do it —
+    # FastAPI asserts that a 204 route declares no response body.
+    return Response(status_code=204)
 
 
 _REQUIREMENT_NOT_FOUND = "Requirement not found."
@@ -672,6 +778,191 @@ async def link_defect_to_test_case(
         TestCaseDefectLink(test_case_id=test_case.id, defect_id=defect.id),
         "This defect is already linked to this test case.",
         {"test_case_id": str(test_case.id), "defect_id": str(defect.id)},
+    )
+
+
+# --- ADR-0077: the four matching unlink routes ---------------------------------------------------
+#
+# Same URL as each `POST` above, different verb. Each reuses `_gate_parent`
+# verbatim — the same function, not a copy — so the NFR-1 boundary (`404` for a
+# missing row, an unresolvable org or a non-member; `403` only past it) is
+# literally shared between an entity's link and unlink, and cannot drift.
+#
+# Only the *permission code* differs from the `POST`: `<resource>.delete`
+# instead of `<resource>.create` (ADR-0077 Decision §2). Neither verb is
+# reachable with the other's grant, which is the whole reason these are
+# separate codes rather than one `link` verb.
+#
+# None of them re-resolves the far row's own org or project. The link row's own
+# existence under a parent the caller has already been authorized for is the
+# complete authorization argument: a pair that exists was accepted by the
+# matching `POST`, which enforced both checks at insert time, and a pair that
+# does not exist is a `404` either way — so a far-side walk could only reject
+# rows the system itself created (see the module docstring).
+
+
+@router.delete("/requirements/{id}/test-case-links/{test_case_id}", status_code=204, response_model=None)
+async def unlink_test_case_from_requirement_trace(
+    id: UUID,
+    test_case_id: UUID,
+    actor: User | AIAgent = Depends(get_current_actor),
+    db: AsyncSession = Depends(get_db),
+) -> Response | JSONResponse:
+    """Remove the `RequirementTestCaseLink` for this pair (ADR-0077, FR-ADMIN-9).
+
+    Deletes only the link row. Both the `Requirement` and the `TestCase`
+    survive untouched, and the case remains linked to any other requirement,
+    condition or suite it was linked to — the unique constraint is on the
+    *pair*, and so is this delete.
+
+    **Does not touch `TestCase.test_condition_id`.** That column is REQ-3's
+    rigor-path *owning* FK, a different relationship that happens to involve
+    the same two entity types; this route is the ADR-0005 traceability link on
+    top of it, exactly as `link_test_condition_to_requirement`'s own docstring
+    explains for the mirror case.
+    """
+    gate = await _gate_parent(
+        db,
+        Requirement,
+        id,
+        _resolve_requirement_org_id,
+        actor,
+        "requirement_test_case_link.delete",
+        _REQUIREMENT_NOT_FOUND,
+    )
+    if isinstance(gate, JSONResponse):
+        return gate
+    requirement, _org_id = gate
+
+    return await _delete_link(
+        db,
+        RequirementTestCaseLink,
+        RequirementTestCaseLink.requirement_id,
+        requirement.id,
+        RequirementTestCaseLink.test_case_id,
+        test_case_id,
+        "This test case is not linked to this requirement.",
+    )
+
+
+@router.delete(
+    "/requirements/{id}/test-condition-links/{test_condition_id}", status_code=204, response_model=None
+)
+async def unlink_test_condition_from_requirement(
+    id: UUID,
+    test_condition_id: UUID,
+    actor: User | AIAgent = Depends(get_current_actor),
+    db: AsyncSession = Depends(get_db),
+) -> Response | JSONResponse:
+    """Remove the `RequirementTestConditionLink` for this pair (ADR-0077, FR-ADMIN-9).
+
+    Deletes only the link row — never `TestCondition.requirement_id`, REQ-3's
+    own owning FK. Unlinking a condition from the requirement that *owns* it is
+    therefore a normal `204` that leaves the condition exactly where it was,
+    the precise mirror of the `POST`'s "linking a condition to its own owner is
+    a normal `201`".
+    """
+    gate = await _gate_parent(
+        db,
+        Requirement,
+        id,
+        _resolve_requirement_org_id,
+        actor,
+        "requirement_test_condition_link.delete",
+        _REQUIREMENT_NOT_FOUND,
+    )
+    if isinstance(gate, JSONResponse):
+        return gate
+    requirement, _org_id = gate
+
+    return await _delete_link(
+        db,
+        RequirementTestConditionLink,
+        RequirementTestConditionLink.requirement_id,
+        requirement.id,
+        RequirementTestConditionLink.test_condition_id,
+        test_condition_id,
+        "This test condition is not linked to this requirement.",
+    )
+
+
+@router.delete(
+    "/test-conditions/{id}/test-case-links/{test_case_id}", status_code=204, response_model=None
+)
+async def unlink_test_case_from_test_condition(
+    id: UUID,
+    test_case_id: UUID,
+    actor: User | AIAgent = Depends(get_current_actor),
+    db: AsyncSession = Depends(get_db),
+) -> Response | JSONResponse:
+    """Remove the `TestConditionTestCaseLink` for this pair (ADR-0077, FR-ADMIN-9).
+
+    Deletes only the link row — never `TestCase.test_condition_id`, the
+    rigor-path owning FK, for the same reason the route above leaves
+    `TestCondition.requirement_id` alone.
+    """
+    gate = await _gate_parent(
+        db,
+        TestCondition,
+        id,
+        _resolve_test_condition_org_id,
+        actor,
+        "test_condition_test_case_link.delete",
+        _TEST_CONDITION_NOT_FOUND,
+    )
+    if isinstance(gate, JSONResponse):
+        return gate
+    condition, _org_id = gate
+
+    return await _delete_link(
+        db,
+        TestConditionTestCaseLink,
+        TestConditionTestCaseLink.test_condition_id,
+        condition.id,
+        TestConditionTestCaseLink.test_case_id,
+        test_case_id,
+        "This test case is not linked to this test condition.",
+    )
+
+
+@router.delete("/test-cases/{id}/defect-links/{defect_id}", status_code=204, response_model=None)
+async def unlink_defect_from_test_case(
+    id: UUID,
+    defect_id: UUID,
+    actor: User | AIAgent = Depends(get_current_actor),
+    db: AsyncSession = Depends(get_db),
+) -> Response | JSONResponse:
+    """Remove the `TestCaseDefectLink` for this pair (ADR-0077, FR-ADMIN-9).
+
+    Deletes only the link row: the `Defect` itself survives, with its own
+    `TestExecution` provenance intact, and stays linked to every other
+    `TestCase` it was linked to.
+
+    This is the one of the four whose `.delete` code `tester` also holds
+    (ADR-0077 Decision §3) — it is the exact undo of the one link that role may
+    create, on a row that carries no content of its own.
+    """
+    gate = await _gate_parent(
+        db,
+        TestCase,
+        id,
+        resolve_test_case_org_id,
+        actor,
+        "test_case_defect_link.delete",
+        _TEST_CASE_NOT_FOUND,
+    )
+    if isinstance(gate, JSONResponse):
+        return gate
+    test_case, _org_id = gate
+
+    return await _delete_link(
+        db,
+        TestCaseDefectLink,
+        TestCaseDefectLink.test_case_id,
+        test_case.id,
+        TestCaseDefectLink.defect_id,
+        defect_id,
+        "This defect is not linked to this test case.",
     )
 
 

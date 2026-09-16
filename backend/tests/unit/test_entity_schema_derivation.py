@@ -679,8 +679,9 @@ class TestNoSchema:
 
 
 class TestTopLevelShape:
-    def test_response_carries_exactly_the_eleven_documented_keys(self) -> None:
-        """`relations` is the tenth (ADR-0074), `linkCreate` the eleventh (ADR-0076)."""
+    def test_response_carries_exactly_the_twelve_documented_keys(self) -> None:
+        """`relations` is the tenth (ADR-0074), `linkCreate` the eleventh
+        (ADR-0076), `linkDelete` the twelfth (ADR-0077)."""
         assert set(derive_entity_schema(_widget_config())) == {
             "resource",
             "label",
@@ -693,6 +694,7 @@ class TestTopLevelShape:
             "fields",
             "relations",
             "linkCreate",
+            "linkDelete",
         }
 
     def test_link_create_is_null_for_an_entity_that_is_not_a_link_table(self) -> None:
@@ -703,6 +705,12 @@ class TestTopLevelShape:
         present key is what makes that distinction meaningless rather than
         ambiguous."""
         assert derive_entity_schema(_widget_config())["linkCreate"] is None
+
+    def test_link_delete_is_null_for_an_entity_that_is_not_a_link_table(self) -> None:
+        """ADR-0077: `linkCreate`'s exact mirror, for exactly the same reason —
+        `EntityRelationTab` renders the per-row Remove action if and only if
+        the value is non-null, so the *key* must be unconditional."""
+        assert derive_entity_schema(_widget_config())["linkDelete"] is None
 
     def test_relations_is_empty_for_an_entity_nothing_points_at(self) -> None:
         """ADR-0074: the synthetic `_widget_config()` is not in the registry,

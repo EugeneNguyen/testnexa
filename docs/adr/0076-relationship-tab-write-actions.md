@@ -260,6 +260,14 @@ No per-entity branch, and no new picker component.
   editable. Adding one is a real decision (what does removing a traceability
   link mean for an already-exported RTM?) and belongs to its own story, not to
   this one's scope. The tabs therefore grow monotonically today.
+
+  **Shipped 2026-09-16, [ADR-0077](0077-relationship-tab-unlink-action.md) —
+  see that ADR for the four new `DELETE` routes, the `linkDelete` schema key
+  that mirrors `linkCreate`, the four `<link>.delete` permission codes, and the
+  answer to the RTM question this paragraph poses.** The text above is left
+  exactly as written: it is the accurate record of what this ADR deliberately
+  scoped out and why, not a claim that has since become false (`docs/CLAUDE.md`'s
+  forward-pointing-addendum convention, as distinct from strikethrough-and-supersede).
 - **Seventh ad hoc extension of `test_manager`'s seeded bundle.**
   `backend/CLAUDE.md` has flagged this pattern as overdue a dedicated bundle
   audit since the fifth. This ADR does not attempt it — noted again, and
@@ -446,6 +454,8 @@ requests asserted on the wire and in order).
   Two of six junctions have a `DELETE` route already, four have none, and
   shipping the action for a third of the tabs would be exactly the
   incoherence ADR-0075 Decision §3 declined to create for scoping.
+  **Taken up 2026-09-16 by [ADR-0077](0077-relationship-tab-unlink-action.md),
+  which moves all six together for exactly the reason stated here.**
 - **Reuse `EntityFormPage` for the one-to-many create.** Rejected because it
   does not do that: ADR-0027 scopes it to `/edit` and puts create in a modal on
   `EntityListPage`. The reused component is `EntityForm`, which is the actual

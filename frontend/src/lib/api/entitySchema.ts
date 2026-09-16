@@ -14,7 +14,14 @@
  * which is data shape, not route wiring.
  */
 import { apiFetch } from "./client";
-import { EntityRelation, LinkCreateAction, FieldType, ScopeResolution, ScopeSelectorOption } from "../../entityConfigs/types";
+import {
+  EntityRelation,
+  LinkCreateAction,
+  LinkDeleteAction,
+  FieldType,
+  ScopeResolution,
+  ScopeSelectorOption,
+} from "../../entityConfigs/types";
 
 export interface BackendFieldConfig {
   name: string;
@@ -58,6 +65,13 @@ export interface EntitySchemaResponse {
    * both the `null` and the absent case.
    */
   linkCreate?: LinkCreateAction | null;
+  /**
+   * ADR-0077: this entity's bespoke link-*delete* route, or `null` for the 25
+   * entities that are not link tables. Optional on this type for the same
+   * fixture-compatibility reason as `linkCreate` above; `toEntityConfig` drops
+   * both the `null` and the absent case.
+   */
+  linkDelete?: LinkDeleteAction | null;
 }
 
 /** `entityKey` is the plural `:entity` route slug (`registry.ts`'s own keys). */

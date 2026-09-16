@@ -78,6 +78,7 @@ from app.api.crud_factory import (
     CrudEntityConfig,
     FieldMeta,
     LinkCreateAction,
+    LinkDeleteAction,
     NoSchema,
     ScopeSelectorOption,
     _org_membership_exists,
@@ -403,6 +404,18 @@ _TEST_SUITE_TEST_CASE_CONFIG = CrudEntityConfig(
     # for no benefit; `LinkCreateAction` declares the code rather than deriving
     # it for exactly this reason.
     link_create=LinkCreateAction(
+        path_template="/test-suites/{test_suite_id}/test-cases/{test_case_id}",
+        permission="test_suite.update",
+    ),
+    # ADR-0077: the same declarative handle for `remove_test_case_from_suite`
+    # above — which has existed since REQ-4 and was simply unreachable from the
+    # generic surface. Same URL as the `POST`, and — unlike ADR-0077's four new
+    # traceability unlinks, each of which gates on its own new
+    # `<resource>.delete` code — the **same** `test_suite.update` permission
+    # too, because that is what the shipped route actually checks and ADR-0077
+    # re-gates nothing. Declaring the code rather than deriving it is exactly
+    # what lets both shapes coexist, same as `link_create` above.
+    link_delete=LinkDeleteAction(
         path_template="/test-suites/{test_suite_id}/test-cases/{test_case_id}",
         permission="test_suite.update",
     ),

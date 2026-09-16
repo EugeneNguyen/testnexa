@@ -15,7 +15,7 @@
  * a fixed `Record<string, unknown>` row type is used throughout by the
  * `crud/` components, sufficient for that.
  */
-import { EntityConfig, LinkCreateAction } from "../../entityConfigs/types";
+import { EntityConfig, LinkCreateAction, LinkDeleteAction } from "../../entityConfigs/types";
 import { apiFetch } from "./client";
 
 export type EntityRow = Record<string, unknown>;
@@ -167,6 +167,35 @@ export async function createLinkRow(
   values: Record<string, string>,
 ): Promise<unknown> {
   return apiFetch<unknown>(`/api/v1${interpolateLinkPath(action.pathTemplate, values)}`, { method: "POST" });
+}
+
+/**
+ * ADR-0077: remove one junction/link row through the entity's own bespoke
+ * route, declared by its schema's `linkDelete` (`LinkDeleteAction`).
+ *
+ * `createLinkRow`'s exact mirror, down to taking the same `values` map keyed by
+ * the link row's own FK column names — which is what lets a relationship tab
+ * unlink a row it is already rendering without holding any extra state: the
+ * two ids are `relation.scopeField` (the record being viewed) and
+ * `relation.targetField` read off the row itself.
+ *
+ * A separate function rather than a `method` parameter on `createLinkRow`: the
+ * two take *different* declarations (`config.linkDelete`, not
+ * `config.linkCreate` — different URL in principle, different permission in
+ * practice for four of the six junctions) and return different things, so one
+ * function with a verb flag would need both actions passed in anyway.
+ *
+ * `204 No Content` on success — `apiFetch<void>` resolves `undefined`, same as
+ * `deleteEntity`. Rejects with an `ApiError` carrying the API Document §1
+ * envelope: `404` both for a pair that is not linked and for one across a
+ * tenant boundary (deliberately indistinguishable, NFR-1), `403` for a missing
+ * permission.
+ */
+export async function deleteLinkRow(
+  action: LinkDeleteAction,
+  values: Record<string, string>,
+): Promise<void> {
+  return apiFetch<void>(`/api/v1${interpolateLinkPath(action.pathTemplate, values)}`, { method: "DELETE" });
 }
 
 /** `DELETE {config.path}/{id}` — `204 No Content`, `apiFetch<void>` resolves `undefined`. */
