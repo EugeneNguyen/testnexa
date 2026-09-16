@@ -295,6 +295,18 @@ const ROUTE_BREADCRUMBS: RouteBreadcrumbConfig[] = [
     ],
   },
   {
+    // ADR-0073: the read-only detail view. `matchPath` is exact by default,
+    // so this can never be confused with either the 5-segment `/edit` pattern
+    // above or the 4-segment list pattern below — ordering is cosmetic here,
+    // unlike the literal-vs-param cases the module docstring describes.
+    pattern: "/orgs/:orgId/admin/:entity/:id",
+    segments: (params) => [
+      { label: "Dashboard", to: `/orgs/${params.orgId}` },
+      { label: entityLabel(params.entity), to: `/orgs/${params.orgId}/admin/${params.entity}` },
+      { label: "Details" },
+    ],
+  },
+  {
     pattern: "/orgs/:orgId/admin/:entity",
     segments: (params) => [
       { label: "Dashboard", to: `/orgs/${params.orgId}` },
@@ -332,6 +344,18 @@ const ROUTE_BREADCRUMBS: RouteBreadcrumbConfig[] = [
           to: `/projects/${params.projectId}/admin/${params.entity}`,
         },
         { label: "Edit" },
+      ]),
+  },
+  {
+    // ADR-0073: the project-scoped half of the same read-only detail view.
+    pattern: "/projects/:projectId/admin/:entity/:id",
+    segments: (params, context) =>
+      projectTrail(context, `/projects/${params.projectId}`, [
+        {
+          label: entityLabel(params.entity),
+          to: `/projects/${params.projectId}/admin/${params.entity}`,
+        },
+        { label: "Details" },
       ]),
   },
   {

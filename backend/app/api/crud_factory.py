@@ -273,11 +273,197 @@ class ScopeSelectorOption:
     `requirement_id`-or-`test_plan_id` branch is the one entity needing more
     than one option — `CrudEntityConfig.scope_selector` accepts a tuple for
     exactly that case, same as its single-option siblings accept one).
+
+    ADR-0081. `via`, when set, names a SECOND, earlier pick this option's own
+    `ref_entity` needs before its list route can be searched at all — this
+    entity's own `scope_selector` docstring already flagged the gap this
+    closes: `ref_entity`'s own generic `list` route requires a scope query
+    param (`TestCycle` needs `test_plan_id`, `TestExecution` needs
+    `test_case_id`/`test_cycle_id`) that this page's own route params never
+    supply, so `FkAutocomplete`'s search 422s, is swallowed, and the picker
+    silently never finds anything — not a rendering bug, a missing query
+    param. `via` is itself a full `ScopeSelectorOption` (recursive, though
+    every declaration today is exactly one level deep) so the frontend
+    renders it as a preceding picker step, feeding its resolved value in as
+    `{via.param_name: pickedId}` on the OUTER option's own search — never
+    reported to `onResolved` itself, which still only ever fires for the
+    outer, real scope field this page's list route actually needs.
     """
 
     ref_entity: str
     param_name: str
     label: str | None = None
+    via: "ScopeSelectorOption | None" = None
+
+
+@dataclass
+class LinkCreateAction:
+    """[ADR-0076](../../../docs/adr/0076-relationship-tab-write-actions.md): how
+    to create **one row** of a junction/link entity, described declaratively so
+    a generic caller can invoke a bespoke route it knows nothing else about.
+
+    Every one of ADR-0005's link tables (and REQ-4's/PLAN-1's two junctions)
+    is `list`/`get` only through the factory — a row is written exclusively by
+    a bespoke route (`test_suite_membership.py`, `test_plan_membership.py`,
+    `trace.py`'s own four). ADR-0074's relationship tabs list those rows
+    generically; ADR-0076 lets them *create* one, which needs two facts the
+    generic surface cannot derive:
+
+    - **`path_template`** — the bespoke route's own URL, with one `{...}`
+      placeholder **named after this entity's own FK column** per path
+      segment that carries an id (e.g.
+      `"/test-suites/{test_suite_id}/test-cases/{test_case_id}"`). A caller
+      that holds both FK values — which a relationship tab always does: one
+      is the record being viewed, the other is what the user just picked —
+      can build the URL with zero per-entity knowledge. Deliberately *not*
+      the route's positional shape: naming the placeholders after the link
+      row's own columns is what makes the substitution generic, and what lets
+      the same declaration serve a tab mounted from **either** end of the
+      junction (ADR-0075 Amendment 1 made all six bidirectional).
+    - **`permission`** — the exact code the bespoke route gates on, so
+      `usePermissions` can hide the affordance before an attempt rather than
+      surfacing a `403` after it (ADR-0025's own pre-emptive posture, UI
+      Design Document §5). It is **not** always `<resource>.create`: REQ-4's
+      and PLAN-1's routes predate this ADR and gate on the *parent* entity's
+      `test_suite.update`/`test_plan.update`, which ADR-0076 deliberately
+      leaves alone rather than re-gating a shipped route. Declaring the code
+      rather than deriving it is what accommodates both.
+
+    A completeness test (`tests/unit/test_adr76_link_create_actions.py`) pins
+    every `is_link_entity` config in the registry to declaring one of these,
+    so a future junction cannot silently ship a read-only tab.
+    """
+
+    path_template: str
+    permission: str
+
+
+@dataclass
+class LinkDeleteAction:
+    """[ADR-0077](../../../docs/adr/0077-relationship-tab-unlink-action.md):
+    `LinkCreateAction`'s exact mirror — how to **remove one row** of a
+    junction/link entity, declared so a generic caller can invoke a bespoke
+    `DELETE` it knows nothing else about.
+
+    Everything `LinkCreateAction`'s own docstring says about *why* this is
+    declared rather than derived applies here verbatim and for the same two
+    reasons:
+
+    - **`path_template`** — the bespoke route's URL, one `{...}` placeholder
+      per id-bearing segment, each named after **this entity's own FK column**
+      so a caller holding both ids substitutes by field name. For all six
+      junctions today the template happens to equal the entity's own
+      `link_create.path_template` (same URL, different verb), which is a
+      *fact about how these six were designed*, not a contract — deriving
+      one from the other would silently bake it in, and the first junction
+      whose unlink lives elsewhere would fail with a literal brace in its URL.
+      `tests/unit/test_adr76_link_create_actions.py` therefore checks the
+      placeholders against `fk_fields_of` (the real contract) rather than
+      against the create template.
+    - **`permission`** — the exact code the bespoke `DELETE` gates on. Not
+      always `<resource>.delete`: REQ-4's and PLAN-1's two junction routes
+      predate this ADR and gate their `DELETE` on the *parent's*
+      `test_suite.update`/`test_plan.update`, exactly as their `POST` does,
+      and ADR-0077 re-gates no shipped route.
+
+    A completeness test pins every `is_link_entity` config in the registry to
+    declaring one, in both directions, mutation-tested in suite — the same
+    partition `link_create` already has, in the same file, because the two
+    range over the identical six configs and splitting them would create two
+    checkers that have to agree.
+    """
+
+    path_template: str
+    permission: str
+
+
+@dataclass
+class CompoundCreateAction:
+    """[ADR-0078](../../../docs/adr/0078-compound-create-through-bespoke-routes.md):
+    how a relationship tab creates the **far** entity of a junction when that
+    entity has no generic `create` at all — by invoking the bespoke atomic
+    route that is its only real authoring path.
+
+    ADR-0076 Amendment 1 gave every many-to-many tab a "Create new <far
+    entity>" action, built as the far entity's generic `create` followed by
+    this junction's own `link_create`. That composition is only available when
+    the far entity *has* a generic `create`, and three of the twelve live link
+    directions point at one that does not: `TestCondition` (authored only by
+    `POST /requirements/{id}/test-conditions`, REQ-3/ADR-0028) and `Defect`
+    (only by `POST /executions/{id}/defects`, EXEC-3/ADR-0044). Both are
+    bespoke precisely because the row cannot exist without a parent the
+    generic factory has no way to stamp — `TestCondition.requirement_id` and
+    `Defect.test_execution_id` are both `NOT NULL`.
+
+    So this is not "a second create surface"; it is the *same* compound action
+    pointed at a different first call. Declared, never derived, for exactly the
+    two reasons `LinkCreateAction`'s docstring gives — a bespoke route's URL
+    shape and its permission code are both arbitrary facts about that route.
+
+    - **`far_field`** — which of this link entity's own two FK columns the
+      created row fills (`"test_condition_id"`). This is what makes the
+      declaration *directional*: a junction lists from both ends (ADR-0075
+      Amendment 1), and only one end may need this. The tab's own scope field
+      is the other FK, by construction.
+    - **`path_template`** — the bespoke route's URL, carrying **exactly one**
+      `{...}` placeholder, named after the FK column of the **created entity**
+      that the segment fills (`"/requirements/{requirement_id}/test-conditions"`,
+      `"/executions/{test_execution_id}/defects"`). Same naming convention as
+      `LinkCreateAction`, and named rather than positional for the same reason.
+    - **`permission`** — the code that route gates on (`"test_condition.create"`),
+      so the affordance is hidden before an attempt rather than surfacing a
+      `403` after it.
+    - **`links_automatically`** — whether that route *already writes this
+      junction's row itself*, inside its own transaction. This is the one fact
+      a client cannot possibly infer and the one that changes what it must do:
+      `True` means the tab is finished after one request; `False` means it must
+      follow with this entity's own `link_create`, the identical second call
+      ADR-0076 Amendment 1 already makes. Both shapes are live — see the three
+      declarations in `app/api/routes/trace.py` for which is which and why.
+
+    The remaining fields describe the **parent picker**, and are set only when
+    one is needed. Whether it is needed is *derived*, not declared: the
+    placeholder either names the tab's own scope field (so the tab already
+    holds the value — `Requirement` -> "Test conditions (linked)", where the
+    route's parent *is* the record being viewed) or it names something else the
+    tab cannot know, and the user must pick it first. `tests/unit/
+    test_adr78_compound_create_actions.py` asserts that partition in both
+    directions, so a declaration cannot claim a picker it does not need or omit
+    one it does.
+
+    - **`parent_entity`** — the resource slug to search (`"requirement"`,
+      `"test-execution"`), in the same singular-hyphenated spelling
+      `FieldMeta.ref_entity` uses.
+    - **`parent_label`** / **`parent_label_field`** — the picker's own label,
+      and which field of the picked row to display. `parent_label_field` is
+      declared rather than reused from the far entity's FK `label_field`
+      because the two answer different questions: `Defect.test_execution_id`'s
+      `label_field` is `"result"`, correct for naming a defect's execution in a
+      table, and useless in a picker this action filters to `result=fail` —
+      every option would read "fail".
+    - **`parent_filters`** — extra fixed query params the picker must send,
+      for a business rule the route enforces but the picker cannot see.
+      `("result", "fail")` on the `Defect` action is the only one today:
+      `POST /executions/{id}/defects` `422`s against a non-failed execution
+      (EXEC-3 AC1's own literal precondition), so offering those rows would be
+      offering a guaranteed rejection.
+
+    The picker's *scope* needs no declaration at all and deliberately gets
+    none — the client derives it, because the answer is already in the served
+    schemas: if the parent entity's own scope field is the same column the tab
+    is scoped by (`TestExecution.test_case_id` on a `TestCase` tab), the tab's
+    parent id *is* the scope; otherwise the ordinary `pickerScopeParams` rule
+    (ADR-0076 Decision §5) applies unchanged.
+    """
+
+    far_field: str
+    path_template: str
+    permission: str
+    links_automatically: bool
+    parent_entity: str | None = None
+    parent_label: str | None = None
+    parent_label_field: str | None = None
+    parent_filters: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass
@@ -367,6 +553,55 @@ class CrudEntityConfig:
     # every other scope-selector entity sets exactly one.
     scope_selector: ScopeSelectorOption | tuple[ScopeSelectorOption, ...] | None = None
     scope_resolution: ScopeResolution | None = None
+    # ADR-0076: set on link/junction entities only (`is_link_entity`) — the
+    # declarative handle on the bespoke route that writes one of this entity's
+    # rows. See `LinkCreateAction`'s own docstring. `None` everywhere else: an
+    # entity whose rows the generic factory itself creates needs no such
+    # declaration, its `create` method already says so.
+    link_create: LinkCreateAction | None = None
+    # ADR-0077: `link_create`'s mirror — the declarative handle on the bespoke
+    # route that *removes* one of this entity's rows. Set on link/junction
+    # entities only (`is_link_entity`), `None` everywhere else, for exactly the
+    # reasons `link_create` above is. Deliberately NOT expressed by adding
+    # `"delete"` to `methods`/`full_methods`: that flag means "the generic
+    # factory's `DELETE /{resource}/{id}` works", which stays false — a link
+    # row is addressed by its *pair* of FK ids on a bespoke path, never by its
+    # own id, and flipping the flag would make `EntityTable` render a per-row
+    # Delete calling a route that answers `405`.
+    link_delete: LinkDeleteAction | None = None
+    # ADR-0078: set on link/junction entities only, and only for a *direction*
+    # whose far entity has no generic `create` — see `CompoundCreateAction`.
+    # A tuple because the declaration is per-direction and a junction has two;
+    # empty (the default, and what three of the six link configs keep) means
+    # every direction's far entity can already be created generically, which is
+    # what ADR-0076 Amendment 1's own composition needs and all this field
+    # exists to substitute for.
+    compound_creates: tuple[CompoundCreateAction, ...] = ()
+    # ADR-0079: `compound_creates`' sibling for a one-to-many tab, declared on
+    # the CHILD entity's own config (never a link entity's) — deliberately a
+    # separate field rather than widening `compound_creates` itself, because
+    # the two shapes disagree about what `CompoundCreateAction.far_field`
+    # means: for `compound_creates` it names the link row's FAR FK (the one
+    # `ADR-0078`'s own completeness suite computes as "the other of exactly
+    # two"); here it names the entity's OWN scope FK — the field already known
+    # from the tab being viewed, not a second one to solve for. A one-to-many
+    # entity's `fk_fields_of` set is not reliably size-2 (`TestCondition` has
+    # exactly one), so `compound_creates`' own "the other FK" derivation would
+    # raise `StopIteration` rather than silently misidentify anything — reusing
+    # the field and papering over that with a branch would still leave a test
+    # suite built entirely around "a junction has two FKs" quietly describing
+    # a shape that no longer holds for every declarer. A separate field keeps
+    # both completeness suites simple and honest about which shape each one
+    # actually checks.
+    #
+    # Matched by `EntityRelationTab` against `relation.scopeField` (never
+    # `relation.targetField`, which is `null` for every one-to-many tab) — see
+    # `CompoundCreateAction`'s own docstring for the field-by-field meaning,
+    # unchanged here; only the matching key differs. `TestExecution` is the one
+    # live entity needing two entries (`test_case_id`/`test_cycle_id`), because
+    # it has two distinct one-to-many parents and each tab must resolve the
+    # *other* one via whichever picker mechanism that direction needs.
+    child_compound_creates: tuple[CompoundCreateAction, ...] = ()
     # ADR-0053: overrides `methods` for the derived schema's own `methods`
     # array only — never affects which routes `make_crud_router` registers.
     # `Project` is the one user today: its real REST surface is `list`/
@@ -492,6 +727,44 @@ def chain_resolver(hops: Sequence[tuple[type, str]]) -> ResolveOrgId:
     return _resolve
 
 
+def branching_resolver(branches: Sequence[tuple[str, ResolveOrgId]]) -> ResolveOrgId:
+    """Build a `resolve_org_id(db, row)` that picks a branch by which FK is present.
+
+    ADR-0075 Amendment 1. The generalization of `resolve_risk_item_org_id`'s
+    hand-written shape, needed once a `scope_field` is a branching 2-tuple: the
+    factory's own `_resolve_scope_for_write` calls `resolve_org_id` with a
+    `types.SimpleNamespace` carrying **only the one scope attribute the request
+    actually supplied**, so a resolver hard-coded to walk the other arm reads
+    `None` off that stand-in and 404s a perfectly valid list request. A
+    bidirectional junction therefore needs one branch per arm, not one walk.
+
+    Branches are tried in declaration order and the first whose named attribute
+    is non-`None` wins. Order is load-bearing for the *other* call site, and in
+    the opposite way: `_fetch_and_gate` passes a **real row**, which carries
+    every FK at once, so the first branch always fires there. Declaring the arm
+    that was the config's sole `scope_field` before the widening first is what
+    makes the item-route (`get`) walk byte-identical to its pre-widening self —
+    the new arm only ever runs for a scope stand-alone that lacks the old one.
+
+    Both arms of a junction necessarily resolve to the same org (a link row
+    whose two ends sat in different tenants could not have been created — every
+    bespoke write route checks both sides against one `org_id` first), so
+    branch order is a *behaviour-preservation* choice, never a correctness one.
+
+    Returns `None` when no branch's attribute is set — an unresolvable chain,
+    which every caller turns into `404`, never a partial or guessed result,
+    exactly as `chain_resolver` does.
+    """
+
+    async def _resolve(db: AsyncSession, row: Any) -> uuid.UUID | None:
+        for field_name, resolver in branches:
+            if getattr(row, field_name, None) is not None:
+                return await resolver(db, row)
+        return None
+
+    return _resolve
+
+
 async def resolve_test_case_org_id(db: AsyncSession, row: Any) -> uuid.UUID | None:
     """Bespoke `TestCase` resolver (ADR-0022): nullable-hop with three fallbacks.
 
@@ -562,6 +835,72 @@ async def resolve_test_case_org_id(db: AsyncSession, row: Any) -> uuid.UUID | No
     if suite is None:
         return None
     return await resolve_terminal_org_id(db, suite)
+
+
+async def resolve_test_case_project_id(db: AsyncSession, row: Any) -> uuid.UUID | None:
+    """The `project_id` sibling of `resolve_test_case_org_id`, same four branches, same order.
+
+    Needed by every bespoke route that has to answer "are these two rows in
+    the same **project**?" — a business-rule question ADR-0030/ADR-0031 answer
+    with `422`, distinct from the tenant question `resolve_test_case_org_id`
+    answers with `404`. The org resolver's terminal step
+    (`resolve_terminal_org_id`) converts `project_id` -> `Project.org_id` and
+    discards the `project_id` on the way, so there is no seam in it to reuse.
+
+    **ADR-0076 — found and fixed.** `test_suite_membership.py` had carried a
+    private three-branch copy of this since REQ-4 (`_resolve_test_case_project_id`),
+    written before `TestCase` had a `project_id` column at all. REQ-5/ADR-0069
+    added that column and a matching fourth branch to the *org* resolver above
+    — but nothing pointed at the private project-side copy, so it kept
+    returning `None` for a standalone `TestCase`, and
+    `add_test_case_to_suite` rejected **every** standalone case with
+    `422 "This test case belongs to a different project."` even when the suite
+    and the case sat in the same project. Exactly the duplicated-walk drift
+    that copy's own docstring predicted ("if these two ever drift, the failure
+    mode is a wrong `422`") — it drifted, silently, because the duplication
+    made the REQ-5 change look complete. Promoted here so the two walks are
+    one function and cannot drift again; `test_suite_membership.py` now
+    delegates.
+
+    Branch order mirrors `resolve_test_case_org_id` exactly, which matters for
+    the same reason it does there: a standalone case that has *since* gained a
+    `RequirementTestCaseLink` resolves through that link (its `project_id` is
+    deliberately never cleared on link, ADR-0069), so both resolvers agree on
+    which parent a case belongs to.
+
+    Returns `None` for a `TestCase` reachable by none of the four — genuinely
+    orphaned, no create path in this codebase produces one. Callers treat that
+    as "cannot prove same-project", i.e. reject.
+    """
+    test_condition_id = getattr(row, "test_condition_id", None)
+    if test_condition_id is not None:
+        condition = await db.get(TestCondition, test_condition_id)
+        if condition is None:
+            return None
+        requirement = await db.get(Requirement, condition.requirement_id)
+        return requirement.project_id if requirement is not None else None
+
+    row_id = getattr(row, "id", None)
+    if row_id is not None:
+        requirement_link = await db.scalar(
+            select(RequirementTestCaseLink).where(RequirementTestCaseLink.test_case_id == row_id).limit(1)
+        )
+        if requirement_link is not None:
+            requirement = await db.get(Requirement, requirement_link.requirement_id)
+            return requirement.project_id if requirement is not None else None
+
+    project_id = getattr(row, "project_id", None)
+    if project_id is not None:
+        return project_id
+
+    if row_id is None:
+        return None
+
+    suite_link = await db.scalar(select(TestSuiteTestCase).where(TestSuiteTestCase.test_case_id == row_id).limit(1))
+    if suite_link is None:
+        return None
+    suite = await db.get(TestSuite, suite_link.test_suite_id)
+    return suite.project_id if suite is not None else None
 
 
 async def resolve_via_test_case(db: AsyncSession, row: Any) -> uuid.UUID | None:
@@ -1019,6 +1358,39 @@ def _is_unfilterable_column(model: type[Base], field_name: str) -> bool:
     return isinstance(column_type, Text | JSON)
 
 
+def _is_filterable(
+    config: CrudEntityConfig,
+    name: str,
+    info: Any,
+    explicit_filter_fields: set[str],
+) -> bool:
+    """ADR-0072's per-field `filterable` decision, in one place.
+
+    Extracted (merge of ADR-0072 with ADR-0074/0076, 2026-09-15) so that
+    `derive_entity_schema`'s `fields[].filterable`/`filterFields` and
+    `derive_filter_fields` — which `make_crud_router` needs at *module import*
+    time, where the full schema is unreachable (see `derive_sortable_fields`)
+    — are the same derivation rather than two copies of the same three clauses.
+
+    ANDed, in decreasing generality: the structural rule (a column whose value
+    nobody can type an exact match for is never filterable — because
+    `long_text` promoted its derived type, or because the model column is
+    `Text`/`JSON`, see `_is_unfilterable_column`), the per-field override, and
+    the per-entity narrowing tuple.
+    """
+    meta = config.field_meta.get(name, FieldMeta())
+    field_type, _ = _field_type_and_values(info.annotation)
+    if meta.ref_entity:
+        field_type = "fk"
+    if meta.long_text:
+        field_type = "text"
+    unfilterable = field_type == "text" or _is_unfilterable_column(config.model, name)
+    filterable = meta.filterable and not unfilterable
+    if explicit_filter_fields:
+        filterable = filterable and name in explicit_filter_fields
+    return filterable
+
+
 def _label_for(field_name: str) -> str:
     """`"external_ref"` -> `"External ref"` — the auto-title-cased fallback
     label, overridden per-field by `FieldMeta.label` where a hand-picked
@@ -1027,22 +1399,16 @@ def _label_for(field_name: str) -> str:
     return field_name.replace("_", " ").capitalize()
 
 
-def derive_entity_schema(config: CrudEntityConfig) -> dict[str, Any]:
-    """ADR-0053: the `GET /entities/{resource}/schema` response body for one
-    entity — the single source of truth `EntityListPage`/`EntityFormPage`/
-    `EntityTable`/`EntityForm` fetch instead of importing a static
-    `frontend/src/entityConfigs/<entity>.ts`.
+def _derived_fields(config: CrudEntityConfig) -> tuple[dict[str, Any], dict[str, Any], set[str]]:
+    """The `(all_fields, writable_fields, required_fields)` triple every
+    schema-derived view of an entity starts from.
 
-    Field-shape source: the **union** of `create_schema` (if any),
-    `update_schema` (if not `NoSchema`), and `summary_schema` (always
-    present, minus `id`) — matching declaration order, writable schemas
-    first. A field present only in `summary_schema` (e.g. `created_at`) is
-    marked `readOnly: true`, mirroring `FieldConfig.readOnly`'s existing
-    frontend contract (table/display only, never part of a submitted
-    payload). `required` is `True` only for a field required by
-    `create_schema` specifically — the same "only ever supplied via
-    `Update*Request` isn't marked required" posture `FieldConfig.required`'s
-    own frontend doc comment already establishes.
+    Factored out of `derive_entity_schema` so `derive_entity_relations`
+    (ADR-0074) can ask "which fields does this entity's schema actually
+    serve?" without either re-deriving the whole schema (O(n^2) across the
+    registry) or reading `config.field_meta` directly — the latter would be
+    wrong, because a `FieldMeta` entry naming a field that no schema actually
+    carries is silently ignored here and must stay ignored there too.
     """
     writable_schemas = [s for s in (config.create_schema, config.update_schema) if s is not None and s is not NoSchema]
     writable_fields: dict[str, Any] = {}
@@ -1068,6 +1434,82 @@ def derive_entity_schema(config: CrudEntityConfig) -> dict[str, Any]:
             ordered.setdefault(name, info)
         all_fields = ordered
 
+    return all_fields, writable_fields, required_fields
+
+
+def derive_sortable_fields(config: CrudEntityConfig) -> frozenset[str]:
+    """Which of this entity's fields `?sort=` may target — the same answer
+    `derive_entity_schema`'s own `sortable` flags give, derived without
+    building the whole schema.
+
+    Exists because `make_crud_router` needs this at *module import* time,
+    where `derive_entity_schema` is unreachable: since ADR-0074 that function
+    resolves `relations` from the entity registry, and the registry is itself
+    mid-import at that moment (it imports the route modules that call this
+    factory). `tests/unit/test_adr74_entity_relations.py` asserts the two stay
+    in agreement for every registered entity, so this is a second *derivation*
+    of one fact, never a second hand-kept list.
+    """
+    all_fields, _, _ = _derived_fields(config)
+    return frozenset(name for name in all_fields if config.field_meta.get(name, FieldMeta()).sortable)
+
+
+def derive_filter_fields(config: CrudEntityConfig) -> tuple[str, ...]:
+    """Which columns `?<name>=` may target — the same answer
+    `derive_entity_schema`'s own `filterFields` key gives, derived without
+    building the whole schema.
+
+    Exists for exactly the reason `derive_sortable_fields` does (see its
+    docstring): `make_crud_router` needs this at *module import* time, and
+    since ADR-0074 the full schema resolves `relations` from the entity
+    registry, which is itself mid-import at that moment. Both functions share
+    `_is_filterable`/`_derived_fields` with the schema route, so this is a
+    second *derivation* of one fact, never a second hand-kept list —
+    `tests/unit/test_adr74_entity_relations.py` pins the agreement.
+    """
+    all_fields, _, _ = _derived_fields(config)
+    explicit_filter_fields = set(config.filter_fields)
+    return tuple(
+        name for name, info in all_fields.items() if _is_filterable(config, name, info, explicit_filter_fields)
+    )
+
+
+def derive_entity_schema(
+    config: CrudEntityConfig,
+    all_configs: Mapping[str, CrudEntityConfig] | None = None,
+) -> dict[str, Any]:
+    """ADR-0053: the `GET /entities/{resource}/schema` response body for one
+    entity — the single source of truth `EntityListPage`/`EntityFormPage`/
+    `EntityTable`/`EntityForm` fetch instead of importing a static
+    `frontend/src/entityConfigs/<entity>.ts`.
+
+    Field-shape source: the **union** of `create_schema` (if any),
+    `update_schema` (if not `NoSchema`), and `summary_schema` (always
+    present, minus `id`) — matching declaration order, writable schemas
+    first. A field present only in `summary_schema` (e.g. `created_at`) is
+    marked `readOnly: true`, mirroring `FieldConfig.readOnly`'s existing
+    frontend contract (table/display only, never part of a submitted
+    payload). `required` is `True` only for a field required by
+    `create_schema` specifically — the same "only ever supplied via
+    `Update*Request` isn't marked required" posture `FieldConfig.required`'s
+    own frontend doc comment already establishes.
+
+    **ADR-0074** adds a tenth key, `relations` — see
+    `derive_entity_relations`. `all_configs` defaults to the real registry,
+    imported lazily because `entity_registry` imports *this* module at load
+    time; deferring it to call time (long after both modules are loaded)
+    keeps that one-way. The parameter exists so a unit test can inject a
+    synthetic registry, and so both callers of this function — the REST route
+    and the MCP `describe` tool — keep serving byte-identical bodies without
+    either having to remember to pass anything.
+    """
+    if all_configs is None:
+        from app.api.entity_registry import ALL_ENTITY_CONFIGS
+
+        all_configs = ALL_ENTITY_CONFIGS
+
+    all_fields, writable_fields, required_fields = _derived_fields(config)
+
     # ADR-0072: an explicit `filter_fields` tuple NARROWS the derived set (see
     # `CrudEntityConfig.filter_fields`'s own docstring). Empty (every config in
     # this repo) leaves the derivation alone.
@@ -1082,19 +1524,13 @@ def derive_entity_schema(config: CrudEntityConfig) -> dict[str, Any]:
         if meta.long_text:
             field_type = "text"
 
-        # ADR-0072. ANDed clauses, in decreasing generality: the structural
-        # rule (a column whose value nobody can type an exact match for is
-        # never filterable — because `long_text` promoted its derived type, or
-        # because the model column is `Text`/`JSON`, see
-        # `_is_unfilterable_column`), the per-field override, and the
-        # per-entity narrowing tuple. Computing it here — rather than as 27
-        # hand-written `filterable=False` entries — is what makes "which
-        # columns can be filtered" a derivation instead of a second list to
-        # keep in sync (ADR-0053's posture, applied to filters).
-        unfilterable = field_type == "text" or _is_unfilterable_column(config.model, name)
-        filterable = meta.filterable and not unfilterable
-        if explicit_filter_fields:
-            filterable = filterable and name in explicit_filter_fields
+        # ADR-0072. Deriving this — rather than writing 27 hand-kept
+        # `filterable=False` entries — is what makes "which columns can be
+        # filtered" a derivation instead of a second list to keep in sync
+        # (ADR-0053's posture, applied to filters). See `_is_filterable` for
+        # the clauses; it is shared with `derive_filter_fields` so the schema
+        # this route serves and the `?<name>=` params it accepts cannot drift.
+        filterable = _is_filterable(config, name, info, explicit_filter_fields)
 
         entry: dict[str, Any] = {
             "name": name,
@@ -1134,6 +1570,8 @@ def derive_entity_schema(config: CrudEntityConfig) -> dict[str, Any]:
         out: dict[str, Any] = {"refEntity": option.ref_entity, "paramName": option.param_name}
         if option.label:
             out["label"] = option.label
+        if option.via is not None:
+            out["via"] = _serialize_scope_selector_option(option.via)
         return out
 
     scope_selector: Any = None
@@ -1141,6 +1579,60 @@ def derive_entity_schema(config: CrudEntityConfig) -> dict[str, Any]:
         scope_selector = [_serialize_scope_selector_option(o) for o in config.scope_selector]
     elif config.scope_selector is not None:
         scope_selector = _serialize_scope_selector_option(config.scope_selector)
+
+    # ADR-0076 — see `LinkCreateAction`. Serialized camelCase like every other
+    # key here; `None` for the 23 non-link entities.
+    link_create: dict[str, Any] | None = None
+    if config.link_create is not None:
+        link_create = {
+            "pathTemplate": config.link_create.path_template,
+            "permission": config.link_create.permission,
+        }
+
+    # ADR-0077 — `link_create`'s mirror, serialized the same way.
+    link_delete: dict[str, Any] | None = None
+    if config.link_delete is not None:
+        link_delete = {
+            "pathTemplate": config.link_delete.path_template,
+            "permission": config.link_delete.permission,
+        }
+
+    # ADR-0078 — `link_create`'s directional companion. Serialized as a LIST,
+    # always present (`[]` for every entity that declares none), so a client
+    # reads "no compound create for this direction" off a `find` that misses
+    # rather than off the key's absence — the same posture ADR-0077 took for
+    # `linkDelete`'s `null`.
+    compound_creates: list[dict[str, Any]] = [
+        {
+            "farField": action.far_field,
+            "pathTemplate": action.path_template,
+            "permission": action.permission,
+            "linksAutomatically": action.links_automatically,
+            "parentEntity": action.parent_entity,
+            "parentLabel": action.parent_label,
+            "parentLabelField": action.parent_label_field,
+            "parentFilters": {name: value for name, value in action.parent_filters},
+        }
+        for action in config.compound_creates
+    ]
+
+    # ADR-0079: `compound_creates`' own serialization, verbatim shape, for the
+    # sibling field. Two lists rather than one merged list because the two
+    # mean different things to the client — see `child_compound_creates`'s own
+    # docstring for why they cannot share a matching key.
+    child_compound_creates: list[dict[str, Any]] = [
+        {
+            "farField": action.far_field,
+            "pathTemplate": action.path_template,
+            "permission": action.permission,
+            "linksAutomatically": action.links_automatically,
+            "parentEntity": action.parent_entity,
+            "parentLabel": action.parent_label,
+            "parentLabelField": action.parent_label_field,
+            "parentFilters": {name: value for name, value in action.parent_filters},
+        }
+        for action in config.child_compound_creates
+    ]
 
     scope_resolution: dict[str, Any] | None = None
     if config.scope_resolution is not None:
@@ -1163,7 +1655,171 @@ def derive_entity_schema(config: CrudEntityConfig) -> dict[str, Any]:
         # above, so this list and `fields[].filterable` can never disagree.
         "filterFields": [entry["name"] for entry in fields_out if entry["filterable"]],
         "fields": fields_out,
+        "relations": derive_entity_relations(config, all_configs),
+        # ADR-0076: an eleventh key, `null` for every entity that isn't a link
+        # table. Rides the same schema request ADR-0074's `relations` already
+        # does — a relationship tab has this entity's schema in hand before it
+        # can render a row, so a "Link existing ..." action costs no extra
+        # round trip, and the MCP `describe` tool gets it for free.
+        "linkCreate": link_create,
+        # ADR-0077: a twelfth key, and `linkCreate`'s exact mirror — `null` for
+        # every entity that isn't a link table, present unconditionally for the
+        # same reason (a client reads "no unlink action" off the *value*, never
+        # off the key's absence, so an older backend and a non-link entity stay
+        # distinguishable).
+        "linkDelete": link_delete,
+        # ADR-0078: a thirteenth key. Empty for the 23 non-link entities AND
+        # for the three junctions whose every direction's far entity already
+        # has a generic `create` — a relationship tab asks "is there a compound
+        # create for THIS direction", never "is this a link table".
+        "compoundCreates": compound_creates,
+        # ADR-0079: a fourteenth key, `compoundCreates`' one-to-many sibling.
+        "childCompoundCreates": child_compound_creates,
     }
+
+
+# --- relationship derivation (ADR-0074) ----------------------------------------------------------
+
+
+def fk_fields_of(config: CrudEntityConfig) -> dict[str, str]:
+    """`{field_name: ref_entity}` for every FK the entity's schema serves.
+
+    Keyed off `_derived_fields` rather than `config.field_meta` for the reason
+    that helper's own docstring gives — a `FieldMeta(ref_entity=...)` entry
+    naming a field no schema carries is inert in `derive_entity_schema`, and
+    must be equally inert here.
+    """
+    all_fields, _, _ = _derived_fields(config)
+    return {
+        name: meta.ref_entity
+        for name, meta in config.field_meta.items()
+        if meta.ref_entity and name in all_fields
+    }
+
+
+def is_link_entity(config: CrudEntityConfig) -> bool:
+    """Is this config one of ADR-0005's dedicated join tables?
+
+    Decided **structurally**, never by table name: exactly two FK fields, and
+    no `create`/`update` in its REST surface. That is the literal shape
+    `app/models/trace.py`'s own docstring describes ("two FK columns... links
+    are immutable — delete-and-recreate, never edited"), so an entity that
+    genuinely has it *is* a link table whatever it is called.
+
+    It also excludes the near-misses deliberately: `TestExecution` has two FKs
+    but a real `update`; `RoleAssignment` has two FKs but a real `update` and
+    no `list` at all; `RiskItem` has two FKs but a real `create`.
+    `tests/unit/test_adr74_entity_relations.py` pins this classifier against
+    the `*_link` naming convention in both directions, so a future entity that
+    drifts into (or out of) this shape fails loudly rather than silently
+    gaining or losing a many-to-many tab.
+    """
+    methods = config.full_methods or config.methods
+    return len(fk_fields_of(config)) == 2 and not ({"create", "update"} & methods)
+
+
+def derive_entity_relations(
+    config: CrudEntityConfig,
+    all_configs: Mapping[str, CrudEntityConfig],
+) -> list[dict[str, Any]]:
+    """ADR-0074: the *inbound* relationships of `config` — every place some
+    **other** entity points at this one — as the detail page's relationship
+    tabs.
+
+    Deliberately inbound-only. A field of this entity that points at a parent
+    (`Requirement.project_id`) is a many-to-**one**; it already renders as a
+    labelled value on the Info tab and would be a tab listing exactly one row.
+
+    Two kinds, both discovered by walking `all_configs` — there is no
+    hand-authored per-entity map anywhere, which is what keeps this complete
+    by construction (`backend/CLAUDE.md`'s registry-completeness note: the
+    only registry that cannot silently omit a row is one nobody types):
+
+    - **one-to-many** — another entity `C` has an FK field pointing here.
+    - **many-to-many** — a link entity (`is_link_entity`) has one FK pointing
+      here; its *other* FK names the far entity the tab is really about.
+
+    A candidate is only emitted when the generic list route can actually
+    serve it: `C` must register `list`, and the FK must be `C`'s own
+    `scope_field` (or one arm of a branching 2-tuple one), because
+    `extract_scope_value` 422s a list request that doesn't carry exactly one
+    scope value. An FK that is merely a `filter_field` is *not* enough — the
+    caller would still owe the unrelated scope value, which a detail page for
+    a different entity has no way to know. Every relationship excluded this
+    way is enumerated, with its reason, in
+    `tests/unit/test_adr74_entity_relations.py`, so the excluded set is an
+    asserted partition rather than an accident.
+    """
+    # `ref_entity` is singular and hyphenated ("test-case"); registry keys are
+    # plural ("test-cases"). Build the map from the configs themselves rather
+    # than re-deriving it by string surgery, so `entry-exit-criteria` and any
+    # future irregular plural come out right for free.
+    plural_by_singular = {c.resource.replace("_", "-"): key for key, c in all_configs.items()}
+    target = config.resource.replace("_", "-")
+
+    def label_of(c: CrudEntityConfig) -> str:
+        return c.label or _display_name(c.resource)
+
+    relations: list[dict[str, Any]] = []
+    for key, candidate in all_configs.items():
+        if candidate is config:
+            continue
+        methods = candidate.full_methods or candidate.methods
+        if "list" not in methods:
+            continue
+        scopes = _scope_candidates(candidate)
+        fks = fk_fields_of(candidate)
+        link = is_link_entity(candidate)
+        for field_name, ref_entity in fks.items():
+            if ref_entity != target or field_name not in scopes:
+                continue
+            if link:
+                far_field, far_ref = next((n, r) for n, r in fks.items() if n != field_name)
+                far_key = plural_by_singular.get(far_ref)
+                if far_key is None:
+                    # The far side isn't a registered entity (no config to
+                    # label or link to). Skip rather than emit a tab that
+                    # cannot resolve — `Release` is the only entity this can
+                    # be today, and no link table points at it.
+                    continue
+                # `" (linked)"` is not decoration — it disambiguates a real
+                # collision. `Requirement` reaches `TestCondition` **both**
+                # ways: directly (`TestCondition.requirement_id`, REQ-3's
+                # rigor path) and through `RequirementTestConditionLink`
+                # (ADR-0005 traceability). Both are genuine, separately
+                # listable relationships, and without the suffix the detail
+                # page would show two differently-populated tabs with the
+                # identical label "Test conditions". Applied to every
+                # many-to-many rather than only the colliding one, so the
+                # rule stays generic and the suffix reliably means "reached
+                # via a traceability link" wherever it appears.
+                relations.append(
+                    {
+                        "kind": "many-to-many",
+                        "entity": key,
+                        "scopeField": field_name,
+                        "label": f"{label_of(all_configs[far_key])} (linked)",
+                        "targetEntity": far_key,
+                        "targetField": far_field,
+                    }
+                )
+            else:
+                relations.append(
+                    {
+                        "kind": "one-to-many",
+                        "entity": key,
+                        "scopeField": field_name,
+                        "label": label_of(candidate),
+                        "targetEntity": key,
+                        "targetField": None,
+                    }
+                )
+
+    # Direct children first, then the traceability links, each alphabetical —
+    # a stable order so the tab strip doesn't reshuffle between deploys and so
+    # every assertion about it can be written positionally.
+    relations.sort(key=lambda r: (r["kind"] != "one-to-many", r["label"], r["entity"]))
+    return relations
 
 
 # --- the factory itself -----------------------------------------------------------------------
@@ -1239,17 +1895,26 @@ def make_crud_router(config: CrudEntityConfig) -> APIRouter:
     if "list" in config.methods:
         assert list_response_schema is not None
         # ADR-0053 (sort): computed once at router-build time from this
-        # config's own derived schema — the single source of truth for which
-        # columns are sortable is the same `derive_entity_schema` the `GET
+        # config's own derived field set — the single source of truth for
+        # which columns are sortable is the same derivation the `GET
         # /entities/{resource}/schema` route serves, not a second hand-kept
         # list (the exact drift ADR-0053 already exists to close).
         #
-        # ADR-0072 (filter): `filter_fields` is derived off the *same* call,
-        # for the same reason — the columns this route accepts as `?<name>=`
-        # are exactly the ones its own schema advertises in `filterFields`.
-        _derived_schema = derive_entity_schema(config)
-        sortable_fields = frozenset(f["name"] for f in _derived_schema["fields"] if f["sortable"])
-        filter_fields: tuple[str, ...] = tuple(_derived_schema["filterFields"])
+        # ADR-0072 (filter): `filter_fields` is derived the same way, for the
+        # same reason — the columns this route accepts as `?<name>=` are
+        # exactly the ones its own schema advertises in `filterFields`.
+        #
+        # ADR-0074: both read the standalone `derive_sortable_fields`/
+        # `derive_filter_fields` rather than `derive_entity_schema(config)` —
+        # they agree with the schema by construction (there is a test pinning
+        # that, and they share `_derived_fields`/`_is_filterable` with it), but
+        # the full schema now also derives `relations`, which needs the whole
+        # registry, and this line runs at *module import* time, from inside the
+        # very route modules `entity_registry` is in the middle of importing.
+        # Asking for the registry there is a genuine circular import, not a
+        # lazy-import ordering nit.
+        sortable_fields = derive_sortable_fields(config)
+        filter_fields: tuple[str, ...] = derive_filter_fields(config)
 
         async def list_items(
             request: Request,
@@ -1521,6 +2186,7 @@ __all__ = [
     "NoSchema",
     "apply_filters_and_search",
     "apply_sort",
+    "branching_resolver",
     "chain_resolver",
     "clamp_pagination",
     "coerce_filter_value",

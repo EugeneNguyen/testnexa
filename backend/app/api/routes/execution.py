@@ -62,14 +62,17 @@ from app.api.crud_factory import (
     _actor_membership_exists,
     _DEFAULT_PAGE_SIZE,
     _MAX_PAGE_SIZE,
+    CompoundCreateAction,
     CrudEntityConfig,
     FieldMeta,
     NoSchema,
     ResolveOrgId,
     ScopeSelectorOption,
+    branching_resolver,
     chain_resolver,
     make_crud_router,
     resolve_test_case_org_id,
+    resolve_via_test_case,
 )
 from app.api.deps import get_current_actor, get_db
 from app.core.rbac import has_permission
@@ -216,7 +219,16 @@ _DEFECT_CONFIG = CrudEntityConfig(
     # form that cannot exist: the same stale-after-restriction drift
     # `_TEST_CONDITION_CONFIG` documents, so the derived shape is authoritative.
     label="Defects",
-    scope_selector=ScopeSelectorOption(ref_entity="test-execution", param_name="test_execution_id"),
+    # ADR-0081: `TestExecution`'s own list needs `test_case_id` (or
+    # `test_cycle_id`) that this page's route params never supply — `via`
+    # threads a `TestCase` pick (`project_id`-scoped, already available) in
+    # as the extra search param, the same gap and the same fix as
+    # `_TEST_EXECUTION_CONFIG`'s own "By test cycle" arm above.
+    scope_selector=ScopeSelectorOption(
+        ref_entity="test-execution",
+        param_name="test_execution_id",
+        via=ScopeSelectorOption(ref_entity="test-case", param_name="test_case_id"),
+    ),
     # `test_execution_id` is summary-only (no create schema to lead with), so it
     # derives last without this — the hand-written config led with it.
     field_order=("test_execution_id", "external_ref", "severity", "status"),
@@ -228,6 +240,23 @@ _DEFECT_CONFIG = CrudEntityConfig(
         # so it stays served-but-hidden rather than silently dropped.
         "reported_by_actor_id": FieldMeta(show_in_table=False, label="Reported by"),
     },
+    # ADR-0079: the one-to-many sibling of `trace.py`'s `_TEST_CASE_DEFECT_LINK_CONFIG`
+    # compound-create declaration. `TestExecution` -> "Defects" (the direct-child
+    # 1-n tab) is scoped by exactly `test_execution_id` above — the placeholder
+    # this route's path carries — so the record being viewed already is the
+    # parent and no picker is needed. Same route, same transaction (it writes
+    # `TestCaseDefectLink` itself), same `links_automatically=True` reasoning;
+    # declared here (not just on the link table) because `derive_entity_relations`
+    # reads `compound_creates` off `config`, which for a one-to-many tab is this
+    # entity's own config.
+    child_compound_creates=(
+        CompoundCreateAction(
+            far_field="test_execution_id",
+            path_template="/executions/{test_execution_id}/defects",
+            permission="defect.create",
+            links_automatically=True,
+        ),
+    ),
 )
 
 # No `create` — PLAN-3/ADR-0033 (see module docstring). `list`/`get`/`update`/
@@ -239,8 +268,38 @@ _TEST_EXECUTION_CONFIG = CrudEntityConfig(
     create_schema=None,
     update_schema=UpdateTestExecutionRequest,
     summary_schema=TestExecutionSummary,
-    scope_field="test_cycle_id",
-    resolve_org_id=_resolve_test_execution_org_id,
+    # ADR-0078: widened from the single `"test_cycle_id"` to a branching pair,
+    # the shape `RiskItem` has always had and ADR-0075 Amendment 1 gave all six
+    # junctions. Both columns are `NOT NULL` on every row, so this is purely
+    # about which one a *list request* may scope by — an execution has always
+    # belonged to a test case exactly as much as to a cycle, and only the cycle
+    # arm was reachable.
+    #
+    # Needed because `TestCase` -> "Defects (linked)" cannot offer either of
+    # its write actions without it: `POST /executions/{id}/defects` links the
+    # new defect to `execution.test_case_id`, so the execution picker must be
+    # narrowed to *this* test case's executions or the row lands on a different
+    # one (see `_TEST_CASE_DEFECT_LINK_CONFIG.compound_creates`), and
+    # "Link existing" needs the same scope to escape ADR-0076's documented
+    # cascading-picker dead end.
+    #
+    # Two deliberate consequences, neither a side effect to regret:
+    # `GET /test-executions?test_case_id=...` becomes legal (it 422'd before),
+    # and `derive_entity_relations` gives `TestCase` a "Test executions" tab —
+    # a test case's own execution history, which nothing else in the app
+    # surfaces. Passing BOTH arms is a `422`, per `extract_scope_value`'s
+    # exactly-one rule; no caller in this repo passes both.
+    scope_field=("test_cycle_id", "test_case_id"),
+    # The cycle arm is declared FIRST, which keeps the item-route walk
+    # (`GET`/`PATCH`/`DELETE`, where a real row carries both FKs) byte-identical
+    # to its pre-widening behaviour — the same ordering discipline
+    # `trace.py`'s own docstring spells out for the four link configs.
+    resolve_org_id=branching_resolver(
+        [
+            ("test_cycle_id", _resolve_test_execution_org_id),
+            ("test_case_id", resolve_via_test_case),
+        ]
+    ),
     # ADR-0070. `actual_result` is the only free-text column; `result` itself
     # is an enum, exact-matchable via ADR-0072's derived filter set (the
     # explicit `filter_fields` tuple that used to sit here is gone).
@@ -259,7 +318,26 @@ _TEST_EXECUTION_CONFIG = CrudEntityConfig(
     # derive as not-required for the same `create_schema=None` reason as
     # `_DEFECT_CONFIG` above.
     label="Test executions",
-    scope_selector=ScopeSelectorOption(ref_entity="test-cycle", param_name="test_cycle_id"),
+    # ADR-0078: one option per scope arm, matching the widened `scope_field`
+    # above — without the second, the generic admin list page could only ever
+    # scope by the cycle arm even though the route now serves both, the exact
+    # gap ADR-0075 Amendment 1 closed for the six junctions.
+    scope_selector=(
+        # ADR-0081: `TestCycle`'s own list needs `test_plan_id`, which this
+        # page's route params never supply — `via` threads a `TestPlan` pick
+        # (itself `project_id`-scoped, already available) in as the extra
+        # search param, closing the gap this option's own picker used to
+        # 422/silently-empty on before any character was ever typed.
+        ScopeSelectorOption(
+            ref_entity="test-cycle",
+            param_name="test_cycle_id",
+            label="By test cycle",
+            via=ScopeSelectorOption(ref_entity="test-plan", param_name="test_plan_id"),
+        ),
+        # `TestCase`'s own list is `project_id`-scoped directly — no `via`
+        # needed, this arm already worked before ADR-0081.
+        ScopeSelectorOption(ref_entity="test-case", param_name="test_case_id", label="By test case"),
+    ),
     # Both FKs are summary-only (`UpdateTestExecutionRequest` reassigns neither),
     # so they derive last without this — the hand-written config led with them.
     field_order=("test_cycle_id", "test_case_id", "result", "actual_result", "executed_at"),
@@ -275,22 +353,84 @@ _TEST_EXECUTION_CONFIG = CrudEntityConfig(
 _TEST_LOG_CONFIG = CrudEntityConfig(
     model=TestLog,
     resource="test_log",
-    create_schema=None,
+    # ADR-0079 Amendment 1: `create_schema` set to the bespoke comment route's
+    # own request shape *without* adding "create" to `methods` below — the
+    # generic factory only registers a create route when BOTH are true
+    # (`"create" in config.methods and config.create_schema is not None`,
+    # this module's own `make_crud_router` gate), so this cannot enable a
+    # generic `POST /test-logs`. What it DOES do: `derive_entity_schema`'s
+    # writable-field union (`create_schema`/`update_schema`, either present)
+    # now includes `AddTestLogCommentRequest`'s three fields as real,
+    # non-readOnly, "text"-required fields — the fields the compound-create
+    # form below actually needs. Before this, every field derived readOnly
+    # from `TestLogSummary` alone, correctly for *display* but leaving no
+    # writable field for any create form to ever render.
+    create_schema=AddTestLogCommentRequest,
     update_schema=NoSchema,
     summary_schema=TestLogSummary,
     scope_field="test_execution_id",
     resolve_org_id=_resolve_test_log_org_id,
     methods=frozenset({"list", "get"}),
-    # ADR-0053. Every field derives `readOnly: true` on its own — `create_schema`
-    # is `None` and `update_schema` is `NoSchema`, so there are no writable
-    # schemas at all and the whole shape comes from `TestLogSummary` (this entity
-    # is append-only/immutable by schema, ADR-0025). That also makes the derived
-    # order already match the hand-written config's, so no `field_order` is needed.
+    # ADR-0079 Amendment 1. ADR-0070's default (every writable string field is
+    # searchable unless excluded) would otherwise pick up `attachment_url`/
+    # `file_name` now that `create_schema` supplies them — an explicit `()`
+    # override keeps `?q=` a documented no-op on this entity exactly as
+    # `test_q_is_silently_ignored_for_test_log_which_has_no_search_fields`
+    # already asserts, a deliberate choice rather than an accidental side
+    # effect of adding the two fields for a different reason.
+    search_fields=(),
+    # ADR-0053's original claim above ("append-only, no writable schema at
+    # all") is corrected by the Amendment 1 note just above — kept visible
+    # rather than deleted, since it was true before this row existed and the
+    # `methods` set (still no "create"/"update") is what actually keeps this
+    # entity's generic REST surface unchanged.
     label="Test logs",
-    scope_selector=ScopeSelectorOption(ref_entity="test-execution", param_name="test_execution_id"),
+    # ADR-0081: `TestExecution`'s own list needs `test_case_id` (or
+    # `test_cycle_id`) that this page's route params never supply — `via`
+    # threads a `TestCase` pick (`project_id`-scoped, already available) in
+    # as the extra search param, the same gap and the same fix as
+    # `_TEST_EXECUTION_CONFIG`'s own "By test cycle" arm above.
+    scope_selector=ScopeSelectorOption(
+        ref_entity="test-execution",
+        param_name="test_execution_id",
+        via=ScopeSelectorOption(ref_entity="test-case", param_name="test_case_id"),
+    ),
+    # `text`/`attachment_url`/`file_name` lead (the new writable fields, in
+    # the same order `AddTestLogCommentRequest` declares them), then the
+    # pre-existing summary-only fields — mirrors every other config's
+    # "writable, then read-only" convention (ADR-0053 Amendment 1).
+    field_order=(
+        "test_execution_id",
+        "text",
+        "attachment_url",
+        "file_name",
+        "event_type",
+        "payload",
+        "logged_at",
+    ),
     field_meta={
         "test_execution_id": FieldMeta(ref_entity="test-execution", label_field="result", label="Test execution"),
+        "text": FieldMeta(long_text=True, label="Comment"),
     },
+    # ADR-0079 Amendment 1: the one-to-many sibling of the other three
+    # closed directions, added later than they were once a real create
+    # route was found to already exist for this entity (`POST
+    # /executions/{id}/comments`, EXEC-2) — ADR-0079's original audit missed
+    # it because the route's name/shape ("add a comment") doesn't read like
+    # a generic entity create the way `POST /requirements/{id}/test-conditions`
+    # does, even though it is structurally identical: one bespoke route,
+    # parent = path placeholder = this entity's own `scope_field`, one
+    # transaction, no separate link table. `TestExecution` -> "Test logs"
+    # moves from ADR-0079's "exception" classification to "closed" as a
+    # result — see that ADR's own `### Amendment` for the full correction.
+    child_compound_creates=(
+        CompoundCreateAction(
+            far_field="test_execution_id",
+            path_template="/executions/{test_execution_id}/comments",
+            permission="test_execution.update",
+            links_automatically=True,
+        ),
+    ),
 )
 
 router.include_router(make_crud_router(_DEFECT_CONFIG))

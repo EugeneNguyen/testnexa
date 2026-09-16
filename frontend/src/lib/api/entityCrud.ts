@@ -15,7 +15,12 @@
  * a fixed `Record<string, unknown>` row type is used throughout by the
  * `crud/` components, sufficient for that.
  */
-import { EntityConfig } from "../../entityConfigs/types";
+import {
+  CompoundCreateAction,
+  EntityConfig,
+  LinkCreateAction,
+  LinkDeleteAction,
+} from "../../entityConfigs/types";
 import { apiFetch } from "./client";
 
 export type EntityRow = Record<string, unknown>;
@@ -121,6 +126,117 @@ export async function updateEntity<T = EntityRow>(
   body: Record<string, unknown>,
 ): Promise<T> {
   return apiFetch<T>(`/api/v1${config.path}/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+}
+
+/**
+ * ADR-0076: substitute a `LinkCreateAction.pathTemplate`'s `{field}`
+ * placeholders from a map of the link row's own FK values.
+ *
+ * Deliberately a **second** interpolator rather than a widened `interpolate`
+ * above: that one fills `:param` route placeholders from the current URL's
+ * params, and silently leaves an unmatched placeholder in the path (correct
+ * there — a template with no placeholders is the common case and a missing
+ * route param is a caller bug that shows up as a 404). This one fills `{field}`
+ * placeholders from values the caller just collected, and a missing one is a
+ * programming error worth failing loudly on rather than POSTing a URL with a
+ * literal brace in it. Different brace style, different source, different
+ * failure posture — merging them would need a mode flag that no call site
+ * would ever pass dynamically.
+ */
+export function interpolateLinkPath(template: string, values: Record<string, string>): string {
+  return template.replace(/\{([a-zA-Z_]+)\}/g, (_match, key: string) => {
+    const value = values[key];
+    if (!value) {
+      throw new Error(`Missing "${key}" for link path ${template}`);
+    }
+    return value;
+  });
+}
+
+/**
+ * ADR-0076: create one junction/link row through the entity's own bespoke
+ * route, declared by its schema's `linkCreate` (`LinkCreateAction`).
+ *
+ * `values` is keyed by the link row's own FK column names — exactly the shape
+ * `relation.scopeField` (the parent) and `relation.targetField` (the picked
+ * far row) already give a relationship tab. The route takes no request body:
+ * both ids travel in the path, which is why this is not `createEntity` with a
+ * different path.
+ *
+ * Rejects with an `ApiError` carrying the API Document §1 envelope, same as
+ * every other write call here — `409` for an already-existing pair, `422` for
+ * a cross-project pair, `404` for a cross-tenant one.
+ */
+export async function createLinkRow(
+  action: LinkCreateAction,
+  values: Record<string, string>,
+): Promise<unknown> {
+  return apiFetch<unknown>(`/api/v1${interpolateLinkPath(action.pathTemplate, values)}`, { method: "POST" });
+}
+
+/**
+ * ADR-0078: create the **far** record of a junction through the bespoke atomic
+ * route that is its only authoring path, declared by the link entity's own
+ * `compoundCreates` (`CompoundCreateAction`).
+ *
+ * The middle ground between the two helpers around it, and that is exactly why
+ * it is its own function rather than a parameter on either:
+ *
+ * - unlike `createEntity`, the parent id travels in the **path**, not the body,
+ *   and the path is a `{field}` template rather than an entity's own
+ *   `path`/`createPath` — so it interpolates with `interpolateLinkPath`, the
+ *   `{...}` substitutor, and fails loudly on a missing value for the same
+ *   reason that one does;
+ * - unlike `createLinkRow`, there **is** a body: the created record's own
+ *   fields, collected by the far entity's `EntityForm`.
+ *
+ * Returns the created row, whose `id` the caller needs — either to follow with
+ * `createLinkRow` (`linksAutomatically: false`) or simply to report back if
+ * something downstream fails.
+ *
+ * Rejects with an `ApiError` carrying the API Document §1 envelope, same as
+ * every other write here: `422` with `field_errors` for a bad body or a
+ * violated business rule (a defect raised against a non-failed execution),
+ * `404` across a tenant boundary, `403` for a missing permission.
+ */
+export async function createViaCompoundRoute<T = EntityRow>(
+  action: CompoundCreateAction,
+  parentValues: Record<string, string>,
+  body: Record<string, unknown>,
+): Promise<T> {
+  return apiFetch<T>(`/api/v1${interpolateLinkPath(action.pathTemplate, parentValues)}`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * ADR-0077: remove one junction/link row through the entity's own bespoke
+ * route, declared by its schema's `linkDelete` (`LinkDeleteAction`).
+ *
+ * `createLinkRow`'s exact mirror, down to taking the same `values` map keyed by
+ * the link row's own FK column names — which is what lets a relationship tab
+ * unlink a row it is already rendering without holding any extra state: the
+ * two ids are `relation.scopeField` (the record being viewed) and
+ * `relation.targetField` read off the row itself.
+ *
+ * A separate function rather than a `method` parameter on `createLinkRow`: the
+ * two take *different* declarations (`config.linkDelete`, not
+ * `config.linkCreate` — different URL in principle, different permission in
+ * practice for four of the six junctions) and return different things, so one
+ * function with a verb flag would need both actions passed in anyway.
+ *
+ * `204 No Content` on success — `apiFetch<void>` resolves `undefined`, same as
+ * `deleteEntity`. Rejects with an `ApiError` carrying the API Document §1
+ * envelope: `404` both for a pair that is not linked and for one across a
+ * tenant boundary (deliberately indistinguishable, NFR-1), `403` for a missing
+ * permission.
+ */
+export async function deleteLinkRow(
+  action: LinkDeleteAction,
+  values: Record<string, string>,
+): Promise<void> {
+  return apiFetch<void>(`/api/v1${interpolateLinkPath(action.pathTemplate, values)}`, { method: "DELETE" });
 }
 
 /** `DELETE {config.path}/{id}` — `204 No Content`, `apiFetch<void>` resolves `undefined`. */

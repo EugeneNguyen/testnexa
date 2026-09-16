@@ -25,6 +25,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from app.api.crud_factory import (
+    CompoundCreateAction,
     CrudEntityConfig,
     FieldMeta,
     ScopeSelectorOption,
@@ -225,6 +226,22 @@ _TEST_CYCLE_CONFIG = CrudEntityConfig(
         "release_id": FieldMeta(ref_entity="release", label_field="version_label", label="Release"),
         "environment_id": FieldMeta(ref_entity="environment", label_field="name", label="Environment"),
     },
+    # ADR-0079: `TestPlan` -> "Test cycles" (the one-to-many tab) is scoped by
+    # exactly `test_plan_id` above — the same placeholder
+    # `POST /test-plans/{id}/test-cycles` carries — so the record being viewed
+    # already is the parent and no picker is needed. Unlike the other two
+    # ADR-0079 declarations, this route writes no separate link row at all
+    # (`test_cycle_creation.py`'s own docstring: "no link table involved"), so
+    # `links_automatically=True` here just means "there is no second call",
+    # which for a plain single-row insert is trivially true.
+    child_compound_creates=(
+        CompoundCreateAction(
+            far_field="test_plan_id",
+            path_template="/test-plans/{test_plan_id}/test-cycles",
+            permission="test_cycle.create",
+            links_automatically=True,
+        ),
+    ),
 )
 
 router.include_router(make_crud_router(_TEST_PLAN_CONFIG))

@@ -75,16 +75,25 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.crud_factory import (
+    CrudEntityConfig,
+    FieldMeta,
+    LinkCreateAction,
+    LinkDeleteAction,
+    NoSchema,
+    ScopeSelectorOption,
     _org_membership_exists,
+    branching_resolver,
     chain_resolver,
+    make_crud_router,
     resolve_test_case_org_id,
+    resolve_test_case_project_id,
+    resolve_via_test_case,
 )
 from app.api.deps import get_current_actor, get_db
 from app.core.rbac import has_permission
 from app.models.actor import AIAgent, User
-from app.models.assets import Requirement, TestCase, TestCondition, TestSuite, TestSuiteTestCase
-from app.models.trace import RequirementTestCaseLink
-from app.schemas.assets import TestCaseListResponse, TestCaseSummary
+from app.models.assets import TestCase, TestSuite, TestSuiteTestCase
+from app.schemas.assets import TestCaseListResponse, TestCaseSummary, TestSuiteTestCaseSummary
 
 router = APIRouter()
 
@@ -122,53 +131,15 @@ def _error(
     )
 
 
-async def _resolve_test_case_project_id(db: AsyncSession, test_case: TestCase) -> UUID | None:
-    """Resolve a `TestCase`'s own project, walking ADR-0029's three branches.
-
-    Deliberately a separate function from `resolve_test_case_org_id` rather
-    than a refactor of it, even though the two walk the identical branch order
-    (`test_condition_id` -> `Requirement.project_id`; else any
-    `RequirementTestCaseLink` -> `Requirement.project_id`; else any
-    `TestSuiteTestCase` -> `TestSuite.project_id`). The org resolver's terminal
-    step (`resolve_terminal_org_id`) converts `project_id` -> `Project.org_id`
-    and discards the `project_id` on the way, so there is no existing seam to
-    reuse without reworking a resolver the whole generic-CRUD surface depends
-    on — out of proportion to this one business-rule check.
-
-    The duplication is safe in a way a duplicated *org* walk would not be: this
-    result never gates tenant isolation. The `404` boundary above every caller
-    of this function is still decided solely by `resolve_test_case_org_id`, so
-    if these two ever drift, the failure mode is a wrong `422`, never a crossed
-    tenant boundary (NFR-1).
-
-    Returns `None` for a `TestCase` reachable by none of the three branches —
-    genuinely orphaned, no create path in this codebase produces one. Callers
-    treat that as "cannot prove same-project", i.e. reject.
-    """
-    test_condition_id = getattr(test_case, "test_condition_id", None)
-    if test_condition_id is not None:
-        condition = await db.get(TestCondition, test_condition_id)
-        if condition is None:
-            return None
-        requirement = await db.get(Requirement, condition.requirement_id)
-        return requirement.project_id if requirement is not None else None
-
-    requirement_link = await db.scalar(
-        select(RequirementTestCaseLink)
-        .where(RequirementTestCaseLink.test_case_id == test_case.id)
-        .limit(1)
-    )
-    if requirement_link is not None:
-        requirement = await db.get(Requirement, requirement_link.requirement_id)
-        return requirement.project_id if requirement is not None else None
-
-    suite_link = await db.scalar(
-        select(TestSuiteTestCase).where(TestSuiteTestCase.test_case_id == test_case.id).limit(1)
-    )
-    if suite_link is None:
-        return None
-    suite = await db.get(TestSuite, suite_link.test_suite_id)
-    return suite.project_id if suite is not None else None
+# ADR-0076 — this module's own three-branch `_resolve_test_case_project_id`
+# copy is retired. It predated `TestCase.project_id` (REQ-5/ADR-0069), which
+# added a fourth branch to `resolve_test_case_org_id` and nothing to the
+# private copy here, so `add_test_case_to_suite` rejected every *standalone*
+# `TestCase` with a cross-project `422` even inside its own project. The walk
+# now lives beside its org-side sibling in `crud_factory`
+# (`resolve_test_case_project_id`), so the two cannot drift again — see that
+# function's own docstring for the full write-up.
+_resolve_test_case_project_id = resolve_test_case_project_id
 
 
 async def _load_suite_for_actor(
@@ -355,5 +326,116 @@ async def list_test_cases_in_suite(
         page_size=page_size,
     )
 
+
+# --- ADR-0075: the junction table's own read-only generic-CRUD surface -------------------------
+#
+# The three bespoke routes above are REQ-4's *membership management* surface:
+# they write the join row under ADR-0030's cross-project `422` /
+# duplicate-add `409` / asymmetric-`DELETE`-`404` contract, and the `GET`
+# returns the far side's `TestCase` rows, not join rows. None of that is a
+# reason the junction table cannot *also* be a plain read-only generic-CRUD
+# entity, and until ADR-0075 it wasn't one — which is exactly why
+# `TestSuite`'s ADR-0074 detail page showed zero relationship tabs despite the
+# table being populated by the routes above.
+#
+# `derive_entity_relations` discovers many-to-many relationships by walking
+# `ALL_ENTITY_CONFIGS`; a junction table with no config in that registry is
+# invisible to it, and (because the registry is the same set the completeness
+# test partitions) invisible to the test meant to catch exactly this. Giving
+# the table a config is what makes the relationship derivable — the
+# alternative, special-casing this bespoke route inside the derivation, would
+# hand-author the per-entity relationship map ADR-0074 Decision §1 exists to
+# forbid, and still leave the tab with no servable `GET /{entity}?{scope}=`
+# list route to call.
+#
+# Shaped verbatim on `app/api/routes/trace.py`'s four link-table configs, which
+# already established this exact split for ADR-0005's traceability tables:
+# rows written only as a side effect of a bespoke route, read through the
+# factory. `create_schema=None` + `update_schema=NoSchema` means every field
+# derives `readOnly` and none derives `required`; `methods={"list","get"}`
+# keeps the write surface exclusively on the bespoke routes above and is also
+# half of what makes `is_link_entity` classify this structurally as a link
+# table (two FK fields, no `create`/`update`).
+#
+# `scope_field` is the branching 2-tuple `("test_suite_id", "test_case_id")`
+# — **ADR-0075 Amendment 1**, which supersedes that ADR's own Decision §3.
+# As first shipped this was the single column `"test_suite_id"`, deliberately
+# the suite side (the direction REQ-4's bespoke routes are nested under,
+# `/test-suites/{id}/test-cases`), with the reverse direction parked in
+# ADR-0074 §4's exclusion set. §3's stated reason for parking it was
+# coherence, not capability: "doing it for two junctions and not the other
+# four would make the rule incoherent... widening all six later remains open."
+# All six are widened together in Amendment 1, so that objection no longer
+# applies and this lists from both ends — `TestSuite` keeps its "Test cases
+# (linked)" tab and `TestCase` gains the reverse "Test suites (linked)" one.
+#
+# The suite arm is declared FIRST in the resolver below, so the item route
+# (`GET /test-suite-test-cases/{id}`, where a real row carries both FKs) walks
+# byte-identically to its pre-widening self; the case arm only ever fires for
+# the scope stand-in a `?test_case_id=` list request builds.
+_TEST_SUITE_TEST_CASE_CONFIG = CrudEntityConfig(
+    model=TestSuiteTestCase,
+    resource="test_suite_test_case",
+    create_schema=None,
+    update_schema=NoSchema,
+    summary_schema=TestSuiteTestCaseSummary,
+    scope_field=("test_suite_id", "test_case_id"),
+    # Suite arm: one hop to `TestSuite`, whose own `project_id` the shared
+    # terminal step resolves to `Project.org_id` — the same walk
+    # `_resolve_test_suite_org_id` above performs for the bespoke routes,
+    # composed rather than re-derived. Case arm: `resolve_test_case_org_id`
+    # via `resolve_via_test_case`, which is the identical resolver
+    # `add_test_case_to_suite` above already uses for the case side of its own
+    # tenant check (ADR-0029's branching chain), so the two surfaces cannot
+    # drift on what org a `TestCase` belongs to.
+    resolve_org_id=branching_resolver(
+        [
+            ("test_suite_id", chain_resolver([(TestSuite, "test_suite_id")])),
+            ("test_case_id", resolve_via_test_case),
+        ]
+    ),
+    methods=frozenset({"list", "get"}),
+    # ADR-0076: the declarative handle on `add_test_case_to_suite` above, so
+    # ADR-0074's relationship tab can offer "Link existing test case" from
+    # either end of this junction without knowing this route exists. The
+    # permission is REQ-4's own `test_suite.update`, **not** a new
+    # `test_suite_test_case.create` — that route shipped under ADR-0030 with
+    # that gate and re-gating it would be a breaking change to a live contract
+    # for no benefit; `LinkCreateAction` declares the code rather than deriving
+    # it for exactly this reason.
+    link_create=LinkCreateAction(
+        path_template="/test-suites/{test_suite_id}/test-cases/{test_case_id}",
+        permission="test_suite.update",
+    ),
+    # ADR-0077: the same declarative handle for `remove_test_case_from_suite`
+    # above — which has existed since REQ-4 and was simply unreachable from the
+    # generic surface. Same URL as the `POST`, and — unlike ADR-0077's four new
+    # traceability unlinks, each of which gates on its own new
+    # `<resource>.delete` code — the **same** `test_suite.update` permission
+    # too, because that is what the shipped route actually checks and ADR-0077
+    # re-gates nothing. Declaring the code rather than deriving it is exactly
+    # what lets both shapes coexist, same as `link_create` above.
+    link_delete=LinkDeleteAction(
+        path_template="/test-suites/{test_suite_id}/test-cases/{test_case_id}",
+        permission="test_suite.update",
+    ),
+    label="Test suite -> test case links",
+    scope_selector=(
+        ScopeSelectorOption(ref_entity="test-suite", param_name="test_suite_id", label="By test suite"),
+        ScopeSelectorOption(ref_entity="test-case", param_name="test_case_id", label="By test case"),
+    ),
+    # Only the two FKs need a `FieldMeta`: their `ref_entity`/`label_field`
+    # have no Python-type correlate, and `created_at`'s auto-derived "Created
+    # at" label is already correct. Omitting `ref_entity` here would leave the
+    # entity with zero FK fields, so it would not classify as a link table and
+    # would silently produce no tab at all — the degrades-silently failure
+    # mode ADR-0075's model-layer completeness test now guards.
+    field_meta={
+        "test_suite_id": FieldMeta(ref_entity="test-suite", label_field="name", label="Test suite"),
+        "test_case_id": FieldMeta(ref_entity="test-case", label_field="title", label="Test case"),
+    },
+)
+
+router.include_router(make_crud_router(_TEST_SUITE_TEST_CASE_CONFIG))
 
 __all__ = ["router"]

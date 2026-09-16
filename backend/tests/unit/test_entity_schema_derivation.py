@@ -679,7 +679,11 @@ class TestNoSchema:
 
 
 class TestTopLevelShape:
-    def test_response_carries_exactly_the_nine_documented_keys(self) -> None:
+    def test_response_carries_exactly_the_fourteen_documented_keys(self) -> None:
+        """`relations` is the tenth (ADR-0074), `linkCreate` the eleventh
+        (ADR-0076), `linkDelete` the twelfth (ADR-0077), `compoundCreates` the
+        thirteenth (ADR-0078), `childCompoundCreates` the fourteenth
+        (ADR-0079)."""
         assert set(derive_entity_schema(_widget_config())) == {
             "resource",
             "label",
@@ -690,7 +694,51 @@ class TestTopLevelShape:
             "searchFields",
             "filterFields",
             "fields",
+            "relations",
+            "linkCreate",
+            "linkDelete",
+            "compoundCreates",
+            "childCompoundCreates",
         }
+
+    def test_link_create_is_null_for_an_entity_that_is_not_a_link_table(self) -> None:
+        """ADR-0076: the key is always present, `None` for the 23 non-link
+        entities — never omitted, same posture `relations` takes for an entity
+        nothing points at. A frontend reading `config.linkCreate` must be able
+        to distinguish "no link action" from "older backend", and an always-
+        present key is what makes that distinction meaningless rather than
+        ambiguous."""
+        assert derive_entity_schema(_widget_config())["linkCreate"] is None
+
+    def test_link_delete_is_null_for_an_entity_that_is_not_a_link_table(self) -> None:
+        """ADR-0077: `linkCreate`'s exact mirror, for exactly the same reason —
+        `EntityRelationTab` renders the per-row Remove action if and only if
+        the value is non-null, so the *key* must be unconditional."""
+        assert derive_entity_schema(_widget_config())["linkDelete"] is None
+
+    def test_compound_creates_is_an_empty_list_for_an_entity_declaring_none(self) -> None:
+        """ADR-0078: an **empty list**, deliberately not `None` like the two
+        keys above it.
+
+        Those two are presence flags — "is there a link-create route at all" —
+        and `None` is the honest answer for an entity that has none. This one
+        is a list a caller searches *by direction*
+        (`find(a => a.farField === relation.targetField)`), so "declares none"
+        and "declares some, but not for your direction" are already the same
+        answer, and an empty list says it without a null check at every call
+        site. Three of the six real link entities also serve `[]` here, for the
+        second reason rather than the first."""
+        assert derive_entity_schema(_widget_config())["compoundCreates"] == []
+
+    def test_child_compound_creates_is_an_empty_list_for_an_entity_declaring_none(self) -> None:
+        """ADR-0079: `compoundCreates`' own test, for its sibling key."""
+        assert derive_entity_schema(_widget_config())["childCompoundCreates"] == []
+
+    def test_relations_is_empty_for_an_entity_nothing_points_at(self) -> None:
+        """ADR-0074: the synthetic `_widget_config()` is not in the registry,
+        so nothing can declare an FK to it — the key is still present, as an
+        empty list, never omitted."""
+        assert derive_entity_schema(_widget_config(), all_configs={})["relations"] == []
 
     def test_resource_is_passed_through_verbatim(self) -> None:
         assert derive_entity_schema(_config(resource="test_condition"))["resource"] == "test_condition"
@@ -824,6 +872,33 @@ class TestScopeSelector:
         )
         assert isinstance(schema["scopeSelector"], list)
         assert len(schema["scopeSelector"]) == 1
+
+    def test_via_is_absent_when_unset(self) -> None:
+        schema = derive_entity_schema(
+            _config(scope_selector=ScopeSelectorOption(ref_entity="project", param_name="project_id"))
+        )
+        assert "via" not in schema["scopeSelector"]
+
+    def test_via_serializes_as_a_nested_option_object(self) -> None:  # TC-ADMIN-138 (ADR-0081)
+        """`via` recurses through the identical `_serialize_scope_selector_option`
+        helper — asserted structurally rather than assumed, since the two are
+        genuinely the same shape one level down."""
+        schema = derive_entity_schema(
+            _config(
+                scope_selector=ScopeSelectorOption(
+                    ref_entity="test-cycle",
+                    param_name="test_cycle_id",
+                    label="By test cycle",
+                    via=ScopeSelectorOption(ref_entity="test-plan", param_name="test_plan_id"),
+                )
+            )
+        )
+        assert schema["scopeSelector"] == {
+            "refEntity": "test-cycle",
+            "paramName": "test_cycle_id",
+            "label": "By test cycle",
+            "via": {"refEntity": "test-plan", "paramName": "test_plan_id"},
+        }
 
 
 class TestScopeResolution:

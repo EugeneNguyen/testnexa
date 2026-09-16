@@ -14,7 +14,15 @@
  * which is data shape, not route wiring.
  */
 import { apiFetch } from "./client";
-import { FieldType, ScopeResolution, ScopeSelectorOption } from "../../entityConfigs/types";
+import {
+  CompoundCreateAction,
+  EntityRelation,
+  LinkCreateAction,
+  LinkDeleteAction,
+  FieldType,
+  ScopeResolution,
+  ScopeSelectorOption,
+} from "../../entityConfigs/types";
 
 export interface BackendFieldConfig {
   name: string;
@@ -43,6 +51,45 @@ export interface EntitySchemaResponse {
   searchFields: string[];
   filterFields: string[];
   fields: BackendFieldConfig[];
+  /**
+   * ADR-0074: this entity's *inbound* relationships — see
+   * `entityConfigs/types.ts`'s `EntityRelation`. Optional on this type
+   * (not on the wire) so a response captured before ADR-0074 — every
+   * hand-written Vitest fixture in this repo, of which there are many —
+   * still type-checks; `toEntityConfig` normalizes the absent case to `[]`.
+   */
+  relations?: EntityRelation[];
+  /**
+   * ADR-0076: this entity's bespoke link-create route, or `null` for the 25
+   * entities that are not link tables. Optional on this type for the same
+   * fixture-compatibility reason as `relations` above; `toEntityConfig` drops
+   * both the `null` and the absent case.
+   */
+  linkCreate?: LinkCreateAction | null;
+  /**
+   * ADR-0077: this entity's bespoke link-*delete* route, or `null` for the 25
+   * entities that are not link tables. Optional on this type for the same
+   * fixture-compatibility reason as `linkCreate` above; `toEntityConfig` drops
+   * both the `null` and the absent case.
+   */
+  linkDelete?: LinkDeleteAction | null;
+  /**
+   * ADR-0078: per-*direction* compound-create actions for a junction whose far
+   * entity has no generic `create` — `[]` for every entity that declares none,
+   * which is most of them. Optional here for the same fixture-compatibility
+   * reason as `relations`/`linkCreate` above; `toEntityConfig` normalizes the
+   * absent case to `[]` rather than dropping it, since a caller searches this
+   * list by direction and an empty list is already the "none for me" answer.
+   */
+  compoundCreates?: CompoundCreateAction[];
+  /**
+   * ADR-0079: `compoundCreates`' one-to-many sibling — same shape, declared on
+   * the CHILD entity's own config instead of a link entity's, matched by the
+   * caller against `relation.scopeField` instead of `relation.targetField`.
+   * Optional/normalized-to-`[]` for the identical fixture-compatibility
+   * reason `compoundCreates` is.
+   */
+  childCompoundCreates?: CompoundCreateAction[];
 }
 
 /** `entityKey` is the plural `:entity` route slug (`registry.ts`'s own keys). */
