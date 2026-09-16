@@ -140,7 +140,14 @@ def test_no_tool_exists_for_an_unknown_entity() -> None:
     [
         ("test_log", "update"),  # TestLog is get/list/create(comment) only — immutable otherwise
         ("test_log", "delete"),
-        ("requirement_test_case_link", "create"),  # link tables are read-only
+        # ADR-0076 removed `("requirement_test_case_link", "create")` from this
+        # list: `POST /requirements/{id}/test-case-links/{test_case_id}` is a
+        # real REST capability now, so the row asserted a claim that had stopped
+        # being true — the same correction ADR-0075 made one entry below for
+        # `test_suite_test_case.list`. `update`/`delete` stay: a link row is
+        # still immutable and un-deletable through the API
+        # (`app/models/trace.py`), which is the part of "link tables are
+        # read-only" that survives.
         ("requirement_test_case_link", "update"),
         ("requirement_test_case_link", "delete"),
         ("permission", "create"),  # global catalog, read-only via the factory
@@ -150,7 +157,16 @@ def test_no_tool_exists_for_an_unknown_entity() -> None:
         ("release", "get"),  # create-only bespoke resource
         ("release", "list"),
         ("release", "describe"),  # no CrudEntityConfig to describe
-        ("test_suite_test_case", "list"),
+        # ADR-0075 removed `("test_suite_test_case", "list")` from this list:
+        # REST now genuinely has that capability (a read-only generic
+        # `GET /test-suite-test-cases`), so the row asserted a claim that had
+        # stopped being true. The invariant itself is undiminished —
+        # `test_mcp_tool_naming.py`'s
+        # `test_registry_actions_equal_rest_surface_plus_declared_bespoke_extras`
+        # is the derived, whole-registry form of the same assertion and still
+        # pins every resource's action set to `full_methods` union its declared
+        # bespoke extras. This parametrize list is only the hand-picked
+        # spot-check layer on top of it.
     ],
 )
 def test_no_tool_is_generated_for_a_method_the_entity_does_not_support(resource: str, action: str) -> None:

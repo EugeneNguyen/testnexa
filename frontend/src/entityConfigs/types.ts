@@ -122,6 +122,15 @@ export interface ScopeSelectorOption {
   paramName: string;
   /** Toggle-button label when this option is one of several (`RiskItem`). */
   label?: string;
+  /**
+   * ADR-0081: when set, `refEntity`'s own list route needs a SECOND scope
+   * param this page's own route params never supply (`TestCycle` needs
+   * `test_plan_id`, `TestExecution` needs `test_case_id`) — `ScopeSelector`
+   * renders this as a preceding picker step and threads its resolved value
+   * in as an extra search param on the OUTER option's own `FkAutocomplete`,
+   * never reporting it to `onResolved` itself.
+   */
+  via?: ScopeSelectorOption;
 }
 
 /**
@@ -143,6 +152,156 @@ export interface ScopeResolution {
   fromRouteParam: "orgId" | "projectId";
   viaEntity: string;
   viaField: string;
+}
+
+/**
+ * [ADR-0074](../../../docs/adr/0074-entity-detail-relationship-tabs.md): one
+ * *inbound* relationship of an entity — some other entity pointing at it —
+ * rendered as one tab on `EntityDetailPage`. Derived entirely on the backend
+ * (`crud_factory.derive_entity_relations`) by walking every registered
+ * config, so there is no hand-authored map on either side to drift.
+ *
+ * Many-to-one is deliberately absent: a field of *this* entity pointing at a
+ * parent already renders as a labelled value on the Info tab.
+ */
+export interface EntityRelation {
+  /**
+   * `"one-to-many"` — `entity` is a child entity whose own rows carry
+   * `scopeField`. `"many-to-many"` — `entity` is one of ADR-0005's link
+   * tables; its rows are what's listed, but the tab is *about*
+   * `targetEntity`, the far side.
+   */
+  kind: "one-to-many" | "many-to-many";
+  /** Plural `:entity` slug whose rows this tab lists and fetches. */
+  entity: string;
+  /**
+   * The listed entity's own scope field, set to the parent row's id on the
+   * list request. Also hidden as a column: it is the same value on every row
+   * in the tab, so showing it is pure noise.
+   */
+  scopeField: string;
+  /** Tab label — the far entity's label for many-to-many, `entity`'s own otherwise. */
+  label: string;
+  /** What the tab is conceptually about; equals `entity` for one-to-many. */
+  targetEntity: string;
+  /**
+   * Many-to-many only: which FK on the *link* row names the far entity, so a
+   * row click can open the far record rather than the link record. `null`
+   * for one-to-many, where the listed row already is the record.
+   */
+  targetField: string | null;
+}
+
+/**
+ * [ADR-0076](../../../docs/adr/0076-relationship-tab-write-actions.md): how to
+ * create **one row** of a junction/link entity, served on that entity's own
+ * schema (`crud_factory.LinkCreateAction`). Present only for the six link
+ * tables; `undefined` for every other entity.
+ *
+ * `pathTemplate` carries one `{...}` placeholder per id-bearing path segment,
+ * each named after the **link row's own FK column** — so a caller holding both
+ * ids (which a relationship tab always does: one is the record being viewed,
+ * the other is what the user just picked) substitutes by field name with no
+ * per-entity knowledge, and the same declaration works from either end of the
+ * junction.
+ *
+ * `permission` is the exact code the bespoke route gates on, for
+ * `usePermissions`. It is **not** always `<resource>.create`: REQ-4's and
+ * PLAN-1's two junction routes predate ADR-0076 and gate on the parent's
+ * `test_suite.update`/`test_plan.update`.
+ */
+export interface LinkCreateAction {
+  pathTemplate: string;
+  permission: string;
+}
+
+/**
+ * [ADR-0077](../../../docs/adr/0077-relationship-tab-unlink-action.md):
+ * `LinkCreateAction`'s exact mirror — how to **remove one row** of a
+ * junction/link entity, served on that entity's own schema
+ * (`crud_factory.LinkDeleteAction`). Present only for the six link tables;
+ * `undefined` for every other entity.
+ *
+ * `pathTemplate` is filled by `interpolateLinkPath` from the same
+ * `{scopeField: parentId, targetField: farId}` map "Link existing …" already
+ * builds, so a relationship tab needs no extra state to unlink a row it is
+ * already rendering. For all six junctions today it is the same URL as
+ * `linkCreate.pathTemplate` — a fact about how those six were designed, not a
+ * rule: it is served separately precisely so a future junction whose unlink
+ * lives elsewhere needs no client change.
+ *
+ * `permission` is the exact code the bespoke `DELETE` gates on, and is **not**
+ * always `<resource>.delete`: REQ-4's and PLAN-1's junction routes predate this
+ * ADR and gate both verbs on the parent's `test_suite.update`/
+ * `test_plan.update`. It is also **not** necessarily the same code as
+ * `linkCreate.permission` — for the four ADR-0005 traceability links the two
+ * differ, which is the whole reason the actions are gated independently.
+ */
+export interface LinkDeleteAction {
+  pathTemplate: string;
+  permission: string;
+}
+
+/**
+ * [ADR-0078](../../../docs/adr/0078-compound-create-through-bespoke-routes.md):
+ * how a relationship tab creates the **far** entity of a junction when that
+ * entity has no generic `create` route at all.
+ *
+ * ADR-0076 Amendment 1's "Create new <far entity>" is the far entity's generic
+ * `create` followed by this junction's `linkCreate`. Three of the twelve live
+ * link directions point at an entity with no generic `create` —
+ * `TestCondition` and `Defect`, both authored only through a bespoke atomic
+ * route because their parent FK is `NOT NULL`. This declaration substitutes
+ * that bespoke route for the first call; everything else about the action is
+ * unchanged.
+ *
+ * Served on the **link** entity's own schema, as a list, because it is
+ * **directional**: a junction lists from both ends and typically only one end
+ * needs this. `farField` says which — match it against
+ * `relation.targetField`.
+ */
+export interface CompoundCreateAction {
+  /**
+   * Which of the link row's two FK columns the created record fills. The tab's
+   * own `relation.scopeField` is the other one, by construction.
+   */
+  farField: string;
+  /**
+   * The bespoke route's URL with **exactly one** `{...}` placeholder, named
+   * after the created entity's own parent FK column
+   * (`/requirements/{requirement_id}/test-conditions`). Filled by
+   * `interpolateLinkPath`, the same substitution `linkCreate` uses.
+   */
+  pathTemplate: string;
+  /** The exact code that route gates on — not always `<resource>.create`. */
+  permission: string;
+  /**
+   * Whether that route writes **this junction's** link row itself, inside its
+   * own transaction. `true` — one request and the tab is done; calling
+   * `linkCreate` afterwards would `409` on the pair it just wrote. `false` —
+   * the route linked something else (or nothing), and the client must follow
+   * with `linkCreate`, exactly as ADR-0076 Amendment 1 does.
+   *
+   * Not inferable from anything else on the wire, which is why it is declared.
+   */
+  linksAutomatically: boolean;
+  /**
+   * The four fields below describe the **parent picker**, and are `null`
+   * exactly when none is needed — i.e. when `pathTemplate`'s placeholder names
+   * the tab's own `scopeField`, so the tab already holds the value. Whether a
+   * picker is needed is therefore *derived* from that comparison, never read
+   * off these being present.
+   */
+  parentEntity: string | null;
+  parentLabel: string | null;
+  /** Which field of a picked parent row to display — declared, because the far entity's own FK `labelField` can be a poor picker label. */
+  parentLabelField: string | null;
+  /**
+   * Extra fixed query params the picker must send for a business rule the
+   * route enforces and the picker cannot see (`{result: "fail"}` — a defect
+   * can only be raised against a failed execution). `{}` when there is none.
+   */
+  parentFilters: Record<string, string>;
 }
 
 export interface EntityConfig {
@@ -186,4 +345,56 @@ export interface EntityConfig {
   fields: FieldConfig[];
   filterFields?: string[];
   searchFields?: string[];
+  /**
+   * ADR-0074: backend-derived inbound relationships, one tab each on
+   * `EntityDetailPage`.
+   *
+   * Optional for the same reason `filterFields`/`searchFields` are: a config
+   * assembled by `toEntityConfig` always carries it (normalized to `[]` when
+   * the wire omits it), but this repo has many hand-written `EntityConfig`
+   * literals in Vitest fixtures, and a *required* key would make every one of
+   * them a compile error for a field none of them care about. Read it as
+   * `config.relations ?? []`.
+   */
+  relations?: EntityRelation[];
+  /**
+   * ADR-0076: backend-declared handle on this entity's bespoke link-create
+   * route. Optional for the same reason `relations` is — every hand-written
+   * `EntityConfig` literal in the Vitest fixtures would otherwise become a
+   * compile error for a key none of them care about. Absent for the 25
+   * non-link entities.
+   */
+  linkCreate?: LinkCreateAction;
+  /**
+   * ADR-0077: backend-declared handle on this entity's bespoke link-delete
+   * route. Optional for the same reason `linkCreate` is — every hand-written
+   * `EntityConfig` literal in the Vitest fixtures would otherwise become a
+   * compile error for a key none of them care about. Absent for the 25
+   * non-link entities, and independently absent from `linkCreate`: a junction
+   * that could be linked and not unlinked was the real, shipped state of four
+   * of the six between ADR-0076 and ADR-0077, so the two keys are deliberately
+   * not modelled as one.
+   */
+  linkDelete?: LinkDeleteAction;
+  /**
+   * ADR-0078: per-direction compound-create actions, for a junction direction
+   * whose far entity has no generic `create`. Optional for the same
+   * fixture-compatibility reason as the two keys above, but semantically a
+   * *list searched by direction* rather than a presence flag — a consumer does
+   * `compoundCreates?.find(a => a.farField === relation.targetField)`, so
+   * absent, `[]`, and "declared, but not for this direction" all correctly
+   * collapse to "no compound create here".
+   */
+  compoundCreates?: CompoundCreateAction[];
+  /**
+   * ADR-0079: `compoundCreates`' one-to-many sibling — declared on the CHILD
+   * entity's own config, never a link entity's, and matched by
+   * `farField === relation.scopeField` (never `relation.targetField`, which
+   * is `null` for every one-to-many tab). Same `CompoundCreateAction` shape;
+   * only the matching key differs, because a one-to-many tab's "far field" is
+   * the entity's own already-known scope column, not a second FK to solve
+   * for. Optional for the same fixture-compatibility reason as the two keys
+   * above.
+   */
+  childCompoundCreates?: CompoundCreateAction[];
 }

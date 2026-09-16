@@ -985,7 +985,15 @@ class TestFilterFieldsDerivation:
         # The entity is not left with nothing to filter on — checked here
         # rather than assumed, since an entity whose ONLY column were a blob
         # would be a real finding rather than a detail.
-        assert schema["filterFields"] == ["test_execution_id", "logged_at", "event_type"]
+        #
+        # ADR-0079 Amendment 1 (2026-09-16) added `create_schema` to
+        # `_TEST_LOG_CONFIG` (three new writable fields, for the compound-create
+        # form — `child_compound_creates`, not a generic `create` route) — this
+        # literal grew by two (`attachment_url`/`file_name`, plain strings, both
+        # filterable) and `text` (also new) is excluded by the SAME `long_text`
+        # rule `test_long_text_column_is_not_filterable` above already covers,
+        # not a special case of this test's own JSON-column rule.
+        assert schema["filterFields"] == ["test_execution_id", "attachment_url", "file_name", "event_type", "logged_at"]
 
     def test_json_exclusion_uses_the_generic_type_not_the_postgres_dialect_one(self) -> None:
         """`postgresql.JSONB` subclasses the dialect-agnostic `sqlalchemy.JSON`,

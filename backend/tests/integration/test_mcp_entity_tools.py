@@ -773,7 +773,13 @@ async def test_no_tool_is_advertised_for_a_method_the_entity_does_not_support() 
             unsupported = {
                 "tn_test_log_update",  # TestLog is get/list/create(comment) only — immutable otherwise
                 "tn_test_log_delete",
-                "tn_requirement_test_case_link_create",  # link tables are read-only
+                # ADR-0076 removed `tn_requirement_test_case_link_create` from
+                # this set — `POST /requirements/{id}/test-case-links/{case_id}`
+                # is a real REST route now, so asserting its absence would pin
+                # a claim that has stopped being true. `update`/`delete` stay:
+                # a link row is still immutable and un-deletable through the
+                # API (`app/models/trace.py`), which is the part of "link
+                # tables are read-only" that survives.
                 "tn_requirement_test_case_link_update",
                 "tn_requirement_test_case_link_delete",
                 "tn_permission_create",  # global catalog, read-only via the factory
@@ -791,6 +797,7 @@ async def test_no_tool_is_advertised_for_a_method_the_entity_does_not_support() 
                 "tn_test_log_create",  # the bespoke POST /executions/{id}/comments route
                 "tn_requirement_test_case_link_get",
                 "tn_requirement_test_case_link_list",
+                "tn_requirement_test_case_link_create",  # ADR-0076's bespoke link-create route
                 "tn_permission_get",
                 "tn_permission_list",
                 "tn_test_case_list",  # folded in from MCP-1's nested list — see this test's docstring
@@ -803,10 +810,14 @@ async def test_no_tool_is_advertised_for_a_method_the_entity_does_not_support() 
             )
             _extract_unknown_tool_error(update_result, "tn_test_log_update")
 
-            create_result = await _mcp_call_tool(
-                client, raw_key, "tn_requirement_test_case_link_create", {"fields": {}}, req_id=5
+            # ADR-0076: was `..._create`, which is now a real, advertised tool.
+            # Swapped to `..._delete`, still genuinely unadvertised, so this
+            # probe keeps testing what it was written to test (the SDK rejects
+            # a name that was never registered) rather than being deleted.
+            delete_result = await _mcp_call_tool(
+                client, raw_key, "tn_requirement_test_case_link_delete", {"id": str(uuid.uuid4())}, req_id=5
             )
-            _extract_unknown_tool_error(create_result, "tn_requirement_test_case_link_create")
+            _extract_unknown_tool_error(delete_result, "tn_requirement_test_case_link_delete")
     finally:
         await _cleanup(user_ids=user_ids, org_ids=org_ids, role_ids=role_ids, agent_ids=agent_ids)
 

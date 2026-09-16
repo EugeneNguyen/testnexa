@@ -64,6 +64,23 @@
  * direction) and the resulting `?sort=` query param are `EntityListPage`'s,
  * same split as `page`/`pageSize`.
  *
+ * **[ADR-0073](../../../../../docs/adr/0073-generic-entity-detail-page.md):**
+ * two changes, both additive.
+ *
+ * 1. **`onRowClick`** — an optional callback making each `<tr>` a clickable,
+ *    keyboard-reachable navigation affordance. Same split as sort/pagination:
+ *    this component owns the affordance (cursor, `tabIndex`, Enter/Space
+ *    parity, and the Actions cell's `stopPropagation` so Edit/Delete stay
+ *    independent), `EntityListPage` owns *where* the click goes. Omitting the
+ *    prop reproduces the pre-ADR-0073 `<tr>` byte-for-byte.
+ * 2. **Cell rendering and fk-label resolution moved out**, to
+ *    `components/molecules/entity-field-value` and
+ *    `pages/admin/useFkLabels` respectively, so `EntityDetailPage` renders
+ *    the identical value formatting without a second copy. A pure reuse
+ *    extraction — no rendered-output change, no new decision of its own (see
+ *    `frontend/CLAUDE.md`'s "this is a reuse check, not a new ADR" rule; the
+ *    ADR exists for the detail *page*, not for this move).
+ *
  * **ADR-0071 (COLPREF-1, column visibility + order):** the rendered column
  * list is no longer `config.fields.filter(showInTable !== false)` directly —
  * it is that set merged with a per-entity `localStorage` preference
@@ -80,11 +97,10 @@
  * In-repo precedent for a component owning its own persisted presentation
  * state: `AppHeader`'s colour-mode toggle.
  */
-import { ReactNode, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { KeyboardEvent, ReactNode, useMemo, useState } from "react";
 import Table from "../../../container/Table";
 import { EntityConfig, FieldConfig } from "../../../entityConfigs/types";
-import { EntityRow, getEntity } from "../../../lib/api/entityCrud";
+import { EntityRow } from "../../../lib/api/entityCrud";
 import {
   applyColumnPreferences,
   clearColumnPreferences,
@@ -96,46 +112,16 @@ import {
   toPreferenceRows,
 } from "../../../lib/columnPreferences";
 import { activeFilterCount, filterableFields } from "../../../lib/entityFilters";
-import { resolveEntityKey, useEntitySchemas } from "../../../pages/admin/useEntitySchema";
+import { useFkLabels } from "../../../pages/admin/useFkLabels";
 import { Alert } from "../../atoms/alert/alert";
 import { Button } from "../../atoms/button/button";
 import { Card } from "../../atoms/card/card";
 import { Icon } from "../../atoms/icon/icon";
 import { Spinner } from "../../atoms/spinner/spinner";
 import { TextInput } from "../../atoms/text-input/text-input";
+import { renderEntityFieldValue } from "../../molecules/entity-field-value";
 import { ColumnPreferencesModal } from "../column-preferences-modal";
 import { FilterModal } from "../filter-modal";
-
-/**
- * ADR-0060: `config.detailPath`'s own `:id` placeholder, filled from the
- * row's own id — deliberately narrower than `lib/api/entityCrud.ts`'s
- * `interpolate()` (route-context params like `:orgId`), since a detail link
- * only ever needs the row's own id, never ambient route context.
- */
-function interpolateDetailPath(template: string, id: unknown): string {
-  return template.replace(":id", String(id));
-}
-
-function formatDate(value: unknown): string {
-  if (!value) {
-    return "—";
-  }
-  const date = new Date(String(value));
-  if (Number.isNaN(date.getTime())) {
-    return String(value);
-  }
-  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(date);
-}
-
-function displayValue(value: unknown): string {
-  if (value === null || value === undefined || value === "") {
-    return "—";
-  }
-  if (typeof value === "object") {
-    return JSON.stringify(value);
-  }
-  return String(value);
-}
 
 export interface EntityTableProps {
   /**
@@ -204,6 +190,60 @@ export interface EntityTableProps {
   canDeleteRow?: (row: EntityRow) => boolean;
   onEdit?: (row: EntityRow) => void;
   onDelete?: (row: EntityRow) => void;
+  /**
+   * [ADR-0077](../../../../../docs/adr/0077-relationship-tab-unlink-action.md):
+   * a per-row **Remove** action, for a table whose rows are ADR-0005 link rows
+   * rather than records — `EntityRelationTab`'s many-to-many tab is the one
+   * caller.
+   *
+   * A third prop rather than reusing `onDelete`, because the two gate on
+   * genuinely different facts and collapsing them would require lying about
+   * one of them:
+   *
+   * - `onDelete` is gated on `config.methods.includes("delete")` — "the
+   *   generic factory serves `DELETE /{resource}/{id}`". For a link entity
+   *   that is **false and must stay false**: a link row has no addressable id
+   *   of its own on the generic surface, and flipping the flag to reuse the
+   *   existing button would make every *other* consumer of that config (the
+   *   entity's own list page included) offer a row delete that `405`s.
+   * - `onUnlink` is gated on the prop's presence alone. Whether the capability
+   *   exists is `config.linkDelete`, and whether this actor may use it is that
+   *   declaration's own permission — both questions the caller has already
+   *   answered before it passes the handler, neither of them derivable here.
+   *
+   * It also renders with `aria-label="Remove"`, not "Delete", which is the
+   * accurate word: the far record survives, only the assertion that the two
+   * relate goes away.
+   */
+  onUnlink?: (row: EntityRow) => void;
+  /**
+   * ADR-0073: clicking anywhere on a row that isn't an action control fires
+   * this. Optional — omit it and every `<tr>` renders exactly as it did
+   * before (no `cursor: pointer`, no `tabIndex`, no handlers), so the 9
+   * pre-existing `entity-table.test.tsx` fixtures and every non-admin caller
+   * are unaffected. `EntityListPage` is the one caller that passes it.
+   *
+   * The trailing Actions cell stops propagation, so Edit/Delete keep working
+   * as their own independent affordances (TC-ADMIN-061) — that is the one
+   * piece of "don't navigate" knowledge this component owns; everything
+   * about *where* a row click goes is the caller's.
+   */
+  onRowClick?: (row: EntityRow) => void;
+  /**
+   * ADR-0074 (Amendment): render the `.card-body` sections **without** the
+   * surrounding `.card`/`.card-header`, for a caller that already owns a card
+   * — `EntityDetailPage`'s relationship tab pane, which lives inside one card
+   * whose header is the tab strip itself (Tabler's documented "tabs in the
+   * card header" pattern). Nesting this component's own card inside that
+   * card's body would paint a second border/shadow around the table and
+   * repeat the tab's label as a card title.
+   *
+   * Opt-in and default-off, so all 24 list screens and every existing
+   * `entity-table.test.tsx` fixture render byte-for-byte as before. `title`
+   * and the search box live in the header and are therefore not rendered in
+   * this mode; the relationship tab passes neither.
+   */
+  bare?: boolean;
 }
 
 function EntityTable({
@@ -229,6 +269,9 @@ function EntityTable({
   canDeleteRow = () => true,
   onEdit,
   onDelete,
+  onUnlink,
+  onRowClick,
+  bare = false,
 }: EntityTableProps) {
   // ADR-0071. `preferencesResource` tracks which entity `preferences` was
   // loaded for: this component is remounted-or-not across admin routes at
@@ -259,8 +302,6 @@ function EntityTable({
     [defaultFields, preferences, lockedFields],
   );
 
-  const fkFields = tableFields.filter((f) => f.type === "fk" && f.refEntity);
-  const [fkLabels, setFkLabels] = useState<Record<string, Record<string, string>>>({});
   // ADR-0072: only the modal's *open/closed* flag lives here. The filters
   // themselves are `EntityListPage`'s — see the `filters` prop's own comment.
   const [showFilterModal, setShowFilterModal] = useState(false);
@@ -277,109 +318,47 @@ function EntityTable({
     setShowColumnPreferences(false);
   }
 
-  const showActionsColumn = (config.methods.includes("update") || config.methods.includes("delete")) && (onEdit || onDelete);
+  // ADR-0077 adds the third disjunct. `onUnlink` carries **no**
+  // `config.methods` conjunct on purpose — see that prop's own doc comment:
+  // the capability it renders is declared by `config.linkDelete`, which is
+  // precisely the thing `methods` does not and must not describe.
+  const showActionsColumn =
+    ((config.methods.includes("update") || config.methods.includes("delete")) && (onEdit || onDelete)) ||
+    Boolean(onUnlink);
 
-  // ADR-0053: every distinct ref-entity schema this config's FK columns need,
-  // fetched once here rather than per-field (the Rules of Hooks make a
-  // per-column `useEntitySchema` illegal). Keyed by the *resolved* (plural)
-  // entity key, so look results up through `resolveEntityKey` — `refEntity`
-  // values are singular.
-  const refEntityKeys = useMemo(
-    () => config.fields.filter((f) => f.refEntity).map((f) => f.refEntity as string),
-    [config.fields],
-  );
-  const refConfigs = useEntitySchemas(refEntityKeys);
-
-  // A *primitive* fingerprint of which ref schemas have actually landed. The
-  // effect below has to re-run when one arrives (they resolve after first
-  // render now, where the old registry lookup was synchronous) — but keying it
-  // on `refConfigs`' object identity would make it re-run on every render for
-  // any caller that passes a fresh `config` object, and each run calls
-  // `setFkLabels`, i.e. a render loop. A joined string can't do that.
-  const refConfigFingerprint = fkFields
-    .map((f) => `${f.name}:${refConfigs[resolveEntityKey(f.refEntity as string)]?.path ?? ""}`)
-    .join("|");
-
-  // Batched, deduped FK label resolution — one `getEntity` per distinct id
-  // per FK field across the current page, not one per row (§3).
-  useEffect(() => {
-    let cancelled = false;
-
-    async function resolve() {
-      const next: Record<string, Record<string, string>> = {};
-      for (const field of fkFields) {
-        const refConfig = field.refEntity ? refConfigs[resolveEntityKey(field.refEntity)] : undefined;
-        if (!refConfig) {
-          continue;
-        }
-        const ids = Array.from(
-          new Set(rows.map((row) => row[field.name]).filter((v): v is string => typeof v === "string")),
-        );
-        const entries = await Promise.all(
-          ids.map(async (id) => {
-            try {
-              const row = await getEntity<EntityRow>(refConfig, id);
-              const label = field.labelField ? row[field.labelField] : row.id;
-              return [id, label === null || label === undefined ? id : String(label)] as const;
-            } catch {
-              return [id, id] as const;
-            }
-          }),
-        );
-        next[field.name] = Object.fromEntries(entries);
-      }
-      if (!cancelled) {
-        setFkLabels(next);
-      }
-    }
-
-    if (fkFields.length > 0) {
-      void resolve();
-    }
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, refConfigFingerprint]);
+  // ADR-0053 (batching) / ADR-0073 (extracted to a shared hook so
+  // `EntityDetailPage` reuses it): one `getEntity` per *distinct* fk id per fk
+  // column across the current page, not one per row (§3). `config.fields` (not
+  // `tableFields`) is the schema-fetch list, preserving this component's
+  // pre-extraction behavior exactly — see `useFkLabels`' own doc comment.
+  const fkLabels = useFkLabels(tableFields, rows, config.fields);
 
   function renderCell(field: FieldConfig, row: EntityRow) {
-    const raw = row[field.name];
-    switch (field.type) {
-      case "fk": {
-        const id = typeof raw === "string" ? raw : undefined;
-        if (!id) {
-          return "—";
-        }
-        return fkLabels[field.name]?.[id] ?? id;
-      }
-      case "boolean":
-        return <span className={`badge bg-${raw ? "success" : "secondary"}`}>{raw ? "Yes" : "No"}</span>;
-      case "date":
-        return formatDate(raw);
-      case "enum": {
-        if (raw === null || raw === undefined || raw === "") {
-          return "—";
-        }
-        // ADR-0053: backend-served, per-field. Anything the backend didn't
-        // colour — including every value of an enum served with no
-        // `badgeColors` at all — stays a plain grey badge, exactly as the old
-        // module-level constant's own default did.
-        const color = field.badgeColors?.[String(raw)] ?? "secondary";
-        return <span className={`badge bg-${color}`}>{String(raw)}</span>;
-      }
-      default: {
-        const text = displayValue(raw);
-        // ADR-0060: restores ProjectsPage's "click a project's name to open
-        // it" navigation, generically — see EntityConfig.detailPath's own
-        // doc comment. Only fires for the one designated field, and only
-        // when the row actually has an id to link to (never on "—").
-        if (config.detailPath && config.detailLinkField === field.name && row.id !== undefined && text !== "—") {
-          return <Link to={interpolateDetailPath(config.detailPath, row.id)}>{text}</Link>;
-        }
-        return text;
-      }
-    }
+    return renderEntityFieldValue({ field, row, fkLabels, config });
   }
+
+  /**
+   * ADR-0073: a row is only interactive when the caller actually wired
+   * `onRowClick`. Keyboard parity matters — a bare `onClick` on a `<tr>` is
+   * mouse-only, so Enter/Space on a focused row fire the same navigation
+   * (`role`/accessible-name computation is untouched: `tabIndex` changes
+   * neither, so every existing `getByRole("row", {name})` lookup still
+   * resolves the same way — `frontend/CLAUDE.md`'s nested-table note).
+   */
+  const rowInteractionProps = onRowClick
+    ? (row: EntityRow) => ({
+        onClick: () => onRowClick(row),
+        onKeyDown: (event: KeyboardEvent<HTMLTableRowElement>) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onRowClick(row);
+          }
+        },
+        tabIndex: 0,
+        style: { cursor: "pointer" },
+        "data-testid": `entity-table-row-${String(row.id)}`,
+      })
+    : () => ({});
 
   const showSearch = Boolean(onSearchChange && config.searchFields && config.searchFields.length > 0);
   // ADR-0072. Suppressed for an entity whose served schema exposes no
@@ -395,61 +374,8 @@ function EntityTable({
   // Loading/empty states fall back to a normally-padded body.
   const showTable = !loading && rows.length > 0;
 
-  return (
-    <Card className="h-100">
-      <Card.Header className="d-flex flex-wrap align-items-center justify-content-between">
-        <Card.Title>{title}</Card.Title>
-        <div className="card-tools d-flex flex-wrap align-items-center gap-2 ms-auto">
-          {showSearch && (
-            <TextInput
-              type="text"
-              style={{ width: 200, maxWidth: "100%" }}
-              placeholder="Search..."
-              value={search ?? ""}
-              onChange={(event) => onSearchChange!(event.target.value)}
-              data-testid="entity-table-search"
-            />
-          )}
-          <Button
-            outline
-            color="secondary"
-            size="sm"
-            aria-label="Columns"
-            title="Columns"
-            onClick={() => setShowColumnPreferences(true)}
-            data-testid="entity-table-columns"
-          >
-            <Icon name="table-columns" />
-          </Button>
-          {showFilter && (
-            <Button
-              outline
-              color={filterCount > 0 ? "primary" : "secondary"}
-              size="sm"
-              aria-label="Filter"
-              title={filterCount > 0 ? `Filter (${filterCount} active)` : "Filter"}
-              onClick={() => setShowFilterModal(true)}
-              data-testid="entity-table-filter"
-            >
-              <Icon name="filter" />
-              {/*
-                ADR-0072: the active-filter count is load-bearing, not
-                decoration. Filters are deliberately NOT persisted, and this
-                badge is the mitigation for the reason why — an active filter
-                is invisible in a way a hidden column is not, so without a
-                visible count a narrowed list reads as missing data.
-              */}
-              {filterCount > 0 && (
-                <span className="badge bg-primary ms-1" data-testid="entity-table-filter-count">
-                  {filterCount}
-                </span>
-              )}
-            </Button>
-          )}
-          {headerActions}
-        </div>
-      </Card.Header>
-
+  const sections = (
+    <>
       {loadError && (
         <Card.Body className="border-bottom">
           <Alert color="danger" className="mb-0">
@@ -509,12 +435,21 @@ function EntityTable({
             </tr>
           }
           renderRow={(row) => (
-            <tr>
+            <tr {...rowInteractionProps(row)}>
               {tableFields.map((field) => (
                 <td key={field.name}>{renderCell(field, row)}</td>
               ))}
               {showActionsColumn && (
-                <td>
+                <td
+                  /**
+                   * ADR-0073: the row's own click handler must not fire when
+                   * the user meant "Edit"/"Delete". One `stopPropagation` on
+                   * the containing cell covers every current and future
+                   * action control in it, rather than one per button.
+                   */
+                  onClick={(event) => event.stopPropagation()}
+                  onKeyDown={(event) => event.stopPropagation()}
+                >
                   <div className="d-flex gap-2">
                     {config.methods.includes("update") && onEdit && canEditRow(row) && (
                       <Button
@@ -538,6 +473,27 @@ function EntityTable({
                         <Icon name="trash" />
                       </Button>
                     )}
+                    {/*
+                      ADR-0077. Same visual/a11y shape as the Delete button
+                      above — `btn-outline-danger`, the `trash` glyph, an
+                      `aria-label` carrying the accessible name because the
+                      button is icon-only — but a different word, because the
+                      thing it removes is the *link*, not the record the row
+                      points at.
+                    */}
+                    {onUnlink && (
+                      <Button
+                        color="danger"
+                        outline
+                        size="sm"
+                        aria-label="Remove"
+                        title="Remove"
+                        data-testid="entity-table-unlink"
+                        onClick={() => onUnlink(row)}
+                      >
+                        <Icon name="trash" />
+                      </Button>
+                    )}
                   </div>
                 </td>
               )}
@@ -546,6 +502,73 @@ function EntityTable({
         />
       )}
       </Card.Body>
+    </>
+  );
+
+  // ADR-0074 (Amendment): the caller already owns the card — see `bare`.
+  // The header's Columns/Filter affordances (and therefore their modals) live
+  // on the card, so a bare mount renders neither — correct, since a
+  // relationship tab passes neither `onFiltersChange` nor a `title`.
+  if (bare) {
+    return sections;
+  }
+
+  return (
+    <Card className="h-100">
+      <Card.Header className="d-flex flex-wrap align-items-center justify-content-between">
+        <Card.Title>{title}</Card.Title>
+        <div className="card-tools d-flex flex-wrap align-items-center gap-2 ms-auto">
+          {showSearch && (
+            <TextInput
+              type="text"
+              style={{ width: 200, maxWidth: "100%" }}
+              placeholder="Search..."
+              value={search ?? ""}
+              onChange={(event) => onSearchChange!(event.target.value)}
+              data-testid="entity-table-search"
+            />
+          )}
+          <Button
+            outline
+            color="secondary"
+            size="sm"
+            aria-label="Columns"
+            title="Columns"
+            onClick={() => setShowColumnPreferences(true)}
+            data-testid="entity-table-columns"
+          >
+            <Icon name="table-columns" />
+          </Button>
+          {showFilter && (
+            <Button
+              outline
+              color={filterCount > 0 ? "primary" : "secondary"}
+              size="sm"
+              aria-label="Filter"
+              title={filterCount > 0 ? `Filter (${filterCount} active)` : "Filter"}
+              onClick={() => setShowFilterModal(true)}
+              data-testid="entity-table-filter"
+            >
+              <Icon name="filter" />
+              {/*
+                ADR-0072: the active-filter count is load-bearing, not
+                decoration. Filters are deliberately NOT persisted, and this
+                badge is the mitigation for the reason why — an active filter
+                is invisible in a way a hidden column is not, so without a
+                visible count a narrowed list reads as missing data.
+              */}
+              {filterCount > 0 && (
+                <span className="badge bg-primary ms-1" data-testid="entity-table-filter-count">
+                  {filterCount}
+                </span>
+              )}
+            </Button>
+          )}
+          {headerActions}
+        </div>
+      </Card.Header>
+
+      {sections}
 
       <ColumnPreferencesModal
         visible={showColumnPreferences}

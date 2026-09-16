@@ -58,6 +58,37 @@ export function toEntityConfig(key: string, schema: EntitySchemaResponse): Entit
     ...(schema.scopeResolution !== null ? { scopeResolution: schema.scopeResolution } : {}),
     searchFields: schema.searchFields,
     filterFields: schema.filterFields,
+    // ADR-0074. Normalized to `[]` rather than passed through: a config
+    // assembled here always carries a real array, so `EntityDetailPage` never
+    // has to distinguish "no relationships" from "an older backend that
+    // doesn't serve the key yet".
+    relations: schema.relations ?? [],
+    // ADR-0076. Spread-omitted rather than normalized to a sentinel: unlike
+    // `relations` (where "no relationships" and "empty list" mean the same
+    // thing), `linkCreate` is a presence flag — `EntityRelationTab` renders
+    // the "Link existing ..." action if and only if the key is there — so the
+    // `null` the wire sends for a non-link entity must become *absent*, not a
+    // falsy object, matching `scopeField`/`scopeSelector`'s own treatment two
+    // lines up.
+    ...(schema.linkCreate ? { linkCreate: schema.linkCreate } : {}),
+    // ADR-0077. Spread-omitted on exactly the same terms as `linkCreate`
+    // above, and spread *separately* rather than under one condition: a
+    // junction with a create and no delete is not hypothetical — it is what
+    // four of the six actually were between ADR-0076 and ADR-0077, and a
+    // client that inferred one key from the other would have rendered a
+    // Remove button for a route that did not exist.
+    ...(schema.linkDelete ? { linkDelete: schema.linkDelete } : {}),
+    // ADR-0078. Normalized to `[]` like `relations`, NOT spread-omitted like
+    // the two keys above — and the difference is not stylistic. Those two are
+    // presence flags answering "does this capability exist at all"; this one
+    // is a *list the caller searches by direction* (`find(a => a.farField ===
+    // relation.targetField)`), so "no compound create declared" and "none for
+    // this direction" already collapse to the same miss. An older backend that
+    // serves no key at all lands on the same empty array and behaves
+    // identically to a junction that needs none.
+    compoundCreates: schema.compoundCreates ?? [],
+    // ADR-0079. Same normalize-to-`[]` treatment, for the identical reason.
+    childCompoundCreates: schema.childCompoundCreates ?? [],
   };
 }
 

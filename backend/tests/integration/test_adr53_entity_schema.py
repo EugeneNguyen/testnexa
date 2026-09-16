@@ -52,6 +52,38 @@ ENVELOPE_KEYS = {
     "searchFields",
     "filterFields",
     "fields",
+    # ADR-0074: the tenth key — this entity's inbound relationships, backing
+    # `EntityDetailPage`'s tabs. Additive; every key above is unchanged.
+    "relations",
+    # ADR-0076: the eleventh — this entity's bespoke link-create route, or
+    # `null` for the 23 entities that are not link tables. Also additive, and
+    # unconditionally present for the same reason `relations` is: a frontend
+    # must be able to read "no link action" off the value, not off the key's
+    # absence.
+    "linkCreate",
+    # ADR-0077: the twelfth — this entity's bespoke link-*delete* route, or
+    # `null` for the 23 entities that are not link tables. Additive and
+    # unconditionally present for the same reason `linkCreate` is, and read
+    # **independently** of it: a junction that can be linked and not unlinked
+    # is not hypothetical, it is what four of the six were between the two
+    # ADRs.
+    "linkDelete",
+    # ADR-0078: the thirteenth — per-*direction* compound-create actions for a
+    # junction whose far entity has no generic `create` at all. Additive and
+    # unconditionally present like the three above it, but a **list** rather
+    # than a nullable object: a client searches it by direction
+    # (`find(a => a.farField === relation.targetField)`), so "declares none" and
+    # "declares some, but not for your direction" are already the same answer,
+    # and `[]` says it without a null check at every call site. Empty for the 23
+    # non-link entities AND for the 3 junctions whose every direction's far
+    # entity can already be created generically.
+    "compoundCreates",
+    # ADR-0079: the fourteenth — `compoundCreates`' one-to-many sibling,
+    # declared on the CHILD entity itself rather than a link table, and
+    # matched by the client against `relation.scopeField` rather than
+    # `relation.targetField`. Same additive/always-a-list posture as
+    # `compoundCreates`, for the same reason.
+    "childCompoundCreates",
 }
 
 
