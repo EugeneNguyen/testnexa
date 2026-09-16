@@ -148,3 +148,36 @@ supply). FR-ADMIN-11, NFR-82, WBS 11.61, Test-Design §68.
   need it, for "consistency."** Rejected — nothing about a picker for a
   direction that needs none is more correct than omitting it; it would be
   unused code with its own test burden and no user-visible benefit.
+
+### Amendment 1 (2026-09-16, same day, pre-merge — `TestLog` was not actually an exception)
+
+The Context/Consequences text above classifies `TestExecution` → "Test logs"
+an exception, reasoning "append-only by schema — no route could exist." That
+was wrong: `POST /executions/{id}/comments` (EXEC-2) already exists, is
+gated on `test_execution.update`, and writes exactly one `TestLog` row per
+call — structurally identical to the other three closed directions (one
+bespoke route, parent = path placeholder = this entity's own `scope_field`,
+one transaction, no separate link table). It was missed because the route's
+name/shape ("add a comment") doesn't read like a generic entity create the
+way `POST /requirements/{id}/test-conditions` does.
+
+Closing it needed one thing none of the original three did:
+`_TEST_LOG_CONFIG` had no writable schema at all (`create_schema=None`,
+`update_schema=NoSchema`), so `derive_entity_schema` derived every field
+`readOnly: true` and the generic create form had nothing to render — fixed
+by setting `create_schema=AddTestLogCommentRequest` **without** adding
+`"create"` to `methods` (the generic factory only registers a create route
+when both are true), supplying three real writable fields (`text` required,
+`attachment_url`/`file_name` optional) for the compound-create form with
+zero change to `TestLog`'s actual REST surface. An explicit
+`search_fields=()` override keeps `?q=` a documented no-op, since ADR-0070's
+default would otherwise have picked up the two new plain-string fields as an
+unrelated side effect.
+
+`TestExecution` → "Test logs" moves from "exception" to "closed" in the
+`CLASSIFICATION` table (`test_adr79_child_compound_create.py`); only
+`Organization` → "Org memberships" remains a genuine exception. Found and
+fixed the same day, in the same pass that also built
+[ADR-0080](0080-standalone-list-page-compound-create.md) (the standalone
+list-page host for this same mechanism) — see that ADR for the second host
+this correction also closes. FR-ADMIN-12, NFR-83.

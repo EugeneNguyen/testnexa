@@ -332,22 +332,75 @@ _TEST_EXECUTION_CONFIG = CrudEntityConfig(
 _TEST_LOG_CONFIG = CrudEntityConfig(
     model=TestLog,
     resource="test_log",
-    create_schema=None,
+    # ADR-0079 Amendment 1: `create_schema` set to the bespoke comment route's
+    # own request shape *without* adding "create" to `methods` below — the
+    # generic factory only registers a create route when BOTH are true
+    # (`"create" in config.methods and config.create_schema is not None`,
+    # this module's own `make_crud_router` gate), so this cannot enable a
+    # generic `POST /test-logs`. What it DOES do: `derive_entity_schema`'s
+    # writable-field union (`create_schema`/`update_schema`, either present)
+    # now includes `AddTestLogCommentRequest`'s three fields as real,
+    # non-readOnly, "text"-required fields — the fields the compound-create
+    # form below actually needs. Before this, every field derived readOnly
+    # from `TestLogSummary` alone, correctly for *display* but leaving no
+    # writable field for any create form to ever render.
+    create_schema=AddTestLogCommentRequest,
     update_schema=NoSchema,
     summary_schema=TestLogSummary,
     scope_field="test_execution_id",
     resolve_org_id=_resolve_test_log_org_id,
     methods=frozenset({"list", "get"}),
-    # ADR-0053. Every field derives `readOnly: true` on its own — `create_schema`
-    # is `None` and `update_schema` is `NoSchema`, so there are no writable
-    # schemas at all and the whole shape comes from `TestLogSummary` (this entity
-    # is append-only/immutable by schema, ADR-0025). That also makes the derived
-    # order already match the hand-written config's, so no `field_order` is needed.
+    # ADR-0079 Amendment 1. ADR-0070's default (every writable string field is
+    # searchable unless excluded) would otherwise pick up `attachment_url`/
+    # `file_name` now that `create_schema` supplies them — an explicit `()`
+    # override keeps `?q=` a documented no-op on this entity exactly as
+    # `test_q_is_silently_ignored_for_test_log_which_has_no_search_fields`
+    # already asserts, a deliberate choice rather than an accidental side
+    # effect of adding the two fields for a different reason.
+    search_fields=(),
+    # ADR-0053's original claim above ("append-only, no writable schema at
+    # all") is corrected by the Amendment 1 note just above — kept visible
+    # rather than deleted, since it was true before this row existed and the
+    # `methods` set (still no "create"/"update") is what actually keeps this
+    # entity's generic REST surface unchanged.
     label="Test logs",
     scope_selector=ScopeSelectorOption(ref_entity="test-execution", param_name="test_execution_id"),
+    # `text`/`attachment_url`/`file_name` lead (the new writable fields, in
+    # the same order `AddTestLogCommentRequest` declares them), then the
+    # pre-existing summary-only fields — mirrors every other config's
+    # "writable, then read-only" convention (ADR-0053 Amendment 1).
+    field_order=(
+        "test_execution_id",
+        "text",
+        "attachment_url",
+        "file_name",
+        "event_type",
+        "payload",
+        "logged_at",
+    ),
     field_meta={
         "test_execution_id": FieldMeta(ref_entity="test-execution", label_field="result", label="Test execution"),
+        "text": FieldMeta(long_text=True, label="Comment"),
     },
+    # ADR-0079 Amendment 1: the one-to-many sibling of the other three
+    # closed directions, added later than they were once a real create
+    # route was found to already exist for this entity (`POST
+    # /executions/{id}/comments`, EXEC-2) — ADR-0079's original audit missed
+    # it because the route's name/shape ("add a comment") doesn't read like
+    # a generic entity create the way `POST /requirements/{id}/test-conditions`
+    # does, even though it is structurally identical: one bespoke route,
+    # parent = path placeholder = this entity's own `scope_field`, one
+    # transaction, no separate link table. `TestExecution` -> "Test logs"
+    # moves from ADR-0079's "exception" classification to "closed" as a
+    # result — see that ADR's own `### Amendment` for the full correction.
+    child_compound_creates=(
+        CompoundCreateAction(
+            far_field="test_execution_id",
+            path_template="/executions/{test_execution_id}/comments",
+            permission="test_execution.update",
+            links_automatically=True,
+        ),
+    ),
 )
 
 router.include_router(make_crud_router(_DEFECT_CONFIG))

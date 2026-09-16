@@ -610,7 +610,18 @@ async def test_entity_schema_advertises_the_derived_filter_fields() -> None:
             # never errors — it is a silent always-empty filter — which is why
             # it must not be offered rather than merely coerced.
             logs = (await client.get(f"{API_PREFIX}/entities/test-logs/schema", headers=headers)).json()
-            assert logs["filterFields"] == ["test_execution_id", "logged_at", "event_type"]
+            # ADR-0079 Amendment 1 (2026-09-16) added `create_schema` to
+            # `_TEST_LOG_CONFIG` for the compound-create form — `attachment_url`/
+            # `file_name` (plain strings) joined the filterable set; `text`
+            # (also new) is excluded by the SAME `long_text` rule this file's
+            # own `description`/`preconditions` exclusions above already cover.
+            assert logs["filterFields"] == [
+                "test_execution_id",
+                "attachment_url",
+                "file_name",
+                "event_type",
+                "logged_at",
+            ]
             assert next(f for f in logs["fields"] if f["name"] == "payload")["filterable"] is False
 
             # The invariant that keeps the route and the schema honest: the

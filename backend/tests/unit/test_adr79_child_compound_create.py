@@ -15,13 +15,32 @@ button at all, even when a real bespoke atomic-create route exists and is
 already reachable from *this exact* tab's own scope. Live audit (2026-09-16)
 found seven such tabs; three have a real route whose parent IS the tab's own
 scope (`Requirement` -> Test conditions, `TestExecution` -> Defects,
-`TestPlan` -> Test cycles) and are closed here. Two need a genuinely new
-picker mechanism (`TestExecution`'s two 1-n directions, both needing the
-*other* of its two real parents picked) and are deliberately left open, named
-explicitly below rather than silently passed over. Two are not gaps at all —
-`TestLog` is append-only by schema (no route could exist) and `OrgMembership`
-is authored only through Invite+Accept, a materially different flow a "New"
-button cannot represent.
+`TestPlan` -> Test cycles) and were closed in the original pass. Two need a
+genuinely new picker mechanism (`TestExecution`'s two 1-n directions, both
+needing the *other* of its two real parents picked) and are deliberately left
+open, named explicitly below rather than silently passed over. One is not a
+gap at all — `OrgMembership` is authored only through Invite+Accept, a
+materially different flow a "New" button cannot represent.
+
+**Amendment 1 (2026-09-16, same day, pre-merge — `docs/CLAUDE.md`'s
+same-branch-correction convention):** `TestExecution` -> "Test logs" was
+originally classified an "exception" alongside `OrgMembership` ("append-only
+by schema, no route could exist"). That was wrong — `POST
+/executions/{id}/comments` (EXEC-2) already exists, is structurally identical
+to the other three closed routes (one bespoke route, parent = path
+placeholder = this entity's own `scope_field`, one transaction, no separate
+link table), and was missed only because its name/shape ("add a comment")
+doesn't read like a generic entity create the way `POST
+/requirements/{id}/test-conditions` does. Closing it needed one more piece
+none of the original three did: `_TEST_LOG_CONFIG` had no writable schema at
+all (`create_schema=None`, `update_schema=NoSchema`), so `derive_entity_schema`
+derived every field `readOnly: true` and the generic create form had nothing
+to render — fixed by setting `create_schema=AddTestLogCommentRequest`
+*without* adding `"create"` to `methods` (the generic factory only registers
+a create route when both are true), which supplies real writable fields for
+the compound-create form with zero change to `TestLog`'s actual REST surface.
+`TestExecution` -> "Test logs" moves from "exception" to "closed"; only
+`OrgMembership` remains a genuine exception.
 
 ## The oracle, same discipline as ADR-0078
 
@@ -67,11 +86,11 @@ CLASSIFICATION: dict[tuple[str, str], str] = {
     ("test-plans", "Test cycles"): "closed",
     ("test-cases", "Test executions"): "open",
     ("test-cycles", "Test executions"): "open",
-    ("test-executions", "Test logs"): "exception",
+    ("test-executions", "Test logs"): "closed",  # Amendment 1 (2026-09-16)
     ("organizations", "Org memberships"): "exception",
 }
 
-#: The three closed directions and the bespoke route each borrows. Hand-written
+#: The four closed directions and the bespoke route each borrows. Hand-written
 #: on purpose and not used as the completeness oracle, mirroring ADR-0078's own
 #: `EXPECTED_DECLARATIONS` — the human-readable design record, checked against
 #: the declarations, while "is any direction missing" is answered by the
@@ -91,6 +110,19 @@ EXPECTED_DECLARATIONS: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("test-cycles", "test_plan_id"): (
         "/test-plans/{test_plan_id}/test-cycles",
         "test_cycle.create",
+        True,
+    ),
+    # Amendment 1 (2026-09-16). Permission is deliberately `test_execution.update`,
+    # not `test_log.create` (no such code exists) — the real route
+    # (`add_test_execution_comment`) is gated on the SAME permission a
+    # `result` correction already requires, since appending a comment/log
+    # entry is treated as updating the execution's own record, not creating
+    # an independent one. `test_the_permission_is_the_child_s_own_create_code`
+    # below carves this declaration out of its "always `${child}.create`"
+    # assertion for exactly this reason.
+    ("test-logs", "test_execution_id"): (
+        "/executions/{test_execution_id}/comments",
+        "test_execution.update",
         True,
     ),
 }
@@ -193,15 +225,18 @@ def test_open_and_exception_directions_are_named_not_silently_passing() -> None:
     assert open_directions <= gaps
 
 
-def test_the_two_exception_directions_have_no_generic_create_and_no_declaration() -> None:
-    """**TC-ADMIN-129.** `TestLog`/`OrgMembership` are gaps this ADR does not
+def test_the_one_exception_direction_has_no_generic_create_and_no_declaration() -> None:
+    """**TC-ADMIN-129.** `OrgMembership` is the one gap this ADR does not
     attempt to close — asserted here so a future change that quietly adds a
-    `child_compound_creates` entry for either doesn't merge unreviewed (the
-    exception's whole reasoning — append-only schema, invite-flow authoring —
-    would need re-litigating, not just re-testing)."""
+    `child_compound_creates` entry for it doesn't merge unreviewed (the
+    exception's whole reasoning — invite-flow authoring, a plain "New" form
+    would misrepresent it — would need re-litigating, not just re-testing).
+
+    `TestLog` was the sibling exception until Amendment 1 (2026-09-16) found
+    a real route and closed it — see `test_the_declared_actions_are_exactly_
+    the_four_expected` for its own declaration-shape assertions instead."""
     exceptions = {pair for pair, status in CLASSIFICATION.items() if status == "exception"}
-    assert exceptions == {("test-executions", "Test logs"), ("organizations", "Org memberships")}
-    assert ALL_ENTITY_CONFIGS["test-logs"].child_compound_creates == ()
+    assert exceptions == {("organizations", "Org memberships")}
     assert ALL_ENTITY_CONFIGS["org-memberships"].child_compound_creates == ()
 
 
@@ -242,7 +277,7 @@ def test_the_spurious_checker_actually_sees_a_gap() -> None:
     assert spurious_child_compound_create(ALL_ENTITY_CONFIGS) == set()
 
 
-def test_the_declared_actions_are_exactly_the_three_expected() -> None:
+def test_the_declared_actions_are_exactly_the_four_expected() -> None:
     """**TC-ADMIN-130.** Each declaration's route, permission and
     `links_automatically` flag, pinned against the design record."""
     actual = {
@@ -334,10 +369,30 @@ def test_every_declared_permission_code_exists_in_the_rbac_catalog(
     assert action.permission in codes
 
 
-@pytest.mark.parametrize("key,action", _declared_actions(), ids=lambda v: getattr(v, "far_field", v))
+@pytest.mark.parametrize(
+    "key,action",
+    [(k, a) for k, a in _declared_actions() if k != "test-logs"],
+    ids=lambda v: getattr(v, "far_field", v),
+)
 def test_the_permission_is_the_child_s_own_create_code(key: str, action: CompoundCreateAction) -> None:
-    """**TC-ADMIN-130.** True of all three today — asserted, not assumed, per
-    ADR-0078's own sibling test's reasoning: a fact about these three routes,
-    not a rule the client is allowed to derive."""
+    """**TC-ADMIN-130.** True of three of the four — asserted, not assumed,
+    per ADR-0078's own sibling test's reasoning: a fact about these three
+    routes, not a rule the client is allowed to derive. `test-logs` is
+    deliberately excluded and covered by its own sibling test below instead
+    — no `test_log.create` permission code exists at all, by design (ADR-0079
+    Amendment 1: `TestLog` is still append-only/immutable by schema, gated on
+    the parent `TestExecution`'s own `.update` code)."""
     child_resource = ALL_ENTITY_CONFIGS[key].resource
     assert action.permission == f"{child_resource}.create"
+
+
+def test_the_test_log_declaration_is_gated_on_the_parent_s_update_code_not_a_create_code() -> None:
+    """**TC-ADMIN-130.** The one declaration excluded from the test above,
+    asserted on its own literal (not-derived) value — `test_log.create` is
+    not in the RBAC catalog at all (`TestLog` has no `create` permission
+    code, ever), so this is not an oversight to close but the correct gate
+    for the real route it borrows."""
+    action = ALL_ENTITY_CONFIGS["test-logs"].child_compound_creates[0]
+    assert action.permission == "test_execution.update"
+    codes = {code for code, _, _ in build_permission_catalog()}
+    assert "test_log.create" not in codes

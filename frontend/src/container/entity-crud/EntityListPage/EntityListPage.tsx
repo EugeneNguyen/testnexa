@@ -50,7 +50,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { usePermissions } from "../../../auth/usePermissions";
 import { Alert, Button, Card, Icon, Spinner, Modal, EntityForm, EntityTable, ScopeSelector } from "../../../components";
 import { ApiError } from "../../../lib/api/client";
-import { createEntity, deleteEntity, EntityRow, listEntities } from "../../../lib/api/entityCrud";
+import { createEntity, createViaCompoundRoute, deleteEntity, EntityRow, listEntities } from "../../../lib/api/entityCrud";
 import { useAdminRouteContext } from "../../../pages/admin/useAdminRouteContext";
 import { useEntityScope } from "../../../pages/admin/useEntityScope";
 
@@ -133,7 +133,10 @@ function EntityListPage({ entityKeyOverride }: { entityKeyOverride?: string } = 
   }
 
   const createMutation = useMutation({
-    mutationFn: (values: Record<string, unknown>) => createEntity(config!, routeParams, values),
+    mutationFn: (values: Record<string, unknown>) =>
+      childCompoundCreate && scope.field && scope.value
+        ? createViaCompoundRoute(childCompoundCreate, { [scope.field]: scope.value }, values)
+        : createEntity(config!, routeParams, values),
     onSuccess: () => {
       setShowCreateModal(false);
       setCreateError(null);
@@ -196,6 +199,23 @@ function EntityListPage({ entityKeyOverride }: { entityKeyOverride?: string } = 
 
   const canCreate = config.methods.includes("create") && permissions.has(`${config.resource}.create`, projectId);
 
+  /**
+   * ADR-0080: a second host for ADR-0079's `child_compound_creates` — the
+   * standalone list page's own `scope_field`/`scope_selector` already
+   * resolves the exact parent value a declaration's `far_field` names by the
+   * time any row renders, the identical "no picker needed, the record is
+   * already known" reasoning ADR-0079 established for a relation tab (there
+   * the known value is the tab's own `relation.scopeField`; here it's
+   * `useEntityScope`'s already-resolved `scope.field`/`scope.value`). Reuses
+   * the same declarations verbatim — no new backend field, no new shape.
+   */
+  const childCompoundCreate =
+    !canCreate && scope.field
+      ? config.childCompoundCreates?.find((action) => action.farField === scope.field)
+      : undefined;
+  const canCreateViaCompound =
+    Boolean(childCompoundCreate) && permissions.has(childCompoundCreate!.permission, projectId);
+
   const pageTitle = label ?? entityKey.replace(/-/g, " ");
 
   return (
@@ -229,7 +249,7 @@ function EntityListPage({ entityKeyOverride }: { entityKeyOverride?: string } = 
         <EntityTable
           title={pageTitle}
           headerActions={
-            canCreate && (
+            (canCreate || canCreateViaCompound) && (
               <Button
                 color="primary"
                 size="sm"
