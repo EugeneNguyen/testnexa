@@ -679,10 +679,11 @@ class TestNoSchema:
 
 
 class TestTopLevelShape:
-    def test_response_carries_exactly_the_thirteen_documented_keys(self) -> None:
+    def test_response_carries_exactly_the_fourteen_documented_keys(self) -> None:
         """`relations` is the tenth (ADR-0074), `linkCreate` the eleventh
         (ADR-0076), `linkDelete` the twelfth (ADR-0077), `compoundCreates` the
-        thirteenth (ADR-0078)."""
+        thirteenth (ADR-0078), `childCompoundCreates` the fourteenth
+        (ADR-0079)."""
         assert set(derive_entity_schema(_widget_config())) == {
             "resource",
             "label",
@@ -697,6 +698,7 @@ class TestTopLevelShape:
             "linkCreate",
             "linkDelete",
             "compoundCreates",
+            "childCompoundCreates",
         }
 
     def test_link_create_is_null_for_an_entity_that_is_not_a_link_table(self) -> None:
@@ -727,6 +729,10 @@ class TestTopLevelShape:
         site. Three of the six real link entities also serve `[]` here, for the
         second reason rather than the first."""
         assert derive_entity_schema(_widget_config())["compoundCreates"] == []
+
+    def test_child_compound_creates_is_an_empty_list_for_an_entity_declaring_none(self) -> None:
+        """ADR-0079: `compoundCreates`' own test, for its sibling key."""
+        assert derive_entity_schema(_widget_config())["childCompoundCreates"] == []
 
     def test_relations_is_empty_for_an_entity_nothing_points_at(self) -> None:
         """ADR-0074: the synthetic `_widget_config()` is not in the registry,

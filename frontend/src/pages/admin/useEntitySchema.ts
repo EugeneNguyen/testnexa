@@ -87,6 +87,8 @@ export function toEntityConfig(key: string, schema: EntitySchemaResponse): Entit
     // serves no key at all lands on the same empty array and behaves
     // identically to a junction that needs none.
     compoundCreates: schema.compoundCreates ?? [],
+    // ADR-0079. Same normalize-to-`[]` treatment, for the identical reason.
+    childCompoundCreates: schema.childCompoundCreates ?? [],
   };
 }
 

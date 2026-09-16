@@ -78,6 +78,12 @@ ENVELOPE_KEYS = {
     # non-link entities AND for the 3 junctions whose every direction's far
     # entity can already be created generically.
     "compoundCreates",
+    # ADR-0079: the fourteenth — `compoundCreates`' one-to-many sibling,
+    # declared on the CHILD entity itself rather than a link table, and
+    # matched by the client against `relation.scopeField` rather than
+    # `relation.targetField`. Same additive/always-a-list posture as
+    # `compoundCreates`, for the same reason.
+    "childCompoundCreates",
 }
 
 

@@ -43,6 +43,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.crud_factory import (
+    CompoundCreateAction,
     CrudEntityConfig,
     FieldMeta,
     ScopeSelectorOption,
@@ -177,6 +178,25 @@ _TEST_CONDITION_CONFIG = CrudEntityConfig(
     field_meta={
         "requirement_id": FieldMeta(ref_entity="requirement", label_field="description", label="Requirement"),
     },
+    # ADR-0079: the one-to-many sibling of `trace.py`'s own two
+    # `TestCondition` compound-create declarations. `Requirement` -> "Test
+    # conditions" (the direct-child 1-n tab, not the traceability-link n-n
+    # one) is the tab whose own scope field is already `requirement_id` — the
+    # exact placeholder this route's path carries — so no parent picker is
+    # needed: the record being viewed *is* the parent. Same route, same
+    # transaction, same `links_automatically=True` reasoning as
+    # `_REQUIREMENT_TEST_CONDITION_LINK_CONFIG`'s first declaration; this one
+    # exists separately because `derive_entity_relations` reads
+    # `compound_creates` off `config` (== `relation.entity`), which for a
+    # one-to-many tab is this entity's own config, never the link table's.
+    child_compound_creates=(
+        CompoundCreateAction(
+            far_field="requirement_id",
+            path_template="/requirements/{requirement_id}/test-conditions",
+            permission="test_condition.create",
+            links_automatically=True,
+        ),
+    ),
 )
 
 # `list`/`create` enabled as of REQ-5/ADR-0069 — see module docstring.

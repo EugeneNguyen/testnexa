@@ -508,6 +508,30 @@ function EntityRelationTab({
     farConfig && farConfig.methods.includes("create") ? undefined : compoundCreate;
   const compoundParent = activeCompoundCreate ? compoundParentField(activeCompoundCreate) : null;
   /**
+   * ADR-0079: `compoundCreate`'s one-to-many sibling. Matched against
+   * `relation.scopeField`, never `relation.targetField` (which is `null`
+   * here) — a one-to-many tab's "far field" is the entity's own already-known
+   * scope column, not a second FK naming a link row's far side. Every live
+   * declaration's placeholder equals that same scope field (no live child
+   * entity needing this mechanism also needs a parent picker today — see
+   * `test_adr79_child_compound_create.py`'s own `test_path_template_placeholder_equals_far_field`),
+   * so this component builds no picker UI for it: `activeChildCompoundCreate`
+   * below is either usable with zero extra input, or (for a future
+   * declaration that does need one) intentionally not yet supported — a gap
+   * to close explicitly, not one to paper over with unused picker plumbing.
+   */
+  const childCompoundCreate =
+    relation.kind === "one-to-many" && config
+      ? config.childCompoundCreates?.find((action) => action.farField === relation.scopeField)
+      : undefined;
+  /**
+   * Same "fallback only" posture `activeCompoundCreate` takes: a declaration
+   * exists because the child has no generic `create`, and must not fire once
+   * one exists.
+   */
+  const activeChildCompoundCreate =
+    config && config.methods.includes("create") ? undefined : childCompoundCreate;
+  /**
    * Derived, never declared: the route's parent placeholder either names the
    * column this tab is already scoped by — in which case the parent *is* the
    * record being viewed and there is nothing to ask — or it does not, and the
@@ -621,7 +645,17 @@ function EntityRelationTab({
   }
 
   const createMutation = useMutation({
-    mutationFn: (values: Record<string, unknown>) => createEntity(config as EntityConfig, routeParams, values),
+    /**
+     * ADR-0079: when this tab's own scope matches a declared bespoke
+     * atomic-create route, that route replaces the generic `create` entirely
+     * — there is no second call to make, since a one-to-many row's existence
+     * in this list already *is* the relationship (unlike the many-to-many
+     * compound path, which may still owe a separate `linkCreate`).
+     */
+    mutationFn: (values: Record<string, unknown>) =>
+      activeChildCompoundCreate
+        ? createViaCompoundRoute(activeChildCompoundCreate, { [relation.scopeField]: parentId }, values)
+        : createEntity(config as EntityConfig, routeParams, values),
     onSuccess: () => {
       setShowCreateModal(false);
       setCreateError(null);
@@ -821,6 +855,21 @@ function EntityRelationTab({
     config.methods.includes("create") &&
     permissions.has(`${config.resource}.create`, projectId);
 
+  /**
+   * ADR-0079: the child has no generic `create`, but this tab's own scope
+   * matches a declared bespoke atomic-create route — `Requirement` -> "Test
+   * conditions", `TestExecution` -> "Defects", `TestPlan` -> "Test cycles"
+   * today. Mutually exclusive with `canCreateChild` by construction (one
+   * requires the entity to have `create`, the other requires it not to), so
+   * the two together still render exactly one "New" action per tab — the
+   * CTO's own "1-n has only add" requirement, unchanged by which route
+   * actually serves it.
+   */
+  const canCreateChildViaCompound =
+    isOneToMany &&
+    Boolean(activeChildCompoundCreate) &&
+    permissions.has(activeChildCompoundCreate!.permission, projectId);
+
   const canLinkExisting =
     !isOneToMany && Boolean(config.linkCreate) && permissions.has(config.linkCreate!.permission, projectId);
 
@@ -995,7 +1044,7 @@ function EntityRelationTab({
           <Spinner wrapperClassName="p-0" label="Loading available actions…" />
         </Card.Body>
       ) : (
-        (canCreateChild || canLinkExisting || canCreateAndLink) && (
+        (canCreateChild || canCreateChildViaCompound || canLinkExisting || canCreateAndLink) && (
         /**
          * `gap-2` (Amendment 1): an n-n tab can now render two buttons here,
          * and two `.btn`s are adjacent siblings with no margin of their own.
@@ -1012,7 +1061,7 @@ function EntityRelationTab({
          * per-row Edit/Delete buttons already use, not a new convention.
          */
         <Card.Body className="pb-0 mb-3 d-flex justify-content-end gap-2" data-testid="entity-relation-actions">
-          {canCreateChild && (
+          {(canCreateChild || canCreateChildViaCompound) && (
             <Button
               color="primary"
               size="sm"
@@ -1283,7 +1332,7 @@ function EntityRelationTab({
         </Modal>
       )}
 
-      {canCreateChild && (
+      {(canCreateChild || canCreateChildViaCompound) && (
         <Modal
           visible={showCreateModal}
           title={<>New {farLabel}</>}

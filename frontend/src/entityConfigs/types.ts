@@ -377,4 +377,15 @@ export interface EntityConfig {
    * collapse to "no compound create here".
    */
   compoundCreates?: CompoundCreateAction[];
+  /**
+   * ADR-0079: `compoundCreates`' one-to-many sibling — declared on the CHILD
+   * entity's own config, never a link entity's, and matched by
+   * `farField === relation.scopeField` (never `relation.targetField`, which
+   * is `null` for every one-to-many tab). Same `CompoundCreateAction` shape;
+   * only the matching key differs, because a one-to-many tab's "far field" is
+   * the entity's own already-known scope column, not a second FK to solve
+   * for. Optional for the same fixture-compatibility reason as the two keys
+   * above.
+   */
+  childCompoundCreates?: CompoundCreateAction[];
 }

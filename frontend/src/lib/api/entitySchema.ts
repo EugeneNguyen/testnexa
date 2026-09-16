@@ -82,6 +82,14 @@ export interface EntitySchemaResponse {
    * list by direction and an empty list is already the "none for me" answer.
    */
   compoundCreates?: CompoundCreateAction[];
+  /**
+   * ADR-0079: `compoundCreates`' one-to-many sibling — same shape, declared on
+   * the CHILD entity's own config instead of a link entity's, matched by the
+   * caller against `relation.scopeField` instead of `relation.targetField`.
+   * Optional/normalized-to-`[]` for the identical fixture-compatibility
+   * reason `compoundCreates` is.
+   */
+  childCompoundCreates?: CompoundCreateAction[];
 }
 
 /** `entityKey` is the plural `:entity` route slug (`registry.ts`'s own keys). */

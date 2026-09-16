@@ -62,6 +62,7 @@ from app.api.crud_factory import (
     _actor_membership_exists,
     _DEFAULT_PAGE_SIZE,
     _MAX_PAGE_SIZE,
+    CompoundCreateAction,
     CrudEntityConfig,
     FieldMeta,
     NoSchema,
@@ -230,6 +231,23 @@ _DEFECT_CONFIG = CrudEntityConfig(
         # so it stays served-but-hidden rather than silently dropped.
         "reported_by_actor_id": FieldMeta(show_in_table=False, label="Reported by"),
     },
+    # ADR-0079: the one-to-many sibling of `trace.py`'s `_TEST_CASE_DEFECT_LINK_CONFIG`
+    # compound-create declaration. `TestExecution` -> "Defects" (the direct-child
+    # 1-n tab) is scoped by exactly `test_execution_id` above — the placeholder
+    # this route's path carries — so the record being viewed already is the
+    # parent and no picker is needed. Same route, same transaction (it writes
+    # `TestCaseDefectLink` itself), same `links_automatically=True` reasoning;
+    # declared here (not just on the link table) because `derive_entity_relations`
+    # reads `compound_creates` off `config`, which for a one-to-many tab is this
+    # entity's own config.
+    child_compound_creates=(
+        CompoundCreateAction(
+            far_field="test_execution_id",
+            path_template="/executions/{test_execution_id}/defects",
+            permission="defect.create",
+            links_automatically=True,
+        ),
+    ),
 )
 
 # No `create` — PLAN-3/ADR-0033 (see module docstring). `list`/`get`/`update`/

@@ -561,6 +561,31 @@ class CrudEntityConfig:
     # what ADR-0076 Amendment 1's own composition needs and all this field
     # exists to substitute for.
     compound_creates: tuple[CompoundCreateAction, ...] = ()
+    # ADR-0079: `compound_creates`' sibling for a one-to-many tab, declared on
+    # the CHILD entity's own config (never a link entity's) — deliberately a
+    # separate field rather than widening `compound_creates` itself, because
+    # the two shapes disagree about what `CompoundCreateAction.far_field`
+    # means: for `compound_creates` it names the link row's FAR FK (the one
+    # `ADR-0078`'s own completeness suite computes as "the other of exactly
+    # two"); here it names the entity's OWN scope FK — the field already known
+    # from the tab being viewed, not a second one to solve for. A one-to-many
+    # entity's `fk_fields_of` set is not reliably size-2 (`TestCondition` has
+    # exactly one), so `compound_creates`' own "the other FK" derivation would
+    # raise `StopIteration` rather than silently misidentify anything — reusing
+    # the field and papering over that with a branch would still leave a test
+    # suite built entirely around "a junction has two FKs" quietly describing
+    # a shape that no longer holds for every declarer. A separate field keeps
+    # both completeness suites simple and honest about which shape each one
+    # actually checks.
+    #
+    # Matched by `EntityRelationTab` against `relation.scopeField` (never
+    # `relation.targetField`, which is `null` for every one-to-many tab) — see
+    # `CompoundCreateAction`'s own docstring for the field-by-field meaning,
+    # unchanged here; only the matching key differs. `TestExecution` is the one
+    # live entity needing two entries (`test_case_id`/`test_cycle_id`), because
+    # it has two distinct one-to-many parents and each tab must resolve the
+    # *other* one via whichever picker mechanism that direction needs.
+    child_compound_creates: tuple[CompoundCreateAction, ...] = ()
     # ADR-0053: overrides `methods` for the derived schema's own `methods`
     # array only — never affects which routes `make_crud_router` registers.
     # `Project` is the one user today: its real REST surface is `list`/
@@ -1573,6 +1598,24 @@ def derive_entity_schema(
         for action in config.compound_creates
     ]
 
+    # ADR-0079: `compound_creates`' own serialization, verbatim shape, for the
+    # sibling field. Two lists rather than one merged list because the two
+    # mean different things to the client — see `child_compound_creates`'s own
+    # docstring for why they cannot share a matching key.
+    child_compound_creates: list[dict[str, Any]] = [
+        {
+            "farField": action.far_field,
+            "pathTemplate": action.path_template,
+            "permission": action.permission,
+            "linksAutomatically": action.links_automatically,
+            "parentEntity": action.parent_entity,
+            "parentLabel": action.parent_label,
+            "parentLabelField": action.parent_label_field,
+            "parentFilters": {name: value for name, value in action.parent_filters},
+        }
+        for action in config.child_compound_creates
+    ]
+
     scope_resolution: dict[str, Any] | None = None
     if config.scope_resolution is not None:
         scope_resolution = {
@@ -1612,6 +1655,8 @@ def derive_entity_schema(
         # has a generic `create` — a relationship tab asks "is there a compound
         # create for THIS direction", never "is this a link table".
         "compoundCreates": compound_creates,
+        # ADR-0079: a fourteenth key, `compoundCreates`' one-to-many sibling.
+        "childCompoundCreates": child_compound_creates,
     }
 
 
