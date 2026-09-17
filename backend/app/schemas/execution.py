@@ -21,7 +21,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, computed_field
 
 DefectSeverity = Literal["low", "medium", "high", "critical"]
 TestExecutionResult = Literal["pass", "fail", "blocked", "skipped"]
@@ -68,6 +68,25 @@ class DefectSummary(BaseModel):
     external_ref: str | None = None
     severity: DefectSeverity
     status: str
+    created_at: datetime
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def display_name(self) -> str:
+        """A picker label that is never the raw id (2026-09-18, live-manual-
+        test feedback: an `FkSelect`/`FkAutocomplete` picker's own
+        `labelFor()` falls back to `row.id` when its configured
+        `label_field` resolves to `null`/`""` — `external_ref` is optional
+        (`CreateDefectForExecutionRequest`/`UpdateDefectRequest`), so a
+        Defect raised with none set showed a raw UUID in every picker
+        pointing at `defect_id` (`trace.py`'s `_TEST_CASE_DEFECT_LINK_CONFIG`).
+        `external_ref` when set (still the most recognizable label — a
+        ticket number a human typed in); otherwise a readable, never-null
+        fallback composed from columns that always exist.
+        """
+        if self.external_ref:
+            return self.external_ref
+        return f"{self.severity.capitalize()} defect ({self.created_at:%Y-%m-%d})"
 
 
 class DefectListResponse(BaseModel):
@@ -132,6 +151,23 @@ class TestExecutionSummary(BaseModel):
     result: TestExecutionResult
     actual_result: str | None = None
     executed_at: datetime
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def display_name(self) -> str:
+        """Same picker-label problem as `DefectSummary.display_name`, one
+        column short of it: `result` alone (the field every existing
+        `field_meta` pointing at `test_execution_id` used as `label_field`)
+        is never `null`, but it IS non-unique — every failed execution of the
+        same `TestCase` reads identically as "fail" in a picker, which is not
+        the raw-id bug but the same underlying complaint ("I can't tell which
+        one is which"). `executed_at` always exists and is what
+        `trace.py`'s own `Defect` compound-create parent picker already uses
+        alone for exactly this reason (its own comment: "every option would
+        read 'fail'") — this composes both, since the generic picker (unlike
+        that one) isn't pre-filtered to a single result value.
+        """
+        return f"{self.result} — {self.executed_at:%Y-%m-%d %H:%M}"
 
 
 class TestExecutionListResponse(BaseModel):

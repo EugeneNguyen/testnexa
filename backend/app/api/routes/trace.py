@@ -485,7 +485,7 @@ _TEST_CASE_DEFECT_LINK_CONFIG = CrudEntityConfig(
     ),
     field_meta={
         "test_case_id": FieldMeta(ref_entity="test-case", label_field="title", label="Test case", select=True),
-        "defect_id": FieldMeta(ref_entity="defect", label_field="external_ref", label="Defect", select=True),
+        "defect_id": FieldMeta(ref_entity="defect", label_field="display_name", label="Defect", select=True),
     },
 )
 

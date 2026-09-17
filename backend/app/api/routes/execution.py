@@ -235,7 +235,7 @@ _DEFECT_CONFIG = CrudEntityConfig(
     field_order=("test_execution_id", "external_ref", "severity", "status"),
     field_meta={
         "test_execution_id": FieldMeta(
-            ref_entity="test-execution", label_field="result", label="Test execution", select=True
+            ref_entity="test-execution", label_field="display_name", label="Test execution", select=True
         ),
         # Summary-only actor stamp (`reported_by_actor_id`), server-set and never
         # editable. `entityConfigs/defect.ts` simply omitted it; the derived schema
@@ -415,7 +415,7 @@ _TEST_LOG_CONFIG = CrudEntityConfig(
     ),
     field_meta={
         "test_execution_id": FieldMeta(
-            ref_entity="test-execution", label_field="result", label="Test execution", select=True
+            ref_entity="test-execution", label_field="display_name", label="Test execution", select=True
         ),
         "text": FieldMeta(long_text=True, label="Comment"),
     },
@@ -633,6 +633,7 @@ async def raise_defect_for_execution(
         external_ref=defect.external_ref,
         severity=defect.severity.value if hasattr(defect.severity, "value") else defect.severity,
         status=defect.status,
+        created_at=defect.created_at,
     )
 
 
@@ -707,6 +708,7 @@ async def list_defects_for_test_case(
                 external_ref=row.external_ref,
                 severity=row.severity.value if hasattr(row.severity, "value") else row.severity,
                 status=row.status,
+                created_at=row.created_at,
             )
             for row in rows
         ],
