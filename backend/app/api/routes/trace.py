@@ -589,7 +589,7 @@ async def _gate_parent(
     if org_id is None or not await _actor_membership_exists(db, org_id, actor):
         return _error(404, "not_found", not_found_message)
 
-    if not await has_permission(str(actor.actor_id), str(org_id), permission):
+    if not await has_permission(actor, str(org_id), permission):
         return _error(403, "permission_denied", _PERMISSION_DENIED_MESSAGE)
 
     return row, org_id

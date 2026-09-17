@@ -277,7 +277,7 @@ async def get_project(
         return _error(404, "not_found", "Project not found.")
 
     if not await has_permission(
-        str(actor.actor_id), str(project.org_id), "project.read", project_id=str(project.id)
+        actor, str(project.org_id), "project.read", project_id=str(project.id)
     ):
         return _error(403, "permission_denied", "You do not have permission to perform this action.")
 
@@ -310,7 +310,7 @@ async def update_project(
         return _error(404, "not_found", "Project not found.")
 
     if not await has_permission(
-        str(actor.actor_id), str(project.org_id), "project.update", project_id=str(project.id)
+        actor, str(project.org_id), "project.update", project_id=str(project.id)
     ):
         return _error(403, "permission_denied", "You do not have permission to perform this action.")
 

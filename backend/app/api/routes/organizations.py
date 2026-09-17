@@ -70,7 +70,7 @@ async def create_org(
     agent, ever passes the gate below).
 
     Order of operations:
-    1. Gate: `has_permission_in_any_org(actor.actor_id, "organization.create")`
+    1. Gate: `has_permission_in_any_org(actor, "organization.create")`
        -> `403 permission_denied` if the actor holds it in zero orgs (or
        only via a project-scoped-only grant — TC-RBAC-023).
     2. Create the `Organization`; flush alone so a `slug` collision is
@@ -96,7 +96,7 @@ async def create_org(
        instead).
     """
     # 1. Any-org permission gate.
-    if not await has_permission_in_any_org(str(actor.actor_id), "organization.create"):
+    if not await has_permission_in_any_org(actor, "organization.create"):
         return _error(
             403,
             "permission_denied",

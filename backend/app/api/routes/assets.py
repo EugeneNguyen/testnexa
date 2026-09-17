@@ -351,7 +351,7 @@ async def create_test_case_for_requirement(
     if project is None or not await _actor_membership_exists(db, project.org_id, actor):
         return _error(404, "not_found", "Requirement not found.")
 
-    if not await has_permission(str(actor.actor_id), str(project.org_id), "test_case.create"):
+    if not await has_permission(actor, str(project.org_id), "test_case.create"):
         return _error(403, "permission_denied", "You do not have permission to perform this action.")
 
     test_case = TestCase(
@@ -408,7 +408,7 @@ async def list_test_cases_for_requirement(
     if project is None or not await _actor_membership_exists(db, project.org_id, actor):
         return _error(404, "not_found", "Requirement not found.")
 
-    if not await has_permission(str(actor.actor_id), str(project.org_id), "test_case.read"):
+    if not await has_permission(actor, str(project.org_id), "test_case.read"):
         return _error(403, "permission_denied", "You do not have permission to perform this action.")
 
     page = max(page, 1)
@@ -469,7 +469,7 @@ async def link_test_case_to_requirement(
     if case_org_id is None or not await _actor_membership_exists(db, case_org_id, actor):
         return _error(404, "not_found", "Test case not found.")
 
-    if not await has_permission(str(actor.actor_id), str(case_org_id), "test_case.update"):
+    if not await has_permission(actor, str(case_org_id), "test_case.update"):
         return _error(403, "permission_denied", "You do not have permission to perform this action.")
 
     requirement = await db.get(Requirement, payload.requirement_id)
@@ -534,7 +534,7 @@ async def get_test_case_requirement_link(
     if case_org_id is None or not await _actor_membership_exists(db, case_org_id, actor):
         return _error(404, "not_found", "Test case not found.")
 
-    if not await has_permission(str(actor.actor_id), str(case_org_id), "test_case.read"):
+    if not await has_permission(actor, str(case_org_id), "test_case.read"):
         return _error(403, "permission_denied", "You do not have permission to perform this action.")
 
     if test_case.test_condition_id is not None:

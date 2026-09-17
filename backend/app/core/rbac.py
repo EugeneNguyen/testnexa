@@ -171,6 +171,46 @@ async def _has_active_membership(actor_id: str, org_id: str) -> bool:
         return result.first() is not None
 
 
+async def _actor_has_any_role_assignment_in_org(actor_id: uuid.UUID, org_id: str) -> bool:
+    """Does `actor_id` hold ANY `RoleAssignment` row at all in `org_id` — any
+    role, any project scope, regardless of what permission is being checked?
+
+    ADR-0083's fallback gate: an `AIAgent` only inherits its
+    `acting_on_behalf_of_user_id`'s grants when this returns `False` for the
+    agent itself. This is deliberately an *existence* check, not a per-check
+    match — an agent holding a real but narrower grant (e.g. project-A-only)
+    must stay confined to it and never fall through to the human's broader
+    access just because *this specific* check (a different project, a
+    different code) doesn't happen to match that narrower row. Confirmed by
+    TC-RBAC-011 (`test_aiagent_grantee_resolves_identically_to_human_grantee`):
+    a per-query union broke that test's own "isolated from the human, project
+    B still 403s" assertion the moment the agent held any row at all.
+    """
+    org_uuid = uuid.UUID(str(org_id))
+    query = select(RoleAssignment.id).where(RoleAssignment.actor_id == actor_id, RoleAssignment.org_id == org_uuid).limit(1)
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(query)
+        return result.first() is not None
+
+
+async def _actor_has_any_role_assignment_anywhere(actor_id: uuid.UUID) -> bool:
+    """Does `actor_id` hold ANY `RoleAssignment` row at all, in any org?
+
+    `has_permission_in_any_org`'s own sibling to
+    `_actor_has_any_role_assignment_in_org` above — that function has no
+    single `org_id` to scope the existence check to, so this checks across
+    every org instead. Same fallback posture: an `AIAgent` holding any grant
+    anywhere stays confined to its own grants; only a fully grant-less agent
+    inherits its behalf-user's.
+    """
+    query = select(RoleAssignment.id).where(RoleAssignment.actor_id == actor_id).limit(1)
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(query)
+        return result.first() is not None
+
+
 async def _resolve_agent_actor(raw_key: str, db: AsyncSession) -> AIAgent:
     """Resolve a `tnx_agent_...` bearer credential to its `AIAgent` row.
 
@@ -254,8 +294,8 @@ async def get_current_actor(
     return user
 
 
-async def has_permission(actor_id: str, org_id: str, code: str, project_id: str | None = None) -> bool:
-    """Check whether `actor_id` holds permission `code` in `org_id` (optionally project-scoped).
+async def has_permission(actor: "User | AIAgent", org_id: str, code: str, project_id: str | None = None) -> bool:
+    """Check whether `actor` holds permission `code` in `org_id` (optionally project-scoped).
 
     Resolves via `RoleAssignment` -> `Role` -> `RolePermission` -> `Permission`.
 
@@ -281,12 +321,38 @@ async def has_permission(actor_id: str, org_id: str, code: str, project_id: str 
     the moment a caller passes `project_id` — RBAC-3/ADR-0021 is the first
     story to actually pass one through from a real route
     (`GET`/`PATCH /projects/{id}`).
+
+    **ADR-0083 (AIAgent permission inheritance, bootstrap-fallback only):**
+    takes the actor object, not a bare id. An `AIAgent` inherits its
+    `acting_on_behalf_of_user_id`'s grants ONLY when the agent holds NO
+    `RoleAssignment` of its own anywhere in `org_id` at all
+    (`_actor_has_any_role_assignment_in_org`) — a true bootstrap fallback,
+    not a per-check union. An agent already holding any real grant in this
+    org (even a narrower one that doesn't cover the specific `code`/
+    `project_id` being checked right now) stays confined to its own rows and
+    never falls through to the human's broader access — confirmed by
+    TC-RBAC-011, which a naive always-union design broke (an agent scoped to
+    one project must still 403 on another, regardless of what its
+    behalf-user separately holds org-wide). The fallback itself additionally
+    requires the behalf-user to currently hold an *active* `OrgMembership`
+    in this exact `org_id` (same `_has_active_membership` check
+    `require_permission`'s own suspended-member gate already uses for a
+    `User` actor directly) — a suspended human's grant-less agent must not
+    inherit anything. A `User` actor is unaffected: exactly one id is ever
+    checked, identical to the pre-ADR-0083 behavior.
     """
-    actor_uuid = uuid.UUID(str(actor_id))
+    actor_ids = [actor.actor_id]
+    if (
+        isinstance(actor, AIAgent)
+        and not await _actor_has_any_role_assignment_in_org(actor.actor_id, org_id)
+        and await _has_active_membership(str(actor.acting_on_behalf_of_user_id), str(org_id))
+    ):
+        actor_ids.append(actor.acting_on_behalf_of_user_id)
+
     org_uuid = uuid.UUID(str(org_id))
 
     conditions = [
-        RoleAssignment.actor_id == actor_uuid,
+        RoleAssignment.actor_id.in_(actor_ids),
         RoleAssignment.org_id == org_uuid,
         Permission.code == code,
     ]
@@ -311,8 +377,8 @@ async def has_permission(actor_id: str, org_id: str, code: str, project_id: str 
         return result.first() is not None
 
 
-async def has_permission_in_any_org(actor_id: str, code: str) -> bool:
-    """Check whether `actor_id` holds permission `code` org-wide in ANY org they belong to.
+async def has_permission_in_any_org(actor: "User | AIAgent", code: str) -> bool:
+    """Check whether `actor` holds permission `code` org-wide in ANY org they belong to.
 
     RBAC-1 / ADR-0016: `POST /orgs` (minting a *second* org) has no target
     `org_id` in its path yet — the org doesn't exist until the call
@@ -328,8 +394,22 @@ async def has_permission_in_any_org(actor_id: str, code: str) -> bool:
     creating an org is inherently an org-wide action, not a project-scoped
     one, so a permission held only within one project says nothing about
     whether the actor may create a brand-new organization.
+
+    **ADR-0083:** for an `AIAgent` actor, falls back to its
+    `acting_on_behalf_of_user_id`'s own `RoleAssignment` rows — but, mirroring
+    `has_permission`'s own bootstrap-only posture, ONLY when the agent holds
+    NO `RoleAssignment` of its own anywhere (`_actor_has_any_role_assignment_anywhere`),
+    never a per-check union. Deliberately **no** active-membership check
+    here, unlike `has_permission`: this function has no single `org_id` to
+    check membership against (that's the whole reason it exists), and a
+    `User` actor's own call through this same function has never required
+    one either — adding an asymmetric requirement for the `AIAgent` branch
+    alone would check something this function's `User` path was never gated
+    on.
     """
-    actor_uuid = uuid.UUID(str(actor_id))
+    actor_ids = [actor.actor_id]
+    if isinstance(actor, AIAgent) and not await _actor_has_any_role_assignment_anywhere(actor.actor_id):
+        actor_ids.append(actor.acting_on_behalf_of_user_id)
 
     query = (
         select(Permission.id)
@@ -337,7 +417,7 @@ async def has_permission_in_any_org(actor_id: str, code: str) -> bool:
         .join(Role, Role.id == RolePermission.role_id)
         .join(RoleAssignment, RoleAssignment.role_id == Role.id)
         .where(
-            RoleAssignment.actor_id == actor_uuid,
+            RoleAssignment.actor_id.in_(actor_ids),
             Permission.code == code,
             RoleAssignment.project_id.is_(None),
         )
@@ -411,7 +491,7 @@ def require_permission(code: str) -> Callable[..., Any]:
             raise _membership_inactive()
 
         allowed = await has_permission(
-            actor_id=str(actor.actor_id),
+            actor=actor,
             org_id=str(org_id),
             code=code,
             project_id=str(project_id) if project_id is not None else None,

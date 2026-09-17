@@ -118,7 +118,7 @@ async def create_release(
        has no `OrgMembership` (any status) in the project's own `org_id` ->
        `404` (NFR-1 existence-hiding posture — indistinguishable from a
        nonexistent project).
-    2. `has_permission(actor_id, org_id, "release.create")`, called directly
+    2. `has_permission(actor, org_id, "release.create")`, called directly
        (there's no path `org_id` for `require_permission`'s dependency to
        read) -> `403` if false.
     3. Create the `Release`; flush alone (same flush-then-catch-IntegrityError
@@ -132,7 +132,7 @@ async def create_release(
     if project is None or not await _org_membership_exists(db, project.org_id, actor.actor_id):
         return _error(404, "not_found", "Project not found.")
 
-    if not await has_permission(str(actor.actor_id), str(project.org_id), "release.create"):
+    if not await has_permission(actor, str(project.org_id), "release.create"):
         return _error(403, "permission_denied", "You do not have permission to perform this action.")
 
     release = Release(
@@ -176,7 +176,7 @@ async def list_releases(
     if project is None or not await _org_membership_exists(db, project.org_id, actor.actor_id):
         return _error(404, "not_found", "Project not found.")
 
-    if not await has_permission(str(actor.actor_id), str(project.org_id), "release.read"):
+    if not await has_permission(actor, str(project.org_id), "release.read"):
         return _error(403, "permission_denied", "You do not have permission to perform this action.")
 
     page = max(page, 1)
@@ -230,7 +230,7 @@ async def get_release(
     if project is None or not await _org_membership_exists(db, project.org_id, actor.actor_id):
         return _error(404, "not_found", "Release not found.")
 
-    if not await has_permission(str(actor.actor_id), str(project.org_id), "release.read"):
+    if not await has_permission(actor, str(project.org_id), "release.read"):
         return _error(403, "permission_denied", "You do not have permission to perform this action.")
 
     return _release_summary(release)
@@ -282,15 +282,14 @@ async def get_release_test_cycles(
         return _error(404, "not_found", "Release not found.")
 
     org_id = str(project.org_id)
-    actor_id = str(actor.actor_id)
 
-    if not await has_permission(actor_id, org_id, "release.read"):
+    if not await has_permission(actor, org_id, "release.read"):
         return _error(403, "permission_denied", "You do not have permission to perform this action.")
-    if not await has_permission(actor_id, org_id, "test_cycle.read"):
+    if not await has_permission(actor, org_id, "test_cycle.read"):
         return _error(403, "permission_denied", "You do not have permission to perform this action.")
-    if not await has_permission(actor_id, org_id, "test_execution.read"):
+    if not await has_permission(actor, org_id, "test_execution.read"):
         return _error(403, "permission_denied", "You do not have permission to perform this action.")
-    if not await has_permission(actor_id, org_id, "entry_exit_criteria.read"):
+    if not await has_permission(actor, org_id, "entry_exit_criteria.read"):
         return _error(403, "permission_denied", "You do not have permission to perform this action.")
 
     cycles_result = await db.execute(select(TestCycle).where(TestCycle.release_id == id))

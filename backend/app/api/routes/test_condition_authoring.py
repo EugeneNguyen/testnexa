@@ -125,7 +125,7 @@ async def create_test_condition_for_requirement(
     if org_id is None or not await _actor_membership_exists(db, org_id, actor):
         return _error(404, "not_found", "Requirement not found.")
 
-    if not await has_permission(str(actor.actor_id), str(org_id), "test_condition.create"):
+    if not await has_permission(actor, str(org_id), "test_condition.create"):
         return _error(403, "permission_denied", _PERMISSION_DENIED_MESSAGE)
 
     test_condition = TestCondition(
@@ -193,7 +193,7 @@ async def create_test_case_for_test_condition(
     if org_id is None or not await _actor_membership_exists(db, org_id, actor):
         return _error(404, "not_found", "Test condition not found.")
 
-    if not await has_permission(str(actor.actor_id), str(org_id), "test_case.create"):
+    if not await has_permission(actor, str(org_id), "test_case.create"):
         return _error(403, "permission_denied", _PERMISSION_DENIED_MESSAGE)
 
     test_case = TestCase(

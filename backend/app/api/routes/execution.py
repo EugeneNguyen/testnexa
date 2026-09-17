@@ -456,7 +456,7 @@ async def _fetch_execution_gated(
     if org_id is None or not await _actor_membership_exists(db, org_id, actor):
         return None, _error(404, "not_found", _EXECUTION_NOT_FOUND_MESSAGE)
 
-    if not await has_permission(str(actor.actor_id), str(org_id), permission):
+    if not await has_permission(actor, str(org_id), permission):
         return None, _error(403, "permission_denied", _PERMISSION_DENIED_MESSAGE)
 
     return execution, None
@@ -643,7 +643,7 @@ async def _fetch_test_case_gated(
     if org_id is None or not await _actor_membership_exists(db, org_id, actor):
         return None, _error(404, "not_found", "Test case not found.")
 
-    if not await has_permission(str(actor.actor_id), str(org_id), permission):
+    if not await has_permission(actor, str(org_id), permission):
         return None, _error(403, "permission_denied", _PERMISSION_DENIED_MESSAGE)
 
     return test_case, None

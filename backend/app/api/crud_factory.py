@@ -1857,14 +1857,14 @@ def make_crud_router(config: CrudEntityConfig) -> APIRouter:
         org_id = await config.resolve_org_id(db, row)
         if org_id is None:
             if config.is_global_catalog or (action == "read" and config.global_read_fallback):
-                if not await has_permission_in_any_org(str(actor.actor_id), f"{resource}.{action}"):
+                if not await has_permission_in_any_org(actor, f"{resource}.{action}"):
                     return None, _error(403, "permission_denied", _PERMISSION_DENIED_MESSAGE)
                 return row, None
             return None, _error(404, "not_found", f"{display_name} not found.")
 
         if not await _actor_membership_exists(db, org_id, actor):
             return None, _error(404, "not_found", f"{display_name} not found.")
-        if not await has_permission(str(actor.actor_id), str(org_id), f"{resource}.{action}"):
+        if not await has_permission(actor, str(org_id), f"{resource}.{action}"):
             return None, _error(403, "permission_denied", _PERMISSION_DENIED_MESSAGE)
 
         return row, None
@@ -1886,7 +1886,7 @@ def make_crud_router(config: CrudEntityConfig) -> APIRouter:
         org_id = await config.resolve_org_id(db, types.SimpleNamespace(**{field_name: raw_value}))
         if org_id is None or not await _actor_membership_exists(db, org_id, actor):
             return _error(404, "not_found", f"{display_name} not found.")
-        if not await has_permission(str(actor.actor_id), str(org_id), f"{resource}.{action}"):
+        if not await has_permission(actor, str(org_id), f"{resource}.{action}"):
             return _error(403, "permission_denied", _PERMISSION_DENIED_MESSAGE)
         return None
 
@@ -1927,7 +1927,7 @@ def make_crud_router(config: CrudEntityConfig) -> APIRouter:
             query = select(model)
 
             if config.scope_field is None:
-                if not await has_permission_in_any_org(str(actor.actor_id), f"{resource}.read"):
+                if not await has_permission_in_any_org(actor, f"{resource}.read"):
                     return _error(403, "permission_denied", _PERMISSION_DENIED_MESSAGE)
             else:
                 scope = extract_scope_value(config, query_params)
@@ -2021,7 +2021,7 @@ def make_crud_router(config: CrudEntityConfig) -> APIRouter:
             data = payload.model_dump(exclude_none=True)
 
             if config.scope_field is None:
-                if not await has_permission_in_any_org(str(actor.actor_id), f"{resource}.create"):
+                if not await has_permission_in_any_org(actor, f"{resource}.create"):
                     return _error(403, "permission_denied", _PERMISSION_DENIED_MESSAGE)
             else:
                 error = await _resolve_scope_for_write(db, actor, data, "create")

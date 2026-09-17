@@ -159,7 +159,7 @@ async def _load_plan_for_actor(
     if org_id is None or not await _org_membership_exists(db, org_id, actor.actor_id):
         return _error(404, "not_found", _PLAN_NOT_FOUND_MESSAGE)
 
-    if not await has_permission(str(actor.actor_id), str(org_id), permission):
+    if not await has_permission(actor, str(org_id), permission):
         return _error(403, "permission_denied", _PERMISSION_DENIED_MESSAGE)
 
     return plan, org_id

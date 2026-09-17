@@ -190,7 +190,7 @@ async def create_execution_for_cycle(
     if org_id is None or not await _actor_membership_exists(db, org_id, actor):
         return _error(404, "not_found", _CYCLE_NOT_FOUND_MESSAGE)
 
-    if not await has_permission(str(actor.actor_id), str(org_id), "test_execution.create"):
+    if not await has_permission(actor, str(org_id), "test_execution.create"):
         return _error(403, "permission_denied", _PERMISSION_DENIED_MESSAGE)
 
     test_case = await db.get(TestCase, payload.test_case_id)
