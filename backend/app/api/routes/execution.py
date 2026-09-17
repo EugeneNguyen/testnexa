@@ -332,10 +332,12 @@ _TEST_EXECUTION_CONFIG = CrudEntityConfig(
             ref_entity="test-cycle",
             param_name="test_cycle_id",
             label="By test cycle",
-            via=ScopeSelectorOption(ref_entity="test-plan", param_name="test_plan_id"),
+            via=ScopeSelectorOption(ref_entity="test-plan", param_name="test_plan_id", select=True),
+            select=True,
         ),
         # `TestCase`'s own list is `project_id`-scoped directly — no `via`
-        # needed, this arm already worked before ADR-0081.
+        # needed, this arm already worked before ADR-0081. Stays
+        # `FkAutocomplete` — not a small bounded catalog (ADR-0087).
         ScopeSelectorOption(ref_entity="test-case", param_name="test_case_id", label="By test case"),
     ),
     # Both FKs are summary-only (`UpdateTestExecutionRequest` reassigns neither),

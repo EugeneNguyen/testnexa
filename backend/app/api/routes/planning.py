@@ -177,7 +177,7 @@ _ENTRY_EXIT_CRITERIA_CONFIG = CrudEntityConfig(
     # `entityConfigs/entry-exit-criteria.ts` already flagged as a deliberate
     # deviation from the Sitemap's "plain project-scoped table" classification).
     label="Entry/exit criteria",
-    scope_selector=ScopeSelectorOption(ref_entity="test-plan", param_name="test_plan_id"),
+    scope_selector=ScopeSelectorOption(ref_entity="test-plan", param_name="test_plan_id", select=True),
     field_meta={
         "test_plan_id": FieldMeta(ref_entity="test-plan", label_field="identifier", label="Test plan"),
         "condition_text": FieldMeta(label="Condition"),
@@ -246,7 +246,7 @@ _TEST_CYCLE_CONFIG = CrudEntityConfig(
     # plan" is unchanged, kept first so the pre-existing UX (and every
     # existing test asserting it) doesn't move.
     scope_selector=(
-        ScopeSelectorOption(ref_entity="test-plan", param_name="test_plan_id", label="By test plan"),
+        ScopeSelectorOption(ref_entity="test-plan", param_name="test_plan_id", label="By test plan", select=True),
         ScopeSelectorOption(ref_entity="project", param_name="project_id", label="By project"),
     ),
     # Both FK/scope fields are summary-only, so they derive last without this;
@@ -290,6 +290,7 @@ _TEST_CYCLE_CONFIG = CrudEntityConfig(
             parent_entity="test-plan",
             parent_label="Test plan",
             parent_label_field="identifier",
+            parent_select=True,
         ),
     ),
 )

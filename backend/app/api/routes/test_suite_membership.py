@@ -421,7 +421,10 @@ _TEST_SUITE_TEST_CASE_CONFIG = CrudEntityConfig(
     ),
     label="Test suite -> test case links",
     scope_selector=(
-        ScopeSelectorOption(ref_entity="test-suite", param_name="test_suite_id", label="By test suite"),
+        ScopeSelectorOption(ref_entity="test-suite", param_name="test_suite_id", label="By test suite", select=True),
+        # `test-case` stays `FkAutocomplete` — unlike `test-suite`, a project's
+        # test cases are not a small bounded catalog (`FkSelect`'s own
+        # docstring caveat, ADR-0087).
         ScopeSelectorOption(ref_entity="test-case", param_name="test_case_id", label="By test case"),
     ),
     # Only the two FKs need a `FieldMeta`: their `ref_entity`/`label_field`

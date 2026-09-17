@@ -21,11 +21,16 @@ import { createEntity, createViaCompoundRoute, getEntity, listEntities } from ".
  * second call — `links_automatically` is always `true` for the one live
  * case, ADR-0079's own `TestCycle` declaration).
  *
- * The picker itself is `FkSelect` (a native `<select>`, live-manual-test
- * feedback on `TestCycle`'s own real "Test plan" picker — a project's own
- * test plans are a small, bounded, fetch-once list, the same shape REQ-5
- * already established `FkSelect` for) — this file's own interactions
- * `selectOptions` rather than `type` + click a dropdown row.
+ * ADR-0087: the picker's own widget is now conditional on the declaration's
+ * `parentSelect` flag (`FkSelect` when `true`, `FkAutocomplete` otherwise —
+ * see `EntityListPage.tsx`'s `ParentPickerControl`). This mock's synthetic
+ * `widget` parent deliberately leaves `parentSelect` unset (`false`), the
+ * same posture the real `requirement`/`test-execution` parents take — a
+ * generic example ref entity isn't a vetted bounded catalog, so this file's
+ * own interactions stay `type` + click a dropdown row. See
+ * `TestPlanDetail.TestCycles.test.tsx` for the sibling case where the real
+ * parent (`test-plan`) *does* set the flag and the interaction is
+ * `selectOptions`.
  */
 vi.mock("../../../pages/admin/registry", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../../pages/admin/registry")>();
@@ -177,13 +182,14 @@ describe("EntityListPage child_compound_creates parent picker (ADR-0086)", () =>
     expect(document.getElementById("entity-list-compound-parent-picker")).not.toBeNull();
     expect(screen.queryByLabelText(/^name$/i)).not.toBeInTheDocument();
 
+    await user.type(screen.getByLabelText("Widget", { exact: true }), "First");
     await waitFor(() =>
       expect(
         mockListEntities.mock.calls.some(([config]) => (config as { path?: string }).path === "/widgets"),
       ).toBe(true),
     );
-    await waitFor(() => expect(screen.getByText("First widget")).toBeInTheDocument());
-    await user.selectOptions(screen.getByLabelText("Widget", { exact: true }), "widget-1");
+
+    await user.click(await screen.findByText("First widget"));
     expect(await screen.findByLabelText(/^name$/i)).toBeInTheDocument();
   });
 
@@ -193,8 +199,8 @@ describe("EntityListPage child_compound_creates parent picker (ADR-0086)", () =>
     renderPage();
 
     await user.click(await screen.findByRole("button", { name: "New" }));
-    await waitFor(() => expect(screen.getByText("First widget")).toBeInTheDocument());
-    await user.selectOptions(screen.getByLabelText("Widget", { exact: true }), "widget-1");
+    await user.type(screen.getByLabelText("Widget", { exact: true }), "First");
+    await user.click(await screen.findByText("First widget"));
 
     await user.type(await screen.findByLabelText(/^name$/i), "New sprocket");
     await user.click(screen.getByRole("button", { name: "Create" }));

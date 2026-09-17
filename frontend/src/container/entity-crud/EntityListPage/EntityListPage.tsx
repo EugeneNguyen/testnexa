@@ -48,7 +48,19 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { usePermissions } from "../../../auth/usePermissions";
-import { Alert, Button, Card, Icon, Spinner, Modal, EntityForm, EntityTable, FkSelect, ScopeSelector } from "../../../components";
+import {
+  Alert,
+  Button,
+  Card,
+  Icon,
+  Spinner,
+  Modal,
+  EntityForm,
+  EntityTable,
+  FkAutocomplete,
+  FkSelect,
+  ScopeSelector,
+} from "../../../components";
 import { ApiError } from "../../../lib/api/client";
 import { createEntity, createViaCompoundRoute, deleteEntity, EntityRow, listEntities } from "../../../lib/api/entityCrud";
 import { useAdminRouteContext } from "../../../pages/admin/useAdminRouteContext";
@@ -267,6 +279,10 @@ function EntityListPage({ entityKeyOverride }: { entityKeyOverride?: string } = 
     ...(childCompoundCreate?.parentFilters ?? {}),
   };
   const compoundFormReady = !childCompoundNeedsParentPicker || Boolean(compoundParentId);
+  // ADR-0087: `parentSelect` (backend-declared, only ever `true` for a
+  // small bounded parent entity) picks the widget — see this block's own
+  // render-site comment for the full reasoning.
+  const ParentPickerControl = childCompoundCreate?.parentSelect ? FkSelect : FkAutocomplete;
 
   const pageTitle = label ?? entityKey.replace(/-/g, " ");
 
@@ -385,16 +401,14 @@ function EntityListPage({ entityKeyOverride }: { entityKeyOverride?: string } = 
             parent must be picked before the form can build a real URL —
             rendered above the form and gating it, mirroring
             `EntityRelationTab.tsx`'s own compound-create parent picker.
-            `FkSelect` (not `FkAutocomplete`), live-manual-test feedback
-            ("filter testplan should be dropdown"): the parent list here is a
-            small, bounded, already-fetched-in-full set (a project's own test
-            plans) — exactly the `FkSelect`/`FieldConfig.select` shape
-            `fk-select.tsx`'s own docstring already reserves for this class
-            of ref entity, same call REQ-5 made for TestLevel/TestType/
-            TestCondition.
+            ADR-0087: `parentSelect` (backend-declared, only ever `true` for
+            a small bounded parent entity like `test-plan`) picks `FkSelect`
+            over `FkAutocomplete` — the same live-manual-test feedback
+            ("filter testplan should be dropdown") generalized into a
+            declared flag rather than a hardcoded component choice.
           */}
           {childCompoundNeedsParentPicker && childCompoundCreate && (
-            <FkSelect
+            <ParentPickerControl
               id="entity-list-compound-parent-picker"
               label={childCompoundCreate.parentLabel ?? "Parent"}
               refEntity={childCompoundCreate.parentEntity as string}

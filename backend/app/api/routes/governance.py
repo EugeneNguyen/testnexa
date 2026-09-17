@@ -50,7 +50,7 @@ _RISK_ITEM_CONFIG = CrudEntityConfig(
     label="Risk items",
     scope_selector=(
         ScopeSelectorOption(ref_entity="requirement", param_name="requirement_id", label="By requirement"),
-        ScopeSelectorOption(ref_entity="test-plan", param_name="test_plan_id", label="By test plan"),
+        ScopeSelectorOption(ref_entity="test-plan", param_name="test_plan_id", label="By test plan", select=True),
     ),
     field_meta={
         "requirement_id": FieldMeta(ref_entity="requirement", label_field="description", label="Requirement"),

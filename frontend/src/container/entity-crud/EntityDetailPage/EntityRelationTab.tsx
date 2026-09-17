@@ -231,6 +231,7 @@ import {
   EntityForm,
   EntityTable,
   FkAutocomplete,
+  FkSelect,
   Modal,
   ScopeSelector,
   Spinner,
@@ -1259,18 +1260,27 @@ function EntityRelationTab({
                     extraParams={projectId ? { project_id: projectId } : undefined}
                   />
                 )}
-                {compoundParentPickerReady && (
-                  <FkAutocomplete
-                    id="entity-relation-compound-parent-picker"
-                    label={activeCompoundCreate.parentLabel ?? "Parent"}
-                    refEntity={activeCompoundCreate.parentEntity as string}
-                    labelField={activeCompoundCreate.parentLabelField ?? undefined}
-                    value={compoundParentId}
-                    onChange={setCompoundParentId}
-                    extraParams={compoundParentEffectiveScope}
-                    routeParams={routeParams}
-                  />
-                )}
+                {compoundParentPickerReady &&
+                  (() => {
+                    // ADR-0087: same declared `parentSelect` flag
+                    // `EntityListPage.tsx`'s own compound-parent picker
+                    // reads — neither live declaration here (`requirement`,
+                    // `test-execution`) sets it, so this stays
+                    // `FkAutocomplete` today, but the mechanism is shared.
+                    const ParentPickerControl = activeCompoundCreate.parentSelect ? FkSelect : FkAutocomplete;
+                    return (
+                      <ParentPickerControl
+                        id="entity-relation-compound-parent-picker"
+                        label={activeCompoundCreate.parentLabel ?? "Parent"}
+                        refEntity={activeCompoundCreate.parentEntity as string}
+                        labelField={activeCompoundCreate.parentLabelField ?? undefined}
+                        value={compoundParentId}
+                        onChange={setCompoundParentId}
+                        extraParams={compoundParentEffectiveScope}
+                        routeParams={routeParams}
+                      />
+                    );
+                  })()}
                 {!compoundFormReady && (
                   /*
                     Deliberately does NOT interpolate `farLabel` here, though an

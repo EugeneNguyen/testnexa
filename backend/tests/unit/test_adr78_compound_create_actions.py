@@ -639,6 +639,7 @@ def test_derive_entity_schema_serializes_the_declaration_camel_cased(key: str) -
             "parentLabel": action.parent_label,
             "parentLabelField": action.parent_label_field,
             "parentFilters": dict(action.parent_filters),
+            "parentSelect": action.parent_select,
         }
 
 

@@ -131,6 +131,14 @@ export interface ScopeSelectorOption {
    * never reporting it to `onResolved` itself.
    */
   via?: ScopeSelectorOption;
+  /**
+   * ADR-0087: render this option's picker as `FkSelect` (a plain `<select>`,
+   * `refEntity`'s full list fetched once) instead of `FkAutocomplete` —
+   * only ever `true` for a `refEntity` the backend has vetted as a small,
+   * bounded catalog (`test-plan`, `test-suite`, `test-cycle`); everything
+   * else defaults `false`.
+   */
+  select?: boolean;
 }
 
 /**
@@ -302,6 +310,8 @@ export interface CompoundCreateAction {
    * can only be raised against a failed execution). `{}` when there is none.
    */
   parentFilters: Record<string, string>;
+  /** ADR-0087: render the parent picker as `FkSelect` — same bounded-catalog caveat as `ScopeSelectorOption.select`. */
+  parentSelect?: boolean;
 }
 
 export interface EntityConfig {

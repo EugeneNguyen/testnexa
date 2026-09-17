@@ -206,17 +206,20 @@ async function renderAndSettle() {
 }
 
 /**
- * Drive a `FkAutocomplete` the way a user does: type, wait out its 300ms
- * debounce for the dropdown, click the matching option. Not a shortcut past the
- * widget — the id it stores is exactly what the submit payload must carry.
+ * ADR-0087: Release/Environment are now `FkSelect` (a plain native
+ * `<select>`, ADR-0087's bounded-catalog flag) rather than `FkAutocomplete`
+ * — a real user picks by choosing the option, no typing/debounce/dropdown
+ * click involved. `optionId` is the option's own `value` (the row's real
+ * id), exactly what the submit payload must carry.
  */
-async function pickFromAutocomplete(label: string, term: string, optionLabel: string) {
-  fireEvent.change(screen.getByLabelText(label), { target: { value: term } });
-  const option = await screen.findByRole("button", { name: optionLabel }, { timeout: 3000 });
-  fireEvent.click(option);
-  // Selecting re-runs the widget's own `getEntity` label lookup; wait for it to
-  // land so the assertion below runs against a settled field, not mid-flight.
-  await waitFor(() => expect(screen.getByLabelText(label)).toHaveValue(optionLabel));
+async function pickFromSelect(label: string, optionId: string) {
+  const select = screen.getByLabelText(label) as HTMLSelectElement;
+  // `FkSelect` fetches its ref entity's full list once, on mount — the
+  // matching <option> doesn't exist yet on the very first render, and
+  // setting `value` to an id with no matching option is a silent no-op on
+  // a native <select>.
+  await waitFor(() => expect(select.querySelector(`option[value="${optionId}"]`)).not.toBeNull());
+  fireEvent.change(select, { target: { value: optionId } });
 }
 
 describe("TestPlanDetail — TestCycles (PLAN-3)", () => {
@@ -305,8 +308,8 @@ describe("TestPlanDetail — TestCycles (PLAN-3)", () => {
     const listCallsBefore = cycleListCallCount();
 
     fireEvent.click(screen.getByTestId("create-cycle-btn"));
-    await pickFromAutocomplete("Release", "R-1", "R-1.0");
-    await pickFromAutocomplete("Environment", "Stag", "Staging");
+    await pickFromSelect("Release", RELEASE_ID);
+    await pickFromSelect("Environment", ENV_ID);
     fireEvent.change(screen.getByTestId("cycle-name"), { target: { value: "Cycle 1" } });
     fireEvent.change(screen.getByTestId("cycle-start-date"), { target: { value: "2026-01-01" } });
 
@@ -337,7 +340,7 @@ describe("TestPlanDetail — TestCycles (PLAN-3)", () => {
     await renderAndSettle();
 
     fireEvent.click(screen.getByTestId("create-cycle-btn"));
-    await pickFromAutocomplete("Release", "R-1", "R-1.0");
+    await pickFromSelect("Release", RELEASE_ID);
 
     fireEvent.click(screen.getByTestId("new-environment-toggle"));
     // The toggle replaces that one field: the autocomplete is gone entirely.
@@ -379,7 +382,7 @@ describe("TestPlanDetail — TestCycles (PLAN-3)", () => {
     await renderAndSettle();
 
     fireEvent.click(screen.getByTestId("create-cycle-btn"));
-    await pickFromAutocomplete("Release", "R-1", "R-1.0");
+    await pickFromSelect("Release", RELEASE_ID);
     fireEvent.click(screen.getByTestId("new-environment-toggle"));
     fireEvent.change(screen.getByTestId("new-environment-name"), { target: { value: "Broken" } });
     fireEvent.change(screen.getByTestId("cycle-name"), { target: { value: "Cycle 3" } });
@@ -418,8 +421,8 @@ describe("TestPlanDetail — TestCycles (PLAN-3)", () => {
     await renderAndSettle();
 
     fireEvent.click(screen.getByTestId("create-cycle-btn"));
-    await pickFromAutocomplete("Release", "R-1", "R-1.0");
-    await pickFromAutocomplete("Environment", "Stag", "Staging");
+    await pickFromSelect("Release", RELEASE_ID);
+    await pickFromSelect("Environment", ENV_ID);
     fireEvent.change(screen.getByTestId("cycle-name"), { target: { value: "Cycle 4" } });
     fireEvent.click(screen.getByTestId("create-cycle-submit"));
 

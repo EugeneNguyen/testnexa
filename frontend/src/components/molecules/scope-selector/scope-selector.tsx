@@ -50,6 +50,7 @@
 import { useState } from "react";
 import { ScopeSelectorOption } from "../../../entityConfigs/types";
 import FkAutocomplete from "../fk-autocomplete";
+import FkSelect from "../fk-select";
 
 export interface ScopeSelectorProps {
   options: ScopeSelectorOption | ScopeSelectorOption[];
@@ -104,14 +105,19 @@ function ScopeSelector({ options, onResolved, extraParams }: ScopeSelectorProps)
         </div>
       )}
       {needsViaFirst ? (
-        <FkAutocomplete
-          id="scope-selector-via-fk"
-          label={active.via!.label ?? `First, pick a ${active.via!.refEntity}`}
-          refEntity={active.via!.refEntity}
-          value={undefined}
-          onChange={(id) => id && setViaValue(id)}
-          extraParams={extraParams}
-        />
+        (() => {
+          const ViaControl = active.via!.select ? FkSelect : FkAutocomplete;
+          return (
+            <ViaControl
+              id="scope-selector-via-fk"
+              label={active.via!.label ?? `First, pick a ${active.via!.refEntity}`}
+              refEntity={active.via!.refEntity}
+              value={undefined}
+              onChange={(id) => id && setViaValue(id)}
+              extraParams={extraParams}
+            />
+          );
+        })()
       ) : (
         <>
           {active.via && (
@@ -128,14 +134,19 @@ function ScopeSelector({ options, onResolved, extraParams }: ScopeSelectorProps)
               </button>
             </p>
           )}
-          <FkAutocomplete
-            id="scope-selector-fk"
-            label={active.label ?? `Filter by ${active.refEntity}`}
-            refEntity={active.refEntity}
-            value={value}
-            onChange={handleChange}
-            extraParams={active.via ? { ...extraParams, [active.via.paramName]: viaValue } : extraParams}
-          />
+          {(() => {
+            const ActiveControl = active.select ? FkSelect : FkAutocomplete;
+            return (
+              <ActiveControl
+                id="scope-selector-fk"
+                label={active.label ?? `Filter by ${active.refEntity}`}
+                refEntity={active.refEntity}
+                value={value}
+                onChange={handleChange}
+                extraParams={active.via ? { ...extraParams, [active.via.paramName]: viaValue } : extraParams}
+              />
+            );
+          })()}
         </>
       )}
     </div>

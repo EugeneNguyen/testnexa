@@ -113,7 +113,7 @@ import {
   updateEntity,
   type EntityRow,
 } from "../../../lib/api/entityCrud";
-import { Alert, Spinner, EntityForm, FkAutocomplete } from "../../../components";
+import { Alert, Spinner, EntityForm, FkSelect } from "../../../components";
 import { pathFor } from "../../../entityConfigs/overrides";
 import { useEntitySchema } from "../../admin/useEntitySchema";
 import type { EntityConfig } from "../../../entityConfigs/types";
@@ -1448,7 +1448,7 @@ function TestPlanDetail() {
               path in the registry.
             */}
             <div data-testid="create-cycle-release">
-              <FkAutocomplete
+              <FkSelect
                 id="cycleReleaseId"
                 label="Release"
                 refEntity="release"
@@ -1500,7 +1500,7 @@ function TestPlanDetail() {
               </>
             ) : (
               <div data-testid="create-cycle-environment">
-                <FkAutocomplete
+                <FkSelect
                   id="cycleEnvironmentId"
                   label="Environment"
                   refEntity="environment"

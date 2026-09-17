@@ -288,12 +288,27 @@ class ScopeSelectorOption:
     `{via.param_name: pickedId}` on the OUTER option's own search — never
     reported to `onResolved` itself, which still only ever fires for the
     outer, real scope field this page's list route actually needs.
+
+    ADR-0087. `select`, when `True`, renders this option's picker as
+    `FkSelect` (a plain `<select>`, `ref_entity`'s full list fetched once, no
+    `?q=` search) instead of `FkAutocomplete` — the same opt-in
+    `FieldMeta.select` already uses for a small, bounded catalog
+    (`TestLevel`/`TestType`/`TestCondition`, REQ-5). **Only set this for a
+    `ref_entity` that is genuinely small and bounded** (`test-plan`,
+    `test-suite`, `test-cycle` — typically a handful per project/plan) —
+    never for one that can grow unboundedly per project (`requirement`,
+    `test-case`, `defect`, `test-execution`, `test-condition`): `FkSelect`
+    fetches at most `FULL_LIST_PAGE_SIZE` (100) rows and offers no search, so
+    a large ref entity would silently truncate the choices, not just look
+    different. Defaults `False` (`FkAutocomplete`) — the safe default for a
+    ref entity nobody has explicitly vetted as bounded.
     """
 
     ref_entity: str
     param_name: str
     label: str | None = None
     via: "ScopeSelectorOption | None" = None
+    select: bool = False
 
 
 @dataclass
@@ -454,6 +469,13 @@ class CompoundCreateAction:
     is scoped by (`TestExecution.test_case_id` on a `TestCase` tab), the tab's
     parent id *is* the scope; otherwise the ordinary `pickerScopeParams` rule
     (ADR-0076 Decision §5) applies unchanged.
+
+    ADR-0087. `parent_select`, when `True`, renders the parent picker as
+    `FkSelect` instead of `FkAutocomplete` — same mechanism and same
+    bounded-catalog caveat as `ScopeSelectorOption.select`'s own docstring.
+    `TestCycle`'s `test-plan` parent (ADR-0086) is the one live case; the two
+    `trace.py` declarations (`requirement`, `test-execution`) stay `False` —
+    neither parent entity is bounded the way `test-plan` is.
     """
 
     far_field: str
@@ -464,6 +486,7 @@ class CompoundCreateAction:
     parent_label: str | None = None
     parent_label_field: str | None = None
     parent_filters: tuple[tuple[str, str], ...] = ()
+    parent_select: bool = False
 
 
 @dataclass
@@ -1572,6 +1595,8 @@ def derive_entity_schema(
             out["label"] = option.label
         if option.via is not None:
             out["via"] = _serialize_scope_selector_option(option.via)
+        if option.select:
+            out["select"] = True
         return out
 
     scope_selector: Any = None
@@ -1612,6 +1637,7 @@ def derive_entity_schema(
             "parentLabel": action.parent_label,
             "parentLabelField": action.parent_label_field,
             "parentFilters": {name: value for name, value in action.parent_filters},
+            "parentSelect": action.parent_select,
         }
         for action in config.compound_creates
     ]
@@ -1630,6 +1656,7 @@ def derive_entity_schema(
             "parentLabel": action.parent_label,
             "parentLabelField": action.parent_label_field,
             "parentFilters": {name: value for name, value in action.parent_filters},
+            "parentSelect": action.parent_select,
         }
         for action in config.child_compound_creates
     ]
