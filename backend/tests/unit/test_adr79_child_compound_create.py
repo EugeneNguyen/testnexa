@@ -84,6 +84,13 @@ CLASSIFICATION: dict[tuple[str, str], str] = {
     ("requirements", "Test conditions"): "closed",
     ("test-executions", "Defects"): "closed",
     ("test-plans", "Test cycles"): "closed",
+    # ADR-0084: the project-scoped arm of the same entity's now-branching
+    # `scope_field`. `child_compound_creates` only declares the `test_plan_id`
+    # arm (the bespoke route's own path needs a TestPlan id, which a Project
+    # detail page doesn't have) — a zero-picker create here would need a new
+    # picker mechanism this pass doesn't build, same bucket as the two
+    # `open` rows below.
+    ("projects", "Test cycles"): "open",
     ("test-cases", "Test executions"): "open",
     ("test-cycles", "Test executions"): "open",
     ("test-executions", "Test logs"): "closed",  # Amendment 1 (2026-09-16)

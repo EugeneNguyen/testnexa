@@ -243,6 +243,7 @@ async def _create_test_cycle(
 ) -> TestCycle:
     cycle = TestCycle(
         test_plan_id=test_plan.id,
+        project_id=test_plan.project_id,
         release_id=release.id,
         environment_id=environment.id,
         name=f"PROJ-2 Cycle {tag}",

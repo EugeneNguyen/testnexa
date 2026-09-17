@@ -29,8 +29,10 @@ from app.api.crud_factory import (
     CrudEntityConfig,
     FieldMeta,
     ScopeSelectorOption,
+    branching_resolver,
     chain_resolver,
     make_crud_router,
+    resolve_terminal_org_id,
 )
 from app.core.plan_status import (
     INVALID_STATUS_TRANSITION_CODE,
@@ -204,25 +206,47 @@ _TEST_CYCLE_CONFIG = CrudEntityConfig(
     create_schema=None,
     update_schema=UpdateTestCycleRequest,
     summary_schema=TestCycleSummary,
-    scope_field="test_plan_id",
-    resolve_org_id=chain_resolver([(TestPlan, "test_plan_id")]),
+    # ADR-0084: widened from the single `test_plan_id` to a branching 2-tuple
+    # — `project_id` (denormalized onto the model at create time) lets this
+    # entity list directly under a project, the "normal" generic-admin shape
+    # every other project-scoped entity already has, without going through
+    # the pre-existing TestPlan `ScopeSelector` picker first. The pre-existing
+    # arm is declared FIRST (same ordering discipline as every other
+    # branching-scope config in this file/module — the item-route walk, where
+    # a real row carries both FKs at once, must keep resolving via the
+    # original branch so nothing about `GET`/`PATCH`/`DELETE` changes).
+    scope_field=("test_plan_id", "project_id"),
+    resolve_org_id=branching_resolver(
+        [
+            ("test_plan_id", chain_resolver([(TestPlan, "test_plan_id")])),
+            ("project_id", resolve_terminal_org_id),
+        ]
+    ),
     # ADR-0070. `name` is the only non-FK, non-date column on this entity.
     search_fields=("name",),
     methods=frozenset({"list", "get", "update", "delete"}),
-    # ADR-0053. Same `test_plan_id`-not-`project_id` scope-selector shape as
-    # `_ENTRY_EXIT_CRITERIA_CONFIG` above. `test_plan_id`/`release_id` derive
-    # as readOnly (absent from `UpdateTestCycleRequest` — not reassignable
+    # ADR-0053/ADR-0084. `test_plan_id`/`project_id`/`release_id` derive as
+    # readOnly (absent from `UpdateTestCycleRequest` — not reassignable
     # through this route) and nothing derives as required, because the real
     # create is the bespoke `POST /test-plans/{id}/test-cycles`
     # (`test_cycle_creation.py`) and this config's `create_schema` is `None`:
     # a "required on create" claim would describe a form that doesn't exist.
     label="Test cycles",
-    scope_selector=ScopeSelectorOption(ref_entity="test-plan", param_name="test_plan_id"),
+    # ADR-0084 adds the second option — "By project" resolves immediately
+    # from the route's own `:projectId` (ADR-0058's "shape B", no picker
+    # needed) since `project_id` is now this config's own scope arm; "By test
+    # plan" is unchanged, kept first so the pre-existing UX (and every
+    # existing test asserting it) doesn't move.
+    scope_selector=(
+        ScopeSelectorOption(ref_entity="test-plan", param_name="test_plan_id", label="By test plan"),
+        ScopeSelectorOption(ref_entity="project", param_name="project_id", label="By project"),
+    ),
     # Both FK/scope fields are summary-only, so they derive last without this;
     # every hand-written config led with them.
-    field_order=("test_plan_id", "release_id", "environment_id", "name", "start_date", "end_date"),
+    field_order=("test_plan_id", "project_id", "release_id", "environment_id", "name", "start_date", "end_date"),
     field_meta={
         "test_plan_id": FieldMeta(ref_entity="test-plan", label_field="identifier", label="Test plan"),
+        "project_id": FieldMeta(ref_entity="project", label_field="name", label="Project"),
         "release_id": FieldMeta(ref_entity="release", label_field="version_label", label="Release"),
         "environment_id": FieldMeta(ref_entity="environment", label_field="name", label="Environment"),
     },

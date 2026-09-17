@@ -973,7 +973,13 @@ async def test_bespoke_create_entity_test_execution_preserves_plan3_scope_check(
             # Deliberately no `TestPlanTestSuite` row at all — the plan
             # includes zero suites, so `excluded_suite` (and therefore
             # `test_case`) is out of scope no matter which suite it's in.
-            cycle = TestCycle(test_plan_id=plan.id, release_id=release.id, environment_id=environment.id, name="MCP-5 TC021 Cycle")
+            cycle = TestCycle(
+                test_plan_id=plan.id,
+                project_id=project.id,
+                release_id=release.id,
+                environment_id=environment.id,
+                name="MCP-5 TC021 Cycle",
+            )
             session.add(cycle)
             await session.flush()
 

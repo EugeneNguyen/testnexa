@@ -179,6 +179,7 @@ async def create_test_cycle_for_plan(
 
     test_cycle = TestCycle(
         test_plan_id=plan.id,
+        project_id=plan.project_id,
         release_id=release.id,
         environment_id=environment.id,
         name=payload.name,
@@ -202,6 +203,7 @@ async def create_test_cycle_for_plan(
     return TestCycleSummary(
         id=test_cycle.id,
         test_plan_id=test_cycle.test_plan_id,
+        project_id=test_cycle.project_id,
         release_id=test_cycle.release_id,
         environment_id=test_cycle.environment_id,
         name=test_cycle.name,

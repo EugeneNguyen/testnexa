@@ -212,6 +212,7 @@ async def main():
         cycle_c_name = f"PLAN-2 E2E Cycle C {suffix}"
         cycle_b = TestCycle(
             test_plan_id=plan_b.id,
+            project_id=project.id,
             release_id=release.id,
             environment_id=environment.id,
             name=cycle_b_name,
@@ -220,6 +221,7 @@ async def main():
         )
         cycle_c = TestCycle(
             test_plan_id=plan_c.id,
+            project_id=project.id,
             release_id=release.id,
             environment_id=environment.id,
             name=cycle_c_name,

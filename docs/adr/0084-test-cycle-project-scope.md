@@ -1,0 +1,38 @@
+# 0084. TestCycle gains a denormalized `project_id` and a branching scope
+
+**Status:** Accepted
+**Decider:** xuanbinh91@gmail.com (CTO)
+**Date:** 2026-09-17
+**Related:** [ADR-0053](0053-tabler-install-phase-1-cdn.md) (`CrudEntityConfig.full_methods`/`scope_field`, backend-driven schema), [ADR-0075 Amendment 1](0075-junction-table-registry-completeness.md#amendment-1-2026-09-15--every-junction-is-scoped-and-therefore-tabbed-from-both-ends) (`branching_resolver`, the branching-`scope_field` precedent this reuses verbatim), [ADR-0069](0069-req-5-standalone-test-case-with-optional-requirement-link.md) (`TestCase.project_id`, the nullable-denormalization precedent — this one is NOT NULL, see Context)
+
+## Context
+
+`TestCycle`'s only scope column was `test_plan_id` — a `TestCycle` could only ever be listed by first picking a `TestPlan` via the generic admin surface's `ScopeSelector`. There was no way to see "every test cycle in this project," the "normal" generic-admin shape every other project-scoped entity (`Requirement`, `TestCase`, `TestSuite`, `TestPlan`, `Environment`) already has directly off `:projectId`.
+
+Two ways to close this were considered (a plan-with-open-questions pass, CTO chose): widen `crud_factory`'s generic list route to support a join-scoped `scope_field` (resolving through one FK hop, `test_plan_id` → `test_plan.project_id`), or denormalize a real `project_id` column onto `TestCycle` itself, backfilled from `test_plan.project_id`. **Denormalization was chosen** — smaller, more localized change; the tradeoff (a second source of truth that could drift if a `TestCycle`'s `TestPlan` were ever reassigned to a different project) is accepted, since nothing in this codebase reassigns a `TestPlan`'s `project_id` after creation.
+
+## Decision
+
+`TestCycle.project_id` (NOT NULL, FK → `project.id` ON DELETE RESTRICT, indexed) — set once, at create time, in the bespoke `POST /test-plans/{id}/test-cycles` route (`test_cycle_creation.py`), from `plan.project_id`. Never reassigned (absent from `UpdateTestCycleRequest`, same as `test_plan_id` already was).
+
+Unlike `TestCase.project_id` (ADR-0069, nullable — a standalone `TestCase` legitimately has no `Project`), this column is **NOT NULL from the start**: every `TestCycle` already has exactly one `Project`, transitively, for its entire history. The migration adds it nullable, backfills every existing row from `test_plan.project_id` via `UPDATE ... FROM`, then tightens to NOT NULL in the same migration.
+
+`_TEST_CYCLE_CONFIG.scope_field` widens from `"test_plan_id"` to the branching 2-tuple `("test_plan_id", "project_id")` — the identical `branching_resolver`/`ScopeSelectorOption`-tuple/`extract_scope_value`-"exactly one" mechanism ADR-0075 Amendment 1 already established for the six traceability junctions, reused verbatim, not reinvented. `resolve_org_id` becomes `branching_resolver([("test_plan_id", chain_resolver([(TestPlan, "test_plan_id")])), ("project_id", resolve_terminal_org_id)])` — the pre-existing arm declared **first**, so the item-route walk (`GET`/`PATCH`/`DELETE`, where a real row carries both FKs at once) resolves exactly as it did before this change; only a `list`/`create`-time scope check (a `types.SimpleNamespace` carrying just one attribute) ever reaches the second branch.
+
+This adds a **second, additional** flat list route (`GET /test-cycles?project_id=...`) alongside the pre-existing `GET /test-cycles?test_plan_id=...` — both are the same generic-factory route, now accepting either scope key. `derive_entity_relations` picks this up for free: `Project` gains a sixth relationship tab, "Test cycles" (one-to-many, `scopeField=project_id`) — the exact frontend UX this story was asked for, no frontend code change (`ADR-0058`'s "shape B": `:projectId` resolves the scope immediately, no picker). No `child_compound_creates` entry for this new arm — the bespoke create route's own path needs a `test_plan_id`, which a Project detail page doesn't have, so "New" correctly doesn't render on the project-scoped tab (a genuinely open gap, same bucket ADR-0079 already established for two other tabs, not silently absorbed).
+
+## Consequences
+
+- Test Cycles are now listable directly under a project on the generic admin surface (`/projects/:projectId/admin/test-cycles`), with no `ScopeSelector` picker step — the ask this story was opened for.
+- `Project`'s detail page gains a sixth relationship tab, "Test cycles," automatically (no frontend change) — relation totals move 31 → 32 (entity-with-tabs count unchanged at 10, `Project` already had five other tabs).
+- The pre-existing `TestPlan`-scoped list/tab is completely unaffected — same route, same query param, same result set, same `child_compound_creates`-backed "New" button.
+- **14 direct-ORM `TestCycle(...)` construction sites across the codebase needed a one-line `project_id=` addition** to keep working against the new NOT NULL column — 5 in `backend/tests/integration/`, the bespoke route itself, and 8 in `e2e/tests/*.spec.ts`'s own embedded Python seed scripts. All found via a whole-tree grep (`backend/CLAUDE.md`'s standing "grep the whole tree before shipping a NOT NULL column" discipline), none missed.
+- Three pre-existing relation-completeness unit tests updated in place (not superseded) — they were correctly asserting the *old* counts, and are now asserting the new ones for the same reason: `test_project_lists_its_five_direct_children` → `..._six_...` (adds `test-cycles`), the 31→32 relation-total test, and `CLASSIFICATION`'s own completeness table (`test_adr79_child_compound_create.py`) gains one `open`-bucket row for `("projects", "Test cycles")`.
+- `TestCycleSummary` (both the Pydantic schema in `app/schemas/planning.py` and the frontend TS interface in `lib/api/testCycles.ts`) gains `project_id` — a deliberate, additive response-shape widening, not a breaking one (existing consumers reading other fields are unaffected; 4 frontend Vitest mock literals updated to the new required shape).
+- No RBAC/permission-code change — `test_cycle.read`/`.create`/`.update`/`.delete` are unchanged; the new list route is gated by the identical `test_cycle.read` check the old one already used.
+- Verified: backend unit 906/906, full backend integration suite green against a live isolated stack cloned from `main` and migrated (backfill confirmed via direct `psql` count — 0 existing rows, 0 with NULL `project_id`, and 2 new ADR-0084-specific integration tests exercising a real create-then-list-both-ways round trip plus the new 422 "exactly one" boundary), frontend `tsc --noEmit` clean + Vitest 98 files/788 tests green.
+
+## Alternatives considered
+
+- **Widen `crud_factory`'s generic list route to support a join-scoped `scope_field`** (resolving `project_id` through a `test_plan` join rather than a direct column). Rejected — CTO's explicit choice; a genuinely reusable generic-factory capability, but a larger, riskier change to code all 27 other entities depend on, for a benefit this one entity needed today. Worth revisiting as its own ADR if a second entity ever needs the same join-based shape.
+- **Add `child_compound_creates` for the new `project_id` arm too**, so the Project-scoped "Test cycles" tab also gets a zero-picker "New" button. Rejected — the bespoke create route's path template needs `test_plan_id`, which the tab's own record (a Project) doesn't carry; building a real parent-picker for this specific case is out of scope here and is the same class of gap ADR-0079 already named and left open for two other tabs.

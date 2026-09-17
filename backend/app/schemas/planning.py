@@ -180,6 +180,7 @@ class UpdateTestCycleRequest(BaseModel):
 class TestCycleSummary(BaseModel):
     id: UUID
     test_plan_id: UUID
+    project_id: UUID
     release_id: UUID
     environment_id: UUID
     name: str

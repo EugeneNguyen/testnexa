@@ -291,7 +291,11 @@ class TestTheNumbersTheDocsQuote:
         """ADR-0074's Consequences: "22 relationships across 9 entities" at
         ship, "30 across 10" after Amendment 1 (+2 from ADR-0075 registering the
         two junctions, +6 from making all six bidirectional; the tenth entity is
-        `Defect`, which previously had no tab strip at all)."""
+        `Defect`, which previously had no tab strip at all), then ADR-0078
+        widened `TestExecution.scope_field` for +1 (31). **ADR-0084** adds a
+        32nd: `TestCycle.project_id` (denormalized) makes `Project` -> "Test
+        cycles" a new relation, with no new entity gaining tabs for the first
+        time (`Project` already had five others) — entity count stays 10."""
         from app.api.crud_factory import derive_entity_relations
 
         per_entity = {
@@ -299,7 +303,7 @@ class TestTheNumbersTheDocsQuote:
             for key, config in ALL_ENTITY_CONFIGS.items()
         }
         with_tabs = {key: rels for key, rels in per_entity.items() if rels}
-        assert sum(len(r) for r in with_tabs.values()) == 31
+        assert sum(len(r) for r in with_tabs.values()) == 32
         assert len(with_tabs) == 10
         assert "defects" in with_tabs, "Defect is the tenth entity — it had no tab strip before"
 

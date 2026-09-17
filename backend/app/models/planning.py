@@ -111,6 +111,15 @@ class TestCycle(Base):
     test_plan_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("test_plan.id", ondelete="RESTRICT"), nullable=False, index=True
     )
+    # ADR-0084: denormalized from test_plan.project_id at create time, never
+    # reassigned — lets this entity be listed directly by project (the
+    # generic admin surface's "normal" shape) without a TestPlan picker,
+    # alongside the pre-existing test_plan_id-scoped list. See that ADR for
+    # why denormalization was chosen over a join-based generic-factory
+    # capability.
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("project.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
     release_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("release.id", ondelete="RESTRICT"), nullable=False
     )

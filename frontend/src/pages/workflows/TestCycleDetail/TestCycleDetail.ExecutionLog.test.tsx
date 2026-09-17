@@ -226,6 +226,7 @@ describe("TestCycleDetail — EXEC-2 execution log", () => {
           return {
             id,
             test_plan_id: PLAN_ID,
+            project_id: PROJECT_ID,
             release_id: RELEASE_ID,
             environment_id: ENV_ID,
             name: "Cycle 1",

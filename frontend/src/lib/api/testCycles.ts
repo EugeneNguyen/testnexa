@@ -24,6 +24,7 @@ import { apiFetch } from "./client";
 export interface TestCycleSummary {
   id: string;
   test_plan_id: string;
+  project_id: string;
   release_id: string;
   environment_id: string;
   name: string;

@@ -169,6 +169,7 @@ async def main():
 
         cycle = TestCycle(
             test_plan_id=plan.id,
+            project_id=plan.project_id,
             release_id=release.id,
             environment_id=environment.id,
             name=f"SHELL-2 Breadcrumb E2E Cycle {suffix}",

@@ -124,13 +124,17 @@ class TestLinkEntityClassifier:
 
 
 class TestOneToManyRelations:
-    def test_project_lists_its_five_direct_children(self) -> None:
+    def test_project_lists_its_six_direct_children(self) -> None:
+        """ADR-0084 adds `test-cycles` — `TestCycle.project_id`'s new
+        denormalized scope arm makes it a sixth direct child, alongside its
+        pre-existing `test-plans`-scoped tab (a different relation, unaffected)."""
         relations = _by_entity("projects")
         assert set(relations) == {
             "requirements",
             "test-cases",
             "test-suites",
             "test-plans",
+            "test-cycles",
             "environments",
         }
         assert all(r["kind"] == "one-to-many" for r in relations.values())

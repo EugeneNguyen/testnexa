@@ -83,6 +83,7 @@ async def _create_release(session, project, tag: str) -> Release:
 async def _create_test_cycle(session, *, test_plan, release, environment, tag: str) -> TestCycle:
     cycle = TestCycle(
         test_plan_id=test_plan.id,
+        project_id=test_plan.project_id,
         release_id=release.id,
         environment_id=environment.id,
         name=_unique_name(f"cycle-{tag}"),
