@@ -48,11 +48,13 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { usePermissions } from "../../../auth/usePermissions";
-import { Alert, Button, Card, Icon, Spinner, Modal, EntityForm, EntityTable, ScopeSelector } from "../../../components";
+import { Alert, Button, Card, Icon, Spinner, Modal, EntityForm, EntityTable, FkAutocomplete, ScopeSelector } from "../../../components";
 import { ApiError } from "../../../lib/api/client";
 import { createEntity, createViaCompoundRoute, deleteEntity, EntityRow, listEntities } from "../../../lib/api/entityCrud";
 import { useAdminRouteContext } from "../../../pages/admin/useAdminRouteContext";
 import { useEntityScope } from "../../../pages/admin/useEntityScope";
+import { useEntitySchema } from "../../../pages/admin/useEntitySchema";
+import { compoundParentField, pickerScopeParams } from "../EntityDetailPage/EntityRelationTab";
 
 /**
  * DS-2/ADR-0041: this used to be a hardcoded `const PAGE_SIZE = 25` with no
@@ -83,6 +85,34 @@ function EntityListPage({ entityKeyOverride }: { entityKeyOverride?: string } = 
     useAdminRouteContext(entityKeyOverride);
   const { scope, onScopeSelectorResolved } = useEntityScope(config, routeParams);
   const permissions = usePermissions(orgId);
+
+  /**
+   * ADR-0086: `child_compound_creates`' own parent-picker generalization
+   * (`EntityRelationTab.tsx`'s `activeChildCompoundCreate` had this named as
+   * an explicit, not-yet-supported gap — "no live child entity needing this
+   * mechanism also needs a parent picker today" — `TestCycle`'s new
+   * `project_id` arm, ADR-0084, is the first that does: the bespoke route's
+   * path needs `test_plan_id`, not `project_id`, so the parent (which
+   * `TestPlan`) must be picked, not assumed from the current scope).
+   *
+   * Computed here, unconditionally, before the `!config` early return below
+   * — `useEntitySchema` is a hook and must run every render regardless of
+   * whether `config` has arrived yet (same discipline `useEntityScope.ts`'s
+   * own module docstring already states for its `useEntitySchema` call).
+   * `config?.` throughout because `config` is genuinely `undefined` for the
+   * one render before the schema fetch resolves.
+   */
+  const rawChildCompoundCreate = scope.field
+    ? config?.childCompoundCreates?.find((action) => action.farField === scope.field)
+    : undefined;
+  const compoundParent = rawChildCompoundCreate ? compoundParentField(rawChildCompoundCreate) : null;
+  const childCompoundNeedsParentPicker = Boolean(compoundParent) && compoundParent !== scope.field;
+  const { config: compoundParentConfig } = useEntitySchema(
+    childCompoundNeedsParentPicker && rawChildCompoundCreate?.parentEntity
+      ? rawChildCompoundCreate.parentEntity
+      : undefined,
+  );
+  const [compoundParentId, setCompoundParentId] = useState<string | undefined>(undefined);
 
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
@@ -134,11 +164,18 @@ function EntityListPage({ entityKeyOverride }: { entityKeyOverride?: string } = 
 
   const createMutation = useMutation({
     mutationFn: (values: Record<string, unknown>) =>
-      childCompoundCreate && scope.field && scope.value
-        ? createViaCompoundRoute(childCompoundCreate, { [scope.field]: scope.value }, values)
+      childCompoundCreate && scope.field
+        ? createViaCompoundRoute(
+            childCompoundCreate,
+            childCompoundNeedsParentPicker
+              ? { [compoundParent as string]: compoundParentId as string }
+              : { [scope.field]: scope.value as string },
+            values,
+          )
         : createEntity(config!, routeParams, values),
     onSuccess: () => {
       setShowCreateModal(false);
+      setCompoundParentId(undefined);
       setCreateError(null);
       setCreateFieldErrors(undefined);
       void queryClient.invalidateQueries({ queryKey: ["entity-list", entityKey] });
@@ -209,12 +246,27 @@ function EntityListPage({ entityKeyOverride }: { entityKeyOverride?: string } = 
    * `useEntityScope`'s already-resolved `scope.field`/`scope.value`). Reuses
    * the same declarations verbatim — no new backend field, no new shape.
    */
-  const childCompoundCreate =
-    !canCreate && scope.field
-      ? config.childCompoundCreates?.find((action) => action.farField === scope.field)
-      : undefined;
+  const childCompoundCreate = !canCreate ? rawChildCompoundCreate : undefined;
   const canCreateViaCompound =
     Boolean(childCompoundCreate) && permissions.has(childCompoundCreate!.permission, projectId);
+
+  /**
+   * ADR-0086: the parent-picker's own scope — TestPlan's config declares
+   * `scope_field="project_id"`, so `pickerScopeParams` resolves it directly
+   * from the route's own `:projectId`, no extra `ScopeSelector` step. A
+   * future declaration whose parent entity needs one (`pickerScopeParams`
+   * returning `null`) isn't supported here — same "a gap to close
+   * explicitly, not to paper over" posture `EntityRelationTab.tsx`'s own
+   * pre-ADR-0086 docstring already took for the *absence* of this whole
+   * mechanism.
+   */
+  const compoundParentScope =
+    childCompoundNeedsParentPicker && compoundParentConfig ? pickerScopeParams(compoundParentConfig, projectId) : {};
+  const compoundParentEffectiveScope = {
+    ...(compoundParentScope ?? undefined),
+    ...(childCompoundCreate?.parentFilters ?? {}),
+  };
+  const compoundFormReady = !childCompoundNeedsParentPicker || Boolean(compoundParentId);
 
   const pageTitle = label ?? entityKey.replace(/-/g, " ");
 
@@ -320,20 +372,59 @@ function EntityListPage({ entityKeyOverride }: { entityKeyOverride?: string } = 
       <Modal
         visible={showCreateModal}
         title={<>New {label ?? entityKey.replace(/-/g, " ")}</>}
-        onClose={() => setShowCreateModal(false)}
+        onClose={() => {
+          setShowCreateModal(false);
+          setCompoundParentId(undefined);
+        }}
       >
         <Modal.Body>
-          <EntityForm
-            config={config}
-            mode="create"
-            lockedValues={scope.field && scope.value ? { [scope.field]: scope.value } : undefined}
-            submitError={createError}
-            serverFieldErrors={createFieldErrors}
-            onCancel={() => setShowCreateModal(false)}
-            onSubmit={async (values) => {
-              await createMutation.mutateAsync(values);
-            }}
-          />
+          {/*
+            ADR-0086: when the active `child_compound_creates` declaration's
+            route needs a different parent than this list's own scope
+            (`TestCycle`'s `project_id` arm needs a `test_plan_id`), the
+            parent must be picked before the form can build a real URL —
+            rendered above the form and gating it, mirroring
+            `EntityRelationTab.tsx`'s own compound-create parent picker.
+          */}
+          {childCompoundNeedsParentPicker && childCompoundCreate && (
+            <FkAutocomplete
+              id="entity-list-compound-parent-picker"
+              label={childCompoundCreate.parentLabel ?? "Parent"}
+              refEntity={childCompoundCreate.parentEntity as string}
+              labelField={childCompoundCreate.parentLabelField ?? undefined}
+              value={compoundParentId}
+              onChange={setCompoundParentId}
+              extraParams={compoundParentEffectiveScope}
+              routeParams={routeParams}
+            />
+          )}
+          {compoundFormReady && (
+            <EntityForm
+              config={config}
+              mode="create"
+              lockedValues={
+                childCompoundNeedsParentPicker
+                  ? {
+                      ...(compoundParent && compoundParentId ? { [compoundParent]: compoundParentId } : {}),
+                      ...(scope.field && scope.value ? { [scope.field]: scope.value } : {}),
+                    }
+                  : scope.field && scope.value
+                    ? { [scope.field]: scope.value }
+                    : undefined
+              }
+              fkRouteParams={routeParams}
+              fkExtraParams={projectId ? { project_id: projectId } : undefined}
+              submitError={createError}
+              serverFieldErrors={createFieldErrors}
+              onCancel={() => {
+                setShowCreateModal(false);
+                setCompoundParentId(undefined);
+              }}
+              onSubmit={async (values) => {
+                await createMutation.mutateAsync(values);
+              }}
+            />
+          )}
         </Modal.Body>
       </Modal>
 

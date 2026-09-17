@@ -43,6 +43,7 @@ from app.models.planning import EntryExitCriteria, Environment, TestCycle, TestP
 from app.schemas.planning import (
     CreateEntryExitCriteriaRequest,
     CreateEnvironmentRequest,
+    CreateTestCycleRequest,
     CreateTestPlanRequest,
     EntryExitCriteriaSummary,
     EnvironmentSummary,
@@ -199,11 +200,18 @@ _ENVIRONMENT_CONFIG = CrudEntityConfig(
     field_meta={"project_id": FieldMeta(ref_entity="project", label_field="name", label="Project")},
 )
 
-# No `create` — bespoke instead (`test_cycle_creation.py`), see module docstring.
+# No generic `create` route — bespoke instead (`test_cycle_creation.py`), see
+# module docstring. `create_schema` is still set (ADR-0086) purely so
+# `derive_entity_schema` marks `release_id`/`environment_id`/`name` writable
+# and required for the *frontend form* the bespoke route's own
+# `child_compound_creates` declarations now render — `"create" not in
+# methods` is what actually keeps the generic `POST` route unregistered
+# (`make_crud_router`'s own gate is `"create" in methods AND create_schema is
+# not None`), so this changes nothing about the reachable REST surface.
 _TEST_CYCLE_CONFIG = CrudEntityConfig(
     model=TestCycle,
     resource="test_cycle",
-    create_schema=None,
+    create_schema=CreateTestCycleRequest,
     update_schema=UpdateTestCycleRequest,
     summary_schema=TestCycleSummary,
     # ADR-0084: widened from the single `test_plan_id` to a branching 2-tuple
@@ -225,12 +233,12 @@ _TEST_CYCLE_CONFIG = CrudEntityConfig(
     # ADR-0070. `name` is the only non-FK, non-date column on this entity.
     search_fields=("name",),
     methods=frozenset({"list", "get", "update", "delete"}),
-    # ADR-0053/ADR-0084. `test_plan_id`/`project_id`/`release_id` derive as
-    # readOnly (absent from `UpdateTestCycleRequest` — not reassignable
-    # through this route) and nothing derives as required, because the real
-    # create is the bespoke `POST /test-plans/{id}/test-cycles`
-    # (`test_cycle_creation.py`) and this config's `create_schema` is `None`:
-    # a "required on create" claim would describe a form that doesn't exist.
+    # ADR-0053/ADR-0084/ADR-0086. `test_plan_id`/`project_id` still derive as
+    # readOnly (absent from both `CreateTestCycleRequest` and
+    # `UpdateTestCycleRequest` — the parent comes from the bespoke route's
+    # own path segment, never the body) but `release_id`/`environment_id`
+    # now derive required+writable from `CreateTestCycleRequest`, matching
+    # the real bespoke form `child_compound_creates` renders.
     label="Test cycles",
     # ADR-0084 adds the second option — "By project" resolves immediately
     # from the route's own `:projectId` (ADR-0058's "shape B", no picker
@@ -264,6 +272,24 @@ _TEST_CYCLE_CONFIG = CrudEntityConfig(
             path_template="/test-plans/{test_plan_id}/test-cycles",
             permission="test_cycle.create",
             links_automatically=True,
+        ),
+        # ADR-0086: the `project_id` arm's own declaration — the first live
+        # `child_compound_creates` case that genuinely needs a parent picker
+        # (`compound_parent_field("test_plan_id") != "project_id"`), the exact
+        # gap `EntityRelationTab.tsx`'s own pre-ADR-0086 docstring named as
+        # "not yet supported... a gap to close explicitly." `parent_entity`
+        # is `test-plan`; its own `scope_field` is `project_id` (ADR-0053
+        # shape B), so the frontend's `pickerScopeParams` resolves the
+        # picker's own scope directly from the route's `:projectId` — no
+        # second `ScopeSelector` step.
+        CompoundCreateAction(
+            far_field="project_id",
+            path_template="/test-plans/{test_plan_id}/test-cycles",
+            permission="test_cycle.create",
+            links_automatically=True,
+            parent_entity="test-plan",
+            parent_label="Test plan",
+            parent_label_field="identifier",
         ),
     ),
 )

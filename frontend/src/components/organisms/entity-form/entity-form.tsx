@@ -80,6 +80,19 @@ export interface EntityFormProps {
   initialValues?: Record<string, unknown>;
   /** Scope field(s) already fixed by route/scope-selector context — rendered disabled, never user-editable. */
   lockedValues?: Record<string, string>;
+  /**
+   * ADR-0086: passed straight through to every `fk` field's
+   * `FkAutocomplete`/`FkSelect` (`routeParams` for a `:param`-shaped
+   * `listPath` like `release`'s; `extraParams` for a plain `?project_id=`
+   * scope like `environment`'s, ADR-0058 shape B). Both are no-ops for a ref
+   * entity whose `listPath` needs neither, so it's always safe to pass the
+   * current route's `{projectId}`/`{project_id}` here — this is exactly the
+   * scoping every one of this form's `fk` fields needs and none of them had
+   * a way to receive before a project-scoped list ever rendered an editable
+   * `fk` field (`TestCycle`'s `release_id`/`environment_id`, the first case).
+   */
+  fkRouteParams?: Record<string, string | undefined>;
+  fkExtraParams?: Record<string, string | undefined>;
   onSubmit: (values: Record<string, unknown>) => Promise<void>;
   onCancel?: () => void;
   /** Non-field API error (network failure, unexpected 4xx/5xx) — same inline-alert posture every other form in this codebase uses. */
@@ -145,6 +158,8 @@ function EntityForm({
   mode,
   initialValues,
   lockedValues,
+  fkRouteParams,
+  fkExtraParams,
   onSubmit,
   onCancel,
   submitError,
@@ -250,6 +265,8 @@ function EntityForm({
             value={watch(field.name) as string | undefined}
             onChange={(id) => setValue(field.name, id ?? "", { shouldValidate: true })}
             error={error}
+            routeParams={fkRouteParams}
+            extraParams={fkExtraParams}
           />
         );
       }

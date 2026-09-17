@@ -84,13 +84,12 @@ CLASSIFICATION: dict[tuple[str, str], str] = {
     ("requirements", "Test conditions"): "closed",
     ("test-executions", "Defects"): "closed",
     ("test-plans", "Test cycles"): "closed",
-    # ADR-0084: the project-scoped arm of the same entity's now-branching
-    # `scope_field`. `child_compound_creates` only declares the `test_plan_id`
-    # arm (the bespoke route's own path needs a TestPlan id, which a Project
-    # detail page doesn't have) — a zero-picker create here would need a new
-    # picker mechanism this pass doesn't build, same bucket as the two
-    # `open` rows below.
-    ("projects", "Test cycles"): "open",
+    # ADR-0084 opened this (the project-scoped arm needed a picker mechanism
+    # that didn't exist yet); ADR-0086 closed it — `child_compound_creates`
+    # now declares the `project_id` arm too, with `parent_entity="test-plan"`
+    # driving a real parent picker (`EntityListPage.tsx`'s own generalization
+    # of `EntityRelationTab.tsx`'s pre-existing compound-parent-picker logic).
+    ("projects", "Test cycles"): "closed",
     ("test-cases", "Test executions"): "open",
     ("test-cycles", "Test executions"): "open",
     ("test-executions", "Test logs"): "closed",  # Amendment 1 (2026-09-16)
@@ -130,6 +129,15 @@ EXPECTED_DECLARATIONS: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("test-logs", "test_execution_id"): (
         "/executions/{test_execution_id}/comments",
         "test_execution.update",
+        True,
+    ),
+    # ADR-0086: the first declaration whose placeholder genuinely differs
+    # from `far_field` — see `test_path_template_placeholder_needs_a_picker_iff_it_differs_from_far_field`
+    # for the parent-picker fields this implies (`parent_entity`/`parent_label`),
+    # not checked by this dict (which only pins route/permission/links_automatically).
+    ("test-cycles", "project_id"): (
+        "/test-plans/{test_plan_id}/test-cycles",
+        "test_cycle.create",
         True,
     ),
 }
@@ -241,7 +249,7 @@ def test_the_one_exception_direction_has_no_generic_create_and_no_declaration() 
 
     `TestLog` was the sibling exception until Amendment 1 (2026-09-16) found
     a real route and closed it — see `test_the_declared_actions_are_exactly_
-    the_four_expected` for its own declaration-shape assertions instead."""
+    the_five_expected` for its own declaration-shape assertions instead."""
     exceptions = {pair for pair, status in CLASSIFICATION.items() if status == "exception"}
     assert exceptions == {("organizations", "Org memberships")}
     assert ALL_ENTITY_CONFIGS["org-memberships"].child_compound_creates == ()
@@ -284,9 +292,10 @@ def test_the_spurious_checker_actually_sees_a_gap() -> None:
     assert spurious_child_compound_create(ALL_ENTITY_CONFIGS) == set()
 
 
-def test_the_declared_actions_are_exactly_the_four_expected() -> None:
+def test_the_declared_actions_are_exactly_the_five_expected() -> None:
     """**TC-ADMIN-130.** Each declaration's route, permission and
-    `links_automatically` flag, pinned against the design record."""
+    `links_automatically` flag, pinned against the design record. Four ->
+    five with ADR-0086's `("test-cycles", "project_id")` addition."""
     actual = {
         (key, action.far_field): (action.path_template, action.permission, action.links_automatically)
         for key, action in _declared_actions()
@@ -327,19 +336,28 @@ def test_path_template_carries_exactly_one_placeholder(key: str, action: Compoun
 
 
 @pytest.mark.parametrize("key,action", _declared_actions(), ids=lambda v: getattr(v, "far_field", v))
-def test_path_template_placeholder_equals_far_field(key: str, action: CompoundCreateAction) -> None:
-    """**TC-ADMIN-130.** All three closed directions need no picker: the
-    route's own parent already is the tab's own scope. If a future
-    `child_compound_creates` entry ever needs a picker (as `TestExecution`'s
-    two open directions will), this assertion is exactly what must change
-    alongside adding `parent_entity`/`parent_label`/`parent_label_field` --
-    it is not a law of the mechanism, only a true fact about today's three."""
+def test_path_template_placeholder_needs_a_picker_iff_it_differs_from_far_field(
+    key: str, action: CompoundCreateAction
+) -> None:
+    """**TC-ADMIN-130, generalized by ADR-0086.** Originally "all three closed
+    directions need no picker: the route's own parent already is the tab's
+    own scope" — true of every declaration until `test-cycles`' `project_id`
+    arm (ADR-0086), the first that genuinely needs one (the route's path
+    needs `test_plan_id`, which a project-scoped list doesn't carry). The
+    invariant this asserts in both directions: a placeholder equal to
+    `far_field` declares no parent fields at all (no picker needed, matching
+    the original three); a placeholder that differs MUST declare
+    `parent_entity`/`parent_label` (a picker is unavoidable) — neither
+    direction may silently omit or silently carry unused parent fields."""
     placeholder = re.findall(r"\{([a-zA-Z_]+)\}", action.path_template)[0]
-    assert placeholder == action.far_field
-    assert action.parent_entity is None
-    assert action.parent_label is None
-    assert action.parent_label_field is None
-    assert action.parent_filters == ()
+    if placeholder == action.far_field:
+        assert action.parent_entity is None
+        assert action.parent_label is None
+        assert action.parent_label_field is None
+        assert action.parent_filters == ()
+    else:
+        assert action.parent_entity is not None
+        assert action.parent_label is not None
 
 
 @pytest.mark.parametrize("key,action", _declared_actions(), ids=lambda v: getattr(v, "far_field", v))

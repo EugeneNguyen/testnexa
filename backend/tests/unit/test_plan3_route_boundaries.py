@@ -607,8 +607,14 @@ def test_test_cycle_config_still_registers_no_create() -> None:
     """`TestCycle`'s create stays bespoke-only (ADR-0033 / PLAN-3 UI Design
     Document's explicit non-goal) — the admin surface must not grow a generic
     create that would bypass the cross-project checks.
+
+    `create_schema` is no longer `None` (ADR-0086 — it's set purely so the
+    admin form's `release_id`/`environment_id`/`name` fields derive as
+    writable+required, matching the bespoke route's own body). The real
+    guarantee against a generic create route is `"create" not in methods`,
+    since `make_crud_router`'s own gate is `"create" in methods AND
+    create_schema is not None` — either half missing is enough.
     """
     assert "create" not in _TEST_CYCLE_CONFIG.methods
-    assert _TEST_CYCLE_CONFIG.create_schema is None
     for still_registered in ("list", "get", "update", "delete"):
         assert still_registered in _TEST_CYCLE_CONFIG.methods, still_registered
