@@ -89,3 +89,44 @@ describe("useEntityScope — scopeField-vs-scopeResolution priority (ADR-0060)",
     expect(mockGetEntity).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * ADR-0084 regression test: found live (not by any mock either) —
+ * `TestCycle`'s config widened `scopeField` to the branching tuple
+ * `["test_plan_id", "project_id"]`, but the fast-path check above compared
+ * it against the literal string `"project_id"` — always false for an array
+ * — so the check silently fell through to the `scopeSelector` picker branch
+ * even on `/projects/:projectId/admin/test-cycles`, where `:projectId` was
+ * already sitting right there in the route. The symptom: a manual
+ * "By test plan / By project" toggle defaulting to an empty "By test plan"
+ * search box, instead of the list just rendering — the same class of
+ * array-vs-string gap `EntityRelationTab.tsx`'s own `scopeArmsOf` helper
+ * was built to close for a different call site (ADR-0078), reused here
+ * rather than re-invented.
+ */
+const TEST_CYCLE_CONFIG: EntityConfig = {
+  resource: "test_cycle",
+  path: "/test-cycles",
+  scopeField: ["test_plan_id", "project_id"],
+  methods: ["list", "get", "update", "delete"],
+  fields: [],
+};
+
+describe("useEntityScope — branching scopeField tuple containing project_id/org_id (ADR-0084)", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("resolves immediately from routeParams.projectId when project_id is one arm of a branching scopeField", () => {
+    const { result } = renderHook(() => useEntityScope(TEST_CYCLE_CONFIG, { projectId: "proj-1" }), { wrapper });
+
+    expect(result.current.scope).toEqual({ ready: true, field: "project_id", value: "proj-1" });
+    expect(mockGetEntity).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the scopeSelector picker when routeParams.projectId is absent (e.g. the org-scoped admin route)", () => {
+    const { result } = renderHook(() => useEntityScope(TEST_CYCLE_CONFIG, {}), { wrapper });
+
+    expect(result.current.scope).toEqual({ ready: false });
+  });
+});

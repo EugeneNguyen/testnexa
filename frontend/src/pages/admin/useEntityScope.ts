@@ -49,6 +49,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { EntityConfig } from "../../entityConfigs/types";
 import { EntityRow, getEntity } from "../../lib/api/entityCrud";
+import { scopeArmsOf } from "../../container/entity-crud/EntityDetailPage/EntityRelationTab";
 import { useEntitySchema } from "./useEntitySchema";
 
 export interface ResolvedScope {
@@ -91,10 +92,19 @@ export function useEntityScope(
   // (`Project`'s is for its project-scoped generic-admin path specifically —
   // it doesn't stop applying just because another of Project's routes
   // doesn't need it).
-  if (config.scopeField === "project_id" && routeParams.projectId) {
+  //
+  // ADR-0084: `scopeArmsOf` (not a bare `config.scopeField === "project_id"`
+  // string check) so this fast path also fires when `project_id`/`org_id` is
+  // one arm of a branching `scopeField` tuple (`TestCycle`'s new
+  // `(test_plan_id, project_id)` shape) — the same array-vs-string gap
+  // ADR-0078's own `pickerScopeParams` fix already closed for a different
+  // call site; this one was missed at the time and left the picker's
+  // "By project" tab requiring a manual pick instead of auto-resolving.
+  const arms = scopeArmsOf(config);
+  if (arms.includes("project_id") && routeParams.projectId) {
     return { scope: { ready: true, field: "project_id", value: routeParams.projectId }, onScopeSelectorResolved };
   }
-  if (config.scopeField === "org_id" && routeParams.orgId) {
+  if (arms.includes("org_id") && routeParams.orgId) {
     return { scope: { ready: true, field: "org_id", value: routeParams.orgId }, onScopeSelectorResolved };
   }
 
