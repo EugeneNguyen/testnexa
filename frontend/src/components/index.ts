@@ -42,6 +42,8 @@ export * from "./molecules/entity-field-value";
 export * from "./molecules/featured-card";
 export { default as FkAutocomplete } from "./molecules/fk-autocomplete";
 export type { FkAutocompleteProps } from "./molecules/fk-autocomplete";
+export { default as FkSelect } from "./molecules/fk-select";
+export type { FkSelectProps } from "./molecules/fk-select";
 export { default as FormField } from "./molecules/form-field";
 export type { FormFieldProps } from "./molecules/form-field";
 export * from "./molecules/icon-input-group";

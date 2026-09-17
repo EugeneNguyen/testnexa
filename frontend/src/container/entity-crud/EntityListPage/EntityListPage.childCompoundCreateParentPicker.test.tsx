@@ -20,6 +20,12 @@ import { createEntity, createViaCompoundRoute, getEntity, listEntities } from ".
  * flow, adapted for a standalone list page (no `relation`, no `linkCreate`
  * second call — `links_automatically` is always `true` for the one live
  * case, ADR-0079's own `TestCycle` declaration).
+ *
+ * The picker itself is `FkSelect` (a native `<select>`, live-manual-test
+ * feedback on `TestCycle`'s own real "Test plan" picker — a project's own
+ * test plans are a small, bounded, fetch-once list, the same shape REQ-5
+ * already established `FkSelect` for) — this file's own interactions
+ * `selectOptions` rather than `type` + click a dropdown row.
  */
 vi.mock("../../../pages/admin/registry", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../../pages/admin/registry")>();
@@ -171,14 +177,13 @@ describe("EntityListPage child_compound_creates parent picker (ADR-0086)", () =>
     expect(document.getElementById("entity-list-compound-parent-picker")).not.toBeNull();
     expect(screen.queryByLabelText(/^name$/i)).not.toBeInTheDocument();
 
-    await user.type(screen.getByLabelText("Widget", { exact: true }), "First");
     await waitFor(() =>
       expect(
         mockListEntities.mock.calls.some(([config]) => (config as { path?: string }).path === "/widgets"),
       ).toBe(true),
     );
-
-    await user.click(await screen.findByText("First widget"));
+    await waitFor(() => expect(screen.getByText("First widget")).toBeInTheDocument());
+    await user.selectOptions(screen.getByLabelText("Widget", { exact: true }), "widget-1");
     expect(await screen.findByLabelText(/^name$/i)).toBeInTheDocument();
   });
 
@@ -188,8 +193,8 @@ describe("EntityListPage child_compound_creates parent picker (ADR-0086)", () =>
     renderPage();
 
     await user.click(await screen.findByRole("button", { name: "New" }));
-    await user.type(screen.getByLabelText("Widget", { exact: true }), "First");
-    await user.click(await screen.findByText("First widget"));
+    await waitFor(() => expect(screen.getByText("First widget")).toBeInTheDocument());
+    await user.selectOptions(screen.getByLabelText("Widget", { exact: true }), "widget-1");
 
     await user.type(await screen.findByLabelText(/^name$/i), "New sprocket");
     await user.click(screen.getByRole("button", { name: "Create" }));
