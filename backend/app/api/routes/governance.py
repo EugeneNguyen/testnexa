@@ -49,11 +49,15 @@ _RISK_ITEM_CONFIG = CrudEntityConfig(
     # ADR-0053
     label="Risk items",
     scope_selector=(
-        ScopeSelectorOption(ref_entity="requirement", param_name="requirement_id", label="By requirement"),
+        ScopeSelectorOption(
+            ref_entity="requirement", param_name="requirement_id", label="By requirement", select=True
+        ),
         ScopeSelectorOption(ref_entity="test-plan", param_name="test_plan_id", label="By test plan", select=True),
     ),
     field_meta={
-        "requirement_id": FieldMeta(ref_entity="requirement", label_field="description", label="Requirement"),
+        "requirement_id": FieldMeta(
+            ref_entity="requirement", label_field="description", label="Requirement", select=True
+        ),
         "test_plan_id": FieldMeta(ref_entity="test-plan", label_field="identifier", label="Test plan"),
         "mitigation": FieldMeta(show_in_table=False),
     },
@@ -75,9 +79,9 @@ _ATTACHMENT_CONFIG = CrudEntityConfig(
     search_fields=("url_or_path", "mime_type"),
     # ADR-0053
     label="Attachments",
-    scope_selector=ScopeSelectorOption(ref_entity="test-case", param_name="test_case_id"),
+    scope_selector=ScopeSelectorOption(ref_entity="test-case", param_name="test_case_id", select=True),
     field_meta={
-        "test_case_id": FieldMeta(ref_entity="test-case", label_field="title", label="Test case"),
+        "test_case_id": FieldMeta(ref_entity="test-case", label_field="title", label="Test case", select=True),
         "url_or_path": FieldMeta(label="URL / path"),
         "mime_type": FieldMeta(label="MIME type"),
         "size_bytes": FieldMeta(label="Size (bytes)"),

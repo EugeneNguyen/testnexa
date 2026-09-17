@@ -227,13 +227,16 @@ _DEFECT_CONFIG = CrudEntityConfig(
     scope_selector=ScopeSelectorOption(
         ref_entity="test-execution",
         param_name="test_execution_id",
-        via=ScopeSelectorOption(ref_entity="test-case", param_name="test_case_id"),
+        via=ScopeSelectorOption(ref_entity="test-case", param_name="test_case_id", select=True),
+        select=True,
     ),
     # `test_execution_id` is summary-only (no create schema to lead with), so it
     # derives last without this — the hand-written config led with it.
     field_order=("test_execution_id", "external_ref", "severity", "status"),
     field_meta={
-        "test_execution_id": FieldMeta(ref_entity="test-execution", label_field="result", label="Test execution"),
+        "test_execution_id": FieldMeta(
+            ref_entity="test-execution", label_field="result", label="Test execution", select=True
+        ),
         # Summary-only actor stamp (`reported_by_actor_id`), server-set and never
         # editable. `entityConfigs/defect.ts` simply omitted it; the derived schema
         # can't (`field_order` is order-only, never a filter — see its own docstring),
@@ -336,16 +339,15 @@ _TEST_EXECUTION_CONFIG = CrudEntityConfig(
             select=True,
         ),
         # `TestCase`'s own list is `project_id`-scoped directly — no `via`
-        # needed, this arm already worked before ADR-0081. Stays
-        # `FkAutocomplete` — not a small bounded catalog (ADR-0087).
-        ScopeSelectorOption(ref_entity="test-case", param_name="test_case_id", label="By test case"),
+        # needed, this arm already worked before ADR-0081.
+        ScopeSelectorOption(ref_entity="test-case", param_name="test_case_id", label="By test case", select=True),
     ),
     # Both FKs are summary-only (`UpdateTestExecutionRequest` reassigns neither),
     # so they derive last without this — the hand-written config led with them.
     field_order=("test_cycle_id", "test_case_id", "result", "actual_result", "executed_at"),
     field_meta={
-        "test_cycle_id": FieldMeta(ref_entity="test-cycle", label_field="name", label="Test cycle"),
-        "test_case_id": FieldMeta(ref_entity="test-case", label_field="title", label="Test case"),
+        "test_cycle_id": FieldMeta(ref_entity="test-cycle", label_field="name", label="Test cycle", select=True),
+        "test_case_id": FieldMeta(ref_entity="test-case", label_field="title", label="Test case", select=True),
         "actual_result": FieldMeta(show_in_table=False),
         # Summary-only actor stamp, same posture as `Defect.reported_by_actor_id`.
         "executed_by_actor_id": FieldMeta(show_in_table=False, label="Executed by"),
@@ -395,7 +397,8 @@ _TEST_LOG_CONFIG = CrudEntityConfig(
     scope_selector=ScopeSelectorOption(
         ref_entity="test-execution",
         param_name="test_execution_id",
-        via=ScopeSelectorOption(ref_entity="test-case", param_name="test_case_id"),
+        via=ScopeSelectorOption(ref_entity="test-case", param_name="test_case_id", select=True),
+        select=True,
     ),
     # `text`/`attachment_url`/`file_name` lead (the new writable fields, in
     # the same order `AddTestLogCommentRequest` declares them), then the
@@ -411,7 +414,9 @@ _TEST_LOG_CONFIG = CrudEntityConfig(
         "logged_at",
     ),
     field_meta={
-        "test_execution_id": FieldMeta(ref_entity="test-execution", label_field="result", label="Test execution"),
+        "test_execution_id": FieldMeta(
+            ref_entity="test-execution", label_field="result", label="Test execution", select=True
+        ),
         "text": FieldMeta(long_text=True, label="Comment"),
     },
     # ADR-0079 Amendment 1: the one-to-many sibling of the other three

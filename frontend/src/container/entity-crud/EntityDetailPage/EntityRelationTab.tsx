@@ -1262,11 +1262,11 @@ function EntityRelationTab({
                 )}
                 {compoundParentPickerReady &&
                   (() => {
-                    // ADR-0087: same declared `parentSelect` flag
-                    // `EntityListPage.tsx`'s own compound-parent picker
-                    // reads — neither live declaration here (`requirement`,
-                    // `test-execution`) sets it, so this stays
-                    // `FkAutocomplete` today, but the mechanism is shared.
+                    // ADR-0087 (widened same day, live-manual-test feedback:
+                    // "apply to all similar things"): same declared
+                    // `parentSelect` flag `EntityListPage.tsx`'s own
+                    // compound-parent picker reads — both live declarations
+                    // here (`requirement`, `test-execution`) now set it too.
                     const ParentPickerControl = activeCompoundCreate.parentSelect ? FkSelect : FkAutocomplete;
                     return (
                       <ParentPickerControl

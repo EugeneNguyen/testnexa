@@ -221,12 +221,16 @@ _REQUIREMENT_TEST_CASE_LINK_CONFIG = CrudEntityConfig(
     # without the second, the generic admin list page could only ever scope by
     # the arm that happened to be listed, even though the route serves both.
     scope_selector=(
-        ScopeSelectorOption(ref_entity="requirement", param_name="requirement_id", label="By requirement"),
-        ScopeSelectorOption(ref_entity="test-case", param_name="test_case_id", label="By test case"),
+        ScopeSelectorOption(
+            ref_entity="requirement", param_name="requirement_id", label="By requirement", select=True
+        ),
+        ScopeSelectorOption(ref_entity="test-case", param_name="test_case_id", label="By test case", select=True),
     ),
     field_meta={
-        "requirement_id": FieldMeta(ref_entity="requirement", label_field="description", label="Requirement"),
-        "test_case_id": FieldMeta(ref_entity="test-case", label_field="title", label="Test case"),
+        "requirement_id": FieldMeta(
+            ref_entity="requirement", label_field="description", label="Requirement", select=True
+        ),
+        "test_case_id": FieldMeta(ref_entity="test-case", label_field="title", label="Test case", select=True),
     },
 )
 
@@ -290,14 +294,20 @@ _REQUIREMENT_TEST_CONDITION_LINK_CONFIG = CrudEntityConfig(
     ),
     label="Requirement -> test condition links",
     scope_selector=(
-        ScopeSelectorOption(ref_entity="requirement", param_name="requirement_id", label="By requirement"),
         ScopeSelectorOption(
-            ref_entity="test-condition", param_name="test_condition_id", label="By test condition"
+            ref_entity="requirement", param_name="requirement_id", label="By requirement", select=True
+        ),
+        ScopeSelectorOption(
+            ref_entity="test-condition", param_name="test_condition_id", label="By test condition", select=True
         ),
     ),
     field_meta={
-        "requirement_id": FieldMeta(ref_entity="requirement", label_field="description", label="Requirement"),
-        "test_condition_id": FieldMeta(ref_entity="test-condition", label_field="description", label="Test condition"),
+        "requirement_id": FieldMeta(
+            ref_entity="requirement", label_field="description", label="Requirement", select=True
+        ),
+        "test_condition_id": FieldMeta(
+            ref_entity="test-condition", label_field="description", label="Test condition", select=True
+        ),
     },
 )
 
@@ -363,18 +373,21 @@ _TEST_CONDITION_TEST_CASE_LINK_CONFIG = CrudEntityConfig(
             # own `requirement_id` FieldMeta labels a requirement with, reused
             # verbatim so the same row reads the same way in both places.
             parent_label_field="description",
+            parent_select=True,
         ),
     ),
     label="Test condition -> test case links",
     scope_selector=(
         ScopeSelectorOption(
-            ref_entity="test-condition", param_name="test_condition_id", label="By test condition"
+            ref_entity="test-condition", param_name="test_condition_id", label="By test condition", select=True
         ),
-        ScopeSelectorOption(ref_entity="test-case", param_name="test_case_id", label="By test case"),
+        ScopeSelectorOption(ref_entity="test-case", param_name="test_case_id", label="By test case", select=True),
     ),
     field_meta={
-        "test_condition_id": FieldMeta(ref_entity="test-condition", label_field="description", label="Test condition"),
-        "test_case_id": FieldMeta(ref_entity="test-case", label_field="title", label="Test case"),
+        "test_condition_id": FieldMeta(
+            ref_entity="test-condition", label_field="description", label="Test condition", select=True
+        ),
+        "test_case_id": FieldMeta(ref_entity="test-case", label_field="title", label="Test case", select=True),
     },
 )
 
@@ -462,16 +475,17 @@ _TEST_CASE_DEFECT_LINK_CONFIG = CrudEntityConfig(
             # `422`. Offering a passed execution here would be offering a
             # guaranteed rejection.
             parent_filters=(("result", "fail"),),
+            parent_select=True,
         ),
     ),
     label="Test case -> defect links",
     scope_selector=(
-        ScopeSelectorOption(ref_entity="test-case", param_name="test_case_id", label="By test case"),
-        ScopeSelectorOption(ref_entity="defect", param_name="defect_id", label="By defect"),
+        ScopeSelectorOption(ref_entity="test-case", param_name="test_case_id", label="By test case", select=True),
+        ScopeSelectorOption(ref_entity="defect", param_name="defect_id", label="By defect", select=True),
     ),
     field_meta={
-        "test_case_id": FieldMeta(ref_entity="test-case", label_field="title", label="Test case"),
-        "defect_id": FieldMeta(ref_entity="defect", label_field="external_ref", label="Defect"),
+        "test_case_id": FieldMeta(ref_entity="test-case", label_field="title", label="Test case", select=True),
+        "defect_id": FieldMeta(ref_entity="defect", label_field="external_ref", label="Defect", select=True),
     },
 )
 

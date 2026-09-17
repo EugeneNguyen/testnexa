@@ -422,10 +422,7 @@ _TEST_SUITE_TEST_CASE_CONFIG = CrudEntityConfig(
     label="Test suite -> test case links",
     scope_selector=(
         ScopeSelectorOption(ref_entity="test-suite", param_name="test_suite_id", label="By test suite", select=True),
-        # `test-case` stays `FkAutocomplete` — unlike `test-suite`, a project's
-        # test cases are not a small bounded catalog (`FkSelect`'s own
-        # docstring caveat, ADR-0087).
-        ScopeSelectorOption(ref_entity="test-case", param_name="test_case_id", label="By test case"),
+        ScopeSelectorOption(ref_entity="test-case", param_name="test_case_id", label="By test case", select=True),
     ),
     # Only the two FKs need a `FieldMeta`: their `ref_entity`/`label_field`
     # have no Python-type correlate, and `created_at`'s auto-derived "Created
@@ -434,8 +431,8 @@ _TEST_SUITE_TEST_CASE_CONFIG = CrudEntityConfig(
     # would silently produce no tab at all — the degrades-silently failure
     # mode ADR-0075's model-layer completeness test now guards.
     field_meta={
-        "test_suite_id": FieldMeta(ref_entity="test-suite", label_field="name", label="Test suite"),
-        "test_case_id": FieldMeta(ref_entity="test-case", label_field="title", label="Test case"),
+        "test_suite_id": FieldMeta(ref_entity="test-suite", label_field="name", label="Test suite", select=True),
+        "test_case_id": FieldMeta(ref_entity="test-case", label_field="title", label="Test case", select=True),
     },
 )
 
