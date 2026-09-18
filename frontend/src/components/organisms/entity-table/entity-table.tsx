@@ -238,10 +238,17 @@ export interface EntityTableProps {
    * card's body would paint a second border/shadow around the table and
    * repeat the tab's label as a card title.
    *
+   * **ADR-0092:** `bare` still skips `Card`/`Card.Header`/`Card.Title` (so
+   * `title` itself is never rendered in this mode — a `bare` caller has
+   * nowhere to put one), but the Columns/Filter/search controls now render in
+   * a plain toolbar row above the table regardless of `bare`, since none of
+   * the three is actually `Card`-shaped. A `bare` caller that wants sort/
+   * filter/column-picking parity with a standalone `EntityListPage` gets it
+   * by passing the same `sortField`/`sortDir`/`onSortChange`/`filters`/
+   * `onFiltersChange`/`search`/`onSearchChange` props any other caller would.
+   *
    * Opt-in and default-off, so all 24 list screens and every existing
-   * `entity-table.test.tsx` fixture render byte-for-byte as before. `title`
-   * and the search box live in the header and are therefore not rendered in
-   * this mode; the relationship tab passes neither.
+   * `entity-table.test.tsx` fixture render byte-for-byte as before.
    */
   bare?: boolean;
 }
@@ -505,71 +512,69 @@ function EntityTable({
     </>
   );
 
-  // ADR-0074 (Amendment): the caller already owns the card — see `bare`.
-  // The header's Columns/Filter affordances (and therefore their modals) live
-  // on the card, so a bare mount renders neither — correct, since a
-  // relationship tab passes neither `onFiltersChange` nor a `title`.
-  if (bare) {
-    return sections;
-  }
-
-  return (
-    <Card className="h-100">
-      <Card.Header className="d-flex flex-wrap align-items-center justify-content-between">
-        <Card.Title>{title}</Card.Title>
-        <div className="card-tools d-flex flex-wrap align-items-center gap-2 ms-auto">
-          {showSearch && (
-            <TextInput
-              type="text"
-              style={{ width: 200, maxWidth: "100%" }}
-              placeholder="Search..."
-              value={search ?? ""}
-              onChange={(event) => onSearchChange!(event.target.value)}
-              data-testid="entity-table-search"
-            />
+  /**
+   * ADR-0092: the Columns/Filter/search controls themselves — extracted so
+   * both render branches below share one copy. Previously these lived only
+   * inside the non-`bare` `Card.Header`, so a `bare` mount (`EntityRelationTab`)
+   * got none of them, even though nothing about Columns/Filter/search is
+   * actually `Card`-shaped: `preferences`/`showFilterModal` are this
+   * component's own state regardless of `bare`, and `showSearch`/`showFilter`
+   * are already computed above from the caller's props alone.
+   */
+  const toolbarControls = (
+    <>
+      {showSearch && (
+        <TextInput
+          type="text"
+          style={{ width: 200, maxWidth: "100%" }}
+          placeholder="Search..."
+          value={search ?? ""}
+          onChange={(event) => onSearchChange!(event.target.value)}
+          data-testid="entity-table-search"
+        />
+      )}
+      <Button
+        outline
+        color="secondary"
+        size="sm"
+        aria-label="Columns"
+        title="Columns"
+        onClick={() => setShowColumnPreferences(true)}
+        data-testid="entity-table-columns"
+      >
+        <Icon name="table-columns" />
+      </Button>
+      {showFilter && (
+        <Button
+          outline
+          color={filterCount > 0 ? "primary" : "secondary"}
+          size="sm"
+          aria-label="Filter"
+          title={filterCount > 0 ? `Filter (${filterCount} active)` : "Filter"}
+          onClick={() => setShowFilterModal(true)}
+          data-testid="entity-table-filter"
+        >
+          <Icon name="filter" />
+          {/*
+            ADR-0072: the active-filter count is load-bearing, not
+            decoration. Filters are deliberately NOT persisted, and this
+            badge is the mitigation for the reason why — an active filter
+            is invisible in a way a hidden column is not, so without a
+            visible count a narrowed list reads as missing data.
+          */}
+          {filterCount > 0 && (
+            <span className="badge bg-primary ms-1" data-testid="entity-table-filter-count">
+              {filterCount}
+            </span>
           )}
-          <Button
-            outline
-            color="secondary"
-            size="sm"
-            aria-label="Columns"
-            title="Columns"
-            onClick={() => setShowColumnPreferences(true)}
-            data-testid="entity-table-columns"
-          >
-            <Icon name="table-columns" />
-          </Button>
-          {showFilter && (
-            <Button
-              outline
-              color={filterCount > 0 ? "primary" : "secondary"}
-              size="sm"
-              aria-label="Filter"
-              title={filterCount > 0 ? `Filter (${filterCount} active)` : "Filter"}
-              onClick={() => setShowFilterModal(true)}
-              data-testid="entity-table-filter"
-            >
-              <Icon name="filter" />
-              {/*
-                ADR-0072: the active-filter count is load-bearing, not
-                decoration. Filters are deliberately NOT persisted, and this
-                badge is the mitigation for the reason why — an active filter
-                is invisible in a way a hidden column is not, so without a
-                visible count a narrowed list reads as missing data.
-              */}
-              {filterCount > 0 && (
-                <span className="badge bg-primary ms-1" data-testid="entity-table-filter-count">
-                  {filterCount}
-                </span>
-              )}
-            </Button>
-          )}
-          {headerActions}
-        </div>
-      </Card.Header>
+        </Button>
+      )}
+      {headerActions}
+    </>
+  );
 
-      {sections}
-
+  const modals = (
+    <>
       <ColumnPreferencesModal
         visible={showColumnPreferences}
         entityLabel={typeof title === "string" ? title : undefined}
@@ -591,6 +596,37 @@ function EntityTable({
           }}
         />
       )}
+    </>
+  );
+
+  // ADR-0074 (Amendment) / ADR-0092: the caller already owns the card — see
+  // `bare`'s own docstring — so this branch still skips `Card`/`Card.Header`/
+  // `Card.Title` entirely. It no longer skips Columns/Filter/search though:
+  // those controls aren't actually `Card`-shaped (see `toolbarControls`'s own
+  // comment), so a bare mount now gets a plain toolbar row above `sections`
+  // instead of losing the controls outright.
+  if (bare) {
+    return (
+      <>
+        <div className="d-flex flex-wrap align-items-center justify-content-end gap-2 mb-2">
+          {toolbarControls}
+        </div>
+        {sections}
+        {modals}
+      </>
+    );
+  }
+
+  return (
+    <Card className="h-100">
+      <Card.Header className="d-flex flex-wrap align-items-center justify-content-between">
+        <Card.Title>{title}</Card.Title>
+        <div className="card-tools d-flex flex-wrap align-items-center gap-2 ms-auto">{toolbarControls}</div>
+      </Card.Header>
+
+      {sections}
+
+      {modals}
     </Card>
   );
 }

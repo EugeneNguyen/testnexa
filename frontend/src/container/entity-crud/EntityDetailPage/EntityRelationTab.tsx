@@ -39,6 +39,21 @@
  * (`/orgs/:orgId/admin` or `/projects/:projectId/admin`), so a relationship
  * tab navigates within the scope the user is already in.
  *
+ * ## Sort, filter, and column visibility ([ADR-0092](../../../../../docs/adr/0092-relation-tab-sort-filter-columns.md))
+ *
+ * A relation tab is a real `EntityTable` list, so it gets the same three
+ * capabilities a standalone `EntityListPage` has, not a stripped-down view:
+ * click-to-sort column headers, the Filter modal, and the Columns
+ * show/hide/reorder picker. Sort and filters are **local to this component**
+ * (`sort`/`filters` state, same click-to-sort toggle machinery
+ * `EntityListPage.handleSortChange` already has), reset whenever
+ * `relation.entity` changes — this component is not remounted on tab switch
+ * (`EntityDetailPage` renders it with no `key`), so without an explicit reset
+ * a sort/filter chosen on one tab would silently keep narrowing the next
+ * tab's query. Column visibility/order needs no such reset: `EntityTable`
+ * already keys its own `localStorage` preference by `config.resource`, which
+ * changes with `relation.entity` on its own.
+ *
  * ## It renders card *sections*, not a card (ADR-0074's Amendment)
  *
  * This component is mounted inside `EntityDetailPage`'s single card, in the
@@ -570,6 +585,43 @@ function EntityRelationTab({
    */
   const actionsLoading = permissions.isLoading || farSchemaLoading;
 
+  /**
+   * ADR-0092: sort/filter, component-owned state, same posture and same
+   * click-to-sort toggle machinery `EntityListPage` already has for its own
+   * standalone list (`handleSortChange`'s own comment there). Not lifted to
+   * `EntityDetailPage` the way `page`/`pageSize` are — those are shared
+   * across whichever tab happens to be open (one pair, reset on switch,
+   * `EntityDetailPage`'s own docstring), but sort/filters are meaningless
+   * once detached from the specific list query they narrow, so each tab's
+   * own choice is discarded on switch rather than carried to an unrelated
+   * relation the way a page number is.
+   *
+   * `EntityRelationTab` itself isn't remounted on tab switch (`EntityDetailPage`
+   * renders it without a `key`), so — same reasoning as `EntityTable`'s own
+   * `preferencesResource` pattern for `config.resource` — state has to be
+   * explicitly reset when `relation.entity` changes, or a sort/filter chosen
+   * on one tab would silently keep narrowing the next one's query.
+   */
+  const [sortResource, setSortResource] = useState(relation.entity);
+  const [sort, setSort] = useState<{ field: string; dir: "asc" | "desc" } | null>(null);
+  const [filters, setFilters] = useState<Record<string, string>>({});
+  if (sortResource !== relation.entity) {
+    setSortResource(relation.entity);
+    setSort(null);
+    setFilters({});
+  }
+  const sortParam = sort ? `${sort.dir === "desc" ? "-" : ""}${sort.field}` : undefined;
+
+  function handleSortChange(field: string) {
+    onPageChange(1);
+    setSort((prev) => {
+      if (!prev || prev.field !== field) {
+        return { field, dir: "asc" };
+      }
+      return prev.dir === "asc" ? { field, dir: "desc" } : null;
+    });
+  }
+
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [createFieldErrors, setCreateFieldErrors] = useState<Record<string, string> | undefined>(undefined);
@@ -634,12 +686,22 @@ function EntityRelationTab({
   const farSelect = config?.fields.find((f) => f.name === relation.targetField)?.select;
 
   const listQuery = useQuery({
-    queryKey: ["entity-relation-list", relation.entity, relation.scopeField, parentId, page, pageSize],
+    queryKey: [
+      "entity-relation-list",
+      relation.entity,
+      relation.scopeField,
+      parentId,
+      page,
+      pageSize,
+      sortParam,
+      filters,
+    ],
     queryFn: () =>
       listEntities(config as EntityConfig, routeParams, {
         page,
         pageSize,
-        params: { [relation.scopeField]: parentId },
+        sort: sortParam,
+        params: { ...filters, [relation.scopeField]: parentId },
       }),
     enabled: Boolean(config) && Boolean(parentId),
   });
@@ -1154,6 +1216,14 @@ function EntityRelationTab({
         onPageSizeChange={onPageSizeChange}
         loading={listQuery.isLoading}
         loadError={listQuery.isError ? "Something went wrong. Please try again." : null}
+        sortField={sort?.field}
+        sortDir={sort?.dir}
+        onSortChange={handleSortChange}
+        filters={filters}
+        onFiltersChange={(next) => {
+          onPageChange(1);
+          setFilters(next);
+        }}
         /**
          * Still no Edit and no Delete — omitting `onEdit`/`onDelete` is what
          * keeps `EntityTable` from offering either: every listed record is
