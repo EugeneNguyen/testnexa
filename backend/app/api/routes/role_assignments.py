@@ -48,7 +48,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.crud_factory import clamp_pagination
+from app.api.crud_factory import _actor_membership_exists, clamp_pagination
 from app.api.deps import get_current_actor, get_db, require_permission
 from app.models.actor import AIAgent, User
 from app.models.project import Project
@@ -126,7 +126,7 @@ async def create_role_assignment(
     See module docstring for the full order of operations and error posture.
     """
     # 1. 404-vs-403 boundary.
-    if not await _org_membership_exists(db, org_id, actor.actor_id):
+    if not await _actor_membership_exists(db, org_id, actor):
         return _error(404, "not_found", "Organization not found.")
 
     # 2. Permission check — invoked directly, same posture as agents.py/projects.py.
@@ -237,7 +237,7 @@ async def list_role_assignments(
     everything in one response.
     """
     # 1. 404-vs-403 boundary.
-    if not await _org_membership_exists(db, org_id, actor.actor_id):
+    if not await _actor_membership_exists(db, org_id, actor):
         return _error(404, "not_found", "Organization not found.")
 
     # 2. Permission check — invoked directly, same posture as create above.

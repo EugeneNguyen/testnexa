@@ -61,9 +61,10 @@ than left to implementation-time judgment:
   not as a conflict.
 
 Like `test_condition_authoring.py`, this module imports the factory's
-`_org_membership_exists` rather than keeping a seventh verbatim copy of it, per
-ADR-0030's "reuse 100% of existing resolver/permission-check primitives — no
-new backend architecture."
+`_actor_membership_exists` rather than keeping a seventh verbatim copy of it,
+per ADR-0030's "reuse 100% of existing resolver/permission-check primitives —
+no new backend architecture." (ADR-0091: was the plain, `AIAgent`-blind
+`_org_membership_exists` until this fix — see that ADR for why.)
 """
 
 from uuid import UUID
@@ -81,7 +82,7 @@ from app.api.crud_factory import (
     LinkDeleteAction,
     NoSchema,
     ScopeSelectorOption,
-    _org_membership_exists,
+    _actor_membership_exists,
     branching_resolver,
     chain_resolver,
     make_crud_router,
@@ -161,7 +162,7 @@ async def _load_suite_for_actor(
         return _error(404, "not_found", _SUITE_NOT_FOUND_MESSAGE)
 
     org_id = await _resolve_test_suite_org_id(db, suite)
-    if org_id is None or not await _org_membership_exists(db, org_id, actor.actor_id):
+    if org_id is None or not await _actor_membership_exists(db, org_id, actor):
         return _error(404, "not_found", _SUITE_NOT_FOUND_MESSAGE)
 
     if not await has_permission(actor, str(org_id), permission):

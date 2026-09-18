@@ -19,6 +19,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.crud_factory import _actor_membership_exists
 from app.api.deps import get_current_actor, get_db, require_permission
 from app.models.actor import AIAgent, User
 from app.models.rbac import Role
@@ -35,14 +36,6 @@ def _error(status_code: int, code: str, message: str) -> JSONResponse:
     return JSONResponse(status_code=status_code, content={"code": code, "message": message, "field_errors": None})
 
 
-async def _org_membership_exists(db: AsyncSession, org_id: UUID, user_id: UUID) -> bool:
-    """Mirrors `role_assignments.py`'s/`projects.py`'s any-status check verbatim."""
-    result = await db.scalar(
-        select(OrgMembership.id).where(OrgMembership.org_id == org_id, OrgMembership.user_id == user_id).limit(1)
-    )
-    return result is not None
-
-
 @router.get("/orgs/{org_id}/roles", response_model=list[RoleSummary])
 async def list_roles(
     org_id: UUID,
@@ -52,7 +45,7 @@ async def list_roles(
 ) -> list[RoleSummary] | JSONResponse:
     """List every `Role` usable in `org_id` — system templates + this org's custom roles."""
     # 1. 404-vs-403 boundary.
-    if not await _org_membership_exists(db, org_id, actor.actor_id):
+    if not await _actor_membership_exists(db, org_id, actor):
         return _error(404, "not_found", "Organization not found.")
 
     # 2. Permission check — invoked directly, same posture as role_assignments.py.

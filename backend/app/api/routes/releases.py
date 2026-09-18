@@ -31,6 +31,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.crud_factory import _actor_membership_exists
 from app.api.deps import get_current_actor, get_db
 from app.core.rbac import has_permission
 from app.models.actor import AIAgent, User
@@ -82,17 +83,6 @@ def _error(
     )
 
 
-async def _org_membership_exists(db: AsyncSession, org_id: UUID, user_id: UUID) -> bool:
-    """Any-status `OrgMembership` existence check for the 404-vs-403 boundary.
-
-    Mirrors `projects.py`'s `_org_membership_exists` verbatim.
-    """
-    result = await db.scalar(
-        select(OrgMembership.id).where(OrgMembership.org_id == org_id, OrgMembership.user_id == user_id).limit(1)
-    )
-    return result is not None
-
-
 def _release_summary(release: Release) -> ReleaseSummary:
     return ReleaseSummary(
         id=release.id,
@@ -129,7 +119,7 @@ async def create_release(
        violation, not a business-rule collision.
     """
     project = await db.get(Project, project_id)
-    if project is None or not await _org_membership_exists(db, project.org_id, actor.actor_id):
+    if project is None or not await _actor_membership_exists(db, project.org_id, actor):
         return _error(404, "not_found", "Project not found.")
 
     if not await has_permission(actor, str(project.org_id), "release.create"):
@@ -173,7 +163,7 @@ async def list_releases(
     `target_date` always sorts to the end regardless of direction (NFR-25).
     """
     project = await db.get(Project, project_id)
-    if project is None or not await _org_membership_exists(db, project.org_id, actor.actor_id):
+    if project is None or not await _actor_membership_exists(db, project.org_id, actor):
         return _error(404, "not_found", "Project not found.")
 
     if not await has_permission(actor, str(project.org_id), "release.read"):
@@ -227,7 +217,7 @@ async def get_release(
         return _error(404, "not_found", "Release not found.")
 
     project = await db.get(Project, release.project_id)
-    if project is None or not await _org_membership_exists(db, project.org_id, actor.actor_id):
+    if project is None or not await _actor_membership_exists(db, project.org_id, actor):
         return _error(404, "not_found", "Release not found.")
 
     if not await has_permission(actor, str(project.org_id), "release.read"):
@@ -278,7 +268,7 @@ async def get_release_test_cycles(
         return _error(404, "not_found", "Release not found.")
 
     project = await db.get(Project, release.project_id)
-    if project is None or not await _org_membership_exists(db, project.org_id, actor.actor_id):
+    if project is None or not await _actor_membership_exists(db, project.org_id, actor):
         return _error(404, "not_found", "Release not found.")
 
     org_id = str(project.org_id)

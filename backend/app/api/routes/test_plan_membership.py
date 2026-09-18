@@ -81,7 +81,7 @@ from app.api.crud_factory import (
     LinkDeleteAction,
     NoSchema,
     ScopeSelectorOption,
-    _org_membership_exists,
+    _actor_membership_exists,
     branching_resolver,
     chain_resolver,
     make_crud_router,
@@ -156,7 +156,7 @@ async def _load_plan_for_actor(
         return _error(404, "not_found", _PLAN_NOT_FOUND_MESSAGE)
 
     org_id = await _resolve_test_plan_org_id(db, plan)
-    if org_id is None or not await _org_membership_exists(db, org_id, actor.actor_id):
+    if org_id is None or not await _actor_membership_exists(db, org_id, actor):
         return _error(404, "not_found", _PLAN_NOT_FOUND_MESSAGE)
 
     if not await has_permission(actor, str(org_id), permission):

@@ -80,7 +80,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.crud_factory import _org_membership_exists, chain_resolver
+from app.api.crud_factory import _actor_membership_exists, chain_resolver
 from app.api.deps import get_current_actor, get_db
 from app.core.rbac import has_permission
 from app.models.actor import AIAgent, User
@@ -150,7 +150,7 @@ async def create_test_cycle_for_plan(
         return _error(404, "not_found", _PLAN_NOT_FOUND_MESSAGE)
 
     org_id = await _resolve_test_plan_org_id(db, plan)
-    if org_id is None or not await _org_membership_exists(db, org_id, actor.actor_id):
+    if org_id is None or not await _actor_membership_exists(db, org_id, actor):
         return _error(404, "not_found", _PLAN_NOT_FOUND_MESSAGE)
 
     if not await has_permission(actor, str(org_id), "test_cycle.create"):

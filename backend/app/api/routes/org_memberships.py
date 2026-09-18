@@ -53,6 +53,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.crud_factory import (
     CrudEntityConfig,
     FieldMeta,
+    _actor_membership_exists,
     chain_resolver,
     clamp_pagination,
     make_crud_router,
@@ -119,20 +120,6 @@ def _error(
     )
 
 
-async def _org_membership_exists(db: AsyncSession, org_id: UUID, user_id: UUID) -> bool:
-    """Any-status `OrgMembership` existence check for the 404-vs-403 boundary.
-
-    Verbatim copy of `agents.py`'s helper of the same name — see that
-    module's docstring for the full rationale (NFR-1: any-status counts,
-    not just active). Duplicated rather than imported, matching this
-    codebase's established per-module `_error()`-style duplication.
-    """
-    result = await db.scalar(
-        select(OrgMembership.id).where(OrgMembership.org_id == org_id, OrgMembership.user_id == user_id).limit(1)
-    )
-    return result is not None
-
-
 def _is_legal_patch_transition(current: OrgMembershipStatus, requested: OrgMembershipStatus) -> bool:
     """Whether `PATCH /orgs/{org_id}/members/{membership_id} {status: requested}` is legal.
 
@@ -186,7 +173,7 @@ async def list_members(
     `app.schemas.org_memberships.MemberListResponse`'s own docstring for why
     this envelope shape, not a bare array.
     """
-    if not await _org_membership_exists(db, org_id, actor.actor_id):
+    if not await _actor_membership_exists(db, org_id, actor):
         return _error(404, "not_found", "Organization not found.")
 
     await require_permission("org_membership.read")(request, actor)
@@ -260,7 +247,7 @@ async def invite_member(
     password until they accept" (ADR-0017) holds functionally even though
     the column itself is never NULL.
     """
-    if not await _org_membership_exists(db, org_id, actor.actor_id):
+    if not await _actor_membership_exists(db, org_id, actor):
         return _error(404, "not_found", "Organization not found.")
 
     await require_permission("org_membership.create")(request, actor)
@@ -472,7 +459,7 @@ async def patch_membership_status(
     `_is_legal_patch_transition`. Same 404-vs-403 boundary as every
     org-scoped route.
     """
-    if not await _org_membership_exists(db, org_id, actor.actor_id):
+    if not await _actor_membership_exists(db, org_id, actor):
         return _error(404, "not_found", "Organization not found.")
 
     await require_permission("org_membership.update")(request, actor)
@@ -517,7 +504,7 @@ async def revoke_pending_invite(
     row and its `Invite` row, if any (TC-RBAC-032). Not a general
     remove-member action.
     """
-    if not await _org_membership_exists(db, org_id, actor.actor_id):
+    if not await _actor_membership_exists(db, org_id, actor):
         return _error(404, "not_found", "Organization not found.")
 
     await require_permission("org_membership.delete")(request, actor)

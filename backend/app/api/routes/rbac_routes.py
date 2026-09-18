@@ -43,6 +43,7 @@ from app.api.crud_factory import (
     CrudEntityConfig,
     FieldMeta,
     NoSchema,
+    _actor_membership_exists,
     chain_resolver,
     make_crud_router,
 )
@@ -69,14 +70,6 @@ def _error(status_code: int, code: str, message: str) -> JSONResponse:
     return JSONResponse(status_code=status_code, content={"code": code, "message": message, "field_errors": None})
 
 
-async def _org_membership_exists(db: AsyncSession, org_id: UUID, user_id: UUID) -> bool:
-    """Mirrors `roles.py`'s/`role_assignments.py`'s any-status check verbatim."""
-    result = await db.scalar(
-        select(OrgMembership.id).where(OrgMembership.org_id == org_id, OrgMembership.user_id == user_id).limit(1)
-    )
-    return result is not None
-
-
 @router.get("/orgs/{org_id}/permissions/mine", response_model=MyPermissionsResponse)
 async def get_my_permissions(
     org_id: UUID,
@@ -100,7 +93,7 @@ async def get_my_permissions(
     are included — `project_id` is carried through on each row so the caller
     can distinguish the two (`MyPermissionCode`'s own docstring).
     """
-    if not await _org_membership_exists(db, org_id, actor.actor_id):
+    if not await _actor_membership_exists(db, org_id, actor):
         return _error(404, "not_found", "Organization not found.")
 
     result = await db.execute(

@@ -33,6 +33,7 @@ from app.api.crud_factory import (
     CrudEntityConfig,
     FieldMeta,
     ScopeResolution,
+    _actor_membership_exists,
     chain_resolver,
     make_crud_router,
 )
@@ -65,18 +66,6 @@ def _error(
     )
 
 
-async def _org_membership_exists(db: AsyncSession, org_id: UUID, user_id: UUID) -> bool:
-    """Any-status `OrgMembership` existence check for the 404-vs-403 boundary.
-
-    Mirrors `agents.py`'s `_org_membership_exists` verbatim (see that
-    module's docstring for why any-status, not active-only, is correct here).
-    """
-    result = await db.scalar(
-        select(OrgMembership.id).where(OrgMembership.org_id == org_id, OrgMembership.user_id == user_id).limit(1)
-    )
-    return result is not None
-
-
 async def _actor_has_org_standing(db: AsyncSession, org_id: UUID, actor: User | AIAgent) -> bool:
     """Actor-type-aware 404-vs-403 boundary check for `get_project`/`update_project`.
 
@@ -98,7 +87,7 @@ async def _actor_has_org_standing(db: AsyncSession, org_id: UUID, actor: User | 
             .limit(1)
         )
         return result is not None
-    return await _org_membership_exists(db, org_id, actor.actor_id)
+    return await _actor_membership_exists(db, org_id, actor)
 
 
 @router.post("/orgs/{org_id}/projects", response_model=ProjectSummary, status_code=201)
@@ -144,7 +133,7 @@ async def create_project(
        role-mapping logic for roles that can't reach `project.create` yet).
     """
     # 1. 404-vs-403 boundary.
-    if not await _org_membership_exists(db, org_id, actor.actor_id):
+    if not await _actor_membership_exists(db, org_id, actor):
         return _error(404, "not_found", "Organization not found.")
 
     # 2. Permission check — invoked directly, same posture as agents.py.

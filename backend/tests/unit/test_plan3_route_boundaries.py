@@ -2,7 +2,7 @@
 
 No DB, no network, no live server: the two route coroutines are called
 directly with a stub `AsyncSession` and the module-level collaborators
-(`_org_membership_exists`, `has_permission`, the three `chain_resolver`
+(`_actor_membership_exists`, `has_permission`, the three `chain_resolver`
 expressions) monkeypatched. What this buys over the integration suite is
 *isolation of the branch under test* — each test here holds every other input
 fixed and varies exactly one thing, so a failure names the branch that broke
@@ -130,7 +130,7 @@ def _patch_cycle_route(
     async def _resolve_environment(_db, _row):
         return environment_org
 
-    async def _membership(_db, _org_id, _actor_id):
+    async def _membership(_db, _org_id, _actor):
         return is_member
 
     async def _permission(_actor_id, _org_id, _code):
@@ -139,7 +139,10 @@ def _patch_cycle_route(
     monkeypatch.setattr(test_cycle_creation, "_resolve_test_plan_org_id", _resolve_plan)
     monkeypatch.setattr(test_cycle_creation, "_resolve_release_org_id", _resolve_release)
     monkeypatch.setattr(test_cycle_creation, "_resolve_environment_org_id", _resolve_environment)
-    monkeypatch.setattr(test_cycle_creation, "_org_membership_exists", _membership)
+    # ADR-0091: this route was patched onto `_actor_membership_exists` (was
+    # the AIAgent-blind `_org_membership_exists`, this file's own name for it
+    # left stale until this fix).
+    monkeypatch.setattr(test_cycle_creation, "_actor_membership_exists", _membership)
     monkeypatch.setattr(test_cycle_creation, "has_permission", _permission)
 
 
