@@ -624,6 +624,14 @@ function EntityRelationTab({
    * and, on Amendment 1's failure path, to name the created row back.
    */
   const farLabelField = config?.fields.find((f) => f.name === relation.targetField)?.labelField;
+  /**
+   * ADR-0087/ADR-0089's own `select` flag, read off the same link-entity
+   * field `farLabelField` already reads — this picker never branched on it
+   * at all until now, always rendering `FkAutocomplete` even for a bounded
+   * far entity (`test-plan`/`test-suite`) whose own `FieldMeta.select` is
+   * already `true`.
+   */
+  const farSelect = config?.fields.find((f) => f.name === relation.targetField)?.select;
 
   const listQuery = useQuery({
     queryKey: ["entity-relation-list", relation.entity, relation.scopeField, parentId, page, pageSize],
@@ -1392,18 +1400,22 @@ function EntityRelationTab({
               />
             )}
 
-            {pickerReady && (
-              <FkAutocomplete
-                id="entity-relation-link-picker"
-                label={farLabel}
-                refEntity={relation.targetEntity}
-                labelField={farLabelField}
-                value={pickedId}
-                onChange={setPickedId}
-                extraParams={effectiveScope}
-                routeParams={routeParams}
-              />
-            )}
+            {pickerReady &&
+              (() => {
+                const LinkPickerControl = farSelect ? FkSelect : FkAutocomplete;
+                return (
+                  <LinkPickerControl
+                    id="entity-relation-link-picker"
+                    label={farLabel}
+                    refEntity={relation.targetEntity}
+                    labelField={farLabelField}
+                    value={pickedId}
+                    onChange={setPickedId}
+                    extraParams={effectiveScope}
+                    routeParams={routeParams}
+                  />
+                );
+              })()}
           </Modal.Body>
           <Modal.Footer>
             <Button outline color="secondary" type="button" onClick={closeLinkModal}>
