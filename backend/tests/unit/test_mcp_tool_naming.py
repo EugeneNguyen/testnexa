@@ -54,10 +54,11 @@ from app.mcp.tools.entity_tools import (
     generated_tool_names,
 )
 
-#: The two resources with no `CrudEntityConfig` at all — 100% bespoke REST
+#: The three resources with no `CrudEntityConfig` at all — 100% bespoke REST
 #: surfaces (`Release`'s own ADR-0027 note; REQ-5/ADR-0069's `link-requirement`
-#: retrofit route). They therefore get no `describe` tool, and their whole
-#: registry row is a `BESPOKE_EXTRA_ACTIONS` entry.
+#: retrofit route; ADR-0090's agent-org-discovery route). They therefore get no
+#: `describe` tool, and their whole registry row is a `BESPOKE_EXTRA_ACTIONS`
+#: entry.
 #:
 #: ADR-0075 removed `test_suite_test_case` and `test_plan_test_suite` from this
 #: set. Their bespoke `create` executors are untouched and still come from
@@ -67,7 +68,7 @@ from app.mcp.tools.entity_tools import (
 #: (ADR-0074's `derive_entity_relations` walks `ALL_ENTITY_CONFIGS`). Being in
 #: this set was the symptom, not the cause: a config-less resource is invisible
 #: to every registry-derived surface, the relationship graph included.
-_EXPECTED_CONFIGLESS = {"release", "test_case_link_requirement"}
+_EXPECTED_CONFIGLESS = {"release", "test_case_link_requirement", "agent_org"}
 
 
 def _registered() -> dict[str, object]:
@@ -296,19 +297,25 @@ def test_generated_tool_count_is_the_number_adr_0067_states() -> None:
     /orgs/{org_id}/role-assignments` route's envelope shape already matched the
     generic one since DS-2/ADR-0041, so the factory's own flat `GET
     /role-assignments?org_id=...` list was safe to enable alongside it) — one
-    more CRUD action, no new resource (128 -> 129), for **158** total.
+    more CRUD action, no new resource (128 -> 129), for 158 total.
+
+    **ADR-0090** then added `agent_org`, a new config-less pseudo-resource with
+    one bespoke `list` action (the calling `AIAgent`'s own org self-discovery) —
+    one more resource (31 -> 32) and one more CRUD action, no new `describe`
+    (config-less, same as `release`/`test_case_link_requirement`), for **159**
+    total.
 
     Every other assertion here is a *derived* diff on purpose (Decision §8 — a
     hardcoded name list would drift with the thing it polices), which means none
     of them would notice if the derivation itself and the ADR's published number
     silently diverged. This one literal anchor catches that, and is cheap to
-    update deliberately when an entity/method is added — unlike a 158-name list,
+    update deliberately when an entity/method is added — unlike a 159-name list,
     which would have to be re-typed."""
     describe_count = len(ENTITY_CONFIGS_BY_RESOURCE)
     crud_count = sum(len(set(entry) - {"describe"}) for entry in TOOL_REGISTRY.values())
-    assert len(TOOL_REGISTRY) == 31, "resource count changed — update ADR-0068/ADR-0069/ADR-0075/ADR-0076/ADR-0082 and this anchor together"
-    assert (crud_count, describe_count) == (129, 29), (crud_count, describe_count)
-    assert len(_registered()) == crud_count + describe_count == 158
+    assert len(TOOL_REGISTRY) == 32, "resource count changed — update ADR-0068/ADR-0069/ADR-0075/ADR-0076/ADR-0082/ADR-0090 and this anchor together"
+    assert (crud_count, describe_count) == (130, 29), (crud_count, describe_count)
+    assert len(_registered()) == crud_count + describe_count == 159
 
 
 def test_no_tool_takes_a_resource_argument() -> None:
@@ -370,4 +377,9 @@ def test_bespoke_create_parent_fields_covers_exactly_the_bespoke_creates() -> No
 
 def test_bespoke_list_scope_fields_covers_exactly_the_bespoke_lists() -> None:
     bespoke_lists = {resource for resource, actions in BESPOKE_EXTRA_ACTIONS.items() if "list" in actions}
+    # ADR-0090: `agent_org`'s bespoke list is identity-scoped, not nested under
+    # any parent id — it deliberately has no entry here, and `_scope_hint`'s own
+    # config-less fallback ("this entity is unscoped... scope may be omitted")
+    # already describes it correctly without one.
+    bespoke_lists.discard("agent_org")
     assert set(BESPOKE_LIST_SCOPE_FIELDS) == bespoke_lists

@@ -61,6 +61,12 @@ exists) fails that test rather than silently widening the MCP surface.
 human-only screen, not a capability this MCP surface hands an agent over
 itself.
 
+**One narrow exception (ADR-0090):** `GET /agents/me/orgs` — deliberately
+*not* under `/auth/*` (it's `AIAgent`-only, the exact inverse gate of
+`/auth/me/orgs`'s human-only one), and needed because nothing else on this
+MCP surface lets an agent discover which org(s) it may act within before
+calling any org-scoped list route. `agent_org: {"list": ...}` below.
+
 A future new bespoke mutating route or a `CrudEntityConfig.methods` change
 needs one edit here (a new bespoke executor + its `BESPOKE_EXTRA_ACTIONS`
 row, or nothing at all for a generic-factory `methods` change —
@@ -80,6 +86,7 @@ from fastapi.responses import JSONResponse
 
 from app.api.crud_factory import CrudEntityConfig, derive_entity_schema, get_crud_handlers
 from app.api.entity_registry import ALL_ENTITY_CONFIGS
+from app.api.routes.agents import agent_me_orgs
 from app.api.routes.assets import (
     _TEST_CASE_CONFIG,
     create_test_case_for_requirement,
@@ -476,6 +483,15 @@ async def _test_cycle_create(*, actor: Any, db: Any, fields: dict[str, Any] | No
     return await create_test_cycle_for_plan(id=test_plan_id, payload=payload, actor=actor, db=db)
 
 
+async def _agent_org_list(*, actor: Any, db: Any, **_ignored: Any) -> Any:
+    """ADR-0090: the calling `AIAgent`'s own active-org self-discovery — the
+    one MCP-reachable exception to ADR-0065 Decision §2's `/auth/*` exclusion,
+    since it's a new route (`GET /agents/me/orgs`) outside that prefix, not a
+    widening of it. No `scope`/`filters`/`fields`/pagination — identity-scoped,
+    same posture `GET /auth/me/orgs` takes for a human caller."""
+    return await agent_me_orgs(actor=actor, db=db)
+
+
 async def _test_suite_test_case_create(*, actor: Any, db: Any, fields: dict[str, Any] | None = None, **_ignored: Any) -> Any:
     data = dict(fields or {})
     suite_id = data.get("test_suite_id")
@@ -568,6 +584,10 @@ _BESPOKE_EXECUTORS: dict[str, dict[str, Callable]] = {
     "requirement_test_condition_link": {"create": _requirement_test_condition_link_create},
     "test_condition_test_case_link": {"create": _test_condition_test_case_link_create},
     "test_case_defect_link": {"create": _test_case_defect_link_create},
+    # ADR-0090: 100%-bespoke pseudo-resource, same posture as
+    # `test_case_link_requirement` above (no `CrudEntityConfig`, one action) —
+    # generates `tn_agent_org_list`, the calling AIAgent's own org self-discovery.
+    "agent_org": {"list": _agent_org_list},
 }
 
 #: Per entity, the actions this registry serves that are NOT already claimed by
@@ -611,6 +631,7 @@ BESPOKE_EXTRA_ACTIONS: dict[str, frozenset[str]] = {
     "requirement_test_condition_link": frozenset({"create"}),
     "test_condition_test_case_link": frozenset({"create"}),
     "test_case_defect_link": frozenset({"create"}),
+    "agent_org": frozenset({"list"}),
 }
 
 

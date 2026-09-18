@@ -41,6 +41,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.crud_factory import clamp_pagination
 from app.api.deps import get_current_actor, get_db, require_permission
+from app.api.routes.auth import _active_orgs_for_user
 from app.core.security import generate_api_key, hash_api_key
 from app.models.actor import AIAgent, User
 from app.models.tenancy import OrgMembership, OrgMembershipStatus
@@ -51,6 +52,7 @@ from app.schemas.agents import (
     ListAgentsResponse,
     RevokeAgentResponse,
 )
+from app.schemas.auth import MeOrgsResponse, OrgSummary
 
 router = APIRouter()
 
@@ -318,3 +320,48 @@ async def list_agents(
         page=page,
         page_size=page_size,
     )
+
+
+@router.get("/agents/me/orgs", response_model=MeOrgsResponse)
+async def agent_me_orgs(
+    actor: User | AIAgent = Depends(get_current_actor),
+    db: AsyncSession = Depends(get_db),
+) -> MeOrgsResponse | JSONResponse:
+    """The calling AIAgent's own **active**-membership Organizations (ADR-0090).
+
+    The AIAgent-only mirror of `GET /auth/me/orgs` (`auth.py`, SHELL-6/
+    ADR-0036) — that route explicitly 403s any `AIAgent` caller, since
+    `OrgMembership.user_id` FKs `user.actor_id` and an `AIAgent` has no row
+    there at all to resolve. This route answers the same question for the
+    actor type that route structurally cannot: an `AIAgent`'s own orgs are
+    resolved transitively, via its `acting_on_behalf_of_user_id`'s
+    **active** `OrgMembership` rows — reusing `_active_orgs_for_user`
+    (`auth.py`) rather than a second copy of that query, same "one
+    definition of the caller's orgs" reasoning that function's own docstring
+    already gives for `login()`/`refresh()`/`me_orgs()`.
+
+    Exists because the MCP surface (ADR-0033/ADR-0065/ADR-0068) gives an
+    `AIAgent` no way to discover which org(s) it may act within before
+    calling any org-scoped list route (`GET /projects?org_id=...` and
+    friends all require `org_id` up front, and nothing on this server lists
+    orgs without one) — `/auth/*` is otherwise deliberately excluded from
+    the MCP-reachable surface (ADR-0065 Decision §2, "human-identity/token
+    flows, not agent-actionable data"), so this is a new, narrow route
+    outside that prefix rather than a widening of it.
+
+    Human-only gate is the exact inverse of `me_orgs()`'s: a `User` calling
+    this route gets `403 actor_forbidden` (it's `/auth/me/orgs`'s job to
+    answer that question for a human), not an empty list — an empty list
+    would be indistinguishable from "this agent's user has no active org."
+
+    Identity-scoped, not org-scoped: no `org_id` path param, no tenant
+    boundary to enforce, no `require_permission` call — same posture
+    `me_orgs()` itself takes, and `GET /orgs/{org_id}/permissions/mine`
+    before it. Zero active memberships is `200` with `orgs: []`, not an
+    error — this reports state, it doesn't gate a session.
+    """
+    if not isinstance(actor, AIAgent):
+        return _error(403, "actor_forbidden", "This action is restricted to AI agents.")
+
+    orgs = await _active_orgs_for_user(db, actor.acting_on_behalf_of_user_id)
+    return MeOrgsResponse(orgs=[OrgSummary(id=org.id, name=org.name, slug=org.slug) for org in orgs])
