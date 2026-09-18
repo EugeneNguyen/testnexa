@@ -58,7 +58,7 @@ _RISK_ITEM_CONFIG = CrudEntityConfig(
         "requirement_id": FieldMeta(
             ref_entity="requirement", label_field="description", label="Requirement", select=True
         ),
-        "test_plan_id": FieldMeta(ref_entity="test-plan", label_field="identifier", label="Test plan"),
+        "test_plan_id": FieldMeta(ref_entity="test-plan", label_field="identifier", label="Test plan", select=True),
         "mitigation": FieldMeta(show_in_table=False),
     },
 )

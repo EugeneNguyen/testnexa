@@ -135,7 +135,7 @@ _ROLE_CONFIG = CrudEntityConfig(
     # on its own — only its hand-picked label needs declaring.
     label="Roles",
     field_meta={
-        "org_id": FieldMeta(ref_entity="organization", label_field="name", label="Organization"),
+        "org_id": FieldMeta(ref_entity="organization", label_field="name", label="Organization", select=True),
         "is_system_role": FieldMeta(label="System role"),
     },
 )
@@ -191,8 +191,8 @@ _ROLE_ASSIGNMENT_CONFIG = CrudEntityConfig(
     field_meta={
         "actor_id": FieldMeta(label="Actor"),
         "org_id": FieldMeta(label="Organization"),
-        "project_id": FieldMeta(ref_entity="project", label_field="name", label="Project"),
-        "role_id": FieldMeta(ref_entity="role", label_field="name", label="Role"),
+        "project_id": FieldMeta(ref_entity="project", label_field="name", label="Project", select=True),
+        "role_id": FieldMeta(ref_entity="role", label_field="name", label="Role", select=True),
     },
 )
 

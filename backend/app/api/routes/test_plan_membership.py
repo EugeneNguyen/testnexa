@@ -470,8 +470,8 @@ _TEST_PLAN_TEST_SUITE_CONFIG = CrudEntityConfig(
         ScopeSelectorOption(ref_entity="test-suite", param_name="test_suite_id", label_field="name", label="By test suite", select=True),
     ),
     field_meta={
-        "test_plan_id": FieldMeta(ref_entity="test-plan", label_field="identifier", label="Test plan"),
-        "test_suite_id": FieldMeta(ref_entity="test-suite", label_field="name", label="Test suite"),
+        "test_plan_id": FieldMeta(ref_entity="test-plan", label_field="identifier", label="Test plan", select=True),
+        "test_suite_id": FieldMeta(ref_entity="test-suite", label_field="name", label="Test suite", select=True),
     },
 )
 

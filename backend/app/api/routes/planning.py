@@ -146,7 +146,7 @@ _TEST_PLAN_CONFIG = CrudEntityConfig(
     # letting the derived shape quietly drop the constraint.
     label="Test plans",
     field_meta={
-        "project_id": FieldMeta(ref_entity="project", label_field="name", label="Project"),
+        "project_id": FieldMeta(ref_entity="project", label_field="name", label="Project", select=True),
         "scope": FieldMeta(show_in_table=False),
         "approach": FieldMeta(show_in_table=False),
         "staffing_and_training": FieldMeta(label="Staffing & training", show_in_table=False),
@@ -179,7 +179,7 @@ _ENTRY_EXIT_CRITERIA_CONFIG = CrudEntityConfig(
     label="Entry/exit criteria",
     scope_selector=ScopeSelectorOption(ref_entity="test-plan", param_name="test_plan_id", label_field="identifier", select=True),
     field_meta={
-        "test_plan_id": FieldMeta(ref_entity="test-plan", label_field="identifier", label="Test plan"),
+        "test_plan_id": FieldMeta(ref_entity="test-plan", label_field="identifier", label="Test plan", select=True),
         "condition_text": FieldMeta(label="Condition"),
     },
 )
@@ -197,7 +197,7 @@ _ENVIRONMENT_CONFIG = CrudEntityConfig(
     # ADR-0053. Direct project scope, so no scope-selector: the list fires
     # immediately with the route's own `:projectId`.
     label="Environments",
-    field_meta={"project_id": FieldMeta(ref_entity="project", label_field="name", label="Project")},
+    field_meta={"project_id": FieldMeta(ref_entity="project", label_field="name", label="Project", select=True)},
 )
 
 # No generic `create` route — bespoke instead (`test_cycle_creation.py`), see
@@ -253,10 +253,10 @@ _TEST_CYCLE_CONFIG = CrudEntityConfig(
     # every hand-written config led with them.
     field_order=("test_plan_id", "project_id", "release_id", "environment_id", "name", "start_date", "end_date"),
     field_meta={
-        "test_plan_id": FieldMeta(ref_entity="test-plan", label_field="identifier", label="Test plan"),
-        "project_id": FieldMeta(ref_entity="project", label_field="name", label="Project"),
-        "release_id": FieldMeta(ref_entity="release", label_field="version_label", label="Release"),
-        "environment_id": FieldMeta(ref_entity="environment", label_field="name", label="Environment"),
+        "test_plan_id": FieldMeta(ref_entity="test-plan", label_field="identifier", label="Test plan", select=True),
+        "project_id": FieldMeta(ref_entity="project", label_field="name", label="Project", select=True),
+        "release_id": FieldMeta(ref_entity="release", label_field="version_label", label="Release", select=True),
+        "environment_id": FieldMeta(ref_entity="environment", label_field="name", label="Environment", select=True),
     },
     # ADR-0079: `TestPlan` -> "Test cycles" (the one-to-many tab) is scoped by
     # exactly `test_plan_id` above — the same placeholder

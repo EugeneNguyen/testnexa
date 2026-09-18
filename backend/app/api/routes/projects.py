@@ -247,7 +247,7 @@ _PROJECT_FACTORY_CONFIG = CrudEntityConfig(
     # without this — every hand-written config led with it. See `field_order`.
     field_order=("org_id", "name", "standards_profile"),
     field_meta={
-        "org_id": FieldMeta(ref_entity="organization", label_field="name", label="Organization"),
+        "org_id": FieldMeta(ref_entity="organization", label_field="name", label="Organization", select=True),
         "name": FieldMeta(required=True),
         "standards_profile": FieldMeta(label="Standards profile"),
     },

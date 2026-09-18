@@ -567,7 +567,7 @@ _ORG_MEMBERSHIP_CONFIG = CrudEntityConfig(
     # writable), so the sole writable field would otherwise derive first.
     field_order=("org_id", "user_id", "status", "joined_at"),
     field_meta={
-        "org_id": FieldMeta(ref_entity="organization", label_field="name", label="Organization"),
+        "org_id": FieldMeta(ref_entity="organization", label_field="name", label="Organization", select=True),
         "user_id": FieldMeta(label="User"),
     },
 )

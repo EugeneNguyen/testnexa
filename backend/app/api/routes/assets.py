@@ -147,7 +147,7 @@ _REQUIREMENT_CONFIG = CrudEntityConfig(
     search_fields=("title", "description", "external_ref", "source"),
     # ADR-0053
     label="Requirements",
-    field_meta={"project_id": FieldMeta(ref_entity="project", label_field="name", label="Project")},
+    field_meta={"project_id": FieldMeta(ref_entity="project", label_field="name", label="Project", select=True)},
 )
 
 # No `create` — see module docstring (REQ-3/ADR-0028); `TestCondition`'s own
@@ -238,7 +238,7 @@ _TEST_CASE_CONFIG = CrudEntityConfig(
         "status",
     ),
     field_meta={
-        "project_id": FieldMeta(ref_entity="project", label_field="name", label="Project"),
+        "project_id": FieldMeta(ref_entity="project", label_field="name", label="Project", select=True),
         # `select=True` on these three (2026-09-15, live-manual-test feedback):
         # small, bounded catalogs — a native dropdown is less friction than
         # `FkAutocomplete`'s type-to-search for a handful of rows. `project_id`
@@ -306,7 +306,7 @@ _TEST_SUITE_CONFIG = CrudEntityConfig(
     # `CreateTestSuiteRequest`, so it already derives first).
     label="Test suites",
     field_meta={
-        "project_id": FieldMeta(ref_entity="project", label_field="name", label="Project"),
+        "project_id": FieldMeta(ref_entity="project", label_field="name", label="Project", select=True),
     },
 )
 
