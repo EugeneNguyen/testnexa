@@ -227,7 +227,8 @@ _DEFECT_CONFIG = CrudEntityConfig(
     scope_selector=ScopeSelectorOption(
         ref_entity="test-execution",
         param_name="test_execution_id",
-        via=ScopeSelectorOption(ref_entity="test-case", param_name="test_case_id", select=True),
+        label_field="display_name",
+        via=ScopeSelectorOption(ref_entity="test-case", param_name="test_case_id", label_field="title", select=True),
         select=True,
     ),
     # `test_execution_id` is summary-only (no create schema to lead with), so it
@@ -334,13 +335,14 @@ _TEST_EXECUTION_CONFIG = CrudEntityConfig(
         ScopeSelectorOption(
             ref_entity="test-cycle",
             param_name="test_cycle_id",
+            label_field="name",
             label="By test cycle",
-            via=ScopeSelectorOption(ref_entity="test-plan", param_name="test_plan_id", select=True),
+            via=ScopeSelectorOption(ref_entity="test-plan", param_name="test_plan_id", label_field="identifier", select=True),
             select=True,
         ),
         # `TestCase`'s own list is `project_id`-scoped directly — no `via`
         # needed, this arm already worked before ADR-0081.
-        ScopeSelectorOption(ref_entity="test-case", param_name="test_case_id", label="By test case", select=True),
+        ScopeSelectorOption(ref_entity="test-case", param_name="test_case_id", label_field="title", label="By test case", select=True),
     ),
     # Both FKs are summary-only (`UpdateTestExecutionRequest` reassigns neither),
     # so they derive last without this — the hand-written config led with them.
@@ -397,7 +399,8 @@ _TEST_LOG_CONFIG = CrudEntityConfig(
     scope_selector=ScopeSelectorOption(
         ref_entity="test-execution",
         param_name="test_execution_id",
-        via=ScopeSelectorOption(ref_entity="test-case", param_name="test_case_id", select=True),
+        label_field="display_name",
+        via=ScopeSelectorOption(ref_entity="test-case", param_name="test_case_id", label_field="title", select=True),
         select=True,
     ),
     # `text`/`attachment_url`/`file_name` lead (the new writable fields, in

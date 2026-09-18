@@ -139,6 +139,44 @@ describe("ScopeSelector — via (ADR-0081)", () => {
     expect(screen.queryByLabelText(/filter by widget$/i)).not.toBeInTheDocument();
   });
 
+  it("ADR-0089: threads labelField to the picker, so an option renders a real name, not the raw id", async () => {
+    mockListEntities.mockResolvedValue({
+      items: [{ id: "widget-1", name: "Real Widget Name" }],
+      total: 1,
+      page: 1,
+      page_size: 25,
+    });
+    render(
+      <ScopeSelector
+        options={{ refEntity: "widget", paramName: "widget_id", labelField: "name" }}
+        onResolved={vi.fn()}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText(/filter by widget$/i), { target: { value: "wid" } });
+
+    expect(await screen.findByText("Real Widget Name")).toBeInTheDocument();
+    expect(screen.queryByText("widget-1")).not.toBeInTheDocument();
+  });
+
+  it("ADR-0089: threads labelField to the `via` picker too", async () => {
+    render(
+      <ScopeSelector
+        options={{
+          refEntity: "widget",
+          paramName: "widget_id",
+          via: { refEntity: "widget-owner", paramName: "widget_owner_id", labelField: "name" },
+        }}
+        onResolved={vi.fn()}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText(/pick a widget-owner/i), { target: { value: "alice" } });
+
+    expect(await screen.findByText("Alice")).toBeInTheDocument();
+    expect(screen.queryByText("owner-1")).not.toBeInTheDocument();
+  });
+
   it("an option with no via renders its own picker directly, unchanged from before ADR-0081", () => {
     render(<ScopeSelector options={{ refEntity: "widget", paramName: "widget_id" }} onResolved={vi.fn()} />);
 

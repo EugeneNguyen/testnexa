@@ -421,8 +421,8 @@ _TEST_SUITE_TEST_CASE_CONFIG = CrudEntityConfig(
     ),
     label="Test suite -> test case links",
     scope_selector=(
-        ScopeSelectorOption(ref_entity="test-suite", param_name="test_suite_id", label="By test suite", select=True),
-        ScopeSelectorOption(ref_entity="test-case", param_name="test_case_id", label="By test case", select=True),
+        ScopeSelectorOption(ref_entity="test-suite", param_name="test_suite_id", label_field="name", label="By test suite", select=True),
+        ScopeSelectorOption(ref_entity="test-case", param_name="test_case_id", label_field="title", label="By test case", select=True),
     ),
     # Only the two FKs need a `FieldMeta`: their `ref_entity`/`label_field`
     # have no Python-type correlate, and `created_at`'s auto-derived "Created

@@ -173,7 +173,7 @@ _TEST_CONDITION_CONFIG = CrudEntityConfig(
     # still claimed `required: true`, stale since that removal: exactly the
     # drift this ADR closes, so the derived shape is the correct one.
     label="Test conditions",
-    scope_selector=ScopeSelectorOption(ref_entity="requirement", param_name="requirement_id", select=True),
+    scope_selector=ScopeSelectorOption(ref_entity="requirement", param_name="requirement_id", label_field="description", select=True),
     field_order=("requirement_id", "description", "priority"),
     field_meta={
         "requirement_id": FieldMeta(
@@ -285,7 +285,7 @@ _TEST_STEP_CONFIG = CrudEntityConfig(
     # (the field-type enum has no numeric type) — the same approximation
     # `entityConfigs/test-step.ts` carried, so no override needed.
     label="Test steps",
-    scope_selector=ScopeSelectorOption(ref_entity="test-case", param_name="test_case_id", select=True),
+    scope_selector=ScopeSelectorOption(ref_entity="test-case", param_name="test_case_id", label_field="title", select=True),
     field_meta={
         "test_case_id": FieldMeta(ref_entity="test-case", label_field="title", label="Test case", select=True),
     },

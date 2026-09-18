@@ -46,6 +46,14 @@
  * (`TestStep`, `TestCaseDefectLink`, `Attachment`, still blocked on
  * `test-case.ts`'s own pre-existing "no list route exists" gap) remain
  * undeclared — no live config needs them yet, not a limit of this mechanism.
+ *
+ * **ADR-0089 closes a much older gap in this exact file: neither picker
+ * below ever received a `labelField` prop, at all, since this component was
+ * first written** — every scope-selector picker in the app rendered the
+ * referenced row's raw `id` instead of a human-readable label.
+ * `ScopeSelectorOption.labelField` (backend-declared, mirroring
+ * `FieldMeta.label_field`/`CompoundCreateAction.parentLabelField`) is now
+ * threaded to both `active`'s and `active.via`'s own control.
  */
 import { useState } from "react";
 import { ScopeSelectorOption } from "../../../entityConfigs/types";
@@ -112,6 +120,7 @@ function ScopeSelector({ options, onResolved, extraParams }: ScopeSelectorProps)
               id="scope-selector-via-fk"
               label={active.via!.label ?? `First, pick a ${active.via!.refEntity}`}
               refEntity={active.via!.refEntity}
+              labelField={active.via!.labelField}
               value={undefined}
               onChange={(id) => id && setViaValue(id)}
               extraParams={extraParams}
@@ -141,6 +150,7 @@ function ScopeSelector({ options, onResolved, extraParams }: ScopeSelectorProps)
                 id="scope-selector-fk"
                 label={active.label ?? `Filter by ${active.refEntity}`}
                 refEntity={active.refEntity}
+                labelField={active.labelField}
                 value={value}
                 onChange={handleChange}
                 extraParams={active.via ? { ...extraParams, [active.via.paramName]: viaValue } : extraParams}

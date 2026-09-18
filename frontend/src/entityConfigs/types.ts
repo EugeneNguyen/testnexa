@@ -139,6 +139,13 @@ export interface ScopeSelectorOption {
    * else defaults `false`.
    */
   select?: boolean;
+  /**
+   * ADR-0089: which field of `refEntity`'s own served rows the picker
+   * displays for each option — `ScopeSelector` never had an equivalent to
+   * `FieldConfig.labelField`/`CompoundCreateAction.parentLabelField` until
+   * now, so every scope-selector picker rendered the raw `id` instead.
+   */
+  labelField?: string;
 }
 
 /**

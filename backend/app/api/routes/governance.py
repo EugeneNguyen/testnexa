@@ -50,9 +50,9 @@ _RISK_ITEM_CONFIG = CrudEntityConfig(
     label="Risk items",
     scope_selector=(
         ScopeSelectorOption(
-            ref_entity="requirement", param_name="requirement_id", label="By requirement", select=True
+            ref_entity="requirement", param_name="requirement_id", label_field="description", label="By requirement", select=True
         ),
-        ScopeSelectorOption(ref_entity="test-plan", param_name="test_plan_id", label="By test plan", select=True),
+        ScopeSelectorOption(ref_entity="test-plan", param_name="test_plan_id", label_field="identifier", label="By test plan", select=True),
     ),
     field_meta={
         "requirement_id": FieldMeta(
@@ -79,7 +79,7 @@ _ATTACHMENT_CONFIG = CrudEntityConfig(
     search_fields=("url_or_path", "mime_type"),
     # ADR-0053
     label="Attachments",
-    scope_selector=ScopeSelectorOption(ref_entity="test-case", param_name="test_case_id", select=True),
+    scope_selector=ScopeSelectorOption(ref_entity="test-case", param_name="test_case_id", label_field="title", select=True),
     field_meta={
         "test_case_id": FieldMeta(ref_entity="test-case", label_field="title", label="Test case", select=True),
         "url_or_path": FieldMeta(label="URL / path"),

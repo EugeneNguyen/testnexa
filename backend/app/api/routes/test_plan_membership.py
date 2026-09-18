@@ -466,8 +466,8 @@ _TEST_PLAN_TEST_SUITE_CONFIG = CrudEntityConfig(
     ),
     label="Test plan -> test suite links",
     scope_selector=(
-        ScopeSelectorOption(ref_entity="test-plan", param_name="test_plan_id", label="By test plan", select=True),
-        ScopeSelectorOption(ref_entity="test-suite", param_name="test_suite_id", label="By test suite", select=True),
+        ScopeSelectorOption(ref_entity="test-plan", param_name="test_plan_id", label_field="identifier", label="By test plan", select=True),
+        ScopeSelectorOption(ref_entity="test-suite", param_name="test_suite_id", label_field="name", label="By test suite", select=True),
     ),
     field_meta={
         "test_plan_id": FieldMeta(ref_entity="test-plan", label_field="identifier", label="Test plan"),

@@ -302,6 +302,19 @@ class ScopeSelectorOption:
     a large ref entity would silently truncate the choices, not just look
     different. Defaults `False` (`FkAutocomplete`) — the safe default for a
     ref entity nobody has explicitly vetted as bounded.
+
+    ADR-0089. `label_field`, when set, is which field of `ref_entity`'s own
+    served rows the picker displays for each option — the same job
+    `FieldMeta.label_field`/`CompoundCreateAction.parent_label_field` already
+    do for their own pickers. **Never had an equivalent here until now**: the
+    frontend's `ScopeSelector` component never received *any* label field to
+    pass its `FkAutocomplete`/`FkSelect`, so every scope-selector picker in
+    the app rendered the referenced row's raw `id` in its dropdown/search
+    results — flagged as a known gap in ADR-0081's own Consequences
+    ("cosmetic, not a CRUD blocker, a distinct contained follow-up") and left
+    unfixed until ADR-0087 widened `FkSelect` into a real dropdown, which
+    turns "cosmetic" into "every option is a UUID, in your face, in a
+    `<select>`."
     """
 
     ref_entity: str
@@ -309,6 +322,7 @@ class ScopeSelectorOption:
     label: str | None = None
     via: "ScopeSelectorOption | None" = None
     select: bool = False
+    label_field: str | None = None
 
 
 @dataclass
@@ -1597,6 +1611,8 @@ def derive_entity_schema(
             out["via"] = _serialize_scope_selector_option(option.via)
         if option.select:
             out["select"] = True
+        if option.label_field:
+            out["labelField"] = option.label_field
         return out
 
     scope_selector: Any = None
