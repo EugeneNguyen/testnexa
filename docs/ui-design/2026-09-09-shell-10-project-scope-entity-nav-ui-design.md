@@ -66,3 +66,16 @@ See ADR-0051's own Alternatives section (stacked org+project nav; linking to `Pr
 ## 5. Open question (flagged, not silently decided)
 
 **Should "Project Overview" get an icon too**, matching the flat-item convention `Dashboard`/`Members`/`Projects` established on the org side (each carries exactly one)? **Default (shipped): yes** (`fa-solid fa-circle-info`) — for consistency with that established rule rather than introducing a fourth icon-less flat item. "Back to Projects" also carries one (`fa-solid fa-arrow-left`), same reasoning.
+
+## 6. Amendment, 2026-09-19 — `Test Conditions` retired from this group ([ADR-0093](../adr/0093-retire-test-conditions-standalone-admin-page.md))
+
+The "Expanded (`Test Design`, ...)" mockup in §1 above shows `Test Conditions` as a child of `Test Design`, correct as of this doc's own 2026-09-09 date. It no longer is — the standalone `TestCondition` admin surface (list, detail, edit) is retired outright, on CTO instruction, in favor of the two surfaces that already covered the identical job (`ProjectDetail`'s inline section, ADR-0028; the Requirement detail page's own "Test conditions" relation tab, ADR-0074/0079). §1's mockup is left as-is (a snapshot of what SHELL-10 shipped, not rewritten to pretend otherwise) — the corrected, current shape is:
+
+```
+│ ✏  Test Design      ▾ │
+│      Requirements      │
+│      Test Cases        │
+│      Test Suites       │
+```
+
+3 children, not 4. No other part of this document's own Decision (§§1-5) changes — the group's icon, its position, the loading/error posture, and the "Project Overview"/"Back to Projects" flat items are all unaffected.
