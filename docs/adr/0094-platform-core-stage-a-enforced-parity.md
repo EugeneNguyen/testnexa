@@ -1,8 +1,8 @@
 # ADR-0094: Stage A — enforced parity with `platform-core`, not a file-for-file swap
 
-- **Status:** Proposed — awaiting CTO review (the Decision deliberately does *not* execute the swap Stage A's brief asked for; see Context for why, and Alternatives for what was rejected)
+- **Status:** Accepted (2026-09-20) — CTO reviewed the diff-first finding and confirmed: enforce parity, don't force a regressing file swap
 - **Date:** 2026-09-19
-- **Deciders:** xuanbinh91@gmail.com (CTO) — pending
+- **Deciders:** xuanbinh91@gmail.com (CTO)
 - **Related:** [ADR-0022](0022-generic-crud-router-factory.md) (the CRUD factory Stage A targets), [ADR-0029](0029-testcase-resolver-direct-link-fallback.md) (the resolver-completeness case whose branch Stage A's own round trip re-proves), [ADR-0091](0091-actor-membership-gate-fix-bespoke-routes.md)/[ADR-0040](0040-role-assignment-project-cascade-delete.md)/[ADR-0087](0087-fk-select-for-bounded-catalogs.md) (the three fixes Stage A was told to check platform-core for — all three are already present upstream, see Context), [ADR-0075](0075-junction-table-registry-completeness.md) (the completeness-oracle discipline the new parity test is built to)
 
 ## Context
