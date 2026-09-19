@@ -1,0 +1,440 @@
+diff -ruN pc_orig/backend/app/api/crud_factory.py one/backend/app/api/crud_factory.py
+--- a/backend/app/api/crud_factory.py	2026-09-19 22:07:34
++++ b/backend/app/api/crud_factory.py	2026-09-19 22:27:01
+@@ -125,7 +125,7 @@
+ 
+ ScopeField = str | tuple[str, str] | None
+ ResolveOrgId = Callable[[AsyncSession, Any], Awaitable[uuid.UUID | None]]
+-# /: optional per-entity business-rule check on `PATCH`, run
++# Optional per-entity business-rule check on `PATCH`, run
+ # after the 404/403 tenant gate and before any field is mutated. Receives the
+ # already-gated row and the caller's `exclude_unset` update dict; returns a
+ # `JSONResponse` to short-circuit with, or `None` to let the update proceed.
+@@ -144,7 +144,7 @@
+ class NoSchema(BaseModel):
+     """Placeholder `update_schema` for an entity that never registers `update`.
+ 
+-    `CrudEntityConfig.update_schema` has no default ( dataclass
++    `CrudEntityConfig.update_schema` has no default (dataclass
+     sketch lists it as a required field) — entities like `Permission` (`list`/
+     `get` only) still need to satisfy the type, so they pass this rather than
+     a real per-entity schema that would never be bound to a route.
+@@ -190,7 +190,7 @@
+ 
+ @dataclass
+ class FieldMeta:
+-    """: per-field metadata `derive_entity_schema` cannot get from
++    """Per-field metadata `derive_entity_schema` cannot get from
+     Pydantic alone — see that function's own docstring for exactly what's
+     auto-derived vs. declared here. Only fields needing an override get an
+     entry in `CrudEntityConfig.field_meta`; a field with no entry is fully
+@@ -324,7 +324,7 @@
+ 
+ @dataclass
+ class LinkCreateAction:
+-    """: how
++    """How
+     to create **one row** of a junction/link entity, described declaratively so
+     a generic caller can invoke a bespoke route it knows nothing else about.
+ 
+@@ -348,7 +348,7 @@
+       junction.
+     - **`permission`** — the exact code the bespoke route gates on, so
+       `usePermissions` can hide the affordance before an attempt rather than
+-      surfacing a `403` after it ( own pre-emptive posture, UI
++      surfacing a `403` after it (own pre-emptive posture, UI
+       Design Document §5). It is **not** always `<resource>.create`:
+       and routes predate this ADR and gate on the *parent* entity's
+       `collection.update`/`batch.update`, which deliberately
+@@ -366,7 +366,7 @@
+ 
+ @dataclass
+ class LinkDeleteAction:
+-    """:
++    """
+     `LinkCreateAction`'s exact mirror — how to **remove one row** of a
+     junction/link entity, declared so a generic caller can invoke a bespoke
+     `DELETE` it knows nothing else about.
+@@ -405,7 +405,7 @@
+ 
+ @dataclass
+ class CompoundCreateAction:
+-    """:
++    """
+     how a relationship tab creates the **far** entity of a junction when that
+     entity has no generic `create` at all — by invoking the bespoke atomic
+     route that is its only real authoring path.
+@@ -557,7 +557,7 @@
+     # `has_permission_in_any_org` (Q3/edge case 2); `PATCH`/`DELETE` still
+     # `404`. Meaningless unless `is_global_catalog` is False.
+     global_read_fallback: bool = False
+-    # /: optional business-rule guard on `PATCH` only. Set today
++    # Optional business-rule guard on `PATCH` only. Set today
+     # by `_TEST_PLAN_CONFIG` alone (the `status`-transition legality table);
+     # every other entity leaves it `None` and its `PATCH` path is byte-for-byte
+     # unchanged. Alternatives section rejected giving `Batch` a
+@@ -1328,7 +1328,7 @@
+     config: CrudEntityConfig,
+     all_configs: Mapping[str, CrudEntityConfig] | None = None,
+ ) -> dict[str, Any]:
+-    """: the `GET /entities/{resource}/schema` response body for one
++    """The `GET /entities/{resource}/schema` response body for one
+     entity — the single source of truth `EntityListPage`/`EntityFormPage`/
+     `EntityTable`/`EntityForm` fetch instead of importing a static
+     `frontend/src/entityConfigs/<entity>.ts`.
+@@ -1374,10 +1374,10 @@
+         if meta.long_text:
+             field_type = "text"
+ 
+-        #. Deriving this — rather than writing 27 hand-kept
++        # Deriving this — rather than writing 27 hand-kept
+         # `filterable=False` entries — is what makes "which columns can be
+         # filtered" a derivation instead of a second list to keep in sync
+-        #. See `_is_filterable` for
++        # See `_is_filterable` for
+         # the clauses; it is shared with `derive_filter_fields` so the schema
+         # this route serves and the `?<name>=` params it accepts cannot drift.
+         filterable = _is_filterable(config, name, info, explicit_filter_fields)
+@@ -1578,7 +1578,7 @@
+     config: CrudEntityConfig,
+     all_configs: Mapping[str, CrudEntityConfig],
+ ) -> list[dict[str, Any]]:
+-    """: the *inbound* relationships of `config` — every place some
++    """The *inbound* relationships of `config` — every place some
+     **other** entity points at this one — as the detail page's relationship
+     tabs.
+ 
+@@ -1642,7 +1642,7 @@
+                 # collision. `Spec` reaches `Criterion` **both**
+                 # ways: directly (`Criterion.spec_id`,
+                 # rigor path) and through `SpecCriterionLink`
+-                #. Both are genuine, separately
++                # Both are genuine, separately
+                 # listable relationships, and without the suffix the detail
+                 # page would show two differently-populated tabs with the
+                 # identical label "Test conditions". Applied to every
+@@ -1807,7 +1807,7 @@
+             try:
+                 query = apply_filters_and_search(query, model, filter_fields, config.search_fields, query_params)
+             except ValueError as exc:
+-                #. Same envelope as the `?sort=` rejection below —
++                # Same envelope as the `?sort=` rejection below —
+                 # `422 validation_error` + a `field_errors` entry keyed by the
+                 # offending query param (here the column name itself, since a
+                 # filter param IS its column's name).
+@@ -1921,7 +1921,7 @@
+ 
+             updates = payload.model_dump(exclude_unset=True)
+ 
+-            # /: entity-specific business-rule check, if the
++            # Entity-specific business-rule check, if the
+             # config supplies one. Ordering is deliberate and load-bearing:
+             # this runs *after* `_fetch_and_gate` (so a caller outside the
+             # row's org still gets the `404` — a `409` here would
+diff -ruN pc_orig/backend/app/api/routes/agents.py one/backend/app/api/routes/agents.py
+--- a/backend/app/api/routes/agents.py	2026-09-19 22:07:34
++++ b/backend/app/api/routes/agents.py	2026-09-19 22:27:01
+@@ -1,4 +1,4 @@
+-""": AI-agent credential issuance/revocation routes.
++"""AI-agent credential issuance/revocation routes.
+ 
+ Source: API Document §2 (`POST /orgs/{org_id}/agents`,
+ `POST /orgs/{org_id}/agents/{agent_id}/revoke` contracts), (AI agent
+diff -ruN pc_orig/backend/app/api/routes/auth.py one/backend/app/api/routes/auth.py
+--- a/backend/app/api/routes/auth.py	2026-09-19 22:07:34
++++ b/backend/app/api/routes/auth.py	2026-09-19 22:27:01
+@@ -1,4 +1,4 @@
+-""": local password login route.
++"""Local password login route.
+ 
+ Source: API Document §2 (`POST /auth/login` contract), (auth &
+ token strategy), (login rate limiting), scope plan §1/§6.
+@@ -48,7 +48,7 @@
+ 
+ router = APIRouter()
+ 
+-# /: 5 failed attempts per (client_ip, email) per 15-minute
++# 5 failed attempts per (client_ip, email) per 15-minute
+ # sliding window -> 429, until the window clears.
+ _RATE_LIMIT_WINDOW_MINUTES = 15
+ _RATE_LIMIT_MAX_ATTEMPTS = 5
+@@ -119,7 +119,7 @@
+     1. Acquire `pg_advisory_xact_lock(_SIGNUP_BOOTSTRAP_LOCK_KEY)` FIRST,
+        inside this call's transaction, before the exists-check below — two
+        concurrent first-signup calls both observing zero orgs before either
+-       commits would otherwise both succeed ( rejected
++       commits would otherwise both succeed (rejected
+        "rely on the slug unique constraint instead" alternative doesn't
+        catch this: two concurrent bootstraps typically pick *different*
+        slugs). The lock is released automatically when this transaction
+@@ -626,7 +626,7 @@
+      now resolves either — an `AIAgent` bearer credential is
+     structurally accepted here rather than rejected outright (no story has
+     asked for an agent-specific 403 on this route) but is a no-op in
+-    practice: agents never hold a `refresh_token` cookie session ( —
++    practice: agents never hold a `refresh_token` cookie session (—
+     bearer-key auth only, no cookie exchange), so `raw_token` is always
+     absent and the request just falls through to the idempotent-204 path.
+ 
+diff -ruN pc_orig/backend/app/api/routes/entity_schema.py one/backend/app/api/routes/entity_schema.py
+--- a/backend/app/api/routes/entity_schema.py	2026-09-19 22:07:34
++++ b/backend/app/api/routes/entity_schema.py	2026-09-19 22:27:01
+@@ -1,4 +1,4 @@
+-""": `GET /entities/{resource}/schema` — one route serving every
++"""`GET /entities/{resource}/schema` — one route serving every
+ admin-CRUD entity's field shape (`crud_factory.derive_entity_schema`),
+ replacing the frontend's static `entityConfigs/<entity>.ts` imports.
+ 
+diff -ruN pc_orig/backend/app/api/routes/org_memberships.py one/backend/app/api/routes/org_memberships.py
+--- a/backend/app/api/routes/org_memberships.py	2026-09-19 22:07:34
++++ b/backend/app/api/routes/org_memberships.py	2026-09-19 22:27:01
+@@ -1,4 +1,4 @@
+-""": invite/list/accept/suspend/reactivate/revoke org members.
++"""Invite/list/accept/suspend/reactivate/revoke org members.
+ 
+ Source: API Document §2 (`/orgs/{org_id}/members*`, `/invites/{token}/accept`
+ contracts), (invite & manage org members), Database Document §3.1
+@@ -90,7 +90,7 @@
+ #: page size 25 default, offset pagination — same default the generic
+ # CRUD factory's list routes use.
+ #
+-# /: this route previously had NO ceiling at all — `page_size`
++# This route previously had NO ceiling at all — `page_size`
+ # went straight into `.limit()` unclamped, so `?page_size=100000` was an
+ # unbounded escape hatch. It now clamps through `crud_factory.clamp_pagination`
+ # with a plain literal `100` ceiling at the call site (see `list_members`),
+@@ -178,7 +178,7 @@
+ 
+     await require_permission("org_membership.read")(request, actor)
+ 
+-    # /: clamp to the shared convention — `page` floors at 1,
++    # Clamp to the shared convention — `page` floors at 1,
+     # `page_size` floors at 1 and ceilings at 100 (plain literal, no shared
+     # constant, per the ADR). Previously unclamped entirely.
+     page, page_size = clamp_pagination(page, page_size, 100)
+@@ -233,7 +233,6 @@
+       existing-user branch, no token involved) a no-op re-confirmation,
+       `invite_link: null`.
+     - **Existing email, already `active`/`suspended` in this org**: `409`
+-      .
+     - **New email**: creates `Actor`+`User` (no `AuthIdentity` yet) +
+       `OrgMembership(status=invited)` + an `Invite` row, `invite_link`
+       non-null.
+@@ -541,7 +540,7 @@
+     scope_field="org_id",
+     resolve_org_id=chain_resolver([]),
+     methods=frozenset({"list", "get", "update", "delete"}),
+-    #. Direct org scope (the route's own `:orgId`), so no
++    # Direct org scope (the route's own `:orgId`), so no
+     # scope-selector. `user_id` gets a label override but no `ref_entity`:
+     # `User` is excluded from this admin surface entirely, so
+     # there's nothing to autocomplete against — it stays a plain read-only
+diff -ruN pc_orig/backend/app/api/routes/organizations.py one/backend/app/api/routes/organizations.py
+--- a/backend/app/api/routes/organizations.py	2026-09-19 22:07:34
++++ b/backend/app/api/routes/organizations.py	2026-09-19 22:27:01
+@@ -1,4 +1,4 @@
+-""": `POST /orgs` — an existing authenticated actor mints a further Organization.
++"""`POST /orgs` — an existing authenticated actor mints a further Organization.
+ 
+ Source: API Document §2 (`POST /orgs` contract), (organization
+ bootstrap & creation flow — the "case (b)" route, sibling to `POST
+@@ -160,7 +160,7 @@
+     scope_field=None,
+     resolve_org_id=resolve_organization_org_id,
+     methods=frozenset({"get", "update", "delete"}),
+-    #. No `field_meta` at all: every label auto-title-cases correctly
++    # No `field_meta` at all: every label auto-title-cases correctly
+     # ("default_standards_profile" -> "Default standards profile"), there's no
+     # FK (the row IS the tenant), and no enum. `slug` derives `readOnly` (it's
+     # summary-only — not reassignable through `PATCH`) and nothing derives as
+diff -ruN pc_orig/backend/app/api/routes/projects.py one/backend/app/api/routes/projects.py
+--- a/backend/app/api/routes/projects.py	2026-09-19 22:07:34
++++ b/backend/app/api/routes/projects.py	2026-09-19 22:27:01
+@@ -1,11 +1,11 @@
+-""": `Project` create/read/update routes.
++"""`Project` create/read/update routes.
+ 
+ Source: API Document §3 (`POST /orgs/{org_id}/projects`, `GET`/`PATCH
+ /projects/{id}` contracts), (project creation flow — bespoke
+ org-path-scoped create, row-resolved read/update, `standards_profile`
+ inheritance, unconditional creator `test_manager` project-scoped role).
+ 
+-Three routes, two path shapes ( deliberate split, documented there
++Three routes, two path shapes (deliberate split, documented there
+ so it doesn't read as an accidental inconsistency):
+ 
+ - `POST /orgs/{org_id}/projects` mirrors `agents.py`/`organizations.py`
+@@ -140,7 +140,7 @@
+     await require_permission("project.create")(request, actor)
+ 
+     # 3. Resolve standards_profile: omitted OR explicit null -> inherit org
+-    # default; any other supplied value -> use as given ( amendment,
++    # default; any other supplied value -> use as given (amendment,
+     # see this function's own docstring §3).
+     if payload.standards_profile is None:
+         organization = await db.get(Organization, org_id)
+diff -ruN pc_orig/backend/app/api/routes/rbac_routes.py one/backend/app/api/routes/rbac_routes.py
+--- a/backend/app/api/routes/rbac_routes.py	2026-09-19 22:07:34
++++ b/backend/app/api/routes/rbac_routes.py	2026-09-19 22:27:01
+@@ -1,4 +1,4 @@
+-""": generic-CRUD factory routes for the RBAC cluster.
++"""Generic-CRUD factory routes for the RBAC cluster.
+ 
+ Named `rbac_routes.py`, not `rbac.py`, to avoid colliding with
+ `app/core/rbac.py` (the permission-check module), per the plan.
+@@ -76,7 +76,7 @@
+     actor: User | AIAgent = Depends(get_current_actor),
+     db: AsyncSession = Depends(get_db),
+ ) -> MyPermissionsResponse | JSONResponse:
+-    """: the calling actor's own resolved permission codes in `org_id`.
++    """The calling actor's own resolved permission codes in `org_id`.
+ 
+     Same any-status-`OrgMembership` 404-vs-403 boundary as every other
+     org-scoped route (`roles.py`'s `list_roles`) — no membership in `org_id`
+@@ -119,9 +119,9 @@
+     scope_field="org_id",
+     resolve_org_id=chain_resolver([]),
+     global_read_fallback=True,
+-    #. `name` is the only free-text column (`is_system_role` is bool).
++    # `name` is the only free-text column (`is_system_role` is bool).
+     search_fields=("name",),
+-    #. `org_id` is a real FK the admin surface autocompletes against
++    # `org_id` is a real FK the admin surface autocompletes against
+     # (`Organization.name`) even though this entity's scope value normally
+     # comes straight from the `:orgId` route param; `is_system_role` is
+     # summary-only (absent from both write schemas) so it derives `readOnly`
+@@ -143,7 +143,7 @@
+     resolve_org_id=chain_resolver([]), # never called — is_global_catalog handles get/list gating
+     is_global_catalog=True,
+     methods=frozenset({"list", "get"}),
+-    #. All three columns are free-text (`code` is the dotted
++    # All three columns are free-text (`code` is the dotted
+     # `resource.action` string, not an enum) and all three are what an admin
+     # scanning the permission catalog actually searches by.
+     search_fields=("code", "resource", "action"),
+diff -ruN pc_orig/backend/app/api/routes/role_assignments.py one/backend/app/api/routes/role_assignments.py
+--- a/backend/app/api/routes/role_assignments.py	2026-09-19 22:07:34
++++ b/backend/app/api/routes/role_assignments.py	2026-09-19 22:27:01
+@@ -1,4 +1,4 @@
+-""": `POST`/`GET /orgs/{org_id}/role-assignments`.
++"""`POST`/`GET /orgs/{org_id}/role-assignments`.
+ 
+ Source: API Document §2 (route table)/§3 (`POST`/`GET
+ /orgs/{org_id}/role-assignments` contracts), (role assignment
+diff -ruN pc_orig/backend/app/api/routes/roles.py one/backend/app/api/routes/roles.py
+--- a/backend/app/api/routes/roles.py	2026-09-19 22:07:34
++++ b/backend/app/api/routes/roles.py	2026-09-19 22:27:01
+@@ -1,5 +1,5 @@
+ """ UI slice: `GET /orgs/{org_id}/roles` — populates the role-assignment
+-dropdown ( scope plan addendum, per user direction to add this rather
++dropdown (scope plan addendum, per user direction to add this rather
+ than a raw `role_id` text input).
+ 
+ Same 404-vs-403 boundary + `require_permission` pattern as every other
+diff -ruN pc_orig/backend/app/core/rbac.py one/backend/app/core/rbac.py
+--- a/backend/app/core/rbac.py	2026-09-19 22:07:34
++++ b/backend/app/core/rbac.py	2026-09-19 22:27:01
+@@ -70,7 +70,7 @@
+     "field_errors": None,
+ }
+ 
+-# /: distinct from `_PERMISSION_DENIED_ERROR` above — this
++# Distinct from `_PERMISSION_DENIED_ERROR` above — this
+ # fires when a `User` actor's `OrgMembership` in the path's `org_id` exists
+ # but isn't `active` (i.e. `suspended`), BEFORE the `RoleAssignment` check
+ # even runs, independent of whatever that (suspended) member's still-recorded
+@@ -217,7 +217,7 @@
+     Narrows via `key_prefix` first (extracted from the presented raw key,
+     not trusted from anywhere else), then argon2-verifies the full raw key
+     against each narrowed candidate's `key_hash` in turn — `key_prefix` is
+-    NOT assumed unique ( edge case: two independently generated
++    NOT assumed unique (edge case: two independently generated
+     8-char prefixes colliding is astronomically unlikely but not
+     impossible), so this iterates rather than `.first()`-and-trusts.
+     `revoked_at IS NULL` is enforced in the `WHERE` clause itself, not
+@@ -476,7 +476,7 @@
+         org_id = request.path_params.get("org_id")
+         project_id = request.path_params.get("project_id")
+ 
+-        # /: suspended-member gate, checked BEFORE the
++        # Suspended-member gate, checked BEFORE the
+         # RoleAssignment check below — a suspended member's still-recorded
+         # RoleAssignment rows must never satisfy a permission check. Only
+         # applies to a User actor with a target org_id in the path (every
+diff -ruN pc_orig/backend/app/core/security.py one/backend/app/core/security.py
+--- a/backend/app/core/security.py	2026-09-19 22:07:34
++++ b/backend/app/core/security.py	2026-09-19 22:27:01
+@@ -34,7 +34,7 @@
+ # against a nonexistent email (or a user with no `provider=local`
+ # AuthIdentity) still pays the same argon2-verify cost as a real one — closes
+ # the timing side-channel that would otherwise let an attacker distinguish
+-# "no such user" from "wrong password" ( acceptance criteria, Test
++# "no such user" from "wrong password" (acceptance criteria, Test
+ # Design §2, scope plan edge case "User-enumeration timing leak"). Computed
+ # once at import time, not per-request.
+ _DUMMY_PASSWORD_HASH = _pwd_context.hash("dummy-password-for-timing-safety")
+@@ -125,7 +125,7 @@
+     human password guessable via brute force — a fast cryptographic hash is
+     sufficient to prevent recovering the raw token from a leaked hash, and
+     running the deliberately-slow argon2 KDF here would just be needless CPU
+-    cost on every refresh ( scope plan edge case "Refresh token
++    cost on every refresh (scope plan edge case "Refresh token
+     storage"). The raw token is never persisted, only this hash.
+     """
+     return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+diff -ruN pc_orig/backend/app/models/actor.py one/backend/app/models/actor.py
+--- a/backend/app/models/actor.py	2026-09-19 22:07:34
++++ b/backend/app/models/actor.py	2026-09-19 22:27:01
+@@ -77,7 +77,7 @@
+ 
+ 
+ class AIAgent(Actor):
+-    """Credential fields added beyond the 07 draft,."""
++    """Credential fields added beyond the 07 draft."""
+ 
+     __tablename__ = "ai_agent"
+ 
+@@ -95,7 +95,7 @@
+     key_prefix: Mapped[str] = mapped_column(String(8), nullable=False)
+     issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+-    # /: the AC3 `AuthIdentity.last_login_at`-equivalent for
++    # The AC3 `AuthIdentity.last_login_at`-equivalent for
+     # agent sessions. Nullable — NULL until the agent's first successful
+     # bearer-key authentication (an agent that's been issued a key but never
+     # used it yet). Updated on every successful `get_current_actor` agent-key
+diff -ruN pc_orig/backend/app/models/tenancy.py one/backend/app/models/tenancy.py
+--- a/backend/app/models/tenancy.py	2026-09-19 22:07:34
++++ b/backend/app/models/tenancy.py	2026-09-19 22:27:01
+@@ -1,6 +1,6 @@
+ """Tenancy cluster: Organization, OrgMembership, Invite.
+ 
+-Source: Database Document §3.1. `Invite` added ( invite &
++Source: Database Document §3.1. `Invite` added (invite &
+ manage org members) — not in the original 07 ERD draft.
+ """
+ 
+diff -ruN pc_orig/backend/app/schemas/auth.py one/backend/app/schemas/auth.py
+--- a/backend/app/schemas/auth.py	2026-09-19 22:07:34
++++ b/backend/app/schemas/auth.py	2026-09-19 22:27:01
+@@ -17,7 +17,7 @@
+     password: str
+ 
+ 
+-# /: same `slug` pattern `CreateOrgRequest` (`app/schemas/
++# Same `slug` pattern `CreateOrgRequest` (`app/schemas/
+ # organizations.py`) validates — kept as a private literal here (not
+ # imported from that module) to avoid a schemas-importing-schemas cycle;
+ # `app/schemas/organizations.py` imports `OrgSummary` *from* this module,
+diff -ruN pc_orig/backend/app/schemas/rbac.py one/backend/app/schemas/rbac.py
+--- a/backend/app/schemas/rbac.py	2026-09-19 22:07:34
++++ b/backend/app/schemas/rbac.py	2026-09-19 22:27:01
+@@ -9,7 +9,7 @@
+ (the permission-check module) and `app/api/routes/rbac_routes.py`/
+ `role_assignments.py`/`roles.py` (this cluster's route modules).
+ 
+-**Merge note ( x, both landed independently and collided on
++**Merge note (x, both landed independently and collided on
+ this file and on `RoleAssignment`/`Role` route ownership):** bespoke
+ `POST`/`GET /orgs/{org_id}/role-assignments` is the only way to create or
+ list a `RoleAssignment` — it already enforces membership/role-scope/

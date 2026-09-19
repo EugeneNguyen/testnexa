@@ -1,0 +1,13 @@
+diff -ruN pc_orig/backend/app/api/crud_factory.py one/backend/app/api/crud_factory.py
+--- a/backend/app/api/crud_factory.py	2026-09-19 22:07:34
++++ b/backend/app/api/crud_factory.py	2026-09-19 22:27:01
+@@ -2051,9 +2051,6 @@
+     "make_crud_router",
+     "resolve_global_org_id",
+     "resolve_organization_org_id",
+-    "resolve_risk_note_org_id",
+     "resolve_terminal_org_id",
+-    "resolve_item_org_id",
+-    "resolve_via_item",
+     "scope_validation_error",
+ ]

@@ -1,0 +1,14 @@
+diff -ruN pc_orig/backend/app/api/deps.py one/backend/app/api/deps.py
+--- a/backend/app/api/deps.py	2026-09-19 22:07:34
++++ b/backend/app/api/deps.py	2026-09-19 22:27:01
+@@ -14,8 +14,8 @@
+ 
+ from sqlalchemy.ext.asyncio import AsyncSession
+ 
+-from app.core.rbac import get_current_actor as get_current_actor # noqa: PLC0414
+-from app.core.rbac import require_permission as require_permission # noqa: PLC0414
++from app.core.rbac import get_current_actor as get_current_actor  # noqa: PLC0414
++from app.core.rbac import require_permission as require_permission  # noqa: PLC0414
+ from app.db.session import get_db as _get_db
+ 
+ 
