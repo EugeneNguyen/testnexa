@@ -1,0 +1,162 @@
+diff -ruN pc_orig/backend/app/api/crud_factory.py one/backend/app/api/crud_factory.py
+--- a/backend/app/api/crud_factory.py	2026-09-19 22:07:34
++++ b/backend/app/api/crud_factory.py	2026-09-19 22:27:01
+@@ -116,7 +116,7 @@
+ # have an equivalent column but neither registers `create` via this factory,
+ # ). `hasattr(model, stamped_field)` in the caller below makes adding
+ # a field here safe for every other model — it's simply skipped when absent.
+-_ACTOR_STAMPED_FIELDS: tuple[str,...] = ("created_by_actor_id", "executed_by_actor_id")
++_ACTOR_STAMPED_FIELDS: tuple[str, ...] = ("created_by_actor_id", "executed_by_actor_id")
+ 
+ # `entry_exit_criteria` is already grammatically plural ("criteria") — the
+ # one exception to "resource.replace('_', '-') + 's'" among this factory's 20
+@@ -496,7 +496,7 @@
+     parent_entity: str | None = None
+     parent_label: str | None = None
+     parent_label_field: str | None = None
+-    parent_filters: tuple[tuple[str, str],...] = ()
++    parent_filters: tuple[tuple[str, str], ...] = ()
+     parent_select: bool = False
+ 
+ 
+@@ -533,7 +533,7 @@
+     summary_schema: type[BaseModel]
+     scope_field: ScopeField
+     resolve_org_id: ResolveOrgId
+-    search_fields: tuple[str,...] = ()
++    search_fields: tuple[str, ...] = ()
+     # (ENTITY-FILTER-1): **optional narrowing override only.** Leave
+     # unset (the default, and what every config in this repo does) and the
+     # filterable column set is DERIVED — every field `derive_entity_schema`
+@@ -546,7 +546,7 @@
+     # stays a genuine per-entity opt-in, because "is this column
+     # worth substring-scanning" is a product judgment — "can this column be
+     # matched exactly" is answerable mechanically, so the default is yes.
+-    filter_fields: tuple[str,...] = ()
++    filter_fields: tuple[str, ...] = ()
+     methods: frozenset[str] = field(default_factory=lambda: frozenset({"list", "get", "create", "update", "delete"}))
+     # True for entities with no tenant at all (TestDesignTechnique/Tier/
+     # Category/Permission): `resolve_org_id` is a constant-`None` function,
+@@ -585,7 +585,7 @@
+     # scope — see `ScopeSelectorOption`/`ScopeResolution`'s own
+     # docstrings. A tuple of options is `RiskNote`'s branching-scope shape;
+     # every other scope-selector entity sets exactly one.
+-    scope_selector: ScopeSelectorOption | tuple[ScopeSelectorOption,...] | None = None
++    scope_selector: ScopeSelectorOption | tuple[ScopeSelectorOption, ...] | None = None
+     scope_resolution: ScopeResolution | None = None
+     #: set on link/junction entities only (`is_link_entity`) — the
+     # declarative handle on the bespoke route that writes one of this entity's
+@@ -610,7 +610,7 @@
+     # every direction's far entity can already be created generically, which is
+     # what Amendment 1's own composition needs and all this field
+     # exists to substitute for.
+-    compound_creates: tuple[CompoundCreateAction,...] = ()
++    compound_creates: tuple[CompoundCreateAction, ...] = ()
+     #: `compound_creates`' sibling for a one-to-many tab, declared on
+     # the CHILD entity's own config (never a link entity's) — deliberately a
+     # separate field rather than widening `compound_creates` itself, because
+@@ -635,7 +635,7 @@
+     # live entity needing two entries (`item_id`/`round_id`), because
+     # it has two distinct one-to-many parents and each tab must resolve the
+     # *other* one via whichever picker mechanism that direction needs.
+-    child_compound_creates: tuple[CompoundCreateAction,...] = ()
++    child_compound_creates: tuple[CompoundCreateAction, ...] = ()
+     #: overrides `methods` for the derived schema's own `methods`
+     # array only — never affects which routes `make_crud_router` registers.
+     # `Project` is the one user today: its real REST surface is `list`/
+@@ -657,7 +657,7 @@
+     # the field list would reintroduce exactly the `Spec.title` drift
+     # this ADR exists to close (a new required backend field silently absent
+     # from the form because nobody added it to a second list).
+-    field_order: tuple[str,...] = ()
++    field_order: tuple[str, ...] = ()
+ 
+ 
+ def _error(
+@@ -822,7 +822,7 @@
+ # --- scope-field helpers (list/create) --------------------------------------------------------
+ 
+ 
+-def _scope_candidates(config: CrudEntityConfig) -> tuple[str,...]:
++def _scope_candidates(config: CrudEntityConfig) -> tuple[str, ...]:
+     if config.scope_field is None:
+         return ()
+     if isinstance(config.scope_field, tuple):
+@@ -986,8 +986,8 @@
+ def apply_filters_and_search(
+     query: Any,
+     model: type[Base],
+-    filter_fields: tuple[str,...],
+-    search_fields: tuple[str,...],
++    filter_fields: tuple[str, ...],
++    search_fields: tuple[str, ...],
+     query_params: Mapping[str, Any],
+ ) -> Any:
+     """Translate `filter_fields`/`?q=` query params into `WHERE` clauses on `query`.
+@@ -1304,7 +1304,7 @@
+     return frozenset(name for name in all_fields if config.field_meta.get(name, FieldMeta()).sortable)
+ 
+ 
+-def derive_filter_fields(config: CrudEntityConfig) -> tuple[str,...]:
++def derive_filter_fields(config: CrudEntityConfig) -> tuple[str, ...]:
+     """Which columns `?<name>=` may target — the same answer
+     `derive_entity_schema`'s own `filterFields` key gives, derived without
+     building the whole schema.
+@@ -1770,7 +1770,7 @@
+         # Asking for the registry there is a genuine circular import, not a
+         # lazy-import ordering nit.
+         sortable_fields = derive_sortable_fields(config)
+-        filter_fields: tuple[str,...] = derive_filter_fields(config)
++        filter_fields: tuple[str, ...] = derive_filter_fields(config)
+ 
+         async def list_items(
+             request: Request,
+diff -ruN pc_orig/backend/app/api/entity_registry.py one/backend/app/api/entity_registry.py
+--- a/backend/app/api/entity_registry.py	2026-09-19 22:07:34
++++ b/backend/app/api/entity_registry.py	2026-09-19 22:27:01
+@@ -22,7 +22,7 @@
+ from app.api.routes.projects import _PROJECT_FACTORY_CONFIG
+ from app.api.routes.rbac_routes import _PERMISSION_CONFIG, _ROLE_ASSIGNMENT_CONFIG, _ROLE_CONFIG
+ 
+-_ALL_CONFIGS: tuple[CrudEntityConfig,...] = (
++_ALL_CONFIGS: tuple[CrudEntityConfig, ...] = (
+     _ORGANIZATION_CONFIG,
+     _PROJECT_FACTORY_CONFIG,
+     _ORG_MEMBERSHIP_CONFIG,
+diff -ruN pc_orig/backend/app/db/rbac_seed_catalog.py one/backend/app/db/rbac_seed_catalog.py
+--- a/backend/app/db/rbac_seed_catalog.py	2026-09-19 22:07:34
++++ b/backend/app/db/rbac_seed_catalog.py	2026-09-19 22:27:01
+@@ -17,7 +17,7 @@
+ 
+ from __future__ import annotations
+ 
+-STANDARD_ACTIONS: tuple[str,...] = ("create", "read", "update", "delete")
++STANDARD_ACTIONS: tuple[str, ...] = ("create", "read", "update", "delete")
+ 
+ # The 5 resources this platform's own routes gate on. `organization` and
+ # `project` get full CRUD; `org_membership`/`role`/`role_assignment` also
+@@ -27,7 +27,7 @@
+ # generic. `ai_agent` gets full CRUD codes too, even though only `.create`/
+ # `.update` are actually checked today (`app/api/routes/agents.py`) — the
+ # unused codes are harmless and save a future story its own migration.
+-CRUD_RESOURCES: tuple[str,...] = (
++CRUD_RESOURCES: tuple[str, ...] = (
+     "organization",
+     "org_membership",
+     "role",
+@@ -37,12 +37,12 @@
+ )
+ 
+ # Resources with no generic CRUD surface at all — read-only.
+-READ_ONLY_RESOURCES: tuple[str,...] = ("permission",)
++READ_ONLY_RESOURCES: tuple[str, ...] = ("permission",)
+ 
+-ALL_RESOURCES: tuple[str,...] = CRUD_RESOURCES + READ_ONLY_RESOURCES
++ALL_RESOURCES: tuple[str, ...] = CRUD_RESOURCES + READ_ONLY_RESOURCES
+ 
+ # The 3 seeded system roles (org_id=NULL, is_system_role=True).
+-SYSTEM_ROLE_NAMES: tuple[str,...] = ("org_admin", "project_owner", "member")
++SYSTEM_ROLE_NAMES: tuple[str, ...] = ("org_admin", "project_owner", "member")
+ 
+ 
+ def _code(resource: str, action: str) -> str:
