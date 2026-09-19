@@ -177,7 +177,11 @@ export const PROJECT_ENTITY_GROUPS: OrgEntityGroup[] = [
     label: "Test Design",
     testId: "sidebar-nav-group-test-design",
     icon: "fa-solid fa-pen-ruler",
-    entityKeys: ["requirements", "test-conditions", "test-cases", "test-suites"],
+    // ADR-0093 (2026-09-19): "test-conditions" retired outright, not moved
+    // to PROJECT_EXCLUDED_ENTITY_KEYS — it no longer exists in the registry
+    // at all (still manageable via ProjectDetail's inline section / the
+    // Requirement detail relation tab, just not this standalone entry).
+    entityKeys: ["requirements", "test-cases", "test-suites"],
   },
   {
     key: "test-planning",

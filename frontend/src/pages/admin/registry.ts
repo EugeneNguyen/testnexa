@@ -75,14 +75,26 @@ export const orgScopedEntities: RegistryEntry[] = [
   entry("Projects", "projects"),
 ];
 
-/** Sitemap: "Project-scoped" table — `/projects/:projectId/admin/:entity`. */
+/**
+ * Sitemap: "Project-scoped" table — `/projects/:projectId/admin/:entity`.
+ *
+ * [ADR-0093](../../../docs/adr/0093-retire-test-conditions-standalone-admin-page.md)
+ * removed `test-conditions` from here outright (2026-09-19), not just from
+ * the sidebar — `TestCondition` is still fully manageable via
+ * `ProjectDetail`'s inline section and the Requirement detail page's "Test
+ * conditions" relation tab, just no longer as its own top-level entry here.
+ * Removing the registry entry alone wouldn't have blocked the route (the
+ * generic `:entity` page fetches its schema straight from the backend,
+ * which still serves it for the relation tab) — see
+ * `useAdminRouteContext.ts`'s own `ADMIN_ENTITY_KEYS` gate for the other
+ * half of the fix.
+ */
 export const projectScopedEntities: RegistryEntry[] = [
   entry("Environments", "environments"),
   entry("Test plans", "test-plans"),
   entry("Entry/exit criteria", "entry-exit-criteria"),
   entry("Test cycles", "test-cycles"),
   entry("Requirements", "requirements"),
-  entry("Test conditions", "test-conditions"),
   entry("Test cases", "test-cases"),
   entry("Test steps", "test-steps"),
   entry("Test suites", "test-suites"),

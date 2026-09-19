@@ -733,6 +733,39 @@ describe("AppSidebar", () => {
     expect(groupedKeys.filter((k: string) => PROJECT_EXCLUDED_ENTITY_KEYS.includes(k))).toEqual([]);
   });
 
+  // ADR-0093 (2026-09-19): `test-conditions` retired outright from the
+  // registry, not moved to PROJECT_EXCLUDED_ENTITY_KEYS. TC-SHELL-035 above
+  // already proves the partition stays complete either way (it reads the
+  // live registry, whatever size it is) — this case proves the specific
+  // claim ADR-0093 makes: the Test Design group itself has exactly the 3
+  // children it should, `test-conditions` isn't hiding in some other group
+  // or the exclusion list instead of being gone entirely.
+  it("TC-SHELL-040: `test-conditions` is gone from the registry and from every group — Test Design has exactly 3 children", async () => {
+    const { PROJECT_ENTITY_GROUPS, PROJECT_EXCLUDED_ENTITY_KEYS } = await import(
+      "../../components/organisms/app-sidebar/app-sidebar"
+    );
+    const { projectScopedEntities } = await import("../../pages/admin/registry");
+
+    expect(projectScopedEntities.some((e) => e.key === "test-conditions")).toBe(false);
+
+    const testDesignGroup = PROJECT_ENTITY_GROUPS.find((g: { key: string }) => g.key === "test-design");
+    expect(testDesignGroup).toBeDefined();
+    expect(testDesignGroup?.entityKeys).toEqual(["requirements", "test-cases", "test-suites"]);
+
+    const allGroupedKeys = PROJECT_ENTITY_GROUPS.flatMap((g: { entityKeys: string[] }) => g.entityKeys);
+    expect(allGroupedKeys).not.toContain("test-conditions");
+    expect(PROJECT_EXCLUDED_ENTITY_KEYS).not.toContain("test-conditions");
+
+    mockGetProject.mockResolvedValue(PROJECT_FIXTURE);
+    renderSidebarAtProjectRoute(`/projects/${PROJECT_ID}`);
+    await waitFor(() => {
+      expect(screen.getByTestId("sidebar-nav-group-test-design")).toBeInTheDocument();
+    });
+    const group = screen.getByTestId("sidebar-nav-group-test-design");
+    expect(within(group).queryByText("Test conditions")).not.toBeInTheDocument();
+    expect(within(group).getByText("Requirements")).toBeInTheDocument();
+  });
+
   // SHELL-10 (ADR-0050), new coverage, mirrors TC-SHELL-026's icon-exclusivity
   // check for the org side.
   it("TC-SHELL-036: each of the 4 project-nav groups renders exactly one icon, its own entity children render none", async () => {
