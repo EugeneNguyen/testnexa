@@ -40,7 +40,7 @@ import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { EntityConfig } from "../../entityConfigs/types";
 import { EntityRow, getEntity } from "../../lib/api/entityCrud";
-import { entityLabelByKey } from "./registry";
+import { ADMIN_ENTITY_KEYS, entityLabelByKey } from "./registry";
 import { useEntitySchema } from "./useEntitySchema";
 
 export interface AdminRouteContext {
@@ -79,7 +79,21 @@ export interface AdminRouteContext {
 export function useAdminRouteContext(overrideEntityKey?: string): AdminRouteContext {
   const params = useParams<{ entity: string; orgId?: string; projectId?: string }>();
   const entityKey = overrideEntityKey ?? params.entity ?? "";
-  const { config, label: schemaLabel, isLoading: schemaLoading } = useEntitySchema(entityKey);
+  /**
+   * [ADR-0093](../../../docs/adr/0093-retire-test-conditions-standalone-admin-page.md):
+   * a `:entity` that isn't (or is no longer) a registry member must never
+   * reach the schema fetch at all — the generic route itself has no other
+   * gate, and a backend that still legitimately serves a retired key's
+   * schema (for a different surface, e.g. a relation tab) would otherwise
+   * make the retired standalone page keep working for a typed URL.
+   * `overrideEntityKey` callers (ADR-0060, e.g. the bespoke `/orgs/:orgId/
+   * projects` mount) are always trusted — they don't come from the `:entity`
+   * route param at all, so registry membership doesn't apply to them.
+   */
+  const isKnownEntity = Boolean(overrideEntityKey) || ADMIN_ENTITY_KEYS.has(entityKey);
+  const { config, label: schemaLabel, isLoading: schemaLoading } = useEntitySchema(
+    isKnownEntity ? entityKey : undefined,
+  );
   const { config: projectConfig } = useEntitySchema("projects");
 
   const projectQuery = useQuery({
