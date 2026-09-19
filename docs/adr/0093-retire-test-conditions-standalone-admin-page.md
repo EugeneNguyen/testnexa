@@ -94,10 +94,17 @@ frontend-only problem.
 - **4 e2e specs reference `test-conditions`** in some form
   (`admin2-generic-crud.spec.ts`, `admin10-compound-create.spec.ts`,
   `admin7-entity-relation-tabs.spec.ts`, `req3-test-condition-rigor-path.
-  spec.ts`) — audited at implementation time; specs exercising the relation
-  tab/inline path are untouched, specs exercising the standalone list page
-  for this entity specifically are trimmed or repointed at a sibling entity
-  for the same generic-CRUD coverage shape.
+  spec.ts`) — audited at implementation time (`grep -n "test-conditions"`
+  against each file, every hit read in context). **All 4 needed zero
+  changes**: every reference is either a direct backend API call
+  (`POST/DELETE /api/v1/test-conditions`, `admin2-generic-crud.spec.ts`,
+  proving the generic factory route works, not a UI navigation) or the
+  relation-tab/compound-create UI path (`entity-detail-tab-test-conditions`,
+  `?tab=test-conditions`, `POST /requirements/{id}/test-conditions`) —
+  none of the 4 ever navigates to the standalone `/admin/test-conditions`
+  page. A repo-wide `grep -rn "admin/test-conditions"` across `e2e/` and
+  `frontend/` turned up zero real navigations to that URL anywhere. One new
+  spec, `adr93-retire-test-conditions.spec.ts`, covers TC-SHELL-040/041.
 
 ## Alternatives considered
 
