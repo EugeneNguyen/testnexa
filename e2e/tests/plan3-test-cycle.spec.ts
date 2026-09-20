@@ -567,14 +567,11 @@ test.describe("PLAN-3: create a TestCycle through TestPlanDetail's Test Cycles s
       await expect(cycleRow).toContainText("2026-10-01");
       await expect(cycleRow).toContainText("2026-10-08");
 
-      // 3. The row links to the generic admin surface rather than duplicating
-      //    edit/delete here (ADR-0033's "create-and-view only" posture).
-      const adminLink = page.getByTestId(`view-in-admin-${createdCycle.id}`);
-      await expect(adminLink).toBeVisible();
-      await expect(adminLink).toHaveAttribute(
-        "href",
-        `/projects/${fixture.projectId}/admin/test-cycles/${createdCycle.id}/edit`,
-      );
+      // 3. ADR-0095: the row has inline Edit/Delete now, not a "View in
+      //    Admin" link out to the (retired) standalone admin surface.
+      await expect(page.getByTestId(`edit-cycle-${createdCycle.id}`)).toBeVisible();
+      await expect(page.getByTestId(`delete-cycle-${createdCycle.id}`)).toBeVisible();
+      await expect(page.getByTestId(`view-in-admin-${createdCycle.id}`)).toHaveCount(0);
 
       // 4. The Environment row genuinely exists in the database — asserted
       //    against the backend directly, not read off the screen.

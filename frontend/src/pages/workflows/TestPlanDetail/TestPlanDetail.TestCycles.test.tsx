@@ -23,7 +23,13 @@ import { listTestSuites } from "../../../lib/api/testSuites";
 import { listReleases } from "../../../lib/api/releases";
 import { createTestCycle } from "../../../lib/api/testCycles";
 import type { TestCycleSummary } from "../../../lib/api/testCycles";
-import { createEntity, getEntity, listEntities } from "../../../lib/api/entityCrud";
+import {
+  createEntity,
+  deleteEntity,
+  getEntity,
+  listEntities,
+  updateEntity,
+} from "../../../lib/api/entityCrud";
 import type { EntityRow, ListEnvelope } from "../../../lib/api/entityCrud";
 import type { EntityConfig } from "../../../entityConfigs/types";
 
@@ -47,7 +53,7 @@ const { entitySchemaFor } = vi.hoisted(() => {
     "test-plans": [{"name": "project_id", "label": "Project", "type": "fk", "refEntity": "project", "labelField": "name", "required": true}, {"name": "identifier", "label": "Identifier", "type": "string", "required": true}, {"name": "scope", "label": "Scope", "type": "string", "showInTable": false}, {"name": "approach", "label": "Approach", "type": "string", "showInTable": false}, {"name": "staffing_and_training", "label": "Staffing & training", "type": "string", "showInTable": false}, {"name": "schedule", "label": "Schedule", "type": "string", "showInTable": false}, {"name": "status", "label": "Status", "type": "enum", "values": ["draft", "approved", "superseded"], "required": true}],
     "entry-exit-criteria": [{"name": "test_plan_id", "label": "Test plan", "type": "fk", "refEntity": "test-plan", "labelField": "identifier", "required": true}, {"name": "type", "label": "Type", "type": "enum", "values": ["entry", "exit", "suspension", "resumption"], "required": true}, {"name": "condition_text", "label": "Condition", "type": "string", "required": true}],
     "test-cases": [{"name": "test_condition_id", "label": "Test condition", "type": "fk", "refEntity": "test-condition", "labelField": "description"}, {"name": "test_level_id", "label": "Test level", "type": "fk", "refEntity": "test-level", "labelField": "name"}, {"name": "test_type_id", "label": "Test type", "type": "fk", "refEntity": "test-type", "labelField": "name"}, {"name": "title", "label": "Title", "type": "string", "required": true}, {"name": "preconditions", "label": "Preconditions", "type": "string", "showInTable": false}, {"name": "expected_result", "label": "Expected result", "type": "string", "showInTable": false}, {"name": "status", "label": "Status", "type": "enum", "values": ["draft", "reviewed", "approved", "deprecated"], "required": true}],
-    "test-cycles": [{"name": "test_plan_id", "label": "Test plan", "type": "fk", "refEntity": "test-plan", "labelField": "identifier", "readOnly": true}, {"name": "release_id", "label": "Release", "type": "fk", "refEntity": "release", "labelField": "version_label", "readOnly": true}, {"name": "environment_id", "label": "Environment", "type": "fk", "refEntity": "environment", "labelField": "name"}, {"name": "name", "label": "Name", "type": "string"}, {"name": "start_date", "label": "Start date", "type": "date"}, {"name": "end_date", "label": "End date", "type": "date"}],
+    "test-cycles": [{"name": "test_plan_id", "label": "Test plan", "type": "fk", "refEntity": "test-plan", "labelField": "identifier", "readOnly": true}, {"name": "project_id", "label": "Project", "type": "fk", "refEntity": "project", "labelField": "name", "readOnly": true}, {"name": "release_id", "label": "Release", "type": "fk", "refEntity": "release", "labelField": "version_label", "readOnly": true}, {"name": "environment_id", "label": "Environment", "type": "fk", "refEntity": "environment", "labelField": "name"}, {"name": "name", "label": "Name", "type": "string"}, {"name": "start_date", "label": "Start date", "type": "date"}, {"name": "end_date", "label": "End date", "type": "date"}],
     "environments": [{"name": "project_id", "label": "Project", "type": "fk", "refEntity": "project", "labelField": "name", "required": true}, {"name": "name", "label": "Name", "type": "string", "required": true}, {"name": "config_notes", "label": "Config notes", "type": "string"}],
     "releases": [{"name": "project_id", "label": "Project", "type": "fk", "refEntity": "project", "labelField": "name", "required": true, "readOnly": true}, {"name": "version_label", "label": "Version label", "type": "string", "required": true}, {"name": "target_date", "label": "Target date", "type": "date"}]
   };
@@ -109,7 +115,14 @@ vi.mock("../../../lib/api/testCycles", async (importOriginal) => {
 
 vi.mock("../../../lib/api/entityCrud", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../../lib/api/entityCrud")>();
-  return { ...actual, listEntities: vi.fn(), getEntity: vi.fn(), createEntity: vi.fn() };
+  return {
+    ...actual,
+    listEntities: vi.fn(),
+    getEntity: vi.fn(),
+    createEntity: vi.fn(),
+    updateEntity: vi.fn(),
+    deleteEntity: vi.fn(),
+  };
 });
 
 const mockGetTestPlan = vi.mocked(getTestPlan);
@@ -121,6 +134,8 @@ const mockCreateTestCycle = vi.mocked(createTestCycle);
 const mockListEntities = vi.mocked(listEntities);
 const mockGetEntity = vi.mocked(getEntity);
 const mockCreateEntity = vi.mocked(createEntity);
+const mockUpdateEntity = vi.mocked(updateEntity);
+const mockDeleteEntity = vi.mocked(deleteEntity);
 
 const PROJECT_ID = "11111111-1111-1111-1111-111111111111";
 const PLAN_ID = "22222222-2222-2222-2222-222222222222";
@@ -271,7 +286,7 @@ describe("TestPlanDetail — TestCycles (PLAN-3)", () => {
     expect(await screen.findByText("No test cycles yet.")).toBeInTheDocument();
   });
 
-  it("renders each fetched cycle with its dates, resolved Release/Environment labels, and a View in Admin link", async () => {
+  it("renders each fetched cycle with its dates, resolved Release/Environment labels, and Edit/Delete buttons", async () => {
     cycleRows = [testCycle()];
     await renderAndSettle();
 
@@ -291,13 +306,70 @@ describe("TestPlanDetail — TestCycles (PLAN-3)", () => {
     await waitFor(() => expect(row).toHaveTextContent("R-1.0"));
     await waitFor(() => expect(row).toHaveTextContent("Staging"));
 
-    const link = within(row).getByTestId(`view-in-admin-${CYCLE_ID}`);
-    expect(link).toHaveAttribute(
-      "href",
-      `/projects/${PROJECT_ID}/admin/test-cycles/${CYCLE_ID}/edit`,
+    // ADR-0095: full CRUD, inline — no more "View in Admin" link out to the
+    // (now-retired) standalone admin surface.
+    expect(within(row).getByTestId(`edit-cycle-${CYCLE_ID}`)).toBeEnabled();
+    expect(within(row).getByTestId(`delete-cycle-${CYCLE_ID}`)).toBeEnabled();
+    expect(within(row).queryByTestId(`view-in-admin-${CYCLE_ID}`)).toBeNull();
+  });
+
+  // --- ADR-0095: inline "Edit"/"Delete" ---------------------------------------
+
+  it("edits a cycle's name via the inline Edit modal, sending only the editable fields, then re-fetches", async () => {
+    mockListEntities.mockImplementation(async (config) => {
+      switch ((config as EntityConfig).resource) {
+        case "test_cycle":
+          return envelope(cycleRows) as unknown as ListEnvelope<EntityRow>;
+        case "environment":
+          return envelope(environmentRows);
+        case "release":
+          return releaseEnvelope() as ListEnvelope<EntityRow>;
+        default:
+          return envelope([]);
+      }
+    });
+    cycleRows = [testCycle()];
+    mockUpdateEntity.mockResolvedValue(testCycle() as unknown as Record<string, unknown>);
+    await renderAndSettle();
+
+    fireEvent.click(await screen.findByTestId(`edit-cycle-${CYCLE_ID}`));
+
+    // Pre-filled from the row, not blank — and the scope fields
+    // (`test_plan_id`/`release_id`) never render at all (filtered out of
+    // `cycleEditConfig`).
+    expect(screen.getByLabelText("Name")).toHaveValue("Cycle 1");
+    expect(screen.queryByLabelText("Test plan")).toBeNull();
+    expect(screen.queryByLabelText("Project")).toBeNull();
+    expect(screen.queryByLabelText("Release")).toBeNull();
+
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Cycle 1 renamed" } });
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() =>
+      expect(mockUpdateEntity).toHaveBeenCalledWith(
+        expect.objectContaining({ path: "/test-cycles" }),
+        CYCLE_ID,
+        expect.objectContaining({ name: "Cycle 1 renamed" }),
+      ),
     );
-    // §1: create-and-view only — edit/delete live on the admin surface.
-    expect(within(row).queryByRole("button", { name: /remove|delete|edit/i })).toBeNull();
+    // Re-fetched (cycles list + environment labels), never spliced locally.
+    await waitFor(() => expect(cycleListCallCount()).toBe(2));
+  });
+
+  it("deletes a cycle with no confirmation modal, then re-fetches rather than splicing locally", async () => {
+    cycleRows = [testCycle()];
+    mockDeleteEntity.mockResolvedValue(undefined);
+    await renderAndSettle();
+
+    fireEvent.click(await screen.findByTestId(`delete-cycle-${CYCLE_ID}`));
+
+    await waitFor(() =>
+      expect(mockDeleteEntity).toHaveBeenCalledWith(
+        expect.objectContaining({ path: "/test-cycles" }),
+        CYCLE_ID,
+      ),
+    );
+    await waitFor(() => expect(cycleListCallCount()).toBe(2));
   });
 
   // --- §2: the "Create Cycle" modal, plain path ------------------------------

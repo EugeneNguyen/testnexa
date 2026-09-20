@@ -83,17 +83,20 @@ export const orgScopedEntities: RegistryEntry[] = [
  * the sidebar — `TestCondition` is still fully manageable via
  * `ProjectDetail`'s inline section and the Requirement detail page's "Test
  * conditions" relation tab, just no longer as its own top-level entry here.
- * Removing the registry entry alone wouldn't have blocked the route (the
- * generic `:entity` page fetches its schema straight from the backend,
- * which still serves it for the relation tab) — see
- * `useAdminRouteContext.ts`'s own `ADMIN_ENTITY_KEYS` gate for the other
- * half of the fix.
+ * [ADR-0095](../../../docs/adr/0095-retire-entry-exit-criteria-test-cycles-standalone-admin-pages.md)
+ * removed `entry-exit-criteria`/`test-cycles` the same way (2026-09-20) —
+ * both are fully manageable via `TestPlanDetail`'s own inline sections
+ * (list/add/edit/delete for both, PLAN-2/PLAN-3 extended to full CRUD by
+ * that ADR), just no longer as their own top-level entries here. Removing a
+ * registry entry alone wouldn't have blocked the route (the generic
+ * `:entity` page fetches its schema straight from the backend, which still
+ * serves it — `TestPlanDetail`'s own `useEntitySchema("entry-exit-criteria"
+ * | "test-cycles")` calls depend on that) — see `useAdminRouteContext.ts`'s
+ * own `ADMIN_ENTITY_KEYS` gate for the other half of the fix.
  */
 export const projectScopedEntities: RegistryEntry[] = [
   entry("Environments", "environments"),
   entry("Test plans", "test-plans"),
-  entry("Entry/exit criteria", "entry-exit-criteria"),
-  entry("Test cycles", "test-cycles"),
   entry("Requirements", "requirements"),
   entry("Test cases", "test-cases"),
   entry("Test steps", "test-steps"),

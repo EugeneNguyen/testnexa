@@ -85,10 +85,19 @@ describe("resolveEntityKey", () => {
   });
 
   it("does NOT pluralize a real key that happens not to end in 's'", () => {
-    // The load-bearing negative: `entry-exit-criteria` is a real registry key.
-    // Pluralizing first and checking membership second would request
-    // `entry-exit-criterias` and 404. Membership is checked BEFORE pluralizing
-    // precisely so this key survives.
+    // Historical note (ADR-0095, 2026-09-20): `entry-exit-criteria` used to be
+    // this function's own "load-bearing negative" — the one registry key not
+    // ending in "s", proving membership is checked BEFORE pluralizing (a
+    // pluralize-first order would request `entry-exit-criterias` and 404).
+    // ADR-0095 retired it from the registry outright, so there is currently
+    // no registry key this shape applies to — every remaining key ends in
+    // "s". The assertion below still holds and is still worth pinning
+    // (`resolveEntityKey` must not invent a plural for a key neither form of
+    // which is a real registry member), but it's now exercising the
+    // fallback branch (line 45's final `return key`), not the
+    // membership-checked-before-pluralizing branch this test used to prove.
+    // If a future registry key is ever added that doesn't end in "s", swap
+    // it in here to restore the original, stronger claim.
     expect(resolveEntityKey("entry-exit-criteria")).toBe("entry-exit-criteria");
     expect(resolveEntityKey("entry-exit-criteria")).not.toBe("entry-exit-criterias");
   });
