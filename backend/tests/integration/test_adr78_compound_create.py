@@ -105,6 +105,9 @@ EXPECTED_COMPOUND_CREATES: dict[str, list[dict]] = {
             "parentLabel": None,
             "parentLabelField": None,
             "parentFilters": {},
+            # No parent to select — `parent_select` defaults to `False` and is
+            # inert here, but the key is always present (ADR-0087 Amendment 2).
+            "parentSelect": False,
         }
     ],
     "test-condition-test-case-links": [
@@ -119,6 +122,7 @@ EXPECTED_COMPOUND_CREATES: dict[str, list[dict]] = {
             "parentLabel": "Requirement",
             "parentLabelField": "description",
             "parentFilters": {},
+            "parentSelect": True,
         }
     ],
     "test-case-defect-links": [
@@ -133,6 +137,7 @@ EXPECTED_COMPOUND_CREATES: dict[str, list[dict]] = {
             # `result=fail`-filtered picker would read "fail".
             "parentLabelField": "executed_at",
             "parentFilters": {"result": "fail"},
+            "parentSelect": True,
         }
     ],
     "test-plan-test-suites": [],

@@ -238,7 +238,7 @@ _TEST_CASE_CONFIG = CrudEntityConfig(
         "status",
     ),
     field_meta={
-        "project_id": FieldMeta(ref_entity="project", label_field="name", label="Project", select=True),
+        "project_id": FieldMeta(ref_entity="project", label_field="name", label="Project"),
         # `select=True` on these three (2026-09-15, live-manual-test feedback):
         # small, bounded catalogs — a native dropdown is less friction than
         # `FkAutocomplete`'s type-to-search for a handful of rows. `project_id`
