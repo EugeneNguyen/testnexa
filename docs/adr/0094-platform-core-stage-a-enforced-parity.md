@@ -175,6 +175,30 @@ a missing TestNexa fix:
      rows from earlier test runs. The tests pass on a fresh DB only — which
      makes them incompatible with this repo's own standard "clone `main`'s DB"
      isolated-stack recipe.
+
+  **Both resolved 2026-09-20, `fix-main-test-failures` branch — see that
+  branch's commit for the fix.** (1): 4 of the 5 assertions were updated to
+  match the now-correct served shape (`select`/`labelField` joining the wire
+  contract per ADR-0087 Amendment 2 and ADR-0089); the 5th
+  (`TestCase.project_id` in `test_req5_standalone_test_case.py`) was **not** —
+  that field's own adjacent code comment explicitly documents "`project_id`
+  itself stays an autocomplete (unbounded, one org can have many)", directly
+  contradicted by the `select=True` Amendment 2's blanket sweep had added to
+  it, and the test's own assertion predates that commit by two days. Fixed by
+  reverting the field's `select=True`, not by updating the test — the sweep
+  missed its own stated exemption ("no exact-shape assertion pinning its
+  absence"). (2): a new idempotent Alembic migration
+  (`4792063295e4_backfill_missing_test_type_seed_rows.py`) re-runs the
+  original seed migration's own existence-check-then-insert logic as a new
+  revision, since `alembic upgrade head` no-ops once a DB is already past a
+  migration's revision (`backend/CLAUDE.md`'s documented idempotency gotcha) —
+  the original migration was never wrong, `main`'s live DB was just missing a
+  row a later re-run of the CLI could never re-insert. A **third**,
+  previously-undiscovered pre-existing failure was found while verifying this
+  fix (`test_admin5_seed_test_level.py::test_seed_produces_exactly_five_istqb_test_levels`,
+  a leftover `REQ-5 level-desc-c <hex>` row from an unrelated test's
+  incomplete cleanup tripping an exact-set-match assertion) — flagged, not
+  fixed, same "not this branch's scope" posture as the two above.
 - **The parity test adds a soft coupling to the submodule.** It skips cleanly
   (`pytest.mark.skipif`) when `platform-core/` isn't checked out, so a clone
   without `git submodule update --init` is unaffected rather than red.
