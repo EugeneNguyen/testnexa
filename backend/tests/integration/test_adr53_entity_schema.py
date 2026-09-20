@@ -179,6 +179,10 @@ async def test_requirements_project_id_is_a_fk_field(client: httpx.AsyncClient) 
         "filterable": True,
         "refEntity": "project",
         "labelField": "name",
+        # ADR-0087 Amendment 2 (2026-09-18): `Requirement.project_id` is this
+        # entity's own locked `scope_field`, not a real user-facing picker —
+        # the "inert" case the amendment's own commit message describes.
+        "select": True,
     }
 
 
@@ -202,8 +206,22 @@ async def test_risk_items_scope_selector_is_an_array_of_two_options(client: http
 
     assert isinstance(selector, list)
     assert selector == [
-        {"refEntity": "requirement", "paramName": "requirement_id", "label": "By requirement"},
-        {"refEntity": "test-plan", "paramName": "test_plan_id", "label": "By test plan"},
+        # ADR-0089: `labelField` joined the wire shape. ADR-0087 Amendment 2:
+        # `select` joined it too (both options here predate that amendment).
+        {
+            "refEntity": "requirement",
+            "paramName": "requirement_id",
+            "label": "By requirement",
+            "labelField": "description",
+            "select": True,
+        },
+        {
+            "refEntity": "test-plan",
+            "paramName": "test_plan_id",
+            "label": "By test plan",
+            "labelField": "identifier",
+            "select": True,
+        },
     ]
 
 
@@ -213,7 +231,13 @@ async def test_entry_exit_criteria_scope_selector_is_a_single_object(client: htt
     (not `null`) when the option doesn't declare one."""
     body = (await client.get(_schema_path("entry-exit-criteria"))).json()
 
-    assert body["scopeSelector"] == {"refEntity": "test-plan", "paramName": "test_plan_id"}
+    assert body["scopeSelector"] == {
+        "refEntity": "test-plan",
+        "paramName": "test_plan_id",
+        # ADR-0089's `labelField` + ADR-0087 Amendment 2's `select`.
+        "labelField": "identifier",
+        "select": True,
+    }
 
 
 # --- Project: camelCase scopeResolution + full_methods --------------------------------------
