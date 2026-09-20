@@ -188,7 +188,12 @@ export const PROJECT_ENTITY_GROUPS: OrgEntityGroup[] = [
     label: "Test Planning",
     testId: "sidebar-nav-group-test-planning",
     icon: "fa-solid fa-calendar-check",
-    entityKeys: ["test-plans", "entry-exit-criteria", "test-cycles", "releases"],
+    // ADR-0095 (2026-09-20): "entry-exit-criteria"/"test-cycles" retired
+    // outright, not moved to PROJECT_EXCLUDED_ENTITY_KEYS — same posture
+    // ADR-0093 took for "test-conditions" just above. Both no longer exist
+    // in the registry at all (still fully manageable via TestPlanDetail's
+    // own inline sections, not this standalone entry).
+    entityKeys: ["test-plans", "releases"],
   },
   {
     key: "execution-defects",
