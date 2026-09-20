@@ -46,20 +46,21 @@
  *    visible field list, exactly as `editConfig` above does for
  *    `TestPlan.project_id`. Unlike the Test Suites section, this one gets
  *    `PATCH` too — criteria are freestanding rows, not join-table membership.
- * 5. **Test Cycles** (PLAN-3, ADR-0033, UI Design Document
- *    `docs/ui-design/2026-09-06-plan-3-test-cycle-creation-ui-design.md`) —
- *    placed directly below Entry/Exit Criteria, per that document. The plan's
- *    own cycles (`GET /test-cycles?test_plan_id=<id>`, the generic factory
- *    list route) plus a bespoke "Create Cycle" modal submitting
- *    `POST /test-plans/{id}/test-cycles`. Create-and-view only: `TestCycle`'s
- *    edit/delete already exist on the generic admin surface, so each row links
- *    there ("View in Admin") rather than duplicating them here (§1).
- *    **As of EXEC-1 (ADR-0034) each row's *name* is additionally a link to
- *    that cycle's own `TestCycleDetail` screen** (execution history + live
- *    dashboard) — PLAN-3 left these rows as deliberate dead ends only because
- *    that screen did not exist yet. "View in Admin" is unchanged and still
- *    points at the generic edit form; the two links go to different places on
- *    purpose.
+ * 5. **Test Cycles** (PLAN-3/ADR-0033, extended to full CRUD by
+ *    [ADR-0095](../../../docs/adr/0095-retire-entry-exit-criteria-test-cycles-standalone-admin-pages.md)) —
+ *    placed directly below Entry/Exit Criteria, per PLAN-3's UI Design
+ *    Document. The plan's own cycles (`GET /test-cycles?test_plan_id=<id>`,
+ *    the generic factory list route), a bespoke "Create Cycle" modal
+ *    submitting `POST /test-plans/{id}/test-cycles`, and — as of ADR-0095 —
+ *    inline Edit/Delete over the same generic `PATCH`/`DELETE
+ *    /test-cycles/{id}` the retired standalone admin page used to expose.
+ *    `test_plan_id`/`release_id` are filtered out of the edit form (not
+ *    reassignable, same posture `criteriaConfig` already takes on
+ *    `test_plan_id` just above) — only `environment_id`/`name`/dates are
+ *    editable. **As of EXEC-1 (ADR-0034) each row's *name* is additionally a
+ *    link to that cycle's own `TestCycleDetail` screen** (execution history +
+ *    live dashboard) — unchanged by ADR-0095, the two links (name -> detail,
+ *    Edit -> this screen's own modal) go to different places on purpose.
  *
  * All membership and criteria writes re-fetch rather than splicing local state
  * — same "always reflects the server's own current state" posture REQ-4
@@ -363,6 +364,7 @@ function TestPlanDetail() {
   // are called unconditionally here, before any early return.
   const { config: testPlanSchema } = useEntitySchema("test-plans");
   const { config: criteriaSchema } = useEntitySchema("entry-exit-criteria");
+  const { config: cycleSchema } = useEntitySchema("test-cycles");
 
   /**
    * The `TestPlan` schema minus its `project_id` field — same field list, same
@@ -396,6 +398,34 @@ function TestPlanDetail() {
       fields: (criteriaSchema?.fields ?? []).filter((field) => field.name !== "test_plan_id"),
     }),
     [criteriaSchema],
+  );
+
+  /**
+   * ADR-0095: the `TestCycle` schema minus `test_plan_id`/`project_id`/
+   * `release_id` — none is reassignable through `PATCH /test-cycles/{id}`
+   * (`UpdateTestCycleRequest` accepts none of the three), same derivation
+   * `criteriaConfig` performs for its own scope field just above. All three
+   * are already served `readOnly: true` by the backend (`TestCycle` has no
+   * generic `create`, so the schema's writable-field union is
+   * `UpdateTestCycleRequest` alone) — filtered out here anyway, not just
+   * left disabled: `EntityForm` renders even a `readOnly` `fk` field's own
+   * `FkAutocomplete`/`FkSelect` in a display-only mode, which still fetches
+   * its ref entity's list — `project` is org-scoped, not project-scoped, so
+   * that fetch 422s with no `fkExtraParams` shape that could satisfy it
+   * (confirmed live, not assumed — this is exactly why `project_id` is
+   * excluded here, not merely disabled).
+   */
+  const cycleEditConfig = useMemo<EntityConfig>(
+    () => ({
+      ...(cycleSchema ?? routeOnlyConfig("test_cycle", "test-cycles")),
+      fields: (cycleSchema?.fields ?? []).filter(
+        (field) =>
+          field.name !== "test_plan_id" &&
+          field.name !== "project_id" &&
+          field.name !== "release_id",
+      ),
+    }),
+    [cycleSchema],
   );
 
   const [plan, setPlan] = useState<TestPlanSummary | null>(null);
@@ -462,6 +492,13 @@ function TestPlanDetail() {
   const [releaseLabels, setReleaseLabels] = useState<Record<string, string>>({});
   const [environmentLabels, setEnvironmentLabels] = useState<Record<string, string>>({});
   const [showCycleModal, setShowCycleModal] = useState(false);
+  // ADR-0095: inline Edit — `null` when closed, `{ row }` when editing that
+  // cycle. Edit-only (unlike `criteriaModal`): creation stays the existing
+  // bespoke "Create Cycle" modal above, untouched.
+  const [cycleModal, setCycleModal] = useState<{ row: TestCycleSummary } | null>(null);
+  const [cycleFieldErrors, setCycleFieldErrors] = useState<Record<string, string> | undefined>(
+    undefined,
+  );
 
   const {
     register: registerCycle,
@@ -924,6 +961,64 @@ function TestPlanDetail() {
     }
   }
 
+  // --- ADR-0095: inline Test Cycle Edit/Delete -------------------------------
+
+  function openCycleEditModal(row: TestCycleSummary) {
+    setCycleFieldErrors(undefined);
+    setCycleModal({ row });
+  }
+
+  function closeCycleEditModal() {
+    setCycleModal(null);
+  }
+
+  /**
+   * `PATCH /test-cycles/{id}` via the generic `entityCrud` helper — same
+   * shape as `onSubmitCriteria`'s edit branch. `cycleEditConfig` already
+   * excludes `test_plan_id`/`release_id`, so `EntityForm` never emits them;
+   * only `environment_id`/`name`/dates can appear in `values`.
+   *
+   * On success, re-fetch both the cycle list and the environment labels —
+   * an edit can repoint `environment_id` at a different (possibly not yet
+   * labelled) row, same reason `onSubmitCycle` re-fetches labels on create.
+   */
+  async function onSubmitCycleEdit(values: Record<string, unknown>) {
+    if (!cycleModal) {
+      return;
+    }
+    setCycleError(null);
+    setCycleFieldErrors(undefined);
+    try {
+      await updateEntity(cycleEditConfig, cycleModal.row.id, values);
+      setCycleModal(null);
+      await Promise.all([fetchCycles(), fetchEnvironmentLabels()]);
+    } catch (err) {
+      const fields = serverFieldErrors(err);
+      if (fields) {
+        setCycleFieldErrors(fields);
+      } else {
+        setCycleModal(null);
+        setCycleError(errorMessage(err));
+      }
+    }
+  }
+
+  /**
+   * Delete a cycle — no confirmation modal, same no-confirm convention
+   * `onDeleteCriteria`/the Test Suites section's "Remove" already use.
+   * Re-fetches either way, so a failed delete leaves the row visible next to
+   * its own error rather than optimistically vanishing.
+   */
+  async function onDeleteCycle(id: string) {
+    setCycleError(null);
+    try {
+      await deleteEntity(cycleEditConfig, id);
+    } catch (err) {
+      setCycleError(errorMessage(err));
+    }
+    await fetchCycles();
+  }
+
   if (!projectId || !testPlanId) {
     return null;
   }
@@ -1278,16 +1373,30 @@ function TestPlanDetail() {
                             </span>
                           </span>
                           {/*
-                            §1: no Edit/Delete here — `TestCycle`'s PATCH/DELETE
-                            already have a home on the generic admin surface, so
-                            this section links there instead of duplicating them.
+                            ADR-0095: inline Edit/Delete, same convention as
+                            the Entry/Exit Criteria section above — no
+                            permission-based hide/disable (§1's
+                            attempt-then-error posture), no confirm-before-
+                            delete modal.
                           */}
-                          <Link
-                            to={`/projects/${projectId}/admin/test-cycles/${cycle.id}/edit`}
-                            data-testid={`view-in-admin-${cycle.id}`}
-                          >
-                            View in Admin
-                          </Link>
+                          <span className="d-flex gap-2">
+                            <button
+                              type="button"
+                              className="btn btn-outline-primary btn-sm"
+                              data-testid={`edit-cycle-${cycle.id}`}
+                              onClick={() => openCycleEditModal(cycle)}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-outline-danger btn-sm"
+                              data-testid={`delete-cycle-${cycle.id}`}
+                              onClick={() => onDeleteCycle(cycle.id)}
+                            >
+                              Delete
+                            </button>
+                          </span>
                         </li>
                       ))}
                     </ul>
@@ -1588,6 +1697,38 @@ function TestPlanDetail() {
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* --- "Edit Cycle" modal (ADR-0095): the same generic config, reused - */}
+      <Modal
+        visible={cycleModal !== null}
+        onClose={closeCycleEditModal}
+        title="Edit Cycle"
+        testId="edit-cycle-modal"
+      >
+        <div className="modal-body">
+          {/* ADR-0053: gated on `cycleSchema`, same reason the criteria/plan
+              edit modals above are. */}
+          {cycleModal && cycleSchema && (
+            <EntityForm
+              key={cycleModal.row.id}
+              config={cycleEditConfig}
+              mode="edit"
+              initialValues={cycleModal.row as unknown as Record<string, unknown>}
+              onSubmit={onSubmitCycleEdit}
+              onCancel={closeCycleEditModal}
+              serverFieldErrors={cycleFieldErrors}
+              // ADR-0086: `environment_id`'s own ref entity is project-scoped
+              // (`?project_id=`, ADR-0058 shape B) — without this, its
+              // `FkSelect` fetches `GET /environments` with no scope and the
+              // backend 422s, leaving the dropdown empty. Same prop the
+              // generic `EntityListPage` already passes for the identical
+              // reason (ADR-0086's own doc comment names this exact field as
+              // "the first case").
+              fkExtraParams={{ project_id: projectId }}
+            />
+          )}
+        </div>
       </Modal>
     </div>
   );
